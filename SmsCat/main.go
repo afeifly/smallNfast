@@ -64,12 +64,6 @@ func main() {
 		Bind: []interface{}{
 			myApp,
 		},
-		// Windows specific options
-		Windows: &options.Windows{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-			DisableWindowIcon:    false,
-		},
 	})
 	
 	if err != nil {

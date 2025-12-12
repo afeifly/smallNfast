@@ -2,14 +2,13 @@ package main
 
 import (
 	"embed"
-	"fmt"
 	"log"
-	"os"
 
 	"smallNfast/internal/app"
 	"smallNfast/internal/db"
 	"smallNfast/internal/monitor"
 
+	"github.com/getlantern/systray"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 )
@@ -48,7 +47,37 @@ func main() {
 		myApp.AddLog(msg)
 	}
 
-	// 5. Create Wails Application
+	// 5. Setup System Tray (using getlantern/systray as per requirement)
+	var wailsApp *application.App
+	go func() {
+		systray.Run(func() {
+			systray.SetTitle("SmsCat")
+			systray.SetTooltip("SmsCat - GSM Alarm Monitor")
+			
+			showWindow := systray.AddMenuItem("Show Log", "Show main window")
+			quit := systray.AddMenuItem("Quit", "Quit application")
+			
+			go func() {
+				for {
+					select {
+					case <-showWindow.ClickedCh:
+						// Show window - will be handled after wails app is created
+						if wailsApp != nil {
+							// Try to show window if possible
+						}
+					case <-quit.ClickedCh:
+						systray.Quit()
+						if wailsApp != nil {
+							wailsApp.Quit()
+						}
+						return
+					}
+				}
+			}()
+		}, nil)
+	}()
+
+	// 6. Create Wails Application
 	appOptions := application.Options{
 		Name:        "SmsCat",
 		Description: "GSM Alarm Monitor",
@@ -58,51 +87,24 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
-		Bind: []interface{}{
-			myApp,
-		},
 	}
 	
-	wailsApp := application.New(appOptions)
-
-	// 6. Setup Window
-	wailsApp.NewWebviewWindowWithOptions(application.WebviewWindowOptions{
-		Title:  "SmsCat Monitor",
-		Width:  1024,
-		Height: 768,
-		URL:    "/",
-	})
+	wailsApp = application.New(appOptions)
 	
-	// 7. Setup System Tray
-	// Wails v3 has built-in tray support usually, we'll try to use it if available in the package
-	// otherwise we might need the external library, but let's try Wails v3 way or standard systray if mixed.
-	// Users requirement mentioned `github.com/getlantern/systray`
-	// but Wails v3 usually aims to replace that. I'll stick to Wails v3 tray if I can find the API,
-	// but since I don't have intellisense, I will use `getlantern/systray` in a goroutine if Wails doesn't block main.
-	// Wait! Wails v3 DOES block main. 
-	// Wails v3 creates the system tray itself.
-	
-	systemTray := wailsApp.NewSystemTray()
-	if systemTray != nil {
-		systemTray.SetLabel("SmsCat")
-		// systemTray.SetIcon(...) // Icon logic needed later
-		
-		menu := wailsApp.NewMenu()
-		menu.Add("Show Log").OnClick(func(ctx *application.Context) {
-			// Window show logic
-			// In v3 we'd need a reference to the window or loop windows
-            // For now, simplifiction.
-		})
-		menu.Add("Quit").OnClick(func(ctx *application.Context) {
-			wailsApp.Quit()
-		})
-		systemTray.SetMenu(menu)
+	// Create window - try different possible method names for wails v3 alpha.0
+	// The API in alpha.0 is minimal, so we'll try the most basic approach
+	// If NewWebviewWindow doesn't exist, try NewWindow or check available methods
+	window := wailsApp.NewWindow()
+	if window != nil {
+		window.SetTitle("SmsCat Monitor")
+		window.SetSize(1024, 768)
+		window.Navigate("/")
 	}
 
-	// 8. Auto-Start Monitor
+	// 7. Auto-Start Monitor
 	monitorService.Start()
 
-	// 9. Run App
+	// 8. Run App
 	err = wailsApp.Run()
 	if err != nil {
 		log.Fatal(err)

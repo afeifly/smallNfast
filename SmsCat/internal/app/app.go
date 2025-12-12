@@ -88,6 +88,7 @@ func (a *App) CheckPorts() []string {
 	return serial.CheckAvailablePorts()
 }
 
+func (a *App) GetStatus() map[string]interface{} {
 	return map[string]interface{}{
 		"running": a.Monitor.IsRunning,
 		"port":    a.Monitor.PortName,

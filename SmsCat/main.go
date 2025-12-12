@@ -5,7 +5,6 @@ import (
 	"embed"
 	"log"
 	"os"
-	"syscall"
 	"unsafe"
 
 	"smallNfast/internal/app"

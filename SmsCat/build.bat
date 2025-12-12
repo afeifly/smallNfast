@@ -52,7 +52,13 @@ if exist "SMSLogo.ico" (
     if %ERRORLEVEL% NEQ 0 (
         echo Warning: Failed to generate resource file, building without exe icon
         del resource.syso 2>nul
+    ) else (
+        if exist "resource.syso" (
+            echo Resource file created successfully.
+        )
     )
+) else (
+    echo SMSLogo.ico not found - window icon will not be embedded.
 )
 
 REM Build the application

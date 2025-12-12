@@ -148,8 +148,10 @@ func main() {
 	}()
 
 	// 7. Run Wails App (v2 API)
+	// Note: Window title bar icon comes from resource.syso (created by rsrc during build)
+	// Make sure SMSLogo.ico exists and build.bat generates resource.syso
 	err = wails.Run(&options.App{
-		Title:  "SMSCat Monitor",
+		Title:  "SMSCat Monitor for S4M",
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{

@@ -21,9 +21,6 @@ import (
 //go:embed frontend/*
 var assets embed.FS
 
-//go:embed SMSLogo.png
-var iconData []byte
-
 func main() {
 	// 1. Setup Logger
 	logger, _ := zap.NewProduction()
@@ -61,20 +58,12 @@ func main() {
 	// 6. Setup System Tray (run in goroutine)
 	var wailsCtx context.Context
 	
-	go func() {
-		systray.Run(func() {
-			// Set icon - try ICO first (better for Windows), fallback to PNG
-			var iconBytes []byte
-			if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
-				iconBytes = icoData
-			} else if len(iconData) > 0 {
-				// Use embedded PNG
-				iconBytes = iconData
-			}
-			
-			if len(iconBytes) > 0 {
-				systray.SetIcon(iconBytes)
-			}
+		go func() {
+			systray.Run(func() {
+				// Set icon from ICO file
+				if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
+					systray.SetIcon(icoData)
+				}
 			
 			systray.SetTitle("SMSCat")
 			systray.SetTooltip("SMSCat - GSM Alarm Monitor")

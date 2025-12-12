@@ -113,7 +113,7 @@ func CheckAvailablePorts() []string {
 // FindModemPort attempts to locate the Quectel modem in the Windows Registry
 // looking for USB\VID_2C7C&PID_6002... and extracting the PortName.
 func FindModemPort() (string, error) {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Enum\USB`, registry.ENUM_SUB_KEYS|registry.READ)
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Enum\USB`, registry.ENUMERATE_SUB_KEYS|registry.READ)
 	if err != nil {
 		return "", fmt.Errorf("failed to open USB enum key: %w", err)
 	}
@@ -130,7 +130,7 @@ func FindModemPort() (string, error) {
 			// Found the device type key, now look for instances
 			// Path: USB\<VID&PID>
 			deviceKeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Enum\USB\%s`, device)
-			dk, err := registry.OpenKey(registry.LOCAL_MACHINE, deviceKeyPath, registry.ENUM_SUB_KEYS|registry.READ)
+			dk, err := registry.OpenKey(registry.LOCAL_MACHINE, deviceKeyPath, registry.ENUMERATE_SUB_KEYS|registry.READ)
 			if err != nil {
 				continue
 			}

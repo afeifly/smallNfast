@@ -3,7 +3,6 @@ package config
 import (
 	"golang.org/x/sys/windows/registry"
 	"os"
-	"path/filepath"
 )
 
 const (

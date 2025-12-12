@@ -3,19 +3,25 @@ package main
 import (
 	"embed"
 	"log"
+	"os"
 
 	"smallNfast/internal/app"
 	"smallNfast/internal/db"
 	"smallNfast/internal/monitor"
 
+	"github.com/getlantern/systray"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 )
 
 //go:embed frontend/*
 var assets embed.FS
+
+//go:embed SMSLogo.png
+var iconData []byte
 
 func main() {
 	// 1. Setup Logger
@@ -23,7 +29,7 @@ func main() {
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
-	sugar.Info("SmsCat Starting...")
+	sugar.Info("SMSCat Starting...")
 
 	// 2. Setup Database
 	// We look for database.properties in current dir
@@ -51,16 +57,62 @@ func main() {
 	// 5. Auto-Start Monitor
 	monitorService.Start()
 
-	// 6. Run Wails App (v2 API)
+	// 6. Setup System Tray (run in goroutine)
+	var wailsCtx runtime.Context
+	
+	go func() {
+		systray.Run(func() {
+			// Set icon from embedded PNG
+			systray.SetIcon(iconData)
+			systray.SetTitle("SMSCat")
+			systray.SetTooltip("SMSCat - GSM Alarm Monitor")
+			
+			showWindow := systray.AddMenuItem("Show Window", "Show main window")
+			showWindow.Enable()
+			systray.AddSeparator()
+			quitItem := systray.AddMenuItem("Quit", "Exit SMSCat")
+			
+			go func() {
+				for {
+					select {
+					case <-showWindow.ClickedCh:
+						// Show window via runtime if available
+						if wailsCtx != nil {
+							runtime.WindowShow(wailsCtx)
+						}
+					case <-quitItem.ClickedCh:
+						// Quit application
+						if wailsCtx != nil {
+							runtime.Quit(wailsCtx)
+						}
+						systray.Quit()
+						os.Exit(0)
+						return
+					}
+				}
+			}()
+		}, nil)
+	}()
+
+	// 7. Run Wails App (v2 API)
 	err = wails.Run(&options.App{
-		Title:  "SmsCat Monitor",
+		Title:  "SMSCat Monitor",
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        myApp.Startup,
+		OnStartup: func(ctx runtime.Context) {
+			wailsCtx = ctx
+			myApp.Startup(ctx)
+		},
+		OnBeforeClose: func(ctx runtime.Context) (prevent bool) {
+			// Prevent window close - hide instead
+			// Only allow exit via system tray
+			runtime.WindowHide(ctx)
+			return true // Prevent close
+		},
 		Bind: []interface{}{
 			myApp,
 		},

@@ -1,13 +1,15 @@
 package config
 
 import (
-	"golang.org/x/sys/windows/registry"
 	"os"
+	"path/filepath"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 const (
 	registryPath = `Software\Microsoft\Windows\CurrentVersion\Run`
-	appName      = "SmsCat"
+	appName      = "SMSCat"
 )
 
 func EnableAutoStart() error {
@@ -22,7 +24,14 @@ func EnableAutoStart() error {
 		return err
 	}
 
-	return k.SetStringValue(appName, exePath)
+	// Get absolute path to ensure it works correctly
+	absPath, err := filepath.Abs(exePath)
+	if err != nil {
+		return err
+	}
+
+	// Set the registry value with the full absolute path
+	return k.SetStringValue(appName, absPath)
 }
 
 func DisableAutoStart() error {

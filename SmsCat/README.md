@@ -1,6 +1,6 @@
-# SmsCat
+# SMSCat
 
-SmsCat is a Windows application written in **Go (Golang)** using **Wails** for the GUI. It monitors a MySQL database for alarm trigger records and sends SMS alerts via a connected GSM Modem (specifically Quectel modems).
+SMSCat is a Windows application written in **Go (Golang)** using **Wails** for the GUI. It monitors a MySQL database for alarm trigger records and sends SMS alerts via a connected GSM Modem (specifically Quectel modems).
 
 ## Features
 - **GSM Control**: Sends SMS using AT commands.
@@ -73,17 +73,34 @@ SmsCat is a Windows application written in **Go (Golang)** using **Wails** for t
 
 ## Building
 
+### Quick Build (without icon)
+
 To build the executable for Windows:
 
 ```bash
-go build -ldflags "-s -w" -o SmsCat.exe
+go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o SMSCat.exe
 ```
+
+### Build with Icon
+
+To build with a custom exe icon:
+
+1. **Use the build script** (recommended):
+   ```bash
+   build.bat
+   ```
+
+2. **Or manually:**
+   - Install rsrc: `go install github.com/akavel/rsrc@latest`
+   - Convert PNG to ICO (if needed): Use ImageMagick or online converter
+   - Generate resource: `rsrc -ico SMSLogo.ico -o resource.syso`
+   - Build: `go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o SMSCat.exe`
 
 *Note: Ensure the `frontend/` directory exists when building, as assets are embedded.*
 
 ## Running
 
-1.  Run `SmsCat.exe`.
+1.  Run `SMSCat.exe`.
 2.  The app will attempt to **auto-detect** the modem port.
 3.  If successful, it starts monitoring.
 4.  Open the UI via the System Tray icon or it will open on launch.

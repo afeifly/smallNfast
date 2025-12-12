@@ -19,20 +19,35 @@ function appendLog(msg) {
     logContainer.scrollTop = logContainer.scrollHeight;
 }
 
+// Track last log count to only show new logs
+let lastLogCount = 0;
+
+// Poll logs from backend
+async function pollLogs() {
+    try {
+        const logs = await callBackend('GetLogs');
+        if (logs && Array.isArray(logs)) {
+            // Only append new logs
+            if (logs.length > lastLogCount) {
+                const newLogs = logs.slice(lastLogCount);
+                newLogs.forEach(msg => appendLog(msg));
+                lastLogCount = logs.length;
+            }
+        }
+    } catch (e) {
+        console.error("Failed to get logs:", e);
+    }
+}
+
 // Initial Load
 window.onload = async () => {
     try {
         await loadRecipients();
         await updateStatus();
 
-        // Setup Event Listener for Logs
-        // Wails v3 uses Events.On usually
-        if (window.wails && window.wails.Events) {
-            window.wails.Events.On("log", (msg) => appendLog(msg.data || msg));
-        } else if (window.runtime && window.runtime.EventsOn) {
-            // v2 style just in case
-            window.runtime.EventsOn("log", appendLog);
-        }
+        // Poll logs every 1 second to show runtime logs in UI
+        setInterval(pollLogs, 1000);
+        pollLogs(); // Initial load
 
         // Poll status every 5s
         setInterval(updateStatus, 5000);
@@ -48,13 +63,21 @@ window.onload = async () => {
 };
 
 async function callBackend(method, ...args) {
-    // This is the tricky part without generated bindings.
-    // Usually it's window.go.app.App.MethodName(args)
-    if (window.go && window.go.app && window.go.app.App && window.go.app.App[method]) {
-        return await window.go.app.App[method](...args);
+    // Wails v2 exposes methods via window.go.main.App
+    try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App[method]) {
+            return await window.go.main.App[method](...args);
+        }
+        // Fallback: try window.go.app.App
+        if (window.go && window.go.app && window.go.app.App && window.go.app.App[method]) {
+            return await window.go.app.App[method](...args);
+        }
+        console.warn(`Backend method ${method} not found`);
+        return null;
+    } catch (e) {
+        console.error(`Error calling ${method}:`, e);
+        return null;
     }
-    console.warn(`Backend method ${method} not found`);
-    return null;
 }
 
 async function loadRecipients() {
@@ -67,8 +90,7 @@ async function loadRecipients() {
         li.className = 'recipient-item';
         li.innerHTML = `
             <div>
-                <strong>${r.PortName || 'User'}</strong><br>
-                <small>${r.Recipient}</small>
+                <strong>${r.Recipient}</strong>
             </div>
             <button class="btn-danger" onclick="deleteRecipient(${r.SmsID})">X</button>
         `;
@@ -77,17 +99,16 @@ async function loadRecipients() {
 }
 
 async function addRecipient() {
-    const name = document.getElementById('input-name').value;
-    const number = document.getElementById('input-number').value;
+    const number = document.getElementById('input-number').value.trim();
 
-    if (!name || !number) {
-        alert("Please fill all fields");
+    if (!number) {
+        alert("Please enter a phone number");
         return;
     }
 
     try {
-        await callBackend('AddRecipient', name, number);
-        document.getElementById('input-name').value = '';
+        // Pass empty string for name since we don't need it
+        await callBackend('AddRecipient', '', number);
         document.getElementById('input-number').value = '';
         loadRecipients();
     } catch (e) {

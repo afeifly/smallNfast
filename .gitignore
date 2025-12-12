@@ -1,0 +1,16 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+
+# Wails
+frontend/dist/
+build/bin/

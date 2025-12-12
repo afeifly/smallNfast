@@ -7,8 +7,6 @@ import (
 	"smallNfast/internal/monitor"
 	"smallNfast/internal/serial"
 	"sync"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // App struct

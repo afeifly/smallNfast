@@ -64,14 +64,19 @@ func main() {
 				if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
 					systray.SetIcon(icoData)
 				}
-			
-			systray.SetTitle("SMSCat")
-			systray.SetTooltip("SMSCat - GSM Alarm Monitor")
-			
-			showWindow := systray.AddMenuItem("Show Window", "Show main window")
-			showWindow.Enable()
-			systray.AddSeparator()
-			quitItem := systray.AddMenuItem("Quit", "Exit SMSCat")
+				
+				systray.SetTitle("SMSCat")
+				systray.SetTooltip("SMSCat - GSM Alarm Monitor")
+				
+				// Add title menu item (disabled, acts as header)
+				titleItem := systray.AddMenuItem("SMSCat", "")
+				titleItem.Disable()
+				systray.AddSeparator()
+				
+				showWindow := systray.AddMenuItem("Show Window", "Show main window")
+				showWindow.Enable()
+				systray.AddSeparator()
+				quitItem := systray.AddMenuItem("Quit", "Exit SMSCat")
 			
 			go func() {
 				for {

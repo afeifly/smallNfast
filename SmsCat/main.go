@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"os"
@@ -58,7 +59,7 @@ func main() {
 	monitorService.Start()
 
 	// 6. Setup System Tray (run in goroutine)
-	var wailsCtx runtime.Context
+	var wailsCtx context.Context
 	
 	go func() {
 		systray.Run(func() {
@@ -103,11 +104,11 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup: func(ctx runtime.Context) {
+		OnStartup: func(ctx context.Context) {
 			wailsCtx = ctx
 			myApp.Startup(ctx)
 		},
-		OnBeforeClose: func(ctx runtime.Context) (prevent bool) {
+		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			// Prevent window close - hide instead
 			// Only allow exit via system tray
 			runtime.WindowHide(ctx)

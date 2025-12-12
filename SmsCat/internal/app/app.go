@@ -89,6 +89,12 @@ func (a *App) CheckPorts() []string {
 }
 
 func (a *App) GetStatus() map[string]interface{} {
+	if a.Monitor == nil {
+		return map[string]interface{}{
+			"running": false,
+			"port":    "",
+		}
+	}
 	return map[string]interface{}{
 		"running": a.Monitor.IsRunning,
 		"port":    a.Monitor.PortName,

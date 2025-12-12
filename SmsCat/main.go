@@ -8,8 +8,9 @@ import (
 	"smallNfast/internal/db"
 	"smallNfast/internal/monitor"
 
-	"github.com/getlantern/systray"
-	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"go.uber.org/zap"
 )
 
@@ -47,66 +48,31 @@ func main() {
 		myApp.AddLog(msg)
 	}
 
-	// 5. Setup System Tray (using getlantern/systray as per requirement)
-	var wailsApp *application.App
-	go func() {
-		systray.Run(func() {
-			systray.SetTitle("SmsCat")
-			systray.SetTooltip("SmsCat - GSM Alarm Monitor")
-			
-			showWindow := systray.AddMenuItem("Show Log", "Show main window")
-			quit := systray.AddMenuItem("Quit", "Quit application")
-			
-			go func() {
-				for {
-					select {
-					case <-showWindow.ClickedCh:
-						// Show window - will be handled after wails app is created
-						if wailsApp != nil {
-							// Try to show window if possible
-						}
-					case <-quit.ClickedCh:
-						systray.Quit()
-						if wailsApp != nil {
-							wailsApp.Quit()
-						}
-						return
-					}
-				}
-			}()
-		}, nil)
-	}()
-
-	// 6. Create Wails Application
-	appOptions := application.Options{
-		Name:        "SmsCat",
-		Description: "GSM Alarm Monitor",
-		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
-		},
-		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: false,
-		},
-	}
-	
-	wailsApp = application.New(appOptions)
-	
-	// Create window - try different possible method names for wails v3 alpha.0
-	// The API in alpha.0 is minimal, so we'll try the most basic approach
-	// If NewWebviewWindow doesn't exist, try NewWindow or check available methods
-	window := wailsApp.NewWindow()
-	if window != nil {
-		window.SetTitle("SmsCat Monitor")
-		window.SetSize(1024, 768)
-		window.Navigate("/")
-	}
-
-	// 7. Auto-Start Monitor
+	// 5. Auto-Start Monitor
 	monitorService.Start()
 
-	// 8. Run App
-	err = wailsApp.Run()
+	// 6. Run Wails App (v2 API)
+	err = wails.Run(&options.App{
+		Title:  "SmsCat Monitor",
+		Width:  1024,
+		Height: 768,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		OnStartup:        myApp.Startup,
+		Bind: []interface{}{
+			myApp,
+		},
+		// Windows specific options
+		Windows: &options.Windows{
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
+			DisableWindowIcon:    false,
+		},
+	})
+	
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error:", err)
 	}
 }

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"smallNfast/internal/config"
 	"smallNfast/internal/db"
 	"smallNfast/internal/monitor"
@@ -46,10 +45,11 @@ func (a *App) AddLog(msg string) {
 	a.LogStore = append(a.LogStore, msg)
 	
 	// Emit event to frontend if context is ready
-	// Note: In Wails v3, event emission might differ slightly, assuming standard Emit
-	if a.ctx != nil {
-		application.EmitAndReturn(a.ctx, "log", msg)
-	}
+	// Note: In Wails v3, event emission API may differ - commenting out for now
+	// Events can be handled via polling GetLogs() from frontend if needed
+	// if a.ctx != nil {
+	// 	application.Emit(a.ctx, "log", msg)
+	// }
 }
 
 // --- Exposed Methods ---

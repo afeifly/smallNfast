@@ -63,8 +63,19 @@ func main() {
 	
 	go func() {
 		systray.Run(func() {
-			// Set icon from embedded PNG
-			systray.SetIcon(iconData)
+			// Set icon - try ICO first (better for Windows), fallback to PNG
+			var iconBytes []byte
+			if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
+				iconBytes = icoData
+			} else if len(iconData) > 0 {
+				// Use embedded PNG
+				iconBytes = iconData
+			}
+			
+			if len(iconBytes) > 0 {
+				systray.SetIcon(iconBytes)
+			}
+			
 			systray.SetTitle("SMSCat")
 			systray.SetTooltip("SMSCat - GSM Alarm Monitor")
 			

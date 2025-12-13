@@ -37,9 +37,6 @@ var (
 func checkSingleInstance() bool {
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
 	
-	// Clear any previous error before calling CreateMutex
-	windows.SetLastError(0)
-	
 	// Create mutex - if it already exists, GetLastError will return ERROR_ALREADY_EXISTS
 	ret, _, _ := procCreateMutexW.Call(
 		0,

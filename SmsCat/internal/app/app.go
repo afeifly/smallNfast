@@ -131,6 +131,18 @@ func (a *App) GetAutoStart() bool {
 	return config.IsAutoStartEnabled()
 }
 
+func (a *App) Show() {
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+	}
+}
+
+func (a *App) Hide() {
+	if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+	}
+}
+
 func (a *App) ExitApp() {
 	a.AddLog("Exiting SMSCat...")
 	// Quit the Wails application properly

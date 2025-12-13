@@ -21,6 +21,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"go.uber.org/zap"
 	"golang.org/x/sys/windows"
+
+	"github.com/getlantern/systray"
 )
 
 //go:embed frontend/*
@@ -106,6 +108,10 @@ func main() {
 	// Setup Wails App Bridge
 	monitorService := monitor.NewService(nil) 
 	myApp := app.NewApp(monitorService)
+	
+	// Link App to Systray
+	trayApp = myApp
+	go systray.Run(onReady, onExit)
 	
 	// Log startup message to file
 	myApp.AddLog("SMSCat Starting...")

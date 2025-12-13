@@ -153,14 +153,26 @@ func main() {
 	}()
 
 	// 5. Auto-Start Monitor
+	myApp.AddLog("About to start monitor service...")
 	monitorService.Start()
+	myApp.AddLog("Monitor service started, continuing...")
 
-	// 6. Setup System Tray (must run before Wails to ensure it's visible)
+	// 6. Setup System Tray (run in background, don't block main thread)
 	var wailsCtx context.Context
 	var wailsCtxMu sync.Mutex
 	
+	myApp.AddLog("Starting system tray setup...")
+	sugar.Info("Starting system tray setup...")
+	
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				myApp.AddLog(fmt.Sprintf("System tray panic recovered: %v", r))
+			}
+		}()
+		
 		systray.Run(func() {
+			myApp.AddLog("System tray initialized")
 			// Set icon from ICO file
 			if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
 				systray.SetIcon(icoData)
@@ -193,11 +205,13 @@ func main() {
 						if ctx != nil {
 							runtime.WindowShow(ctx)
 							runtime.WindowCenter(ctx)
+							myApp.AddLog("Window shown via system tray")
 						} else {
 							myApp.AddLog("Warning: Window context not ready yet")
 						}
 					case <-quitItem.ClickedCh:
 						// Quit application
+						myApp.AddLog("Exiting via system tray...")
 						wailsCtxMu.Lock()
 						ctx := wailsCtx
 						wailsCtxMu.Unlock()
@@ -214,7 +228,8 @@ func main() {
 	}()
 	
 	// Give systray a moment to initialize
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	myApp.AddLog("Proceeding to Wails initialization...")
 
 	// 7. Run Wails App (v2 API)
 	// Note: Window title bar icon comes from resource.syso (created by rsrc during build)

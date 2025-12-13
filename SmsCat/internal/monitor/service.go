@@ -42,16 +42,18 @@ func (s *Service) Start() {
 	go s.loop()
 	s.log("Alarm Monitor Started")
 	
-	// Auto-detect port if not set
-	if s.PortName == "" {
-		port, err := serial.FindModemPort()
-		if err != nil {
-			s.log(fmt.Sprintf("Auto-detection failed: %v", err))
-		} else {
-			s.log(fmt.Sprintf("Auto-detected Modem at %s", port))
-			s.SetModemPort(port)
+	// Auto-detect port if not set (in background to avoid blocking)
+	go func() {
+		if s.PortName == "" {
+			port, err := serial.FindModemPort()
+			if err != nil {
+				s.log(fmt.Sprintf("Auto-detection failed: %v", err))
+			} else {
+				s.log(fmt.Sprintf("Auto-detected Modem at %s", port))
+				s.SetModemPort(port)
+			}
 		}
-	}
+	}()
 }
 
 func (s *Service) Stop() {

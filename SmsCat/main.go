@@ -27,29 +27,26 @@ var (
 	kernel32         = windows.NewLazySystemDLL("kernel32.dll")
 	procCreateMutexW = kernel32.NewProc("CreateMutexW")
 	procCloseHandle  = kernel32.NewProc("CloseHandle")
+	appMutex         uintptr // Keep mutex handle for app lifetime
 )
 
-func createMutex(name string) (uintptr, error) {
-	ret, _, err := procCreateMutexW.Call(
+func createMutex(name string) (uintptr, windows.Errno) {
+	ret, _, lastErr := procCreateMutexW.Call(
 		0,
 		0,
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(name))),
 	)
 	if ret == 0 {
-		return 0, err
+		return 0, windows.Errno(lastErr)
 	}
-	return ret, nil
+	return ret, windows.Errno(lastErr)
 }
 
 func checkSingleInstance() bool {
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
-	mutex, err := createMutex(mutexName)
-	if err != nil {
-		return false
-	}
+	mutex, lastErr := createMutex(mutexName)
 	
 	// Check if mutex already exists (another instance is running)
-	lastErr := windows.GetLastError()
 	if lastErr == windows.ERROR_ALREADY_EXISTS {
 		// Close the mutex handle we just got
 		if mutex != 0 {
@@ -60,6 +57,7 @@ func checkSingleInstance() bool {
 	
 	// Keep mutex open for the lifetime of the app
 	// It will be released when the process exits
+	appMutex = mutex
 	return true // This is the first instance
 }
 

@@ -50,20 +50,17 @@ if exist "SMSLogo.ico" (
     echo Generating resource file...
     REM Remove old resource file if exists
     del resource.syso 2>nul
-    REM Generate new resource file with manifest
-    rsrc -ico SMSLogo.ico -manifest -o resource.syso
+    REM Generate new resource file
+    rsrc -ico SMSLogo.ico -o resource.syso
     if %ERRORLEVEL% NEQ 0 (
-        echo Warning: Failed to generate resource file, trying without manifest...
-        rsrc -ico SMSLogo.ico -o resource.syso
-        if %ERRORLEVEL% NEQ 0 (
-            echo Error: Failed to generate resource file
-            del resource.syso 2>nul
-        )
-    )
-    if exist "resource.syso" (
-        echo Resource file created successfully - icon should appear in title bar.
+        echo Error: Failed to generate resource file
+        del resource.syso 2>nul
     ) else (
-        echo Warning: Resource file was not created - window icon will not show.
+        if exist "resource.syso" (
+            echo Resource file created successfully - icon should appear in title bar.
+        ) else (
+            echo Warning: Resource file was not created - window icon will not show.
+        )
     )
 ) else (
     echo SMSLogo.ico not found - window icon will not be embedded.

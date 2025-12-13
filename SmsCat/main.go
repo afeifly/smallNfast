@@ -30,23 +30,28 @@ var (
 	appMutex         uintptr // Keep mutex handle for app lifetime
 )
 
-func createMutex(name string) (uintptr, windows.Errno) {
-	ret, _, lastErr := procCreateMutexW.Call(
+func createMutex(name string) (uintptr, error) {
+	ret, _, err := procCreateMutexW.Call(
 		0,
 		0,
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(name))),
 	)
 	if ret == 0 {
-		return 0, windows.Errno(lastErr)
+		return 0, err
 	}
-	return ret, windows.Errno(lastErr)
+	return ret, nil
 }
 
 func checkSingleInstance() bool {
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
-	mutex, lastErr := createMutex(mutexName)
+	mutex, err := createMutex(mutexName)
+	if err != nil {
+		return false
+	}
 	
 	// Check if mutex already exists (another instance is running)
+	// GetLastError() is called automatically by Windows API
+	lastErr := windows.GetLastError()
 	if lastErr == windows.ERROR_ALREADY_EXISTS {
 		// Close the mutex handle we just got
 		if mutex != 0 {

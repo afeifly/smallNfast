@@ -33,14 +33,15 @@ var (
 	kernel32         = windows.NewLazySystemDLL("kernel32.dll")
 	procCreateMutexW = kernel32.NewProc("CreateMutexW")
 	procCloseHandle  = kernel32.NewProc("CloseHandle")
+	procGetLastError = kernel32.NewProc("GetLastError")
 	appMutex         uintptr // Keep mutex handle for app lifetime
 )
 
 func checkSingleInstance() bool {
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
 	
-	// Create mutex - the third return value from Call is the last error
-	ret, _, lastErr := procCreateMutexW.Call(
+	// Create mutex
+	ret, _, _ := procCreateMutexW.Call(
 		0,
 		0,
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
@@ -51,14 +52,16 @@ func checkSingleInstance() bool {
 		return true
 	}
 	
+	// Get the last error code to check if mutex already existed
+	lastErrCode, _, _ := procGetLastError.Call()
+	
 	// Check if mutex already existed (another instance is running)
-	// lastErr is the GetLastError() result from the syscall
-	if lastErr != 0 && lastErr == uintptr(windows.ERROR_ALREADY_EXISTS) {
+	if lastErrCode == uintptr(windows.ERROR_ALREADY_EXISTS) {
 		// Close the mutex handle we just got
 		procCloseHandle.Call(ret)
 		// Show a message box to inform the user
-		kernel32 := windows.NewLazySystemDLL("user32.dll")
-		messageBox := kernel32.NewProc("MessageBoxW")
+		user32 := windows.NewLazySystemDLL("user32.dll")
+		messageBox := user32.NewProc("MessageBoxW")
 		title, _ := windows.UTF16PtrFromString("SMSCat")
 		text, _ := windows.UTF16PtrFromString("SMSCat is already running!")
 		messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x30) // MB_ICONWARNING

@@ -212,13 +212,6 @@ func main() {
 	myApp.AddLog("Initializing Wails application...")
 	sugar.Info("Starting Wails window...")
 	
-	// Show a message box to confirm app is starting (for debugging)
-	user32 := windows.NewLazySystemDLL("user32.dll")
-	messageBox := user32.NewProc("MessageBoxW")
-	title, _ := windows.UTF16PtrFromString("SMSCat")
-	text, _ := windows.UTF16PtrFromString("SMSCat is starting...\n\nIf you don't see the window, check the system tray.")
-	messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x40) // MB_ICONINFORMATION
-	
 	wailsErr := wails.Run(&options.App{
 		Title:  "SMSCat Monitor for S4M",
 		Width:  1200,
@@ -240,10 +233,12 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {
+			myApp.AddLog("OnStartup callback triggered")
 			wailsCtxMu.Lock()
 			wailsCtx = ctx
 			wailsCtxMu.Unlock()
 			myApp.Startup(ctx)
+			myApp.AddLog("Showing window...")
 			// Ensure window is shown and focused on startup
 			runtime.WindowShow(ctx)
 			runtime.WindowCenter(ctx)
@@ -256,8 +251,10 @@ func main() {
 			return true // Prevent close
 		},
 		OnDomReady: func(ctx context.Context) {
+			myApp.AddLog("OnDomReady callback triggered")
 			// Window is ready - make sure it's visible
 			runtime.WindowShow(ctx)
+			myApp.AddLog("Window should be visible now")
 		},
 		Bind: []interface{}{
 			myApp,
@@ -277,4 +274,6 @@ func main() {
 		messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10) // MB_ICONERROR
 		log.Fatal("Error:", wailsErr)
 	}
+	
+	myApp.AddLog("Wails app exited normally")
 }

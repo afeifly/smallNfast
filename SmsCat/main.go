@@ -41,13 +41,29 @@ var (
 )
 
 func checkSingleInstance() bool {
-	// Try to create a lock file
 	lockFile := filepath.Join(os.TempDir(), "SMSCat.lock")
 	
-	// Try to create the lock file exclusively
-	file, err := os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-	if err != nil {
-		// File already exists - another instance is running
+	// First, use Windows mutex as primary check (most reliable)
+	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
+	ret, _, _ := procCreateMutexW.Call(
+		0, // lpMutexAttributes (NULL)
+		0, // bInitialOwner (FALSE)
+		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
+	)
+	
+	if ret == 0 {
+		// Failed to create mutex - allow it to run (better than blocking)
+		return true
+	}
+	
+	// Check GetLastError to see if mutex already existed
+	errCode, _, _ := procGetLastError.Call()
+	
+	// ERROR_ALREADY_EXISTS = 183
+	if errCode == 183 {
+		// Close the mutex handle we just got
+		procCloseHandle.Call(ret)
+		// Show a message box to inform the user
 		user32 := windows.NewLazySystemDLL("user32.dll")
 		messageBox := user32.NewProc("MessageBoxW")
 		title, _ := windows.UTF16PtrFromString("SMSCat")
@@ -56,26 +72,20 @@ func checkSingleInstance() bool {
 		return false
 	}
 	
-	// Write PID to lock file
-	fmt.Fprintf(file, "%d", os.Getpid())
-	file.Close()
+	// Mutex created successfully - this is the first instance
+	// Keep mutex open for the lifetime of the app
+	appMutex = ret
 	
-	// Also use Windows mutex as backup
-	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
-	ret, _, _ := procCreateMutexW.Call(
-		0, // lpMutexAttributes (NULL)
-		0, // bInitialOwner (FALSE)
-		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
-	)
-	if ret != 0 {
-		appMutex = ret
+	// Clean up any stale lock file
+	os.Remove(lockFile)
+	
+	// Create new lock file with current PID
+	file, err := os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err == nil {
+		fmt.Fprintf(file, "%d", os.Getpid())
+		file.Close()
 	}
-	
-	// Clean up lock file on exit
-	go func() {
-		// Keep the lock file alive
-		// It will be cleaned up when the process exits
-	}()
+	// If lock file creation fails, it's not critical - mutex is the primary check
 	
 	return true
 }
@@ -239,21 +249,25 @@ func main() {
 			wailsCtxMu.Unlock()
 			myApp.Startup(ctx)
 			myApp.AddLog("Showing window...")
-			// Ensure window is shown and focused on startup
+			// Ensure window is shown, focused, and brought to front on startup
 			runtime.WindowShow(ctx)
 			runtime.WindowCenter(ctx)
+			// Bring window to front
+			runtime.WindowUnminimise(ctx)
 			myApp.AddLog("Window opened successfully")
 		},
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
-			// Prevent window close - hide instead
-			// Only allow exit via system tray
-			runtime.WindowHide(ctx)
-			return true // Prevent close
+			// Allow window to close normally - user can use Exit button or system tray
+			// Only prevent if we want to hide to tray (commented out for now)
+			// runtime.WindowHide(ctx)
+			// return true // Prevent close
+			return false // Allow close
 		},
 		OnDomReady: func(ctx context.Context) {
 			myApp.AddLog("OnDomReady callback triggered")
-			// Window is ready - make sure it's visible
+			// Window is ready - make sure it's visible and in front
 			runtime.WindowShow(ctx)
+			runtime.WindowUnminimise(ctx)
 			myApp.AddLog("Window should be visible now")
 		},
 		Bind: []interface{}{

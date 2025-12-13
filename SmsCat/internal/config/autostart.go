@@ -30,8 +30,16 @@ func EnableAutoStart() error {
 		return err
 	}
 
-	// Set the registry value with the full absolute path
-	return k.SetStringValue(appName, absPath)
+	// Windows Run registry requires quotes around path if it contains spaces
+	// Also ensure the path is properly formatted
+	regValue := absPath
+	if absPath != "" {
+		// Add quotes to handle paths with spaces
+		regValue = `"` + absPath + `"`
+	}
+
+	// Set the registry value with the full absolute path (quoted)
+	return k.SetStringValue(appName, regValue)
 }
 
 func DisableAutoStart() error {

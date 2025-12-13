@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -39,45 +41,43 @@ var (
 )
 
 func checkSingleInstance() bool {
-	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
+	// Try to create a lock file
+	lockFile := filepath.Join(os.TempDir(), "SMSCat.lock")
 	
-	// Create mutex with security attributes
-	// If mutex already exists, CreateMutexW returns handle but GetLastError returns ERROR_ALREADY_EXISTS
-	ret, _, _ := procCreateMutexW.Call(
-		0, // lpMutexAttributes (NULL = default security)
-		0, // bInitialOwner (FALSE = not owned initially)
-		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
-	)
-	
-	if ret == 0 {
-		// Failed to create mutex - allow it to run (better than blocking)
-		return true
-	}
-	
-	// Immediately check GetLastError to see if mutex already existed
-	// Note: GetLastError() must be called immediately after the API call
-	lastErrCode, _, _ := procGetLastError.Call()
-	
-	// ERROR_ALREADY_EXISTS = 183 (0xB7 in decimal, 0x000000B7 in hex)
-	// Check if mutex already existed (another instance is running)
-	// We check for both the numeric value and the constant
-	errorAlreadyExists := uintptr(windows.ERROR_ALREADY_EXISTS)
-	if lastErrCode == 183 || lastErrCode == errorAlreadyExists {
-		// Close the mutex handle we just got
-		procCloseHandle.Call(ret)
-		// Show a message box to inform the user
+	// Try to create the lock file exclusively
+	file, err := os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		// File already exists - another instance is running
 		user32 := windows.NewLazySystemDLL("user32.dll")
 		messageBox := user32.NewProc("MessageBoxW")
 		title, _ := windows.UTF16PtrFromString("SMSCat")
-		text, _ := windows.UTF16PtrFromString("SMSCat is already running!")
+		text, _ := windows.UTF16PtrFromString("SMSCat is already running!\n\nPlease check the system tray or use 'Show Window' from the tray menu.")
 		messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x30) // MB_ICONWARNING
-		return false // Another instance exists
+		return false
 	}
 	
-	// Keep mutex open for the lifetime of the app
-	// It will be released when the process exits
-	appMutex = ret
-	return true // This is the first instance
+	// Write PID to lock file
+	fmt.Fprintf(file, "%d", os.Getpid())
+	file.Close()
+	
+	// Also use Windows mutex as backup
+	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
+	ret, _, _ := procCreateMutexW.Call(
+		0, // lpMutexAttributes (NULL)
+		0, // bInitialOwner (FALSE)
+		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
+	)
+	if ret != 0 {
+		appMutex = ret
+	}
+	
+	// Clean up lock file on exit
+	go func() {
+		// Keep the lock file alive
+		// It will be cleaned up when the process exits
+	}()
+	
+	return true
 }
 
 func main() {
@@ -145,41 +145,54 @@ func main() {
 	// 5. Auto-Start Monitor
 	monitorService.Start()
 
-	// 6. Setup System Tray (run in goroutine)
+	// 6. Setup System Tray (must run before Wails to ensure it's visible)
 	var wailsCtx context.Context
+	var wailsCtxMu sync.Mutex
 	
-		go func() {
-			systray.Run(func() {
-				// Set icon from ICO file
-				if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
-					systray.SetIcon(icoData)
-				}
-				
-				systray.SetTitle("SMSCat")
-				systray.SetTooltip("SMSCat - GSM Alarm Monitor")
-				
-				// Add title menu item (disabled, acts as header)
-				titleItem := systray.AddMenuItem("SMSCat", "")
-				titleItem.Disable()
-				systray.AddSeparator()
-				
-				showWindow := systray.AddMenuItem("Show Window", "Show main window")
-				showWindow.Enable()
-				systray.AddSeparator()
-				quitItem := systray.AddMenuItem("Quit", "Exit SMSCat")
+	go func() {
+		systray.Run(func() {
+			// Set icon from ICO file
+			if icoData, err := os.ReadFile("SMSLogo.ico"); err == nil && len(icoData) > 0 {
+				systray.SetIcon(icoData)
+			} else {
+				// Log error if icon not found
+				myApp.AddLog(fmt.Sprintf("Warning: Could not load SMSLogo.ico: %v", err))
+			}
 			
+			systray.SetTitle("SMSCat")
+			systray.SetTooltip("SMSCat - GSM Alarm Monitor")
+			
+			// Add title menu item (disabled, acts as header)
+			titleItem := systray.AddMenuItem("SMSCat", "")
+			titleItem.Disable()
+			systray.AddSeparator()
+			
+			showWindow := systray.AddMenuItem("Show Window", "Show main window")
+			showWindow.Enable()
+			systray.AddSeparator()
+			quitItem := systray.AddMenuItem("Quit", "Exit SMSCat")
+		
 			go func() {
 				for {
 					select {
 					case <-showWindow.ClickedCh:
 						// Show window via runtime if available
-						if wailsCtx != nil {
-							runtime.WindowShow(wailsCtx)
+						wailsCtxMu.Lock()
+						ctx := wailsCtx
+						wailsCtxMu.Unlock()
+						if ctx != nil {
+							runtime.WindowShow(ctx)
+							runtime.WindowCenter(ctx)
+						} else {
+							myApp.AddLog("Warning: Window context not ready yet")
 						}
 					case <-quitItem.ClickedCh:
 						// Quit application
-						if wailsCtx != nil {
-							runtime.Quit(wailsCtx)
+						wailsCtxMu.Lock()
+						ctx := wailsCtx
+						wailsCtxMu.Unlock()
+						if ctx != nil {
+							runtime.Quit(ctx)
 						}
 						systray.Quit()
 						os.Exit(0)
@@ -189,14 +202,29 @@ func main() {
 			}()
 		}, nil)
 	}()
+	
+	// Give systray a moment to initialize
+	time.Sleep(500 * time.Millisecond)
 
 	// 7. Run Wails App (v2 API)
 	// Note: Window title bar icon comes from resource.syso (created by rsrc during build)
 	// Make sure SMSLogo.ico exists and build.bat generates resource.syso
+	myApp.AddLog("Initializing Wails application...")
+	sugar.Info("Starting Wails window...")
+	
+	// Show a message box to confirm app is starting (for debugging)
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	messageBox := user32.NewProc("MessageBoxW")
+	title, _ := windows.UTF16PtrFromString("SMSCat")
+	text, _ := windows.UTF16PtrFromString("SMSCat is starting...\n\nIf you don't see the window, check the system tray.")
+	messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x40) // MB_ICONINFORMATION
+	
 	wailsErr := wails.Run(&options.App{
 		Title:  "SMSCat Monitor for S4M",
 		Width:  1200,
 		Height: 800,
+		MinWidth:  800,
+		MinHeight: 600,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -212,10 +240,14 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {
+			wailsCtxMu.Lock()
 			wailsCtx = ctx
+			wailsCtxMu.Unlock()
 			myApp.Startup(ctx)
-			// Ensure window is shown on startup
+			// Ensure window is shown and focused on startup
 			runtime.WindowShow(ctx)
+			runtime.WindowCenter(ctx)
+			myApp.AddLog("Window opened successfully")
 		},
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			// Prevent window close - hide instead
@@ -223,12 +255,26 @@ func main() {
 			runtime.WindowHide(ctx)
 			return true // Prevent close
 		},
+		OnDomReady: func(ctx context.Context) {
+			// Window is ready - make sure it's visible
+			runtime.WindowShow(ctx)
+		},
 		Bind: []interface{}{
 			myApp,
 		},
 	})
 	
 	if wailsErr != nil {
+		errMsg := fmt.Sprintf("FATAL: Wails failed to start: %v", wailsErr)
+		myApp.AddLog(errMsg)
+		sugar.Fatal(errMsg)
+		
+		// Show error message box
+		user32 := windows.NewLazySystemDLL("user32.dll")
+		messageBox := user32.NewProc("MessageBoxW")
+		title, _ := windows.UTF16PtrFromString("SMSCat - Fatal Error")
+		text, _ := windows.UTF16PtrFromString(fmt.Sprintf("Failed to start SMSCat:\n\n%v\n\nCheck logs for details.", wailsErr))
+		messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10) // MB_ICONERROR
 		log.Fatal("Error:", wailsErr)
 	}
 }

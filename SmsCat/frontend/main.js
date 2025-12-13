@@ -172,7 +172,20 @@ async function toggleAutoStart(checkbox) {
     }
 }
 
+async function exitApp() {
+    if (confirm("Are you sure you want to exit SMSCat?")) {
+        try {
+            await callBackend('ExitApp');
+        } catch (e) {
+            console.error("Failed to exit:", e);
+            // Force exit even if backend call fails
+            window.close();
+        }
+    }
+}
+
 // Make functions global for onclick
 window.addRecipient = addRecipient;
 window.deleteRecipient = deleteRecipient;
 window.toggleAutoStart = toggleAutoStart;
+window.exitApp = exitApp;

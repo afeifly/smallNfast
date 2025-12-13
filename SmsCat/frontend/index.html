@@ -156,6 +156,21 @@
             white-space: nowrap;
         }
         
+        .btn-exit {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        
+        .btn-exit:hover {
+            background: #c82333;
+        }
+        
         .status-item label {
             display: inline;
             margin: 0;
@@ -197,6 +212,9 @@
         <div class="status-item">
             <input type="checkbox" id="chk-autostart" onchange="toggleAutoStart(this)">
             <label for="chk-autostart">Auto-Start on OS Bootup</label>
+        </div>
+        <div class="status-item">
+            <button class="btn-exit" onclick="exitApp()">Exit Application</button>
         </div>
     </div>
 

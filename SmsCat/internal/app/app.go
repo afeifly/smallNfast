@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"smallNfast/internal/config"
 	"smallNfast/internal/db"
 	"smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 	"smallNfast/internal/serial"
 	"sync"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -126,4 +129,15 @@ func (a *App) SetAutoStart(enable bool) error {
 
 func (a *App) GetAutoStart() bool {
 	return config.IsAutoStartEnabled()
+}
+
+func (a *App) ExitApp() {
+	a.AddLog("Exiting SMSCat...")
+	// Quit the Wails application properly
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	} else {
+		// Fallback if context not available
+		os.Exit(0)
+	}
 }

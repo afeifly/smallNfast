@@ -136,16 +136,17 @@ func main() {
 				successMsg := "Database connected successfully."
 				sugar.Info(successMsg)
 				myApp.AddLog(successMsg)
+				
+				// Auto-Start Monitor (Only after DB is connected)
+				myApp.AddLog("Starting monitor service...")
+				monitorService.Start()
+				myApp.AddLog("Monitor service started")
+				filelogger.Write("DEBUG: Monitor service started")
+				
 				break
 			}
 		}
 	}()
-
-	// Auto-Start Monitor
-	myApp.AddLog("Starting monitor service...")
-	monitorService.Start()
-	myApp.AddLog("Monitor service started")
-	filelogger.Write("DEBUG: Monitor service started, about to call Wails.Run")
 
 	// Run Wails App
 	myApp.AddLog("Initializing Wails application...")

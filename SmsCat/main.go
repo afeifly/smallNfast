@@ -17,7 +17,6 @@ import (
 	filelogger "smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 
-	// "github.com/getlantern/systray" // Temporarily disabled for testing
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"

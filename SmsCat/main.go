@@ -17,7 +17,7 @@ import (
 	filelogger "smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 
-	"github.com/getlantern/systray"
+	// "github.com/getlantern/systray" // Temporarily disabled for testing
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -161,8 +161,8 @@ func main() {
 	filelogger.Write("DEBUG: After monitor service start")
 
 	// 6. Setup System Tray (run in background, don't block main thread)
-	var wailsCtx context.Context
-	var wailsCtxMu sync.Mutex
+	// var wailsCtx context.Context
+	// var wailsCtxMu sync.Mutex
 	
 	myApp.AddLog("Starting system tray setup...")
 	sugar.Info("Starting system tray setup...")
@@ -268,9 +268,9 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {
 			myApp.AddLog("OnStartup callback triggered")
-			wailsCtxMu.Lock()
-			wailsCtx = ctx
-			wailsCtxMu.Unlock()
+			// wailsCtxMu.Lock()
+			// wailsCtx = ctx
+			// wailsCtxMu.Unlock()
 			myApp.Startup(ctx)
 			myApp.AddLog("Showing window...")
 			// Ensure window is shown, focused, and brought to front on startup

@@ -42,7 +42,7 @@ func checkSingleInstance() bool {
 	
 	// First, use Windows mutex as primary check (most reliable)
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
-	ret, _, _ := procCreateMutexW.Call(
+	ret, _, err := procCreateMutexW.Call(
 		0, // lpMutexAttributes (NULL)
 		0, // bInitialOwner (FALSE)
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
@@ -53,11 +53,8 @@ func checkSingleInstance() bool {
 		return true
 	}
 	
-	// Check GetLastError to see if mutex already existed
-	errCode, _, _ := procGetLastError.Call()
-	
-	// ERROR_ALREADY_EXISTS = 183
-	if errCode == 183 {
+	// Check if mutex already existed
+	if err == windows.ERROR_ALREADY_EXISTS {
 		// Close the mutex handle we just got
 		procCloseHandle.Call(ret)
 		// Show a message box to inform the user

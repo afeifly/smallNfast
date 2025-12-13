@@ -12,7 +12,7 @@ import (
 
 	"smallNfast/internal/app"
 	"smallNfast/internal/db"
-	"smallNfast/internal/logger"
+	filelogger "smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 
 	"github.com/getlantern/systray"
@@ -94,12 +94,12 @@ func main() {
 	sugar.Info("SMSCat Starting...")
 
 	// 1.5. Setup File Logger (logs/YYYY-MM-DD.log)
-	if err := logger.InitFileLogger("logs"); err != nil {
+	if err := filelogger.InitFileLogger("logs"); err != nil {
 		sugar.Warnf("Failed to initialize file logger: %v", err)
 	} else {
 		sugar.Info("File logger initialized: logs/YYYY-MM-DD.log")
 	}
-	defer logger.Close()
+	defer filelogger.Close()
 
 	// 2. Setup Wails App Bridge first (so we can log to UI)
 	monitorService := monitor.NewService(nil) 

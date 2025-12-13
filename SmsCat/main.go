@@ -89,6 +89,24 @@ func checkSingleInstance() bool {
 }
 
 func main() {
+	// Add panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			// Try to log the panic
+			if logFile, err := os.OpenFile(filepath.Join("logs", time.Now().Format("2006-01-02")+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] PANIC: %v\n", time.Now().Format("2006-01-02 15:04:05"), r)
+				logFile.Close()
+			}
+			// Show message box
+			user32 := windows.NewLazySystemDLL("user32.dll")
+			messageBox := user32.NewProc("MessageBoxW")
+			title, _ := windows.UTF16PtrFromString("SMSCat - PANIC")
+			text, _ := windows.UTF16PtrFromString(fmt.Sprintf("Application crashed:\n\n%v", r))
+			messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10) // MB_ICONERROR
+			os.Exit(1)
+		}
+	}()
+	
 	// Check for single instance
 	if !checkSingleInstance() {
 		// Message already shown, just exit
@@ -153,10 +171,14 @@ func main() {
 	// 5. Auto-Start Monitor
 	myApp.AddLog("About to start monitor service...")
 	sugar.Info("About to start monitor service...")
+	filelogger.Write("DEBUG: Before monitor service start")
 	monitorService.Start()
 	myApp.AddLog("Monitor service started, continuing...")
 	sugar.Info("Monitor service started, continuing...")
 	filelogger.Write("DEBUG: After monitor service start")
+	time.Sleep(100 * time.Millisecond) // Give log time to flush
+	myApp.AddLog("DEBUG: Before system tray setup")
+	filelogger.Write("DEBUG: Before system tray setup")
 
 	// 6. Setup System Tray (run in background, don't block main thread)
 	// var wailsCtx context.Context

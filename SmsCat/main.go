@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"log"
+	"net/http"
 	"os"
 	"unsafe"
 
@@ -22,6 +23,9 @@ import (
 
 //go:embed frontend/*
 var assets embed.FS
+
+//go:embed SMSLogo.ico
+var iconBytes []byte
 
 var (
 	kernel32         = windows.NewLazySystemDLL("kernel32.dll")
@@ -158,7 +162,17 @@ func main() {
 		Width:  1200,
 		Height: 800,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Serve favicon
+				if r.URL.Path == "/SMSLogo.ico" || r.URL.Path == "/favicon.ico" {
+					w.Header().Set("Content-Type", "image/x-icon")
+					w.Write(iconBytes)
+					return
+				}
+				// Default asset server
+				http.FileServer(http.FS(assets)).ServeHTTP(w, r)
+			}),
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {

@@ -9,10 +9,22 @@
 const logContainer = document.getElementById('log-container');
 const recipientList = document.getElementById('recipient-list');
 
+// Helper to detect if message is an error
+function isError(msg) {
+    const lowerMsg = msg.toLowerCase();
+    return lowerMsg.includes('error') || 
+           lowerMsg.includes('failed') || 
+           lowerMsg.includes('not found') ||
+           lowerMsg.includes('no connect') ||
+           lowerMsg.includes('connection') && (lowerMsg.includes('fail') || lowerMsg.includes('error')) ||
+           lowerMsg.includes('com port') && lowerMsg.includes('not');
+}
+
 // Helper to append log
 function appendLog(msg) {
     const div = document.createElement('div');
-    div.className = 'log-line';
+    const isErr = isError(msg);
+    div.className = isErr ? 'log-line error' : 'log-line';
     const time = new Date().toLocaleTimeString();
     div.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
     logContainer.appendChild(div);

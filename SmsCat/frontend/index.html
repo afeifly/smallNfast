@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMSCat Monitor for S4M</title>
+    <link rel="icon" type="image/x-icon" href="/SMSLogo.ico">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -49,23 +50,29 @@
             height: calc(100vh - 200px);
             min-height: 500px;
             overflow-y: auto;
-            background: #1e1e1e;
-            color: #eee;
+            background: #ffffff;
+            color: #000000;
             padding: 5px 8px;
             font-family: Consolas, monospace;
             font-size: 0.9rem;
             border-radius: 4px;
             box-sizing: border-box;
+            border: 1px solid #ddd;
         }
 
         .log-line {
             margin-bottom: 4px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #e0e0e0;
             padding-bottom: 2px;
         }
 
+        .log-line.error {
+            color: #dc3545;
+            font-weight: 500;
+        }
+
         .log-time {
-            color: #888;
+            color: #666;
             margin-right: 10px;
         }
 

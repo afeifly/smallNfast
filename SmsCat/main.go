@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 	"unsafe"
 
 	"smallNfast/internal/app"
@@ -100,10 +102,10 @@ func main() {
 		retryDelay := 10 * time.Second
 		
 		for {
-			err := db.Connect("database.properties")
-			if err != nil {
+			dbErr := db.Connect("database.properties")
+			if dbErr != nil {
 				retryCount++
-				errMsg := fmt.Sprintf("Error: Cannot connect to database: %v. Retrying in %v...", err, retryDelay)
+				errMsg := fmt.Sprintf("Error: Cannot connect to database: %v. Retrying in %v...", dbErr, retryDelay)
 				sugar.Warn(errMsg)
 				myApp.AddLog(errMsg)
 				time.Sleep(retryDelay)
@@ -171,7 +173,7 @@ func main() {
 	// 7. Run Wails App (v2 API)
 	// Note: Window title bar icon comes from resource.syso (created by rsrc during build)
 	// Make sure SMSLogo.ico exists and build.bat generates resource.syso
-	err = wails.Run(&options.App{
+	wailsErr := wails.Run(&options.App{
 		Title:  "SMSCat Monitor for S4M",
 		Width:  1200,
 		Height: 800,
@@ -204,7 +206,7 @@ func main() {
 		},
 	})
 	
-	if err != nil {
-		log.Fatal("Error:", err)
+	if wailsErr != nil {
+		log.Fatal("Error:", wailsErr)
 	}
 }

@@ -37,8 +37,8 @@ var (
 func checkSingleInstance() bool {
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
 	
-	// Create mutex - if it already exists, GetLastError will return ERROR_ALREADY_EXISTS
-	ret, _, _ := procCreateMutexW.Call(
+	// Create mutex - the third return value from Call is the last error
+	ret, _, lastErr := procCreateMutexW.Call(
 		0,
 		0,
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
@@ -49,11 +49,17 @@ func checkSingleInstance() bool {
 		return true
 	}
 	
-	// Immediately check if mutex already existed (another instance is running)
-	lastErr := windows.GetLastError()
-	if lastErr == windows.ERROR_ALREADY_EXISTS {
+	// Check if mutex already existed (another instance is running)
+	// lastErr is the GetLastError() result from the syscall
+	if lastErr != 0 && lastErr == uintptr(windows.ERROR_ALREADY_EXISTS) {
 		// Close the mutex handle we just got
 		procCloseHandle.Call(ret)
+		// Show a message box to inform the user
+		kernel32 := windows.NewLazySystemDLL("user32.dll")
+		messageBox := kernel32.NewProc("MessageBoxW")
+		title, _ := windows.UTF16PtrFromString("SMSCat")
+		text, _ := windows.UTF16PtrFromString("SMSCat is already running!")
+		messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x30) // MB_ICONWARNING
 		return false // Another instance exists
 	}
 	
@@ -66,7 +72,7 @@ func checkSingleInstance() bool {
 func main() {
 	// Check for single instance
 	if !checkSingleInstance() {
-		log.Println("SMSCat is already running. Exiting...")
+		// Message already shown, just exit
 		os.Exit(0)
 	}
 	// 1. Setup Logger
@@ -76,21 +82,8 @@ func main() {
 
 	sugar.Info("SMSCat Starting...")
 
-	// 2. Setup Database
-	// We look for database.properties in current dir
-	err := db.Connect("database.properties")
-	if err != nil {
-		sugar.Warnf("Database connection warning (will retry or run without DB for now): %v", err)
-	} else {
-		sugar.Info("Database connected")
-	}
-
-	// 3. Setup Monitor Service
-	// Log callback redirects to both zap and the UI (later initialized)
-	// We'll use a closure that we can update or the App struct will handle it
+	// 2. Setup Wails App Bridge first (so we can log to UI)
 	monitorService := monitor.NewService(nil) 
-
-	// 4. Setup Wails App Bridge
 	myApp := app.NewApp(monitorService)
 	
 	// Update monitor logger to forward to UI
@@ -98,6 +91,34 @@ func main() {
 		sugar.Info(msg)
 		myApp.AddLog(msg)
 	}
+
+	// 3. Setup Database with retry logic
+	// We look for database.properties in current dir
+	go func() {
+		retryCount := 0
+		maxRetries := -1 // Infinite retries
+		retryDelay := 10 * time.Second
+		
+		for {
+			err := db.Connect("database.properties")
+			if err != nil {
+				retryCount++
+				errMsg := fmt.Sprintf("Error: Cannot connect to database: %v. Retrying in %v...", err, retryDelay)
+				sugar.Warn(errMsg)
+				myApp.AddLog(errMsg)
+				time.Sleep(retryDelay)
+				if maxRetries > 0 && retryCount >= maxRetries {
+					myApp.AddLog("Error: Database connection failed after max retries.")
+					break
+				}
+			} else {
+				successMsg := "Database connected successfully."
+				sugar.Info(successMsg)
+				myApp.AddLog(successMsg)
+				break
+			}
+		}
+	}()
 
 	// 5. Auto-Start Monitor
 	monitorService.Start()

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"smallNfast/internal/config"
 	"smallNfast/internal/db"
 	"smallNfast/internal/monitor"
@@ -100,10 +101,23 @@ func (a *App) GetStatus() map[string]interface{} {
 }
 
 func (a *App) SetAutoStart(enable bool) error {
+	var err error
 	if enable {
-		return config.EnableAutoStart()
+		err = config.EnableAutoStart()
+		if err != nil {
+			a.AddLog(fmt.Sprintf("ERROR: Failed to enable auto-start: %v", err))
+			return err
+		}
+		a.AddLog("Auto-start enabled successfully - SMSCat will start with Windows")
+	} else {
+		err = config.DisableAutoStart()
+		if err != nil {
+			a.AddLog(fmt.Sprintf("ERROR: Failed to disable auto-start: %v", err))
+			return err
+		}
+		a.AddLog("Auto-start disabled successfully - SMSCat will not start with Windows")
 	}
-	return config.DisableAutoStart()
+	return nil
 }
 
 func (a *App) GetAutoStart() bool {

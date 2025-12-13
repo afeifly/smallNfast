@@ -157,11 +157,18 @@ async function updateStatus() {
 }
 
 async function toggleAutoStart(checkbox) {
+    const wasChecked = !checkbox.checked; // Store previous state
     try {
-        await callBackend('SetAutoStart', checkbox.checked);
+        const result = await callBackend('SetAutoStart', checkbox.checked);
+        // The backend will log the result, but we can also show immediate feedback
+        if (result === null || result === undefined) {
+            // Success - backend logged it, just wait for log polling
+            // No need to show alert, the log will show the result
+        }
     } catch (e) {
-        alert("Failed to set auto-start: " + e);
-        checkbox.checked = !checkbox.checked; // Revert
+        // Error occurred
+        appendLog(`ERROR: Failed to set auto-start: ${e}`);
+        checkbox.checked = wasChecked; // Revert to previous state
     }
 }
 

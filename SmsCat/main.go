@@ -154,8 +154,11 @@ func main() {
 
 	// 5. Auto-Start Monitor
 	myApp.AddLog("About to start monitor service...")
+	sugar.Info("About to start monitor service...")
 	monitorService.Start()
 	myApp.AddLog("Monitor service started, continuing...")
+	sugar.Info("Monitor service started, continuing...")
+	filelogger.Write("DEBUG: After monitor service start")
 
 	// 6. Setup System Tray (run in background, don't block main thread)
 	var wailsCtx context.Context
@@ -163,7 +166,12 @@ func main() {
 	
 	myApp.AddLog("Starting system tray setup...")
 	sugar.Info("Starting system tray setup...")
+	filelogger.Write("DEBUG: About to start system tray")
 	
+	// TEMPORARILY DISABLED SYSTEM TRAY FOR TESTING
+	myApp.AddLog("System tray temporarily disabled for testing")
+	
+	/*
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -229,6 +237,7 @@ func main() {
 	
 	// Give systray a moment to initialize
 	time.Sleep(200 * time.Millisecond)
+	*/
 	myApp.AddLog("Proceeding to Wails initialization...")
 
 	// 7. Run Wails App (v2 API)

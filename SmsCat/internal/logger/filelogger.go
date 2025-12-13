@@ -75,8 +75,10 @@ func Write(msg string) {
 	// Write log with timestamp
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	logLine := fmt.Sprintf("[%s] %s\n", timestamp, msg)
-	fl.currentFile.WriteString(logLine)
-	fl.currentFile.Sync() // Ensure it's written to disk
+	if fl.currentFile != nil {
+		fl.currentFile.WriteString(logLine)
+		fl.currentFile.Sync() // Ensure it's written to disk immediately
+	}
 }
 
 // Close closes the current log file

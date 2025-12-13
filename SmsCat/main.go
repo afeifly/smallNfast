@@ -12,6 +12,7 @@ import (
 
 	"smallNfast/internal/app"
 	"smallNfast/internal/db"
+	"smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 
 	"github.com/getlantern/systray"
@@ -40,10 +41,11 @@ var (
 func checkSingleInstance() bool {
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
 	
-	// Create mutex
+	// Create mutex with security attributes
+	// If mutex already exists, CreateMutexW returns handle but GetLastError returns ERROR_ALREADY_EXISTS
 	ret, _, _ := procCreateMutexW.Call(
-		0,
-		0,
+		0, // lpMutexAttributes (NULL = default security)
+		0, // bInitialOwner (FALSE = not owned initially)
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
 	)
 	
@@ -52,11 +54,15 @@ func checkSingleInstance() bool {
 		return true
 	}
 	
-	// Get the last error code to check if mutex already existed
+	// Immediately check GetLastError to see if mutex already existed
+	// Note: GetLastError() must be called immediately after the API call
 	lastErrCode, _, _ := procGetLastError.Call()
 	
+	// ERROR_ALREADY_EXISTS = 183 (0xB7 in decimal, 0x000000B7 in hex)
 	// Check if mutex already existed (another instance is running)
-	if lastErrCode == uintptr(windows.ERROR_ALREADY_EXISTS) {
+	// We check for both the numeric value and the constant
+	errorAlreadyExists := uintptr(windows.ERROR_ALREADY_EXISTS)
+	if lastErrCode == 183 || lastErrCode == errorAlreadyExists {
 		// Close the mutex handle we just got
 		procCloseHandle.Call(ret)
 		// Show a message box to inform the user
@@ -87,11 +93,22 @@ func main() {
 
 	sugar.Info("SMSCat Starting...")
 
+	// 1.5. Setup File Logger (logs/YYYY-MM-DD.log)
+	if err := logger.InitFileLogger("logs"); err != nil {
+		sugar.Warnf("Failed to initialize file logger: %v", err)
+	} else {
+		sugar.Info("File logger initialized: logs/YYYY-MM-DD.log")
+	}
+	defer logger.Close()
+
 	// 2. Setup Wails App Bridge first (so we can log to UI)
 	monitorService := monitor.NewService(nil) 
 	myApp := app.NewApp(monitorService)
 	
-	// Update monitor logger to forward to UI
+	// Log startup message to file
+	myApp.AddLog("SMSCat Starting...")
+	
+	// Update monitor logger to forward to UI and file
 	monitorService.LogFunc = func(msg string) {
 		sugar.Info(msg)
 		myApp.AddLog(msg)
@@ -197,6 +214,8 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			wailsCtx = ctx
 			myApp.Startup(ctx)
+			// Ensure window is shown on startup
+			runtime.WindowShow(ctx)
 		},
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			// Prevent window close - hide instead

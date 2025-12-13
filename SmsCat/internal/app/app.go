@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"smallNfast/internal/config"
 	"smallNfast/internal/db"
+	"smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 	"smallNfast/internal/serial"
 	"sync"
@@ -42,6 +43,9 @@ func (a *App) AddLog(msg string) {
 		a.LogStore = a.LogStore[1:]
 	}
 	a.LogStore = append(a.LogStore, msg)
+	
+	// Write to file logger
+	logger.Write(msg)
 	
 	// Emit event to frontend if context is ready
 	// Note: In Wails v3, event emission API may differ - commenting out for now

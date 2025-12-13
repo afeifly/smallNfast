@@ -145,9 +145,12 @@ func main() {
 	myApp.AddLog("Starting monitor service...")
 	monitorService.Start()
 	myApp.AddLog("Monitor service started")
+	filelogger.Write("DEBUG: Monitor service started, about to call Wails.Run")
 
 	// Run Wails App
 	myApp.AddLog("Initializing Wails application...")
+	filelogger.Write("DEBUG: About to call wails.Run")
+	sugar.Info("About to call wails.Run")
 	
 	err := wails.Run(&options.App{
 		Title:  "SMSCat Monitor for S4M",
@@ -170,11 +173,13 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {
+			filelogger.Write("DEBUG: OnStartup callback called")
+			myApp.AddLog("OnStartup: Window opened successfully")
 			myApp.Startup(ctx)
-			myApp.AddLog("Window opened successfully")
 		},
 		OnDomReady: func(ctx context.Context) {
-			myApp.AddLog("UI ready")
+			filelogger.Write("DEBUG: OnDomReady callback called")
+			myApp.AddLog("OnDomReady: UI ready")
 		},
 		Bind: []interface{}{
 			myApp,

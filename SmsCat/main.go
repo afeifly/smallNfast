@@ -94,8 +94,8 @@ func main() {
 
 	// Fix Working Directory (Critical for Auto-Start)
 	// Windows Auto-Start runs from System32, breaking relative paths
-	exePath, err := os.Executable()
-	if err == nil {
+	exePath, errExe := os.Executable()
+	if errExe == nil {
 		exeDir := filepath.Dir(exePath)
 		os.Chdir(exeDir)
 	}

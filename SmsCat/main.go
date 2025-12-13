@@ -91,6 +91,14 @@ func main() {
 	if !checkSingleInstance() {
 		os.Exit(0)
 	}
+
+	// Fix Working Directory (Critical for Auto-Start)
+	// Windows Auto-Start runs from System32, breaking relative paths
+	exePath, err := os.Executable()
+	if err == nil {
+		exeDir := filepath.Dir(exePath)
+		os.Chdir(exeDir)
+	}
 	
 	// Setup Logger
 	logger, _ := zap.NewProduction()

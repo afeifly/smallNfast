@@ -115,7 +115,7 @@ func Connect(path string) error {
 
 // AlarmDetailDTO holds the result of the complex join query for SMS details
 type AlarmDetailDTO struct {
-	CreatedDate         time.Time `gorm:"column:created_date"`
+	CreatedDate         time.Time `gorm:"column:createddate"`
 	AlarmStatus         int       `gorm:"column:alarm_status"`
 	Threshold           float64   `gorm:"column:threshold"`
 	Hysteresis          float64   `gorm:"column:hysteresis"`
@@ -128,11 +128,11 @@ type AlarmDetailDTO struct {
 	LocationDescription string    `gorm:"column:location_description"`
 }
 
-// GetMaxCreatedDate returns the max created_date or NOW() if empty
+// GetMaxCreatedDate returns the max createddate or NOW() if empty
 func GetMaxCreatedDate() (time.Time, error) {
 	var maxTime *time.Time
-	// SELECT MAX(created_date) FROM alarm_historys
-	err := DB.Model(&AlarmHistorys{}).Select("MAX(created_date)").Scan(&maxTime).Error
+	// SELECT MAX(createddate) FROM alarm_historys
+	err := DB.Model(&AlarmHistorys{}).Select("MAX(createddate)").Scan(&maxTime).Error
 	if err != nil {
 		return time.Now(), err
 	}

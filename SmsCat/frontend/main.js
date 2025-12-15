@@ -20,15 +20,16 @@ function isError(msg) {
         lowerMsg.includes('com port') && lowerMsg.includes('not');
 }
 
-// Helper to append log
+// Helper to prepend log (Latest on Top)
 function appendLog(msg) {
     const div = document.createElement('div');
     const isErr = isError(msg);
     div.className = isErr ? 'log-line error' : 'log-line';
     const time = new Date().toLocaleTimeString();
     div.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
-    logContainer.appendChild(div);
-    logContainer.scrollTop = logContainer.scrollHeight;
+
+    // Prepend to make latest appear on top
+    logContainer.insertBefore(div, logContainer.firstChild);
 }
 
 // Track last log count to only show new logs

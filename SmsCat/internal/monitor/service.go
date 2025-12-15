@@ -114,10 +114,10 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 	var results []db.AlarmDetailDTO
 
 	// Complex query as requested
-	// SELECT ... FROM ... WHERE ah.created_date > ? AND as_tab.sms = 1
+	// SELECT ... FROM ... WHERE ah.createddate > ? AND as_tab.sms = 1
 	query := `
 		SELECT
-			ah.created_date,
+			ah.createddate,
 			ah.alarm_status,
 			as_tab.threshold, as_tab.hysteresis, as_tab.direction,
 			c.channel_description, c.unit_index, c.unit_in_ascii,
@@ -129,8 +129,8 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 		JOIN channels c ON as_tab.channel_id = c.channel_id
 		JOIN sensors s ON c.sensor_id = s.sensor_id
 		JOIN locations l ON s.location_id = l.location_id
-		WHERE ah.created_date > ? AND as_tab.sms = 1
-		ORDER BY ah.created_date ASC
+		WHERE ah.createddate > ? AND as_tab.sms = 1
+		ORDER BY ah.createddate ASC
 	`
 
 	if err := db.DB.Raw(query, *lastTime).Scan(&results).Error; err != nil {

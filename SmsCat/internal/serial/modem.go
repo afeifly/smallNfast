@@ -126,7 +126,16 @@ func FindModemPort() (string, error) {
 	}
 
 	for _, device := range devices {
+		// Check for our VID/PID
 		if strings.Contains(strings.ToUpper(device), QuectelVIDPID) {
+
+			// Filter for MI_03 interface (AT command interface)
+			// The "MI_03" part is in the Device ID (Key Name), NOT the Instance ID.
+			// e.g. "VID_2C7C&PID_6002&MI_03"
+			if !strings.Contains(strings.ToUpper(device), "MI_03") {
+				continue
+			}
+
 			// Found the device type key, now look for instances
 			// Path: USB\<VID&PID>
 			deviceKeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Enum\USB\%s`, device)
@@ -142,15 +151,7 @@ func FindModemPort() (string, error) {
 			}
 
 			// We iterate all instances to find one with a PortName
-			// User requested specific Hardware IDs with MI_03
-			// e.g. USB\VID_2C7C&PID_6002&REV_0318&MI_03 or USB\VID_2C7C&PID_6002&MI_03
-			// These appear as instances containing "MI_03"
 			for _, instance := range instances {
-				// Filter for MI_03 interface (AT command interface)
-				if !strings.Contains(strings.ToUpper(instance), "MI_03") {
-					continue
-				}
-
 				// Path: USB\<VID&PID>\<Instance>\Device Parameters
 				paramPath := fmt.Sprintf(`%s\%s\Device Parameters`, deviceKeyPath, instance)
 				pk, err := registry.OpenKey(registry.LOCAL_MACHINE, paramPath, registry.QUERY_VALUE)

@@ -12,12 +12,12 @@ const recipientList = document.getElementById('recipient-list');
 // Helper to detect if message is an error
 function isError(msg) {
     const lowerMsg = msg.toLowerCase();
-    return lowerMsg.includes('error') || 
-           lowerMsg.includes('failed') || 
-           lowerMsg.includes('not found') ||
-           lowerMsg.includes('no connect') ||
-           lowerMsg.includes('connection') && (lowerMsg.includes('fail') || lowerMsg.includes('error')) ||
-           lowerMsg.includes('com port') && lowerMsg.includes('not');
+    return lowerMsg.includes('error') ||
+        lowerMsg.includes('failed') ||
+        lowerMsg.includes('not found') ||
+        lowerMsg.includes('no connect') ||
+        lowerMsg.includes('connection') && (lowerMsg.includes('fail') || lowerMsg.includes('error')) ||
+        lowerMsg.includes('com port') && lowerMsg.includes('not');
 }
 
 // Helper to append log
@@ -184,8 +184,20 @@ async function exitApp() {
     }
 }
 
+async function restartService() {
+    if (!confirm("Restart Service?\nThis will stop monitoring, reconnect database, and re-detect modem.")) return;
+    try {
+        await callBackend('RestartService');
+        // Status update check will reflect changes
+    } catch (e) {
+        alert("Failed to restart service: " + e);
+        appendLog(`ERROR: Failed to restart service: ${e}`);
+    }
+}
+
 // Make functions global for onclick
 window.addRecipient = addRecipient;
 window.deleteRecipient = deleteRecipient;
 window.toggleAutoStart = toggleAutoStart;
 window.exitApp = exitApp;
+window.restartService = restartService;

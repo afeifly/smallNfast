@@ -25,7 +25,7 @@ type App struct {
 // NewApp creates a new App application struct
 func NewApp(monitor *monitor.Service) *App {
 	return &App{
-		Monitor: monitor,
+		Monitor:  monitor,
 		LogStore: make([]string, 0),
 	}
 }
@@ -40,16 +40,16 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) AddLog(msg string) {
 	a.logMu.Lock()
 	defer a.logMu.Unlock()
-	
+
 	// Keep last 1000 logs
 	if len(a.LogStore) > 1000 {
 		a.LogStore = a.LogStore[1:]
 	}
 	a.LogStore = append(a.LogStore, msg)
-	
+
 	// Write to file logger
 	logger.Write(msg)
-	
+
 	// Emit event to frontend if context is ready
 	// Note: In Wails v3, event emission API may differ - commenting out for now
 	// Events can be handled via polling GetLogs() from frontend if needed
@@ -141,6 +141,32 @@ func (a *App) Hide() {
 	if a.ctx != nil {
 		runtime.WindowHide(a.ctx)
 	}
+}
+
+func (a *App) RestartService() error {
+	a.AddLog("Restarting Service requested...")
+
+	if a.Monitor != nil {
+		a.Monitor.Stop()
+		// Clear port to force re-detection
+		a.Monitor.SetModemPort("")
+	}
+
+	// Reconnect Database
+	a.AddLog("Reconnecting Database...")
+	err := db.Connect("database.properties")
+	if err != nil {
+		errMsg := fmt.Sprintf("DB Reconnect Failed: %v", err)
+		a.AddLog(errMsg)
+		return fmt.Errorf(errMsg)
+	}
+	a.AddLog("Database Connected.")
+
+	if a.Monitor != nil {
+		a.Monitor.Start()
+	}
+
+	return nil
 }
 
 func (a *App) ExitApp() {

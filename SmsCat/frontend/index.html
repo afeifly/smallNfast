@@ -155,7 +155,7 @@
             align-items: center;
             white-space: nowrap;
         }
-        
+
         .btn-exit {
             background: #dc3545;
             color: white;
@@ -166,11 +166,27 @@
             font-size: 0.9rem;
             transition: background 0.2s;
         }
-        
+
         .btn-exit:hover {
             background: #c82333;
         }
-        
+
+        .btn-restart {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+            margin-right: 10px;
+        }
+
+        .btn-restart:hover {
+            background: #1e7e34;
+        }
+
         .status-item label {
             display: inline;
             margin: 0;
@@ -178,7 +194,7 @@
             font-size: 0.95rem;
             cursor: pointer;
         }
-        
+
         .status-item input[type="checkbox"] {
             width: auto;
             margin-right: 8px;
@@ -214,6 +230,7 @@
             <label for="chk-autostart">Auto-Start on OS Bootup</label>
         </div>
         <div class="status-item">
+            <button class="btn-restart" onclick="restartService()">Restart Service</button>
             <button class="btn-exit" onclick="exitApp()">Exit Application</button>
         </div>
     </div>

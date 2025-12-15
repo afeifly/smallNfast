@@ -141,19 +141,25 @@ func FindModemPort() (string, error) {
 				continue
 			}
 
-			// Check instances (MI_02, MI_03 usually for AT commands on Quectel)
-			// User mentioned: USB\VID_2C7C&PID_6002&MI_03 or USB\VID_2C7C&PID_6002&REV_0318&MI_03
 			// We iterate all instances to find one with a PortName
+			// User requested specific Hardware IDs with MI_03
+			// e.g. USB\VID_2C7C&PID_6002&REV_0318&MI_03 or USB\VID_2C7C&PID_6002&MI_03
+			// These appear as instances containing "MI_03"
 			for _, instance := range instances {
+				// Filter for MI_03 interface (AT command interface)
+				if !strings.Contains(strings.ToUpper(instance), "MI_03") {
+					continue
+				}
+
 				// Path: USB\<VID&PID>\<Instance>\Device Parameters
 				paramPath := fmt.Sprintf(`%s\%s\Device Parameters`, deviceKeyPath, instance)
 				pk, err := registry.OpenKey(registry.LOCAL_MACHINE, paramPath, registry.QUERY_VALUE)
 				if err != nil {
 					continue
 				}
-				defer pk.Close()
-
 				portName, _, err := pk.GetStringValue("PortName")
+				pk.Close()
+
 				if err == nil && portName != "" {
 					return portName, nil
 				}
@@ -161,5 +167,5 @@ func FindModemPort() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("quectel modem not found in registry")
+	return "", fmt.Errorf("quectel modem (MI_03) not found in registry")
 }

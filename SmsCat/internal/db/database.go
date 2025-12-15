@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -34,16 +35,16 @@ func (SmsModel) TableName() string {
 }
 
 type AlarmSettings struct {
-	AlarmSettingID int64   `gorm:"primaryKey;column:alarm_setting_id"`
-	ChannelID      int64   `gorm:"column:channel_id"`
-	Status         *int    `gorm:"column:status"`
-	Direction      *int    `gorm:"column:direction"`
+	AlarmSettingID int64    `gorm:"primaryKey;column:alarm_setting_id"`
+	ChannelID      int64    `gorm:"column:channel_id"`
+	Status         *int     `gorm:"column:status"`
+	Direction      *int     `gorm:"column:direction"`
 	Threshold      *float64 `gorm:"column:threshold"`
 	Hysteresis     *float64 `gorm:"column:hysteresis"`
-	AlarmTime      *int64  `gorm:"column:alarm_time"`
-	AlarmStatus    *int    `gorm:"column:alarm_status"`
-	RelayID        *int64  `gorm:"column:relay_id"`
-	Sms            *bool   `gorm:"column:sms"`
+	AlarmTime      *int64   `gorm:"column:alarm_time"`
+	AlarmStatus    *int     `gorm:"column:alarm_status"`
+	RelayID        *int64   `gorm:"column:relay_id"`
+	Sms            *bool    `gorm:"column:sms"`
 }
 
 func (AlarmSettings) TableName() string {
@@ -108,8 +109,37 @@ func Connect(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect database: %w", err)
 	}
-	
+
 	return nil
+}
+
+// AlarmDetailDTO holds the result of the complex join query for SMS details
+type AlarmDetailDTO struct {
+	CreatedDate         time.Time `gorm:"column:created_date"`
+	AlarmStatus         int       `gorm:"column:alarm_status"`
+	Threshold           float64   `gorm:"column:threshold"`
+	Hysteresis          float64   `gorm:"column:hysteresis"`
+	Direction           int       `gorm:"column:direction"`
+	ChannelDescription  string    `gorm:"column:channel_description"`
+	UnitIndex           int       `gorm:"column:unit_index"`
+	UnitInAscii         string    `gorm:"column:unit_in_ascii"`
+	MeasurementValue    float64   `gorm:"column:measurement_value"`
+	SensorDescription   string    `gorm:"column:sensor_description"`
+	LocationDescription string    `gorm:"column:location_description"`
+}
+
+// GetMaxCreatedDate returns the max created_date or NOW() if empty
+func GetMaxCreatedDate() (time.Time, error) {
+	var maxTime *time.Time
+	// SELECT MAX(created_date) FROM alarm_historys
+	err := DB.Model(&AlarmHistorys{}).Select("MAX(created_date)").Scan(&maxTime).Error
+	if err != nil {
+		return time.Now(), err
+	}
+	if maxTime == nil {
+		return time.Now(), nil
+	}
+	return *maxTime, nil
 }
 
 // FetchActiveRecipients returns a list of phone numbers from active SmsRecord

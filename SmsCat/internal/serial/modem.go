@@ -22,7 +22,7 @@ type GSMModem struct {
 func NewGSMModem(port string) *GSMModem {
 	return &GSMModem{
 		PortName: port,
-		BaudRate: 9600, // Standard GSM baud rate
+		BaudRate: 115200, // Updated to match user config
 	}
 }
 
@@ -100,7 +100,7 @@ func CheckAvailablePorts() []string {
 	for i := 1; i <= 20; i++ {
 		port := fmt.Sprintf("COM%d", i)
 		// Try to open
-		c := &serial.Config{Name: port, Baud: 9600, ReadTimeout: time.Millisecond * 100}
+		c := &serial.Config{Name: port, Baud: 115200, ReadTimeout: time.Millisecond * 100}
 		s, err := serial.OpenPort(c)
 		if err == nil {
 			available = append(available, port)
@@ -162,11 +162,19 @@ func FindModemPort() (string, error) {
 				pk.Close()
 
 				if err == nil && portName != "" {
-					return portName, nil
+					// VERIFY: Attempt to open the port. If it fails (e.g. unplugged), skip it.
+					// This prevents selecting stale registry entries.
+					c := &serial.Config{Name: portName, Baud: 115200, ReadTimeout: time.Millisecond * 100}
+					s, err := serial.OpenPort(c)
+					if err == nil {
+						s.Close()
+						return portName, nil
+					}
+					// Check failed (likely device unplugged but registry entry stuck), continue searching
 				}
 			}
 		}
 	}
 
-	return "", fmt.Errorf("quectel modem (MI_03) not found in registry")
+	return "", fmt.Errorf("quectel modem (MI_03) not active or found")
 }

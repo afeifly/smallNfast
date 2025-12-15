@@ -11,14 +11,14 @@ import (
 )
 
 type Service struct {
-	DB          *db.DBConfig // active config
-	Modem       *serial.GSMModem
-	stopChan    chan struct{}
-	wg          sync.WaitGroup
-	LogFunc     func(string) // Callback for logging to UI
-	PortName    string
-	IsRunning   bool
-	mu          sync.Mutex
+	DB        *db.DBConfig // active config
+	Modem     *serial.GSMModem
+	stopChan  chan struct{}
+	wg        sync.WaitGroup
+	LogFunc   func(string) // Callback for logging to UI
+	PortName  string
+	IsRunning bool
+	mu        sync.Mutex
 }
 
 func NewService(logFunc func(string)) *Service {
@@ -41,7 +41,7 @@ func (s *Service) Start() {
 	s.wg.Add(1)
 	go s.loop()
 	s.log("Alarm Monitor Started")
-	
+
 	// Auto-detect port if not set (in background to avoid blocking)
 	go func() {
 		if s.PortName == "" {
@@ -85,80 +85,117 @@ func (s *Service) log(msg string) {
 
 func (s *Service) loop() {
 	defer s.wg.Done()
-	
-	ticker := time.NewTicker(5 * time.Second) // Poll every 5 seconds
+
+	ticker := time.NewTicker(3 * time.Second) // Poll every 3 seconds
 	defer ticker.Stop()
 
-	// Keep track of the last processed ID to avoid re-sending old alarms
-	// In a real app, we might store this in a file or DB, or just start from "now"
-	// For this requirement, we'll check for "new" records. 
-	// A simple strategy: Get max ID at start, then query > maxID.
-	var lastProcessedID int64
-	
-	// Init lastProcessedID
-	var lastRecord db.AlarmHistorys
-	if err := db.DB.Order("alarm_historys_id desc").First(&lastRecord).Error; err == nil {
-		lastProcessedID = lastRecord.AlarmHistorysID
+	// Initialize tracking time
+	var lastCheckedTime time.Time
+	startT, err := db.GetMaxCreatedDate()
+	if err != nil {
+		s.log(fmt.Sprintf("Error getting start time: %v, using NOW", err))
+		lastCheckedTime = time.Now()
+	} else {
+		lastCheckedTime = startT
+		s.log(fmt.Sprintf("Starting monitoring from Created Date: %v", lastCheckedTime))
 	}
-	s.log(fmt.Sprintf("Starting monitoring from Alarm History ID: %d", lastProcessedID))
 
 	for {
 		select {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
-			s.checkAlarms(&lastProcessedID)
+			s.checkDetailedAlarms(&lastCheckedTime)
 		}
 	}
 }
 
-func (s *Service) checkAlarms(lastID *int64) {
-	var newAlarms []db.AlarmHistorys
-	// Fetch records strictly greater than lastID
-	if err := db.DB.Where("alarm_historys_id > ?", *lastID).Order("alarm_historys_id asc").Find(&newAlarms).Error; err != nil {
-		s.log(fmt.Sprintf("Error fetching alarms: %v", err))
+func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
+	var results []db.AlarmDetailDTO
+
+	// Complex query as requested
+	// SELECT ... FROM ... WHERE ah.created_date > ? AND as_tab.sms = 1
+	query := `
+		SELECT
+			ah.created_date,
+			ah.alarm_status,
+			as_tab.threshold, as_tab.hysteresis, as_tab.direction,
+			c.channel_description, c.unit_index, c.unit_in_ascii,
+			c.measurement_value,
+			s.sensor_description,
+			l.location_description
+		FROM alarm_historys ah
+		JOIN alarm_settings as_tab ON ah.alarm_setting_id = as_tab.alarm_setting_id
+		JOIN channels c ON as_tab.channel_id = c.channel_id
+		JOIN sensors s ON c.sensor_id = s.sensor_id
+		JOIN locations l ON s.location_id = l.location_id
+		WHERE ah.created_date > ? AND as_tab.sms = 1
+		ORDER BY ah.created_date ASC
+	`
+
+	if err := db.DB.Raw(query, *lastTime).Scan(&results).Error; err != nil {
+		s.log(fmt.Sprintf("Error checking detailed alarms: %v", err))
 		return
 	}
 
-	for _, alarm := range newAlarms {
-		*lastID = alarm.AlarmHistorysID // Update cursor immediately
-		
-		// logic: check if alarm_setting is enable sms
-		var setting db.AlarmSettings
-		if err := db.DB.First(&setting, alarm.AlarmSettingID).Error; err != nil {
-			s.log(fmt.Sprintf("Alarm %d found but setting %d missing", alarm.AlarmHistorysID, alarm.AlarmSettingID))
-			continue
+	for _, r := range results {
+		// Update cursor
+		if r.CreatedDate.After(*lastTime) {
+			*lastTime = r.CreatedDate
 		}
 
-		// check SMS enabled
-		if setting.Sms != nil && *setting.Sms {
-			s.handleSmsTrigger(alarm, setting)
-		} else {
-			s.log(fmt.Sprintf("Alarm %d ignored (SMS disabled in settings)", alarm.AlarmHistorysID))
-		}
+		s.handleDetailedSms(r)
 	}
 }
 
-func (s *Service) handleSmsTrigger(alarm db.AlarmHistorys, setting db.AlarmSettings) {
+func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 	// 1. Fetch Recipients
 	recipients, err := db.FetchActiveRecipients()
 	if err != nil {
 		s.log(fmt.Sprintf("Failed to fetch recipients: %v", err))
 		return
 	}
-	
+
 	if len(recipients) == 0 {
 		s.log("Alarm triggered but no active recipients found.")
 		return
 	}
 
-	// 2. Compose Message
-	msg := fmt.Sprintf("ALARM! ID:%d Time:%d Status:%d Val:%v", 
-		alarm.AlarmHistorysID, alarm.AlarmTime, alarm.AlarmStatus, setting.Threshold)
+	// 2. Compose Message per requirements
+	// Direction: [Up or Down]
+	dirStr := "Down"
+	if details.Direction == 1 {
+		dirStr = "Up"
+	} else if details.Direction != 0 {
+		// Just in case it's something else
+		dirStr = fmt.Sprintf("%d", details.Direction)
+	}
+
+	msg := fmt.Sprintf(
+		"Alarm triggered!\n"+
+			"Time: %s\n"+
+			"Location: %s\n"+
+			"Sensor: %s\n"+
+			"Channel: %s\n"+
+			"Unit: %s\n"+
+			"Threshold: %v\n"+
+			"Hysteresis: %v\n"+
+			"Direction: %s\n"+
+			"Current_value: %v",
+		details.CreatedDate.Format("2006-01-02 15:04:05"),
+		details.LocationDescription,
+		details.SensorDescription,
+		details.ChannelDescription,
+		details.UnitInAscii,
+		details.Threshold,
+		details.Hysteresis,
+		dirStr,
+		details.MeasurementValue,
+	)
 
 	// 3. Send
-	s.log(fmt.Sprintf("Sending SMS for Alarm %d to %d recipients...", alarm.AlarmHistorysID, len(recipients)))
-	
+	s.log(fmt.Sprintf("Sending SMS to %d recipients...", len(recipients)))
+
 	if s.Modem == nil {
 		s.log("Error: No modem configured/initialized")
 		return

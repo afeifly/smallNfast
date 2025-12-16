@@ -17,16 +17,16 @@ type SmsTask struct {
 }
 
 type Service struct {
-	DB        *db.DBConfig // active config
-	Modem     *serial.GSMModem
-	stopChan  chan struct{}
-	wg        sync.WaitGroup
-	LogFunc   func(string) // Callback for logging to UI
-	PortName  string
-	IsRunning bool
-	mu        sync.Mutex
-	smsQueue  chan SmsTask
-	Language  string
+	DB       *db.DBConfig // active config
+	Modem    *serial.GSMModem
+	stopChan chan struct{}
+	wg       sync.WaitGroup
+	LogFunc  func(string) // Callback for logging to UI
+	PortName string
+	State    string // "stopped", "initializing", "running", "error"
+	mu       sync.Mutex
+	smsQueue chan SmsTask
+	Language string
 }
 
 func NewService(logFunc func(string)) *Service {
@@ -35,16 +35,17 @@ func NewService(logFunc func(string)) *Service {
 		LogFunc:  logFunc,
 		smsQueue: make(chan SmsTask, 100), // Buffer of 100 SMS
 		Language: "en",
+		State:    "stopped",
 	}
 }
 
 func (s *Service) Start() {
 	s.mu.Lock()
-	if s.IsRunning {
+	if s.State == "running" || s.State == "initializing" {
 		s.mu.Unlock()
 		return
 	}
-	s.IsRunning = true
+	s.State = "initializing"
 	s.stopChan = make(chan struct{})
 	s.mu.Unlock()
 
@@ -62,10 +63,19 @@ func (s *Service) Start() {
 			port, err := serial.FindModemPort()
 			if err != nil {
 				s.log(fmt.Sprintf("Auto-detection failed: %v", err))
+				s.mu.Lock()
+				s.State = "error" // Failed to detect
+				s.mu.Unlock()
 			} else {
 				s.log(fmt.Sprintf("Auto-detected Modem at %s", port))
 				s.SetModemPort(port)
+				// SetModemPort will set state to running if success
 			}
+		} else {
+			// Port already set manually or previous config
+			s.mu.Lock()
+			s.State = "running"
+			s.mu.Unlock()
 		}
 	}()
 }
@@ -73,12 +83,12 @@ func (s *Service) Start() {
 func (s *Service) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.IsRunning {
+	if s.State == "stopped" {
 		return
 	}
 	close(s.stopChan)
 	s.wg.Wait()
-	s.IsRunning = false
+	s.State = "stopped"
 	s.log("Alarm Monitor Stopped")
 }
 
@@ -90,6 +100,13 @@ func (s *Service) SetModemPort(port string) {
 	s.PortName = port
 	s.Modem = serial.NewGSMModem(port, s.log)
 	s.log(fmt.Sprintf("Modem port set to %s", port))
+
+	// Update state to running if we were initializing
+	s.mu.Lock()
+	if s.State == "initializing" || s.State == "error" {
+		s.State = "running"
+	}
+	s.mu.Unlock()
 }
 
 func (s *Service) SetLanguage(lang string) {

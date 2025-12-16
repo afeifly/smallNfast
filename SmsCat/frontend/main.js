@@ -12,9 +12,12 @@ const recipientList = document.getElementById('recipient-list');
 // Translation Dictionary
 const i18n = {
     en: {
-        monitorService: "Monitor Service:",
+        monitorService: "SMSCat Service:",
         running: "Running",
         stopped: "Stopped",
+        initializing: "Initializing...",
+        error: "Error !",
+        restarting: "Restarting...",
         port: "Port:",
         autoStart: "Auto-Start on OS Bootup",
         restart: "Restart Service",
@@ -35,9 +38,12 @@ const i18n = {
         <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.0.0</p>`
     },
     cn: {
-        monitorService: "监控服务:",
+        monitorService: "SMSCat 服务:",
         running: "运行中",
         stopped: "已停止",
+        initializing: "初始化中...",
+        error: "错误 !",
+        restarting: "重启中...",
         port: "端口:",
         autoStart: "开机自动启动",
         restart: "重启程序",
@@ -195,21 +201,45 @@ async function deleteRecipient(id) {
     }
 }
 
+// Update Status
 async function updateStatus() {
-    const status = await callBackend('GetStatus');
-    if (status) {
+    try {
+        const status = await callBackend('GetStatus');
         const el = document.getElementById('service-status');
         const txt = document.getElementById('status-text');
         const port = document.getElementById('port-text');
 
-        if (status.running) {
-            el.classList.add('status-active');
-            txt.innerText = i18n[currentLang].running;
-        } else {
-            el.classList.remove('status-active');
-            txt.innerText = i18n[currentLang].stopped;
+        // Reset classes
+        el.classList.remove('status-active', 'status-error', 'status-init');
+
+        const t = i18n[currentLang];
+
+        switch (status.state) {
+            case "running":
+                el.classList.add('status-active');
+                txt.innerText = t.running;
+                txt.style.color = "#28a745"; // Green
+                break;
+            case "initializing":
+                el.classList.add('status-init');
+                txt.innerText = t.initializing;
+                txt.style.color = "#e0a800"; // Yellow/Orange
+                break;
+            case "error":
+                el.classList.add('status-error');
+                txt.innerText = t.error;
+                txt.style.color = "#dc3545"; // Red
+                break;
+            case "stopped":
+            default:
+                txt.innerText = t.stopped;
+                txt.style.color = "#666"; // Grey
+                break;
         }
+
         port.innerText = status.port || "None";
+    } catch (e) {
+        console.error("Failed to get status:", e);
     }
 }
 
@@ -244,9 +274,15 @@ async function exitApp() {
 async function restartService() {
     const msg = currentLang === 'cn' ? "确认重启服务?\n将停止监控, 重连数据库, 并重新检测Modem." : "Restart Service?\nThis will stop monitoring, reconnect database, and re-detect modem.";
     if (!confirm(msg)) return;
+
+    // Optimistic Update
+    const t = i18n[currentLang];
+    document.getElementById('status-text').innerText = t.restarting;
+    document.getElementById('status-text').style.color = "#00AB84"; // Teal/Greenish
+
     try {
         await callBackend('RestartService');
-        // Status update check will reflect changes
+        // Status update check will reflect changes (init -> running)
     } catch (e) {
         alert("Failed to restart service: " + e);
         appendLog(`ERROR: Failed to restart service: ${e}`);
@@ -285,13 +321,10 @@ function updateLanguageUI() {
     document.getElementById('input-number').placeholder = t.phonePlaceholder;
     document.querySelector('button[onclick="addRecipient()"]').innerText = t.addRecipient;
 
-    // Refresh status text immediately
-    const statusTxt = document.getElementById('status-text');
-    if (statusTxt.innerText === "Running" || statusTxt.innerText === "运行中") {
-        statusTxt.innerText = t.running;
-    } else {
-        statusTxt.innerText = t.stopped;
-    }
+    // Refresh status text immediately based on current text content or state variable if we had one global
+    // But updateStatus() runs every 1s, so it will fix itself. 
+    // We can just trigger a manual update
+    updateStatus();
 }
 
 

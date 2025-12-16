@@ -17,6 +17,8 @@
             color: #333;
             height: 100vh;
             box-sizing: border-box;
+            overflow: hidden;
+            /* Prevent body scrollbar */
         }
 
         .container {
@@ -51,8 +53,9 @@
 
         /* Logs */
         #log-container {
-            height: calc(100vh - 200px);
-            min-height: 500px;
+            height: calc(100vh - 220px);
+            /* Reduced height to fit footer */
+            min-height: 400px;
             overflow-y: auto;
             background: #ffffff;
             color: #000000;
@@ -253,6 +256,17 @@
 
         .status-active .status-indicator {
             background: #28a745;
+            /* Green */
+        }
+
+        .status-init .status-indicator {
+            background: #e0a800;
+            /* Yellow */
+        }
+
+        .status-error .status-indicator {
+            background: #dc3545;
+            /* Red */
         }
     </style>
 </head>

@@ -23,7 +23,15 @@ const i18n = {
         recipients: "Recipients",
         addRecipient: "Add Recipient",
         phonePlaceholder: "Phone Number",
-        langBtn: "中文"
+        langBtn: "中文",
+        helpTitle: "SMSCat Guide",
+        helpBody: `<ul>
+            <li><strong>Installation:</strong> Please place this application in the S4M installation folder.</li>
+            <li><strong>Setup:</strong> Add recipients in the 'Recipients' list to receive alerts.</li>
+            <li><strong>Monitoring:</strong> The service automatically monitors alarms and sends SMS to all active recipients.</li>
+            <li><strong>Auto-Start:</strong> Supports starting automatically with Windows (Enable via checkbox).</li>
+            <li><strong>Modem:</strong> Automatically detects connected 4G/GSM modem devices.</li>
+        </ul>`
     },
     cn: {
         monitorService: "监控服务:",
@@ -31,13 +39,21 @@ const i18n = {
         stopped: "已停止",
         port: "端口:",
         autoStart: "开机自动启动",
-        restart: "重启服务",
+        restart: "重启程序",
         exit: "退出程序",
         logs: "运行日志",
         recipients: "接收人列表",
         addRecipient: "添加接收人",
         phonePlaceholder: "手机号码",
-        langBtn: "English"
+        langBtn: "English",
+        helpTitle: "SMSCat 使用说明",
+        helpBody: `<ul>
+            <li><strong>安装:</strong> 请将本程序放置在 S4M 安装目录下运行。</li>
+            <li><strong>设置:</strong> 在“接收人列表”中添加需要接收短信的号码。</li>
+            <li><strong>监控:</strong> 服务会自动监控报警并向所有启用状态的接收人发送短信。</li>
+            <li><strong>自动启动:</strong> 支持随 Windows 开机自动启动（可手动开关）。</li>
+            <li><strong>设备检测:</strong> 程序会自动检测连接的 4G/GSM 短信猫设备。</li>
+        </ul>`
     }
 };
 let currentLang = "en";
@@ -277,6 +293,18 @@ function updateLanguageUI() {
 }
 
 
+// Help Page Logic
+function openHelp() {
+    const t = i18n[currentLang];
+    document.getElementById('help-title').innerText = t.helpTitle;
+    document.getElementById('help-body').innerHTML = t.helpBody;
+    document.getElementById('help-modal').style.display = 'flex';
+}
+
+function closeHelp() {
+    document.getElementById('help-modal').style.display = 'none';
+}
+
 // Make functions global for onclick
 window.addRecipient = addRecipient;
 window.deleteRecipient = deleteRecipient;
@@ -284,3 +312,5 @@ window.toggleAutoStart = toggleAutoStart;
 window.exitApp = exitApp;
 window.restartService = restartService;
 window.toggleLanguage = toggleLanguage;
+window.openHelp = openHelp;
+window.closeHelp = closeHelp;

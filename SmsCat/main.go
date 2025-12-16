@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 	"golang.org/x/sys/windows"
 
@@ -221,6 +222,32 @@ func main() {
 		OnDomReady: func(ctx context.Context) {
 			filelogger.Write("DEBUG: OnDomReady callback called")
 			myApp.AddLog("OnDomReady: UI ready")
+		},
+		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			// If explicitly quitting (via Tray or UI Exit button), allow close
+			if myApp.IsQuitting {
+				return false
+			}
+
+			// Prepare Dialog Message
+			msg := "Just hide window, you can find it in system tray area."
+			if myApp.Monitor != nil && myApp.Monitor.Language == "cn" {
+				// Use Chinese if language is set to 'cn'
+				msg = "窗口仅隐藏，您可以在系统托盘区域找到它。"
+			}
+
+			// Show Info Dialog
+			_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+				Type:          runtime.InfoDialog,
+				Title:         "SMSCat",
+				Message:       msg,
+				Buttons:       []string{"OK"},
+				DefaultButton: "OK",
+			})
+
+			// Otherwise, just hide the window (minimize to tray)
+			runtime.WindowHide(ctx)
+			return true
 		},
 		Bind: []interface{}{
 			myApp,

@@ -16,10 +16,11 @@ import (
 
 // App struct
 type App struct {
-	ctx      context.Context
-	Monitor  *monitor.Service
-	LogStore []string
-	logMu    sync.Mutex
+	ctx        context.Context
+	Monitor    *monitor.Service
+	LogStore   []string
+	logMu      sync.Mutex
+	IsQuitting bool // Flag to distinguish between Window Close and App Exit
 }
 
 // NewApp creates a new App application struct
@@ -179,6 +180,7 @@ func (a *App) SetLanguage(lang string) string {
 
 func (a *App) ExitApp() {
 	a.AddLog("Exiting SMSCat...")
+	a.IsQuitting = true // Set flag to allow actual exit
 	// Quit the Wails application properly
 	if a.ctx != nil {
 		runtime.Quit(a.ctx)

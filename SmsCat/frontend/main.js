@@ -33,8 +33,8 @@ const i18n = {
             <li><strong>Setup:</strong> Add recipients in the 'Recipients' list to receive alerts.</li>
             <li><strong>Monitoring:</strong> The service automatically monitors alarms and sends SMS to all active recipients.</li>
             <li><strong>Auto-Start:</strong> Supports starting automatically with Windows (Enable via checkbox).</li>
-            <li><strong>Modem:</strong> Automatically detects connected 4G/GSM modem devices.</li>
-        </ul>
+            <li><strong>Auto-Detection</strong>: Program automatically scans for 4G/GSM modem devices.</li>
+        </ul >
         <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.0.0</p>`
     },
     cn: {
@@ -47,19 +47,18 @@ const i18n = {
         port: "端口:",
         autoStart: "开机自动启动",
         restart: "重启程序",
-        exit: "退出程序",
-        logs: "运行日志",
-        recipients: "接收人列表",
+        relaunch: "重启应用",
         addRecipient: "添加接收人",
-        phonePlaceholder: "手机号码",
-        langBtn: "English",
-        helpTitle: "SMSCat 使用说明",
-        helpBody: `<ul>
-            <li><strong>安装:</strong> 请将本程序放置在 S4M 安装目录下运行。</li>
-            <li><strong>设置:</strong> 在“接收人列表”中添加需要接收短信的号码。</li>
-            <li><strong>监控:</strong> 服务会自动监控报警并向所有启用状态的接收人发送短信。</li>
-            <li><strong>自动启动:</strong> 支持随 Windows 开机自动启动（可手动开关）。</li>
-            <li><strong>设备检测:</strong> 程序会自动检测连接的 4G/GSM 短信猫设备。</li>
+        phonePlaceholder: "电话号码",
+        toggleLang: "Switch to English",
+        helpTitle: "SMSCat 说明指南",
+        helpBody: `
+        <ul style="text-align: left; margin-bottom: 10px;">
+        <li><strong>安装</strong>: 请确保程序位于 "S4M" 文件夹中.</li>
+        <li><strong>接收人</strong>: 在右侧添加接收短信的电话号码.</li>
+        <li><strong>报警监控</strong>: 自动读取数据库报警, 并向所有接收人发送短信.</li>
+        <li><strong>自动启动</strong>: 勾选 "开机自动启动" 可随 Windows 启动.</li>
+        <li><strong>自动检测</strong>: 程序自动扫描 4G/GSM Modem 设备.</li>
         </ul>
         <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">版本: 1.0.0</p>`
     }

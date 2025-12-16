@@ -51,7 +51,11 @@ if exist "SMSLogo.ico" (
     REM Remove old resource file if exists
     del resource.syso 2>nul
     REM Generate new resource file
-    rsrc -ico SMSLogo.ico -o resource.syso
+    if exist "app.manifest" (
+        rsrc -manifest app.manifest -ico SMSLogo.ico -o resource.syso
+    ) else (
+        rsrc -ico SMSLogo.ico -o resource.syso
+    )
     if %ERRORLEVEL% NEQ 0 (
         echo Error: Failed to generate resource file
         del resource.syso 2>nul

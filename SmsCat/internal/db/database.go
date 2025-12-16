@@ -97,6 +97,14 @@ func LoadConfig(path string) (*DBConfig, error) {
 }
 
 func Connect(path string) error {
+	// Close existing connection if active (re-connect scenario)
+	if DB != nil {
+		sqlDB, err := DB.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	}
+
 	config, err := LoadConfig(path)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -105,11 +113,29 @@ func Connect(path string) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		config.Username, config.Password, config.Hostname, config.Port, config.Database)
 
-	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	newDB, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return fmt.Errorf("failed to connect database: %w", err)
 	}
 
+	// Connection Pool Optimization
+	sqlDB, err := newDB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get sql.DB: %w", err)
+	}
+
+	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool.
+	// Low traffic app: 2 idle connections is sufficient for the 3s pinger.
+	sqlDB.SetMaxIdleConns(2)
+
+	// SetMaxOpenConns sets the maximum number of open connections to the database.
+	// Cap at 5 to minimize impact on the main system.
+	sqlDB.SetMaxOpenConns(5)
+
+	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused.
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	DB = newDB
 	return nil
 }
 
@@ -146,7 +172,7 @@ func GetMaxCreatedDate() (time.Time, error) {
 // requirement: recipient format '18900001111&13311112222'
 func FetchActiveRecipients() ([]string, error) {
 	var records []SmsModel
-	if err := DB.Where("actived = ?", 1).Find(&records).Error; err != nil {
+	if err := DB.Find(&records).Error; err != nil {
 		return nil, err
 	}
 

@@ -20,10 +20,10 @@ type GSMModem struct {
 	BaudRate int
 	port     *serial.Port
 	mu       sync.Mutex
-	LogFunc  func(string)
+	LogFunc  func(string, bool)
 }
 
-func NewGSMModem(port string, logFunc func(string)) *GSMModem {
+func NewGSMModem(port string, logFunc func(string, bool)) *GSMModem {
 	return &GSMModem{
 		PortName: port,
 		BaudRate: 115200,
@@ -31,9 +31,9 @@ func NewGSMModem(port string, logFunc func(string)) *GSMModem {
 	}
 }
 
-func (g *GSMModem) log(msg string) {
+func (g *GSMModem) log(msg string, verbose bool) {
 	if g.LogFunc != nil {
-		g.LogFunc(msg)
+		g.LogFunc(msg, verbose)
 	} else {
 		log.Println(msg)
 	}
@@ -46,15 +46,15 @@ func (g *GSMModem) Connect() error {
 		return nil
 	}
 
-	g.log(fmt.Sprintf("Connecting to port %s...", g.PortName))
+	g.log(fmt.Sprintf("Connecting to port %s...", g.PortName), false)
 	c := &serial.Config{Name: g.PortName, Baud: g.BaudRate, ReadTimeout: time.Second * 3}
 	s, err := serial.OpenPort(c)
 	if err != nil {
-		g.log(fmt.Sprintf("Failed to open port: %v", err))
+		g.log(fmt.Sprintf("Failed to open port: %v", err), false)
 		return fmt.Errorf("failed to open port %s: %w", g.PortName, err)
 	}
 	g.port = s
-	g.log("Port opened successfully.")
+	g.log("Port opened successfully.", false)
 
 	// Initialization Sequence (Aligned with auto_test.py)
 	// 1. Simple Handshake
@@ -64,11 +64,11 @@ func (g *GSMModem) Connect() error {
 	}
 	// 2. Disable Echo
 	if err := g.sendCommand("ATE0", "OK"); err != nil {
-		g.log("Warning: ATE0 failed")
+		g.log("Warning: ATE0 failed", true)
 	}
 	// 3. Verbose Errors
 	if err := g.sendCommand("AT+CMEE=2", "OK"); err != nil {
-		g.log("Warning: CMEE=2 failed")
+		g.log("Warning: CMEE=2 failed", true)
 	}
 	// 4. Check SIM
 	if err := g.sendCommand("AT+CPIN?", "READY"); err != nil {
@@ -82,15 +82,15 @@ func (g *GSMModem) Connect() error {
 	}
 	// 6. Character Set
 	if err := g.sendCommand("AT+CSCS=\"UCS2\"", "OK"); err != nil {
-		g.log("Warning: CSCS=UCS2 failed")
+		g.log("Warning: CSCS=UCS2 failed", true)
 	}
 	// 7. Text Mode Parameters (Unicode/Class 0)
 	if err := g.sendCommand("AT+CSMP=17,167,0,8", "OK"); err != nil {
-		g.log("Warning: CSMP=17,167,0,8 failed")
+		g.log("Warning: CSMP=17,167,0,8 failed", true)
 	}
 	// 8. Prefer Packet Domain
 	if err := g.sendCommand("AT+CGSMS=2", "OK"); err != nil {
-		g.log("Warning: CGSMS=2 failed")
+		g.log("Warning: CGSMS=2 failed", true)
 	}
 
 	return nil
@@ -99,7 +99,7 @@ func (g *GSMModem) Connect() error {
 // Close closes the serial port
 func (g *GSMModem) Close() {
 	if g.port != nil {
-		g.log("Closing modem port.")
+		g.log("Closing modem port.", false)
 		g.port.Close()
 		g.port = nil
 	}
@@ -119,10 +119,10 @@ func (g *GSMModem) sendCommand(cmd string, expect string) error {
 		return fmt.Errorf("port not open")
 	}
 
-	g.log(fmt.Sprintf("CMD: %s", cmd))
+	g.log(fmt.Sprintf("CMD: %s", cmd), true)
 	_, err := g.port.Write([]byte(cmd + "\r"))
 	if err != nil {
-		g.log(fmt.Sprintf("Write Error: %v", err))
+		g.log(fmt.Sprintf("Write Error: %v", err), false)
 		return err
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -131,7 +131,7 @@ func (g *GSMModem) sendCommand(cmd string, expect string) error {
 	n, err := g.port.Read(buf)
 	if err != nil {
 		// Log but don't fail immediately, check if what we got matches
-		g.log(fmt.Sprintf("Read Error (or timeout): %v", err))
+		g.log(fmt.Sprintf("Read Error (or timeout): %v", err), true)
 	}
 
 	// Read Loop (Simple version for commands: just one read is usually enough after sleep)
@@ -144,7 +144,7 @@ func (g *GSMModem) sendCommand(cmd string, expect string) error {
 	if len(logResp) > 100 {
 		logResp = logResp[:100] + "..."
 	}
-	g.log(fmt.Sprintf("RESP: %s", logResp))
+	g.log(fmt.Sprintf("RESP: %s", logResp), true)
 
 	if !strings.Contains(response, expect) {
 		return fmt.Errorf("unexpected response: %s", response)
@@ -176,7 +176,7 @@ func (g *GSMModem) SendSMS(number string, text string) error {
 
 	// Fail helper
 	fail := func(err error) error {
-		g.log(fmt.Sprintf("SMS Error: %v", err))
+		g.log(fmt.Sprintf("SMS Error: %v", err), false)
 		g.Close()
 		return err
 	}
@@ -188,7 +188,7 @@ func (g *GSMModem) SendSMS(number string, text string) error {
 	// 1. Send Message Command
 	// Note: encodedNumber is Hex now
 	cmd := fmt.Sprintf("AT+CMGS=\"%s\"", encodedNumber)
-	g.log(fmt.Sprintf("CMD: %s", cmd)) // Log the hex command
+	g.log(fmt.Sprintf("CMD: %s", cmd), true) // Log the hex command
 
 	// ... rest of logic relies on writing to port
 
@@ -207,7 +207,7 @@ func (g *GSMModem) SendSMS(number string, text string) error {
 			chunk := string(buf[:n])
 			if strings.Contains(chunk, ">") {
 				gotPrompt = true
-				g.log("PROMPT: >")
+				g.log("PROMPT: >", true)
 				break
 			}
 			if strings.Contains(chunk, "ERROR") {
@@ -225,7 +225,7 @@ func (g *GSMModem) SendSMS(number string, text string) error {
 	}
 
 	// 3. Send Body + Ctrl+Z
-	g.log("Sending SMS Body (UCS2)...")
+	g.log("Sending SMS Body (UCS2)...", true)
 	// Write Text (HEX)
 	_, err = g.port.Write([]byte(encodedText))
 	if err != nil {
@@ -238,7 +238,7 @@ func (g *GSMModem) SendSMS(number string, text string) error {
 	}
 
 	// 4. Wait for Confirmation
-	g.log("Waiting for confirmation...")
+	g.log("Waiting for confirmation...", true)
 	startWait := time.Now()
 	for time.Since(startWait) < 20*time.Second {
 		buf := make([]byte, 256)
@@ -247,10 +247,10 @@ func (g *GSMModem) SendSMS(number string, text string) error {
 			resp := string(buf[:n])
 			logResp := strings.ReplaceAll(resp, "\r", "")
 			logResp = strings.ReplaceAll(logResp, "\n", " ")
-			g.log(fmt.Sprintf("RX: %s", logResp))
+			g.log(fmt.Sprintf("RX: %s", logResp), true)
 
 			if strings.Contains(resp, "+CMGS:") {
-				g.log("SMS Send SUCCESS")
+				g.log("SMS Send SUCCESS", false)
 				return nil
 			}
 			if strings.Contains(resp, "ERROR") {

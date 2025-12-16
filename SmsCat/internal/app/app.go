@@ -79,6 +79,14 @@ func (a *App) GetRecipients() ([]db.SmsModel, error) {
 }
 
 func (a *App) AddRecipient(name, number string) error {
+	var count int64
+	if err := db.DB.Model(&db.SmsModel{}).Count(&count).Error; err != nil {
+		return err
+	}
+	if count >= 30 {
+		return fmt.Errorf("recipient limit reached (max 30)")
+	}
+
 	rec := db.SmsModel{
 		PortName:  name, // Reusing column 'port_name' for Name/Description as per user implication or just putting port_name
 		Recipient: number,

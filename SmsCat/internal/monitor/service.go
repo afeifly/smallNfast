@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"smallNfast/internal/db"
+	"smallNfast/internal/logger"
 	"smallNfast/internal/serial"
 )
 
@@ -55,19 +56,19 @@ func (s *Service) Start() {
 	s.wg.Add(1)
 	go s.processSmsQueue() // Start SMS worker
 
-	s.log("Alarm Monitor Started")
+	s.log("Alarm Monitor Started", false)
 
 	// Auto-detect port if not set (in background to avoid blocking)
 	go func() {
 		if s.PortName == "" {
 			port, err := serial.FindModemPort()
 			if err != nil {
-				s.log(fmt.Sprintf("Auto-detection failed: %v", err))
+				s.log(fmt.Sprintf("Auto-detection failed: %v", err), false)
 				s.mu.Lock()
 				s.State = "error" // Failed to detect
 				s.mu.Unlock()
 			} else {
-				s.log(fmt.Sprintf("Auto-detected Modem at %s", port))
+				s.log(fmt.Sprintf("Auto-detected Modem at %s", port), false)
 				s.SetModemPort(port)
 				// SetModemPort will set state to running if success
 			}
@@ -89,7 +90,7 @@ func (s *Service) Stop() {
 	close(s.stopChan)
 	s.wg.Wait()
 	s.State = "stopped"
-	s.log("Alarm Monitor Stopped")
+	s.log("Alarm Monitor Stopped", false)
 }
 
 func (s *Service) SetModemPort(port string) {
@@ -99,7 +100,7 @@ func (s *Service) SetModemPort(port string) {
 	}
 	s.PortName = port
 	s.Modem = serial.NewGSMModem(port, s.log)
-	s.log(fmt.Sprintf("Modem port set to %s", port))
+	s.log(fmt.Sprintf("Modem port set to %s", port), false)
 
 	// Update state to running if we were initializing
 	s.mu.Lock()
@@ -113,14 +114,20 @@ func (s *Service) SetLanguage(lang string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Language = lang
-	s.log(fmt.Sprintf("Language set to %s", lang))
+	s.log(fmt.Sprintf("Language set to %s", lang), false)
 }
 
-func (s *Service) log(msg string) {
-	if s.LogFunc != nil {
-		s.LogFunc(msg)
+func (s *Service) log(msg string, verbose bool) {
+	if verbose {
+		// Verbose logs only go to File Logger, NOT UI
+		logger.Write(msg)
 	} else {
-		log.Println(msg)
+		// Non-verbose logs go to UI (which implies File Logger too usually via App.AddLog)
+		if s.LogFunc != nil {
+			s.LogFunc(msg)
+		} else {
+			log.Println(msg)
+		}
 	}
 }
 
@@ -134,11 +141,11 @@ func (s *Service) loop() {
 	var lastCheckedTime time.Time
 	startT, err := db.GetMaxCreatedDate()
 	if err != nil {
-		s.log(fmt.Sprintf("Error getting start time: %v, using NOW", err))
+		s.log(fmt.Sprintf("Error getting start time: %v, using NOW", err), false)
 		lastCheckedTime = time.Now()
 	} else {
 		lastCheckedTime = startT
-		s.log(fmt.Sprintf("Starting monitoring from Created Date: %v", lastCheckedTime))
+		s.log(fmt.Sprintf("Starting monitoring from Created Date: %v", lastCheckedTime), false)
 	}
 
 	for {
@@ -176,7 +183,7 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 	`
 
 	if err := db.DB.Raw(query, *lastTime).Scan(&results).Error; err != nil {
-		s.log(fmt.Sprintf("Error checking detailed alarms: %v", err))
+		s.log(fmt.Sprintf("Error checking detailed alarms: %v", err), false)
 		return
 	}
 
@@ -194,12 +201,12 @@ func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 	// 1. Fetch Recipients
 	recipients, err := db.FetchActiveRecipients()
 	if err != nil {
-		s.log(fmt.Sprintf("Failed to fetch recipients: %v", err))
+		s.log(fmt.Sprintf("Failed to fetch recipients: %v", err), false)
 		return
 	}
 
 	if len(recipients) == 0 {
-		s.log("Alarm triggered but no active recipients found.")
+		s.log("Alarm triggered but no active recipients found.", false)
 		return
 	}
 
@@ -287,13 +294,13 @@ func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 	}
 
 	// 3. Queue Send
-	s.log(fmt.Sprintf("Queueing SMS for %d recipients...", len(recipients)))
+	s.log(fmt.Sprintf("Queueing SMS for %d recipients...", len(recipients)), false)
 
 	for _, number := range recipients {
 		select {
 		case s.smsQueue <- SmsTask{Recipient: number, Message: msg}:
 		default:
-			s.log("Error: SMS Queue Full! Dropping message.")
+			s.log("Error: SMS Queue Full! Dropping message.", false)
 		}
 	}
 }
@@ -318,26 +325,26 @@ func (s *Service) formatValue(val float64, res int) string {
 
 func (s *Service) processSmsQueue() {
 	defer s.wg.Done()
-	s.log("SMS Queue Worker Started")
+	s.log("SMS Queue Worker Started", false)
 
 	for {
 		select {
 		case <-s.stopChan:
-			s.log("SMS Queue Worker Stopped")
+			s.log("SMS Queue Worker Stopped", false)
 			return
 
 		case task := <-s.smsQueue:
 			if s.Modem == nil {
-				s.log("Error: No modem configured, skipping queued SMS")
+				s.log("Error: No modem configured, skipping queued SMS", false)
 				continue
 			}
 
-			s.log(fmt.Sprintf("Processing SMS for %s...", task.Recipient))
+			s.log(fmt.Sprintf("Processing SMS for %s...", task.Recipient), false)
 			err := s.Modem.SendSMS(task.Recipient, task.Message)
 			if err != nil {
-				s.log(fmt.Sprintf("Failed to send to %s: %v", task.Recipient, err))
+				s.log(fmt.Sprintf("Failed to send to %s: %v", task.Recipient, err), false)
 			} else {
-				s.log(fmt.Sprintf("Sent to %s", task.Recipient))
+				s.log(fmt.Sprintf("Sent to %s", task.Recipient), false)
 			}
 
 			// Optional: Small delay between messages to be polite to the modem/network

@@ -10,7 +10,7 @@ import (
 var trayApp *app.App
 
 func onReady() {
-	systray.SetIcon(windowIcon)
+	systray.SetIcon(iconBytes)
 	systray.SetTitle("SMSCat")
 	systray.SetTooltip("SMSCat Monitor for S4M")
 

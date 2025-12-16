@@ -36,10 +36,24 @@ var windowIcon []byte
 
 var (
 	kernel32         = windows.NewLazySystemDLL("kernel32.dll")
+	user32           = windows.NewLazySystemDLL("user32.dll")
 	procCreateMutexW = kernel32.NewProc("CreateMutexW")
 	procCloseHandle  = kernel32.NewProc("CloseHandle")
 	procGetLastError = kernel32.NewProc("GetLastError")
-	appMutex         uintptr // Keep mutex handle for app lifetime
+
+	// Icon Procs
+	procCreateIconFromResourceEx = user32.NewProc("CreateIconFromResourceEx")
+	procFindWindowW              = user32.NewProc("FindWindowW")
+	procSendMessageW             = user32.NewProc("SendMessageW")
+
+	appMutex uintptr // Keep mutex handle for app lifetime
+)
+
+const (
+	WM_SETICON      = 0x0080
+	ICON_SMALL      = 0
+	ICON_BIG        = 1
+	LR_DEFAULTCOLOR = 0x00000000
 )
 
 func checkSingleInstance() bool {
@@ -196,6 +210,13 @@ func main() {
 			filelogger.Write("DEBUG: OnStartup callback called")
 			myApp.AddLog("OnStartup: Window opened successfully")
 			myApp.Startup(ctx)
+
+			// Attempt to set icon at runtime via Win32
+			go func() {
+				// Wait for window to actually be created and titled
+				time.Sleep(500 * time.Millisecond)
+				setRuntimeIcon()
+			}()
 		},
 		OnDomReady: func(ctx context.Context) {
 			filelogger.Write("DEBUG: OnDomReady callback called")
@@ -214,4 +235,43 @@ func main() {
 	}
 
 	myApp.AddLog("Application exited")
+}
+
+func setRuntimeIcon() {
+	if len(windowIcon) == 0 {
+		return
+	}
+
+	// 1. Create HICON from PNG bytes
+	// offset 0, version 0x00030000, 0x00000000 flags
+	hIcon, _, _ := procCreateIconFromResourceEx.Call(
+		uintptr(unsafe.Pointer(&windowIcon[0])),
+		uintptr(len(windowIcon)),
+		1,          // TRUE for Icon
+		0x00030000, // Version
+		0, 0,       // Desired Width/Height (0 = default)
+		LR_DEFAULTCOLOR,
+	)
+
+	if hIcon == 0 {
+		fmt.Println("Failed to create HICON from bytes")
+		return
+	}
+
+	// 2. Find the Window
+	// ClassName nil, WindowName = Title
+	titlePtr, _ := windows.UTF16PtrFromString("SMSCat Monitor for S4M")
+	hWnd, _, _ := procFindWindowW.Call(
+		0,
+		uintptr(unsafe.Pointer(titlePtr)),
+	)
+
+	if hWnd == 0 {
+		fmt.Println("Failed to find window 'SMSCat Monitor for S4M'")
+		return
+	}
+
+	// 3. Set Icon (Small and Big)
+	procSendMessageW.Call(hWnd, WM_SETICON, ICON_SMALL, hIcon)
+	procSendMessageW.Call(hWnd, WM_SETICON, ICON_BIG, hIcon)
 }

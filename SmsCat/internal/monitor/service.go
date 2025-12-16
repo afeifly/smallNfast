@@ -86,7 +86,7 @@ func (s *Service) SetModemPort(port string) {
 		s.Modem.Close()
 	}
 	s.PortName = port
-	s.Modem = serial.NewGSMModem(port)
+	s.Modem = serial.NewGSMModem(port, s.log)
 	s.log(fmt.Sprintf("Modem port set to %s", port))
 }
 
@@ -115,21 +115,12 @@ func (s *Service) loop() {
 		s.log(fmt.Sprintf("Starting monitoring from Created Date: %v", lastCheckedTime))
 	}
 
-	heartbeatCount := 0
-
 	for {
 		select {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
 			s.checkDetailedAlarms(&lastCheckedTime)
-
-			// Heartbeat every 10 ticks (30 seconds)
-			heartbeatCount++
-			if heartbeatCount >= 10 {
-				s.log("Monitor Heartbeat: Running detailed scan...")
-				heartbeatCount = 0
-			}
 		}
 	}
 }

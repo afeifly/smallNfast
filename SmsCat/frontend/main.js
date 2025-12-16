@@ -9,6 +9,39 @@
 const logContainer = document.getElementById('log-container');
 const recipientList = document.getElementById('recipient-list');
 
+// Translation Dictionary
+const i18n = {
+    en: {
+        monitorService: "Monitor Service:",
+        running: "Running",
+        stopped: "Stopped",
+        port: "Port:",
+        autoStart: "Auto-Start on OS Bootup",
+        restart: "Restart Service",
+        exit: "Exit Application",
+        logs: "Runtime Logs",
+        recipients: "Recipients",
+        addRecipient: "Add Recipient",
+        phonePlaceholder: "Phone Number",
+        langBtn: "中文"
+    },
+    cn: {
+        monitorService: "监控服务:",
+        running: "运行中",
+        stopped: "已停止",
+        port: "端口:",
+        autoStart: "开机自动启动",
+        restart: "重启服务",
+        exit: "退出程序",
+        logs: "运行日志",
+        recipients: "接收人列表",
+        addRecipient: "添加接收人",
+        phonePlaceholder: "手机号码",
+        langBtn: "English"
+    }
+};
+let currentLang = "en";
+
 // Helper to detect if message is an error
 function isError(msg) {
     const lowerMsg = msg.toLowerCase();
@@ -153,10 +186,10 @@ async function updateStatus() {
 
         if (status.running) {
             el.classList.add('status-active');
-            txt.innerText = "Running";
+            txt.innerText = i18n[currentLang].running;
         } else {
             el.classList.remove('status-active');
-            txt.innerText = "Stopped";
+            txt.innerText = i18n[currentLang].stopped;
         }
         port.innerText = status.port || "None";
     }
@@ -191,7 +224,8 @@ async function exitApp() {
 }
 
 async function restartService() {
-    if (!confirm("Restart Service?\nThis will stop monitoring, reconnect database, and re-detect modem.")) return;
+    const msg = currentLang === 'cn' ? "确认重启服务?\n将停止监控, 重连数据库, 并重新检测Modem." : "Restart Service?\nThis will stop monitoring, reconnect database, and re-detect modem.";
+    if (!confirm(msg)) return;
     try {
         await callBackend('RestartService');
         // Status update check will reflect changes
@@ -201,9 +235,52 @@ async function restartService() {
     }
 }
 
+// Language Toggle
+async function toggleLanguage() {
+    currentLang = currentLang === 'en' ? 'cn' : 'en';
+    updateLanguageUI();
+    try {
+        await callBackend('SetLanguage', currentLang);
+    } catch (e) {
+        console.error("Failed to sync language:", e);
+    }
+}
+
+function updateLanguageUI() {
+    const t = i18n[currentLang];
+
+    // Status
+    document.querySelector('#service-status span').childNodes[0].textContent = t.monitorService + " ";
+    // Running/Stopped is dynamic, handled in updateStatus, but we update the text logic there too
+
+    document.querySelectorAll('.status-item span')[1].childNodes[0].textContent = t.port + " "; // Port label
+
+    document.querySelector('label[for="chk-autostart"]').innerText = t.autoStart;
+    document.getElementById('btn-lang').innerText = t.langBtn;
+    document.getElementById('btn-restart').innerText = t.restart;
+    document.getElementById('btn-exit').innerText = t.exit;
+
+    // Cards
+    document.querySelector('.card h2').innerText = t.logs;
+    document.querySelectorAll('.card h2')[1].innerText = t.recipients;
+
+    document.getElementById('input-number').placeholder = t.phonePlaceholder;
+    document.querySelector('button[onclick="addRecipient()"]').innerText = t.addRecipient;
+
+    // Refresh status text immediately
+    const statusTxt = document.getElementById('status-text');
+    if (statusTxt.innerText === "Running" || statusTxt.innerText === "运行中") {
+        statusTxt.innerText = t.running;
+    } else {
+        statusTxt.innerText = t.stopped;
+    }
+}
+
+
 // Make functions global for onclick
 window.addRecipient = addRecipient;
 window.deleteRecipient = deleteRecipient;
 window.toggleAutoStart = toggleAutoStart;
 window.exitApp = exitApp;
 window.restartService = restartService;
+window.toggleLanguage = toggleLanguage;

@@ -26,6 +26,7 @@ type Service struct {
 	IsRunning bool
 	mu        sync.Mutex
 	smsQueue  chan SmsTask
+	Language  string
 }
 
 func NewService(logFunc func(string)) *Service {
@@ -33,6 +34,7 @@ func NewService(logFunc func(string)) *Service {
 		stopChan: make(chan struct{}),
 		LogFunc:  logFunc,
 		smsQueue: make(chan SmsTask, 100), // Buffer of 100 SMS
+		Language: "en",
 	}
 }
 
@@ -90,6 +92,13 @@ func (s *Service) SetModemPort(port string) {
 	s.log(fmt.Sprintf("Modem port set to %s", port))
 }
 
+func (s *Service) SetLanguage(lang string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Language = lang
+	s.log(fmt.Sprintf("Language set to %s", lang))
+}
+
 func (s *Service) log(msg string) {
 	if s.LogFunc != nil {
 		s.LogFunc(msg)
@@ -137,7 +146,7 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 			ah.alarm_status,
 			as_tab.threshold, as_tab.hysteresis, as_tab.direction,
 			c.channel_description, c.unit_index, c.unit_in_ascii,
-			c.measurement_value,
+			c.measurement_value, c.resolution,
 			s.description AS sensor_description,
 			l.description AS location_description
 		FROM alarm_historys ah
@@ -177,48 +186,116 @@ func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 		return
 	}
 
-	// 2. Compose Message per requirements
-	// Direction: [Up or Down]
-	dirStr := "Down"
-	if details.Direction == 1 {
-		dirStr = "Up"
-	} else if details.Direction != 0 {
-		// Just in case it's something else
-		dirStr = fmt.Sprintf("%d", details.Direction)
-	}
+	// 2. Prepare Data
+	s.mu.Lock()
+	lang := s.Language
+	s.mu.Unlock()
 
-	msg := fmt.Sprintf(
-		"Alarm triggered!\n"+
-			"Time: %s\n"+
-			"Location: %s\n"+
-			"Sensor: %s\n"+
-			"Channel: %s\n"+
-			"Unit: %s\n"+
-			"Threshold: %v\n"+
-			"Hysteresis: %v\n"+
-			"Direction: %s\n"+
-			"Current_value: %v",
-		details.CreatedDate.Format("2006-01-02 15:04:05"),
-		details.LocationDescription,
-		details.SensorDescription,
-		details.ChannelDescription,
-		details.UnitInAscii,
-		details.Threshold,
-		details.Hysteresis,
-		dirStr,
-		details.MeasurementValue,
-	)
+	// Format Value based on resolution
+	valStr := s.formatValue(details.MeasurementValue, details.Resolution)
+
+	var msg string
+	if lang == "cn" {
+		// Chinese Template
+		statusStr := "报警触发"
+		if details.AlarmStatus == 0 {
+			statusStr = "报警恢复"
+		}
+
+		dirStr := "下降"
+		if details.Direction == 1 {
+			dirStr = "上升"
+		} else if details.Direction != 0 {
+			dirStr = fmt.Sprintf("%d", details.Direction)
+		}
+
+		msg = fmt.Sprintf(
+			"%s!\n"+
+				"时间: %s\n"+
+				"位置: %s\n"+
+				"传感器: %s\n"+
+				"通道: %s\n"+
+				"单位: %s\n"+
+				"阈值: %s\n"+ // Format threshold same as value? User didn't specify, assumes default or same resolution? Let's use flexible %v for now or apply same res logic if needed. User only said 'if resolution is 1... value should be like 23.8'.
+				"回差: %v\n"+
+				"方向: %s\n"+
+				"当前值: %s",
+			statusStr,
+			details.CreatedDate.Format("2006-01-02 15:04:05"),
+			details.LocationDescription,
+			details.SensorDescription,
+			details.ChannelDescription,
+			details.UnitInAscii,
+			s.formatValue(details.Threshold, details.Resolution), // Apply formatting to threshold too for consistency
+			details.Hysteresis,
+			dirStr,
+			valStr,
+		)
+	} else {
+		// English Template (Default)
+		statusStr := "Alarm triggered"
+		if details.AlarmStatus == 0 {
+			statusStr = "Alarm resumed"
+		}
+
+		dirStr := "Down"
+		if details.Direction == 1 {
+			dirStr = "Up"
+		} else if details.Direction != 0 {
+			dirStr = fmt.Sprintf("%d", details.Direction)
+		}
+
+		msg = fmt.Sprintf(
+			"%s!\n"+
+				"Time: %s\n"+
+				"Location: %s\n"+
+				"Sensor: %s\n"+
+				"Channel: %s\n"+
+				"Unit: %s\n"+
+				"Threshold: %s\n"+
+				"Hysteresis: %v\n"+
+				"Direction: %s\n"+
+				"Current value: %s",
+			statusStr,
+			details.CreatedDate.Format("2006-01-02 15:04:05"),
+			details.LocationDescription,
+			details.SensorDescription,
+			details.ChannelDescription,
+			details.UnitInAscii,
+			s.formatValue(details.Threshold, details.Resolution),
+			details.Hysteresis,
+			dirStr,
+			valStr,
+		)
+	}
 
 	// 3. Queue Send
 	s.log(fmt.Sprintf("Queueing SMS for %d recipients...", len(recipients)))
 
 	for _, number := range recipients {
-		// Non-blocking send or drop if full (though buffer 100 is large)
 		select {
 		case s.smsQueue <- SmsTask{Recipient: number, Message: msg}:
 		default:
 			s.log("Error: SMS Queue Full! Dropping message.")
 		}
+	}
+}
+
+func (s *Service) formatValue(val float64, res int) string {
+	switch res {
+	case 0:
+		return fmt.Sprintf("%.0f", val)
+	case 1:
+		return fmt.Sprintf("%.1f", val)
+	case 2:
+		return fmt.Sprintf("%.2f", val)
+	case 3:
+		return fmt.Sprintf("%.3f", val)
+	case 4:
+		return fmt.Sprintf("%.4f", val)
+	default:
+		// Default to 2 decimal places if unknown
+		return fmt.Sprintf("%.2f", val)
 	}
 }
 

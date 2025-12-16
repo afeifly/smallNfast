@@ -150,6 +150,7 @@ type AlarmDetailDTO struct {
 	UnitIndex           int       `gorm:"column:unit_index"`
 	UnitInAscii         string    `gorm:"column:unit_in_ascii"`
 	MeasurementValue    float64   `gorm:"column:measurement_value"`
+	Resolution          int       `gorm:"column:resolution"`
 	SensorDescription   string    `gorm:"column:sensor_description"`
 	LocationDescription string    `gorm:"column:location_description"`
 }

@@ -81,8 +81,8 @@ func (g *GSMModem) Connect() error {
 		return fmt.Errorf("failed to set text mode: %w", err)
 	}
 	// 6. Character Set
-	if err := g.sendCommand("AT+CSCS=\"GSM\"", "OK"); err != nil {
-		g.log("Warning: CSCS=GSM failed")
+	if err := g.sendCommand("AT+CSCS=\"UTF-8\"", "OK"); err != nil {
+		g.log("Warning: CSCS=UTF-8 failed")
 	}
 	// 7. Prefer Packet Domain
 	if err := g.sendCommand("AT+CGSMS=2", "OK"); err != nil {

@@ -169,6 +169,14 @@ func (a *App) RestartService() error {
 	return nil
 }
 
+func (a *App) SetLanguage(lang string) string {
+	if a.Monitor != nil {
+		a.Monitor.SetLanguage(lang)
+		return "OK"
+	}
+	return "Monitor not ready"
+}
+
 func (a *App) ExitApp() {
 	a.AddLog("Exiting SMSCat...")
 	// Quit the Wails application properly

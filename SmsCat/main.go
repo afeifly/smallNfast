@@ -28,8 +28,8 @@ import (
 //go:embed frontend/*
 var assets embed.FS
 
-//go:embed SMSLogo.ico
-var iconBytes []byte
+//go:embed SMSLogo.png
+var windowIcon []byte
 
 var (
 	kernel32         = windows.NewLazySystemDLL("kernel32.dll")
@@ -41,7 +41,7 @@ var (
 
 func checkSingleInstance() bool {
 	lockFile := filepath.Join(os.TempDir(), "SMSCat.lock")
-	
+
 	// First, use Windows mutex as primary check (most reliable)
 	mutexName := "Global\\SMSCat_SingleInstance_Mutex"
 	ret, _, err := procCreateMutexW.Call(
@@ -49,12 +49,12 @@ func checkSingleInstance() bool {
 		0, // bInitialOwner (FALSE)
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(mutexName))),
 	)
-	
+
 	if ret == 0 {
 		// Failed to create mutex - allow it to run (better than blocking)
 		return true
 	}
-	
+
 	// Check if mutex already existed
 	if err == windows.ERROR_ALREADY_EXISTS {
 		// Close the mutex handle we just got
@@ -67,14 +67,14 @@ func checkSingleInstance() bool {
 		messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x30) // MB_ICONWARNING
 		return false
 	}
-	
+
 	// Mutex created successfully - this is the first instance
 	// Keep mutex open for the lifetime of the app
 	appMutex = ret
-	
+
 	// Clean up any stale lock file
 	os.Remove(lockFile)
-	
+
 	// Create new lock file with current PID
 	file, err := os.OpenFile(lockFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err == nil {
@@ -82,7 +82,7 @@ func checkSingleInstance() bool {
 		file.Close()
 	}
 	// If lock file creation fails, it's not critical - mutex is the primary check
-	
+
 	return true
 }
 
@@ -99,7 +99,7 @@ func main() {
 		exeDir := filepath.Dir(exePath)
 		os.Chdir(exeDir)
 	}
-	
+
 	// Setup Logger
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -114,16 +114,16 @@ func main() {
 	defer filelogger.Close()
 
 	// Setup Wails App Bridge
-	monitorService := monitor.NewService(nil) 
+	monitorService := monitor.NewService(nil)
 	myApp := app.NewApp(monitorService)
-	
+
 	// Link App to Systray
 	trayApp = myApp
 	go systray.Run(onReady, onExit)
-	
+
 	// Log startup message to file
 	myApp.AddLog("SMSCat Starting...")
-	
+
 	// Update monitor logger to forward to UI and file
 	monitorService.LogFunc = func(msg string) {
 		sugar.Info(msg)
@@ -134,7 +134,7 @@ func main() {
 	go func() {
 		retryCount := 0
 		retryDelay := 10 * time.Second
-		
+
 		for {
 			dbErr := db.Connect("database.properties")
 			if dbErr != nil {
@@ -147,13 +147,13 @@ func main() {
 				successMsg := "Database connected successfully."
 				sugar.Info(successMsg)
 				myApp.AddLog(successMsg)
-				
+
 				// Auto-Start Monitor (Only after DB is connected)
 				myApp.AddLog("Starting monitor service...")
 				monitorService.Start()
 				myApp.AddLog("Monitor service started")
 				filelogger.Write("DEBUG: Monitor service started")
-				
+
 				break
 			}
 		}
@@ -163,20 +163,21 @@ func main() {
 	myApp.AddLog("Initializing Wails application...")
 	filelogger.Write("DEBUG: About to call wails.Run")
 	sugar.Info("About to call wails.Run")
-	
+
 	err := wails.Run(&options.App{
-		Title:  "SMSCat Monitor for S4M",
-		Width:  1200,
-		Height: 800,
+		Title:     "SMSCat Monitor for S4M",
+		Icon:      windowIcon,
+		Width:     1200,
+		Height:    800,
 		MinWidth:  800,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{
-			Assets:  assets,
+			Assets: assets,
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Serve favicon
 				if r.URL.Path == "/SMSLogo.ico" || r.URL.Path == "/favicon.ico" {
-					w.Header().Set("Content-Type", "image/x-icon")
-					w.Write(iconBytes)
+					w.Header().Set("Content-Type", "image/png")
+					w.Write(windowIcon)
 					return
 				}
 				// Default asset server
@@ -197,13 +198,13 @@ func main() {
 			myApp,
 		},
 	})
-	
+
 	if err != nil {
 		errMsg := fmt.Sprintf("FATAL: Wails failed to start: %v", err)
 		myApp.AddLog(errMsg)
 		sugar.Fatal(errMsg)
 		log.Fatal("Error:", err)
 	}
-	
+
 	myApp.AddLog("Application exited")
 }

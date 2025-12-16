@@ -140,24 +140,39 @@
         .status-bar {
             width: 100%;
             margin: 0 0 10px 0;
-            padding: 0 5px;
+            padding: 10px 5px;
+            /* Added some padding */
             display: flex;
             gap: 15px;
             box-sizing: border-box;
+            background: #FFE000;
+            /* New Background */
+            border-radius: 4px;
         }
 
         .status-item {
-            background: white;
-            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.8);
+            /* Semi-transparent to blend or keep white */
+            padding: 8px 15px;
+            /* Adjust padding */
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            /* Softer shadow */
             display: flex;
             align-items: center;
             white-space: nowrap;
         }
 
+        .status-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            /* No background, no shadow */
+        }
+
         .btn-exit {
-            background: #dc3545;
+            background: #6c757d;
+            /* Soft Grey */
             color: white;
             border: none;
             padding: 8px 16px;
@@ -165,14 +180,17 @@
             cursor: pointer;
             font-size: 0.9rem;
             transition: background 0.2s;
+            white-space: nowrap;
+            /* Prevent wrapping */
         }
 
         .btn-exit:hover {
-            background: #c82333;
+            background: #5a6268;
         }
 
         .btn-restart {
-            background: #28a745;
+            background: #00AB84;
+            /* New Color */
             color: white;
             border: none;
             padding: 8px 16px;
@@ -181,10 +199,28 @@
             font-size: 0.9rem;
             transition: background 0.2s;
             margin-right: 10px;
+            white-space: nowrap;
+            /* Prevent wrapping */
         }
 
         .btn-restart:hover {
-            background: #1e7e34;
+            background: #008f6e;
+            /* Darker shade */
+        }
+
+        .btn-add {
+            background: #00AB84;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .btn-add:hover {
+            background: #008f6e;
         }
 
         .status-item label {
@@ -229,11 +265,11 @@
             <input type="checkbox" id="chk-autostart" onchange="toggleAutoStart(this)">
             <label for="chk-autostart">Auto-Start on OS Bootup</label>
         </div>
-        <div class="status-item">
+        <div class="status-actions">
             <button class="btn-restart" id="btn-restart" onclick="restartService()">Restart Service</button>
             <button class="btn-exit" id="btn-exit" onclick="exitApp()">Exit Application</button>
         </div>
-        <div class="status-item" style="margin-left: auto; padding: 5px;">
+        <div class="status-actions" style="margin-left: auto;">
             <button class="btn-lang" id="btn-lang" onclick="toggleLanguage()"
                 style="background:#6c757d; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; font-size:0.9rem;">中文</button>
         </div>
@@ -252,7 +288,7 @@
             <div class="form-group">
                 <input type="text" id="input-number" placeholder="Phone Number">
             </div>
-            <button onclick="addRecipient()">Add Recipient</button>
+            <button class="btn-add" onclick="addRecipient()">Add Recipient</button>
             <hr>
             <ul id="recipient-list"></ul>
         </div>

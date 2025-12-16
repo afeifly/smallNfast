@@ -10,7 +10,7 @@ import (
 var trayApp *app.App
 
 func onReady() {
-	systray.SetIcon(iconBytes)
+	systray.SetIcon(windowIcon)
 	systray.SetTitle("SMSCat")
 	systray.SetTooltip("SMSCat Monitor for S4M")
 
@@ -21,9 +21,9 @@ func onReady() {
 
 	mShow := systray.AddMenuItem("Show Window", "Show the main window")
 	mHide := systray.AddMenuItem("Hide Window", "Hide the main window")
-	
+
 	systray.AddSeparator()
-	
+
 	mExit := systray.AddMenuItem("Exit", "Quit the application")
 
 	go func() {

@@ -296,14 +296,14 @@ func FindModemPort() (string, error) {
 			// Found the device type key, now look for instances
 			// Path: USB\<VID&PID>
 			deviceKeyPath := fmt.Sprintf(`SYSTEM\CurrentControlSet\Enum\USB\%s`, device)
-			dk, err := registry.OpenKey(registry.LOCAL_MACHINE, deviceKeyPath, registry.ENUMERATE_SUB_KEYS|registry.READ)
-			if err != nil {
+			dk, errKey := registry.OpenKey(registry.LOCAL_MACHINE, deviceKeyPath, registry.ENUMERATE_SUB_KEYS|registry.READ)
+			if errKey != nil {
 				continue
 			}
 			defer dk.Close()
 
-			instances, err := dk.ReadSubKeyNames(-1)
-			if err != nil {
+			instances, errInst := dk.ReadSubKeyNames(-1)
+			if errInst != nil {
 				continue
 			}
 
@@ -311,14 +311,14 @@ func FindModemPort() (string, error) {
 			for _, instance := range instances {
 				// Path: USB\<VID&PID>\<Instance>\Device Parameters
 				paramPath := fmt.Sprintf(`%s\%s\Device Parameters`, deviceKeyPath, instance)
-				pk, err := registry.OpenKey(registry.LOCAL_MACHINE, paramPath, registry.QUERY_VALUE)
-				if err != nil {
+				pk, errPk := registry.OpenKey(registry.LOCAL_MACHINE, paramPath, registry.QUERY_VALUE)
+				if errPk != nil {
 					continue
 				}
-				portName, _, err := pk.GetStringValue("PortName")
+				portName, _, errVal := pk.GetStringValue("PortName")
 				pk.Close()
 
-				if err == nil && portName != "" {
+				if errVal == nil && portName != "" {
 					// VERIFY: Attempt to open the port. If it fails (e.g. unplugged), skip it.
 					// This prevents selecting stale registry entries.
 					c := &serial.Config{Name: portName, Baud: 115200, ReadTimeout: time.Millisecond * 100}

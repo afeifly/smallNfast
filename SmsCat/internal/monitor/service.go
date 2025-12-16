@@ -10,6 +10,12 @@ import (
 	"smallNfast/internal/serial"
 )
 
+// SmsTask represents a queued SMS to be sent
+type SmsTask struct {
+	Recipient string
+	Message   string
+}
+
 type Service struct {
 	DB        *db.DBConfig // active config
 	Modem     *serial.GSMModem
@@ -19,12 +25,14 @@ type Service struct {
 	PortName  string
 	IsRunning bool
 	mu        sync.Mutex
+	smsQueue  chan SmsTask
 }
 
 func NewService(logFunc func(string)) *Service {
 	return &Service{
 		stopChan: make(chan struct{}),
 		LogFunc:  logFunc,
+		smsQueue: make(chan SmsTask, 100), // Buffer of 100 SMS
 	}
 }
 
@@ -40,6 +48,10 @@ func (s *Service) Start() {
 
 	s.wg.Add(1)
 	go s.loop()
+
+	s.wg.Add(1)
+	go s.processSmsQueue() // Start SMS worker
+
 	s.log("Alarm Monitor Started")
 
 	// Auto-detect port if not set (in background to avoid blocking)
@@ -100,12 +112,21 @@ func (s *Service) loop() {
 		s.log(fmt.Sprintf("Starting monitoring from Created Date: %v", lastCheckedTime))
 	}
 
+	heartbeatCount := 0
+
 	for {
 		select {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
 			s.checkDetailedAlarms(&lastCheckedTime)
+
+			// Heartbeat every 10 ticks (30 seconds)
+			heartbeatCount++
+			if heartbeatCount >= 10 {
+				s.log("Monitor Heartbeat: Running detailed scan...")
+				heartbeatCount = 0
+			}
 		}
 	}
 }
@@ -115,6 +136,7 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 
 	// Complex query as requested
 	// SELECT ... FROM ... WHERE ah.createddate > ? AND as_tab.sms = 1
+	// ALIAS 'description' -> '..._description' to match DTO
 	query := `
 		SELECT
 			ah.createddate,
@@ -122,8 +144,8 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 			as_tab.threshold, as_tab.hysteresis, as_tab.direction,
 			c.channel_description, c.unit_index, c.unit_in_ascii,
 			c.measurement_value,
-			s.description,
-			l.description
+			s.description AS sensor_description,
+			l.description AS location_description
 		FROM alarm_historys ah
 		JOIN alarm_settings as_tab ON ah.alarm_setting_id = as_tab.alarm_setting_id
 		JOIN channels c ON as_tab.channel_id = c.channel_id
@@ -193,21 +215,45 @@ func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 		details.MeasurementValue,
 	)
 
-	// 3. Send
-	s.log(fmt.Sprintf("Sending SMS to %d recipients...", len(recipients)))
-
-	if s.Modem == nil {
-		s.log("Error: No modem configured/initialized")
-		return
-	}
+	// 3. Queue Send
+	s.log(fmt.Sprintf("Queueing SMS for %d recipients...", len(recipients)))
 
 	for _, number := range recipients {
-		// In a real scenario, we might retry or queue them
-		err := s.Modem.SendSMS(number, msg)
-		if err != nil {
-			s.log(fmt.Sprintf("Failed to send to %s: %v", number, err))
-		} else {
-			s.log(fmt.Sprintf("Sent to %s", number))
+		// Non-blocking send or drop if full (though buffer 100 is large)
+		select {
+		case s.smsQueue <- SmsTask{Recipient: number, Message: msg}:
+		default:
+			s.log("Error: SMS Queue Full! Dropping message.")
+		}
+	}
+}
+
+func (s *Service) processSmsQueue() {
+	defer s.wg.Done()
+	s.log("SMS Queue Worker Started")
+
+	for {
+		select {
+		case <-s.stopChan:
+			s.log("SMS Queue Worker Stopped")
+			return
+
+		case task := <-s.smsQueue:
+			if s.Modem == nil {
+				s.log("Error: No modem configured, skipping queued SMS")
+				continue
+			}
+
+			s.log(fmt.Sprintf("Processing SMS for %s...", task.Recipient))
+			err := s.Modem.SendSMS(task.Recipient, task.Message)
+			if err != nil {
+				s.log(fmt.Sprintf("Failed to send to %s: %v", task.Recipient, err))
+			} else {
+				s.log(fmt.Sprintf("Sent to %s", task.Recipient))
+			}
+
+			// Optional: Small delay between messages to be polite to the modem/network
+			time.Sleep(2 * time.Second)
 		}
 	}
 }

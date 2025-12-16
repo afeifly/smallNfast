@@ -41,8 +41,8 @@ func (a *App) AddLog(msg string) {
 	a.logMu.Lock()
 	defer a.logMu.Unlock()
 
-	// Keep last 1000 logs
-	if len(a.LogStore) > 1000 {
+	// Keep last 300 logs (per user request)
+	if len(a.LogStore) > 300 {
 		a.LogStore = a.LogStore[1:]
 	}
 	a.LogStore = append(a.LogStore, msg)

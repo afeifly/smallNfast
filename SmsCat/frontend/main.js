@@ -30,6 +30,11 @@ function appendLog(msg) {
 
     // Prepend to make latest appear on top
     logContainer.insertBefore(div, logContainer.firstChild);
+
+    // Limit to 300 items
+    if (logContainer.children.length > 300) {
+        logContainer.removeChild(logContainer.lastChild);
+    }
 }
 
 // Track last log count to only show new logs

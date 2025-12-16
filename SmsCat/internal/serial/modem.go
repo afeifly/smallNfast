@@ -81,10 +81,14 @@ func (g *GSMModem) Connect() error {
 		return fmt.Errorf("failed to set text mode: %w", err)
 	}
 	// 6. Character Set
-	if err := g.sendCommand("AT+CSCS=\"UTF-8\"", "OK"); err != nil {
-		g.log("Warning: CSCS=UTF-8 failed")
+	if err := g.sendCommand("AT+CSCS=\"UCS2\"", "OK"); err != nil {
+		g.log("Warning: CSCS=UCS2 failed")
 	}
-	// 7. Prefer Packet Domain
+	// 7. Text Mode Parameters (Unicode/Class 0)
+	if err := g.sendCommand("AT+CSMP=17,167,0,8", "OK"); err != nil {
+		g.log("Warning: CSMP=17,167,0,8 failed")
+	}
+	// 8. Prefer Packet Domain
 	if err := g.sendCommand("AT+CGSMS=2", "OK"); err != nil {
 		g.log("Warning: CGSMS=2 failed")
 	}
@@ -148,8 +152,18 @@ func (g *GSMModem) sendCommand(cmd string, expect string) error {
 	return nil
 }
 
+// encodeUCS2 converts a string to UCS2 Hex string (Big Endian)
+func encodeUCS2(s string) string {
+	runes := []rune(s)
+	var sb strings.Builder
+	for _, r := range runes {
+		sb.WriteString(fmt.Sprintf("%04X", r))
+	}
+	return sb.String()
+}
+
 // SendSMS sends a text message to the specified number with robust reading
-func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
+func (g *GSMModem) SendSMS(number string, text string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -167,12 +181,16 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 		return err
 	}
 
-	// 1. Send Message Command
-	cmd := fmt.Sprintf("AT+CMGS=\"%s\"", encodedNumber)
-	g.log(fmt.Sprintf("CMD: %s", cmd))
+	// ENCODE TO UCS2 HEX
+	encodedNumber := encodeUCS2(number)
+	encodedText := encodeUCS2(text)
 
-	// Flush by reading anything pending (hacky but useful if previous err)
-	// (Skipped, relying on main loop)
+	// 1. Send Message Command
+	// Note: encodedNumber is Hex now
+	cmd := fmt.Sprintf("AT+CMGS=\"%s\"", encodedNumber)
+	g.log(fmt.Sprintf("CMD: %s", cmd)) // Log the hex command
+
+	// ... rest of logic relies on writing to port
 
 	_, err := g.port.Write([]byte(cmd + "\r"))
 	if err != nil {
@@ -180,7 +198,6 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 	}
 
 	// 2. Wait for Prompt '>'
-	// Loop read for up to 3 seconds
 	gotPrompt := false
 	startTime := time.Now()
 	for time.Since(startTime) < 3*time.Second {
@@ -188,20 +205,17 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 		n, err := g.port.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
-			// Log chunk?
-			// g.log(fmt.Sprintf("DEBUG: %q", chunk))
 			if strings.Contains(chunk, ">") {
 				gotPrompt = true
 				g.log("PROMPT: >")
 				break
 			}
-			// If we see ERROR/CMS ERROR, fail early
 			if strings.Contains(chunk, "ERROR") {
 				return fail(fmt.Errorf("error before prompt: %s", chunk))
 			}
 		}
 		if err != nil {
-			// Timeout expected if waiting
+			// Timeout expected
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -211,9 +225,9 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 	}
 
 	// 3. Send Body + Ctrl+Z
-	g.log("Sending SMS Body...")
-	// Write Text
-	_, err = g.port.Write([]byte(text))
+	g.log("Sending SMS Body (UCS2)...")
+	// Write Text (HEX)
+	_, err = g.port.Write([]byte(encodedText))
 	if err != nil {
 		return fail(fmt.Errorf("write text failed: %w", err))
 	}
@@ -224,7 +238,6 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 	}
 
 	// 4. Wait for Confirmation
-	// Loop read for up to 20 seconds
 	g.log("Waiting for confirmation...")
 	startWait := time.Now()
 	for time.Since(startWait) < 20*time.Second {

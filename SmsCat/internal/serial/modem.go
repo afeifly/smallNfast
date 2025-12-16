@@ -229,7 +229,7 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 	startWait := time.Now()
 	for time.Since(startWait) < 20*time.Second {
 		buf := make([]byte, 256)
-		n, err := g.port.Read(buf)
+		n, _ := g.port.Read(buf)
 		if n > 0 {
 			resp := string(buf[:n])
 			logResp := strings.ReplaceAll(resp, "\r", "")

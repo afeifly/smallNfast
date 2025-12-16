@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tarm/serial"
@@ -17,78 +18,119 @@ const (
 type GSMModem struct {
 	PortName string
 	BaudRate int
+	port     *serial.Port
+	mu       sync.Mutex
 }
 
 func NewGSMModem(port string) *GSMModem {
 	return &GSMModem{
 		PortName: port,
-		BaudRate: 115200, // Updated to match user config
+		BaudRate: 115200,
 	}
 }
 
-// SendSMS sends a text message to the specified number
-func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
+// Connect opens the serial port and initializes the modem
+func (g *GSMModem) Connect() error {
+	// If already open, do nothing
+	if g.port != nil {
+		return nil
+	}
+
 	c := &serial.Config{Name: g.PortName, Baud: g.BaudRate, ReadTimeout: time.Second * 3}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		return fmt.Errorf("failed to open port %s: %w", g.PortName, err)
 	}
-	defer s.Close()
+	g.port = s
 
-	// Helper to send command and wait for expected response
-	sendCommand := func(cmd string, expect string) error {
-		_, err := s.Write([]byte(cmd + "\r"))
-		if err != nil {
-			return err
-		}
-		time.Sleep(200 * time.Millisecond) // Give modem time to process
-
-		buf := make([]byte, 128)
-		n, err := s.Read(buf)
-		if err != nil {
-			return err
-		}
-		response := string(buf[:n])
-		if !strings.Contains(response, expect) {
-			return fmt.Errorf("unexpected response for %s: %s", cmd, response)
-		}
-		return nil
-	}
-
-	// 1. Check AT
-	if err := sendCommand("AT", "OK"); err != nil {
+	// Initialize commands
+	if err := g.sendCommand("AT", "OK"); err != nil {
+		g.Close()
 		return fmt.Errorf("modem check failed: %w", err)
 	}
-
-	// 2. Set Text Mode
-	if err := sendCommand("AT+CMGF=1", "OK"); err != nil {
+	if err := g.sendCommand("AT+CMGF=1", "OK"); err != nil {
+		g.Close()
 		return fmt.Errorf("failed to set text mode: %w", err)
 	}
 
-	// 3. Send Message Command
-	_, err = s.Write([]byte(fmt.Sprintf("AT+CMGS=\"%s\"\r", encodedNumber)))
+	return nil
+}
+
+// Close closes the serial port
+func (g *GSMModem) Close() {
+	if g.port != nil {
+		g.port.Close()
+		g.port = nil
+	}
+}
+
+// sendCommand helper (internal) - assumes port is open
+func (g *GSMModem) sendCommand(cmd string, expect string) error {
+	if g.port == nil {
+		return fmt.Errorf("port not open")
+	}
+
+	_, err := g.port.Write([]byte(cmd + "\r"))
 	if err != nil {
 		return err
+	}
+	time.Sleep(200 * time.Millisecond) // Give modem time to process
+
+	buf := make([]byte, 128)
+	n, err := g.port.Read(buf)
+	if err != nil {
+		return err
+	}
+	response := string(buf[:n])
+	if !strings.Contains(response, expect) {
+		return fmt.Errorf("unexpected response for %s: %s", cmd, response)
+	}
+	return nil
+}
+
+// SendSMS sends a text message to the specified number
+func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Ensure connected
+	if g.port == nil {
+		if err := g.Connect(); err != nil {
+			return err
+		}
+	}
+
+	// Helper to handle failure: close port so next retry reconnects
+	fail := func(err error) error {
+		g.Close()
+		return err
+	}
+
+	// 1. Send Message Command
+	_, err := g.port.Write([]byte(fmt.Sprintf("AT+CMGS=\"%s\"\r", encodedNumber)))
+	if err != nil {
+		return fail(fmt.Errorf("failed to write CMGS: %w", err))
 	}
 	time.Sleep(500 * time.Millisecond)
 
 	// Wait for prompt '> '
 	buf := make([]byte, 128)
-	n, err := s.Read(buf)
+	n, err := g.port.Read(buf)
 	if err != nil {
-		// Sometimes we might miss reading it if it's too fast, but usually it waits
+		// Just log, sometimes read timeout is fine if buffer empty but ready
+	} else {
 		log.Printf("Read after CMGS: %s", string(buf[:n]))
 	}
 
-	// 4. Send Content + Ctrl+Z (ASCII 26)
-	_, err = s.Write([]byte(text + string(26)))
+	// 2. Send Content + Ctrl+Z (ASCII 26)
+	_, err = g.port.Write([]byte(text + string(26)))
 	if err != nil {
-		return err
+		return fail(fmt.Errorf("failed to write content: %w", err))
 	}
 
-	// 5. Wait for sending confirmation (can take seconds)
+	// 3. Wait for sending confirmation (can take seconds)
+	// We might read here to verify OK
 	time.Sleep(3 * time.Second)
-	// We could read response here to verify "+CMGS: <id>" and "OK"
 
 	return nil
 }

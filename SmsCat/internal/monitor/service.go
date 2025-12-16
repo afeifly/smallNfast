@@ -82,6 +82,9 @@ func (s *Service) Stop() {
 
 func (s *Service) SetModemPort(port string) {
 	// If modem is changing, we might need to re-init
+	if s.Modem != nil {
+		s.Modem.Close()
+	}
 	s.PortName = port
 	s.Modem = serial.NewGSMModem(port)
 	s.log(fmt.Sprintf("Modem port set to %s", port))

@@ -122,12 +122,12 @@ func (s *Service) checkDetailedAlarms(lastTime *time.Time) {
 			as_tab.threshold, as_tab.hysteresis, as_tab.direction,
 			c.channel_description, c.unit_index, c.unit_in_ascii,
 			c.measurement_value,
-			s.sensor_description,
-			l.location_description
+			s.description,
+			l.description
 		FROM alarm_historys ah
 		JOIN alarm_settings as_tab ON ah.alarm_setting_id = as_tab.alarm_setting_id
 		JOIN channels c ON as_tab.channel_id = c.channel_id
-		JOIN sensors s ON c.sensor_id = s.sensor_id
+		JOIN sensors s ON c.logic_sensor_id = s.sensor_id
 		JOIN locations l ON s.location_id = l.location_id
 		WHERE ah.createddate > ? AND as_tab.sms = 1
 		ORDER BY ah.createddate ASC

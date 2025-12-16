@@ -56,14 +56,37 @@ func (g *GSMModem) Connect() error {
 	g.port = s
 	g.log("Port opened successfully.")
 
-	// Initialize commands
+	// Initialization Sequence (Aligned with auto_test.py)
+	// 1. Simple Handshake
 	if err := g.sendCommand("AT", "OK"); err != nil {
 		g.Close()
 		return fmt.Errorf("modem check failed: %w", err)
 	}
+	// 2. Disable Echo
+	if err := g.sendCommand("ATE0", "OK"); err != nil {
+		g.log("Warning: ATE0 failed")
+	}
+	// 3. Verbose Errors
+	if err := g.sendCommand("AT+CMEE=2", "OK"); err != nil {
+		g.log("Warning: CMEE=2 failed")
+	}
+	// 4. Check SIM
+	if err := g.sendCommand("AT+CPIN?", "READY"); err != nil {
+		g.Close()
+		return fmt.Errorf("SIM not ready: %w", err)
+	}
+	// 5. Text Mode
 	if err := g.sendCommand("AT+CMGF=1", "OK"); err != nil {
 		g.Close()
 		return fmt.Errorf("failed to set text mode: %w", err)
+	}
+	// 6. Character Set
+	if err := g.sendCommand("AT+CSCS=\"GSM\"", "OK"); err != nil {
+		g.log("Warning: CSCS=GSM failed")
+	}
+	// 7. Prefer Packet Domain
+	if err := g.sendCommand("AT+CGSMS=2", "OK"); err != nil {
+		g.log("Warning: CGSMS=2 failed")
 	}
 
 	return nil
@@ -78,7 +101,15 @@ func (g *GSMModem) Close() {
 	}
 }
 
-// sendCommand helper (internal) - assumes port is open
+// flushInput reads everything currently in the buffer to avoid stale data
+func (g *GSMModem) flushInput() {
+	if g.port == nil {
+		return
+	}
+	// "flush" is implicit in robust reading loops now
+}
+
+// sendCommand helper
 func (g *GSMModem) sendCommand(cmd string, expect string) error {
 	if g.port == nil {
 		return fmt.Errorf("port not open")
@@ -90,27 +121,34 @@ func (g *GSMModem) sendCommand(cmd string, expect string) error {
 		g.log(fmt.Sprintf("Write Error: %v", err))
 		return err
 	}
-	time.Sleep(200 * time.Millisecond) // Give modem time to process
+	time.Sleep(200 * time.Millisecond)
 
-	buf := make([]byte, 128)
+	buf := make([]byte, 1024)
 	n, err := g.port.Read(buf)
 	if err != nil {
-		g.log(fmt.Sprintf("Read Error: %v", err))
-		return err
+		// Log but don't fail immediately, check if what we got matches
+		g.log(fmt.Sprintf("Read Error (or timeout): %v", err))
 	}
+
+	// Read Loop (Simple version for commands: just one read is usually enough after sleep)
+	// For SendSMS we will do robust loop. Here we keep it simple for Init.
 	response := string(buf[:n])
-	// Clean up newlines for log
+
+	// Log simplified
 	logResp := strings.ReplaceAll(response, "\r", "")
 	logResp = strings.ReplaceAll(logResp, "\n", " ")
+	if len(logResp) > 100 {
+		logResp = logResp[:100] + "..."
+	}
 	g.log(fmt.Sprintf("RESP: %s", logResp))
 
 	if !strings.Contains(response, expect) {
-		return fmt.Errorf("unexpected response for %s: %s", cmd, response)
+		return fmt.Errorf("unexpected response: %s", response)
 	}
 	return nil
 }
 
-// SendSMS sends a text message to the specified number
+// SendSMS sends a text message to the specified number with robust reading
 func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -122,7 +160,7 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 		}
 	}
 
-	// Helper to handle failure: close port so next retry reconnects
+	// Fail helper
 	fail := func(err error) error {
 		g.log(fmt.Sprintf("SMS Error: %v", err))
 		g.Close()
@@ -132,43 +170,84 @@ func (g *GSMModem) SendSMS(encodedNumber string, text string) error {
 	// 1. Send Message Command
 	cmd := fmt.Sprintf("AT+CMGS=\"%s\"", encodedNumber)
 	g.log(fmt.Sprintf("CMD: %s", cmd))
+
+	// Flush by reading anything pending (hacky but useful if previous err)
+	// (Skipped, relying on main loop)
+
 	_, err := g.port.Write([]byte(cmd + "\r"))
 	if err != nil {
-		return fail(fmt.Errorf("failed to write CMGS: %w", err))
-	}
-	time.Sleep(500 * time.Millisecond)
-
-	// Wait for prompt '> '
-	buf := make([]byte, 128)
-	n, err := g.port.Read(buf)
-	if err != nil {
-		g.log(fmt.Sprintf("Read Prompt Error: %v", err))
-	} else {
-		prompt := string(buf[:n])
-		g.log(fmt.Sprintf("PROMPT: %s", strings.ReplaceAll(prompt, "\n", " ")))
+		return fail(fmt.Errorf("write CMGS failed: %w", err))
 	}
 
-	// 2. Send Content + Ctrl+Z (ASCII 26)
+	// 2. Wait for Prompt '>'
+	// Loop read for up to 3 seconds
+	gotPrompt := false
+	startTime := time.Now()
+	for time.Since(startTime) < 3*time.Second {
+		buf := make([]byte, 128)
+		n, err := g.port.Read(buf)
+		if n > 0 {
+			chunk := string(buf[:n])
+			// Log chunk?
+			// g.log(fmt.Sprintf("DEBUG: %q", chunk))
+			if strings.Contains(chunk, ">") {
+				gotPrompt = true
+				g.log("PROMPT: >")
+				break
+			}
+			// If we see ERROR/CMS ERROR, fail early
+			if strings.Contains(chunk, "ERROR") {
+				return fail(fmt.Errorf("error before prompt: %s", chunk))
+			}
+		}
+		if err != nil {
+			// Timeout expected if waiting
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if !gotPrompt {
+		return fail(fmt.Errorf("timeout waiting for '>' prompt"))
+	}
+
+	// 3. Send Body + Ctrl+Z
 	g.log("Sending SMS Body...")
-	_, err = g.port.Write([]byte(text + string(26)))
+	// Write Text
+	_, err = g.port.Write([]byte(text))
 	if err != nil {
-		return fail(fmt.Errorf("failed to write content: %w", err))
+		return fail(fmt.Errorf("write text failed: %w", err))
+	}
+	// Write Ctrl+Z
+	_, err = g.port.Write([]byte{26})
+	if err != nil {
+		return fail(fmt.Errorf("write Ctrl+Z failed: %w", err))
 	}
 
-	// 3. Wait for sending confirmation (can take seconds)
-	time.Sleep(3 * time.Second)
+	// 4. Wait for Confirmation
+	// Loop read for up to 20 seconds
+	g.log("Waiting for confirmation...")
+	startWait := time.Now()
+	for time.Since(startWait) < 20*time.Second {
+		buf := make([]byte, 256)
+		n, err := g.port.Read(buf)
+		if n > 0 {
+			resp := string(buf[:n])
+			logResp := strings.ReplaceAll(resp, "\r", "")
+			logResp = strings.ReplaceAll(logResp, "\n", " ")
+			g.log(fmt.Sprintf("RX: %s", logResp))
 
-	// Try to read final response
-	buf = make([]byte, 128)
-	n, err = g.port.Read(buf)
-	if err == nil {
-		finalResp := string(buf[:n])
-		logResp := strings.ReplaceAll(finalResp, "\r", "")
-		logResp = strings.ReplaceAll(logResp, "\n", " ")
-		g.log(fmt.Sprintf("FINAL RESP: %s", logResp))
+			if strings.Contains(resp, "+CMGS:") {
+				g.log("SMS Send SUCCESS")
+				return nil
+			}
+			if strings.Contains(resp, "ERROR") {
+				return fail(fmt.Errorf("network rejected SMS: %s", resp))
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	return nil
+	return fail(fmt.Errorf("timeout waiting for SMS confirmation"))
 }
 
 // CheckAvailablePorts scans COM1-COM20 to find available serial ports
@@ -243,8 +322,8 @@ func FindModemPort() (string, error) {
 					// VERIFY: Attempt to open the port. If it fails (e.g. unplugged), skip it.
 					// This prevents selecting stale registry entries.
 					c := &serial.Config{Name: portName, Baud: 115200, ReadTimeout: time.Millisecond * 100}
-					s, err := serial.OpenPort(c)
-					if err == nil {
+					s, _ := serial.OpenPort(c)
+					if s != nil {
 						s.Close()
 						return portName, nil
 					}

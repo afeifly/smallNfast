@@ -28,6 +28,9 @@ import (
 //go:embed frontend/*
 var assets embed.FS
 
+//go:embed SMSLogo.ico
+var iconBytes []byte
+
 //go:embed SMSLogo.png
 var windowIcon []byte
 
@@ -166,7 +169,6 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:     "SMSCat Monitor for S4M",
-		Icon:      windowIcon,
 		Width:     1200,
 		Height:    800,
 		MinWidth:  800,
@@ -176,6 +178,11 @@ func main() {
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Serve favicon
 				if r.URL.Path == "/SMSLogo.ico" || r.URL.Path == "/favicon.ico" {
+					w.Header().Set("Content-Type", "image/x-icon")
+					w.Write(iconBytes)
+					return
+				}
+				if r.URL.Path == "/SMSLogo.png" {
 					w.Header().Set("Content-Type", "image/png")
 					w.Write(windowIcon)
 					return

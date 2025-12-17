@@ -2,6 +2,7 @@ package db
 
 import (
 	"bufio"
+	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -157,16 +158,17 @@ type AlarmDetailDTO struct {
 
 // GetMaxCreatedDate returns the max createddate or NOW() if empty
 func GetMaxCreatedDate() (time.Time, error) {
-	var maxTime *time.Time
+	var result sql.NullTime
 	// SELECT MAX(createddate) FROM alarm_historys
-	err := DB.Model(&AlarmHistorys{}).Select("MAX(createddate)").Scan(&maxTime).Error
+	// Using sql.NullTime handles the NULL return (when table is empty) gracefully
+	err := DB.Model(&AlarmHistorys{}).Select("MAX(createddate)").Scan(&result).Error
 	if err != nil {
 		return time.Now(), err
 	}
-	if maxTime == nil {
+	if !result.Valid {
 		return time.Now(), nil
 	}
-	return *maxTime, nil
+	return result.Time, nil
 }
 
 // FetchActiveRecipients returns a list of phone numbers from active SmsRecord

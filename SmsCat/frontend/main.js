@@ -50,7 +50,7 @@ const i18n = {
         relaunch: "重启应用",
         addRecipient: "添加接收人",
         phonePlaceholder: "电话号码",
-        toggleLang: "Switch to English",
+        langBtn: "English",
         helpTitle: "SMSCat 说明指南",
         logs: "运行日志",
         recipients: "接收人",

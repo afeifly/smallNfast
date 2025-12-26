@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+
 	"strings"
 	"time"
+
+	"smallNfast/internal/txtstore"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -173,32 +176,8 @@ func GetMaxCreatedDate() (time.Time, error) {
 
 // FetchActiveRecipients returns a list of phone numbers from active SmsRecord
 // requirement: recipient format '18900001111&13311112222'
+// FetchActiveRecipients returns a list of phone numbers from local text file
 func FetchActiveRecipients() ([]string, error) {
-	var records []SmsModel
-	if err := DB.Find(&records).Error; err != nil {
-		return nil, err
-	}
-
-	var phones []string
-	for _, r := range records {
-		if r.Recipient != "" {
-			parts := strings.Split(r.Recipient, "&")
-			for _, p := range parts {
-				p = strings.TrimSpace(p)
-				if p != "" {
-					phones = append(phones, p)
-				}
-			}
-		}
-	}
-	// unique
-	seen := make(map[string]bool)
-	var uniq []string
-	for _, p := range phones {
-		if !seen[p] {
-			seen[p] = true
-			uniq = append(uniq, p)
-		}
-	}
-	return uniq, nil
+	// Refactored to use local file store
+	return txtstore.LoadRecipients()
 }

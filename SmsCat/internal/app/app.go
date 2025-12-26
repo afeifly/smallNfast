@@ -9,6 +9,7 @@ import (
 	"smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 	"smallNfast/internal/serial"
+	"smallNfast/internal/txtstore"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -71,32 +72,33 @@ func (a *App) GetLogs() []string {
 }
 
 func (a *App) GetRecipients() ([]db.SmsModel, error) {
-	var recipients []db.SmsModel
-	if err := db.DB.Find(&recipients).Error; err != nil {
+	numbers, err := txtstore.LoadRecipients()
+	if err != nil {
 		return nil, err
+	}
+
+	var recipients []db.SmsModel
+	for i, n := range numbers {
+		recipients = append(recipients, db.SmsModel{
+			SmsID:     int64(i), // Use index as fake ID
+			Recipient: n,
+			PortName:  "File", // Dummy value
+			Actived:   true,
+		})
 	}
 	return recipients, nil
 }
 
 func (a *App) AddRecipient(name, number string) error {
-	var count int64
-	if err := db.DB.Model(&db.SmsModel{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count >= 30 {
-		return fmt.Errorf("recipient limit reached (max 30)")
-	}
-
-	rec := db.SmsModel{
-		PortName:  name, // Reusing column 'port_name' for Name/Description as per user implication or just putting port_name
-		Recipient: number,
-		Actived:   true,
-	}
-	return db.DB.Create(&rec).Error
+	// Name is ignored in file based approach, or we could append it?
+	// User just said "users phone numbers", usually implies raw numbers.
+	// We'll just store the number for now.
+	return txtstore.AddRecipient(number)
 }
 
 func (a *App) DeleteRecipient(id int64) error {
-	return db.DB.Delete(&db.SmsModel{}, id).Error
+	// ID is the index in the file
+	return txtstore.DeleteRecipientByIndex(int(id))
 }
 
 func (a *App) CheckPorts() []string {

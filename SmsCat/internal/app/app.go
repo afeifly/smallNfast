@@ -9,7 +9,6 @@ import (
 	"smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
 	"smallNfast/internal/serial"
-	"smallNfast/internal/txtstore"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -72,33 +71,22 @@ func (a *App) GetLogs() []string {
 }
 
 func (a *App) GetRecipients() ([]db.SmsModel, error) {
-	numbers, err := txtstore.LoadRecipients()
-	if err != nil {
-		return nil, err
-	}
-
-	var recipients []db.SmsModel
-	for i, n := range numbers {
-		recipients = append(recipients, db.SmsModel{
-			SmsID:     int64(i), // Use index as fake ID
-			Recipient: n,
-			PortName:  "File", // Dummy value
-			Actived:   true,
-		})
-	}
-	return recipients, nil
+	return db.GetRecipients()
 }
 
 func (a *App) AddRecipient(name, number string) error {
-	// Name is ignored in file based approach, or we could append it?
-	// User just said "users phone numbers", usually implies raw numbers.
-	// We'll just store the number for now.
-	return txtstore.AddRecipient(number)
+	// Map name to PortName, number to Recipient
+	// Default Actived to true
+	sms := db.SmsModel{
+		PortName:  name,
+		Recipient: number,
+		Actived:   true,
+	}
+	return db.AddRecipient(sms)
 }
 
 func (a *App) DeleteRecipient(id int64) error {
-	// ID is the index in the file
-	return txtstore.DeleteRecipientByIndex(int(id))
+	return db.DeleteRecipient(id)
 }
 
 func (a *App) CheckPorts() []string {

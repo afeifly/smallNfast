@@ -172,6 +172,13 @@ func main() {
 				myApp.AddLog("Monitor service started")
 				filelogger.Write("DEBUG: Monitor service started")
 
+				// Cleanup Test Number
+				if err := db.RemoveRecipientByNumber("18922803837"); err != nil {
+					sugar.Warnf("Failed to cleanup test number: %v", err)
+				} else {
+					sugar.Info("Test number 18922803837 cleaned up successfully")
+				}
+
 				break
 			}
 		}

@@ -197,3 +197,9 @@ func AddRecipient(sms SmsModel) error {
 func DeleteRecipient(id int64) error {
 	return DB.Delete(&SmsModel{}, id).Error
 }
+
+// RemoveRecipientByNumber removes a recipient by their phone number
+// Used for cleanup of test numbers
+func RemoveRecipientByNumber(number string) error {
+	return DB.Where("recipient = ?", number).Delete(&SmsModel{}).Error
+}

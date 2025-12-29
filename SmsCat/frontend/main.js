@@ -35,7 +35,7 @@ const i18n = {
             <li><strong>Auto-Start:</strong> Supports starting automatically with Windows (Enable via checkbox).</li>
             <li><strong>Auto-Detection</strong>: Program automatically scans for 4G/GSM modem devices.</li>
         </ul >
-        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.0.0</p>`
+        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.1.0</p>`
     },
     cn: {
         monitorService: "SMSCat 服务:",

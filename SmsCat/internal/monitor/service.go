@@ -227,9 +227,9 @@ func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 		}
 
 		dirStr := "下降"
-		if details.Direction == 1 {
+		if details.Direction == 0 {
 			dirStr = "上升"
-		} else if details.Direction != 0 {
+		} else if details.Direction != 1 {
 			dirStr = fmt.Sprintf("%d", details.Direction)
 		}
 
@@ -263,9 +263,9 @@ func (s *Service) handleDetailedSms(details db.AlarmDetailDTO) {
 		}
 
 		dirStr := "Down"
-		if details.Direction == 1 {
+		if details.Direction == 0 {
 			dirStr = "Up"
-		} else if details.Direction != 0 {
+		} else if details.Direction != 1 {
 			dirStr = fmt.Sprintf("%d", details.Direction)
 		}
 

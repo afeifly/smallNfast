@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+
 	"strings"
 	"time"
 
@@ -174,31 +175,31 @@ func GetMaxCreatedDate() (time.Time, error) {
 // FetchActiveRecipients returns a list of phone numbers from active SmsRecord
 // requirement: recipient format '18900001111&13311112222'
 func FetchActiveRecipients() ([]string, error) {
-	var records []SmsModel
-	if err := DB.Find(&records).Error; err != nil {
-		return nil, err
-	}
+	var recipients []string
+	// Only fetch active recipients
+	err := DB.Model(&SmsModel{}).Where("actived = ?", true).Pluck("recipient", &recipients).Error
+	return recipients, err
+}
 
-	var phones []string
-	for _, r := range records {
-		if r.Recipient != "" {
-			parts := strings.Split(r.Recipient, "&")
-			for _, p := range parts {
-				p = strings.TrimSpace(p)
-				if p != "" {
-					phones = append(phones, p)
-				}
-			}
-		}
-	}
-	// unique
-	seen := make(map[string]bool)
-	var uniq []string
-	for _, p := range phones {
-		if !seen[p] {
-			seen[p] = true
-			uniq = append(uniq, p)
-		}
-	}
-	return uniq, nil
+// GetRecipients returns all recipients from the database
+func GetRecipients() ([]SmsModel, error) {
+	var recipients []SmsModel
+	result := DB.Find(&recipients)
+	return recipients, result.Error
+}
+
+// AddRecipient adds a new recipient to the database
+func AddRecipient(sms SmsModel) error {
+	return DB.Create(&sms).Error
+}
+
+// DeleteRecipient removes a recipient by ID
+func DeleteRecipient(id int64) error {
+	return DB.Delete(&SmsModel{}, id).Error
+}
+
+// RemoveRecipientByNumber removes a recipient by their phone number
+// Used for cleanup of test numbers
+func RemoveRecipientByNumber(number string) error {
+	return DB.Where("recipient = ?", number).Delete(&SmsModel{}).Error
 }

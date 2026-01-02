@@ -71,32 +71,22 @@ func (a *App) GetLogs() []string {
 }
 
 func (a *App) GetRecipients() ([]db.SmsModel, error) {
-	var recipients []db.SmsModel
-	if err := db.DB.Find(&recipients).Error; err != nil {
-		return nil, err
-	}
-	return recipients, nil
+	return db.GetRecipients()
 }
 
 func (a *App) AddRecipient(name, number string) error {
-	var count int64
-	if err := db.DB.Model(&db.SmsModel{}).Count(&count).Error; err != nil {
-		return err
-	}
-	if count >= 30 {
-		return fmt.Errorf("recipient limit reached (max 30)")
-	}
-
-	rec := db.SmsModel{
-		PortName:  name, // Reusing column 'port_name' for Name/Description as per user implication or just putting port_name
+	// Map name to PortName, number to Recipient
+	// Default Actived to true
+	sms := db.SmsModel{
+		PortName:  name,
 		Recipient: number,
 		Actived:   true,
 	}
-	return db.DB.Create(&rec).Error
+	return db.AddRecipient(sms)
 }
 
 func (a *App) DeleteRecipient(id int64) error {
-	return db.DB.Delete(&db.SmsModel{}, id).Error
+	return db.DeleteRecipient(id)
 }
 
 func (a *App) CheckPorts() []string {

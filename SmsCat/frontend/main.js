@@ -35,7 +35,7 @@ const i18n = {
             <li><strong>Auto-Start:</strong> Supports starting automatically with Windows (Enable via checkbox).</li>
             <li><strong>Auto-Detection</strong>: Program automatically scans for 4G/GSM modem devices.</li>
         </ul >
-        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.0.0</p>`
+        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.1.0</p>`
     },
     cn: {
         monitorService: "SMSCat 服务:",
@@ -50,8 +50,11 @@ const i18n = {
         relaunch: "重启应用",
         addRecipient: "添加接收人",
         phonePlaceholder: "电话号码",
-        toggleLang: "Switch to English",
+        langBtn: "English",
         helpTitle: "SMSCat 说明指南",
+        logs: "运行日志",
+        recipients: "接收人",
+        exit: "退出",
         helpBody: `
         <ul style="text-align: left; margin-bottom: 10px;">
         <li><strong>安装</strong>: 请确保程序位于 "S4M" 文件夹中.</li>
@@ -117,6 +120,14 @@ async function pollLogs() {
 window.onload = async () => {
     try {
         await loadRecipients();
+
+        // Check if recipients exist, if not warn user
+        const list = await callBackend('GetRecipients');
+        if (!list || list.length === 0) {
+            const warningMsg = currentLang === 'cn' ? "请配置接收短信的手机号码!" : "Please enter your mobile phone number to receive alerts.";
+            alert(warningMsg);
+        }
+
         await updateStatus();
 
         // Poll logs every 1 second to show runtime logs in UI

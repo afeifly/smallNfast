@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	QuectelVIDPID = "VID_2C7C&PID_6002"
+	QuectelVID = "VID_2C7C"
 )
 
 type GSMModem struct {
@@ -297,7 +297,7 @@ func FindModemPort() (string, error) {
 
 	for _, device := range devices {
 		// Check for our VID/PID
-		if strings.Contains(strings.ToUpper(device), QuectelVIDPID) {
+		if strings.Contains(strings.ToUpper(device), QuectelVID) {
 
 			// Filter for MI_03 interface (AT command interface)
 			// The "MI_03" part is in the Device ID (Key Name), NOT the Instance ID.

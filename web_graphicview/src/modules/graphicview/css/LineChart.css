@@ -1,0 +1,171 @@
+#line-chart {
+  position: absolute;
+  top: 44px;
+  bottom: 0px;
+  width: 100%;
+  /* height: 100%; */
+  background-color: #ffffff;
+  transition: left 300ms;
+}
+
+.chart-placeholder {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #f6f6f6;
+  visibility: hidden;
+  opacity: 0;
+  transition: 500ms;
+}
+
+.chart-placeholder[data-status=active] {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* .x-placeholder,
+.y-placeholder {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.x-placeholder {
+  position: absolute;
+  left: 56px;
+  bottom: 78px;
+  width: 12px;
+  height: calc(100% - 150px);
+}
+
+.y-placeholder {
+  position: absolute;
+  left: 56px;
+  bottom: 64px;
+  height: 12px;
+  width: calc(100% - 150px);
+} */
+
+.no-data-tip {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* width: 240px;
+  height: 64px; */
+  padding: 32px 40px;
+  margin-top: -32px;
+  color: #aaaaaa;
+  font-size: 20px;
+  /* font-weight: bold; */
+  /* background-color: rgba(255, 255, 255, 0.75); */
+  border: 2px solid #dddddd;
+  border-radius: 4px;
+  text-align: center;
+}
+
+#line-chart .top-bar {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  left: 0;
+  padding-left: 24px;
+  /* width: 100%; */
+  display: flex;
+  align-items: center;
+  visibility: visible;
+}
+
+.top-bar .right-area {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.scale-actions {
+  position: absolute;
+  display: flex;
+  top: 16px;
+  right: 128px;
+  visibility: hidden;
+}
+
+.scale-actions[data-status=active] {
+  visibility: visible
+}
+
+
+.channel-list-button {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin: 0 16px 0 32px; 
+  /* top: 36px;
+  left: 16px; */
+  background:url(../assets/menu.svg) center no-repeat;
+  background-size: 16px 16px;
+  opacity: 0.5;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: 200ms;
+  z-index: 1;
+}
+
+.channel-list-button:hover {
+  background-color: rgba(0, 0, 0, 0.075);
+  opacity: 1;
+}
+
+.channel-list-button:active {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+
+#line-chart svg {
+  /* background-color: azure; */
+}
+
+/* #line-container path {
+  shape-rendering: geometricPrecision;
+} */
+
+/* #line-container {
+  position: absolute;
+  background-color: rgba(0, 0, 0, 0.025);
+} */
+
+.loading-back {
+  fill: rgba(0, 0, 0, 0.0);
+}
+
+.y-axis {
+  cursor: pointer;
+}
+
+.y-axis-background {
+  opacity: 0;
+}
+
+.y-axis-background:hover {
+  opacity: 0.15;
+  transition: opacity 200ms;
+}
+
+
+#export-image-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+  visibility: hidden;
+}
+
+#export-image-container[data-status=active] {
+  visibility: visible;
+} 

@@ -1,0 +1,72 @@
+.color-picker {
+  width: 292px;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.color-group {
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+
+.color-cell {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  margin: 0 4px 1px 4px;
+  cursor: pointer;
+}
+
+.color-cell:hover {
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.75) inset;
+}
+
+.color-cell[data-status=selected]:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 24px;
+  background:url(../assets/selected.svg) center 3px no-repeat;
+}
+
+.color-picker-box {
+  position: relative;
+  width: 64px;
+  height: 32px;
+  /* margin-left: 16px; */
+  border: 1px solid #888;
+  background-color: #ffffff;
+}
+
+.color-picker-box:hover {
+  border-color: #666;
+}
+
+.color-board {
+  position: fixed;
+  padding: 0 0 8px 4px;
+  z-index: 10;
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  visibility: hidden;
+}
+
+.color-board[data-status=active] {
+  visibility: visible;
+}
+
+
+.color-picker-btn {
+  position: relative;
+  margin: 4px;
+  width: 54px;
+  height: 22px;
+  border: 1px solid #aaa;
+  background-color: #ffffff;
+  cursor: pointer;
+}

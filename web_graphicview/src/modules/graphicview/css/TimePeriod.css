@@ -1,0 +1,154 @@
+.time-period {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  bottom: -66px;
+  background-color: #424242;
+  height: 64px;
+  left: 40px;
+  right: 40px;
+  padding: 0 16px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition: bottom 300ms, visibility 300ms;
+  overflow: hidden;
+  visibility: hidden;
+  z-index: 1000;
+}
+
+.time-period[data-status=active] {
+  bottom: 16px;
+  visibility: visible;
+}
+
+.time-period-label {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+}
+
+.time-period input {
+  font-size: 13px;
+  border-radius: 4px;
+  box-shadow: inset 0 2px 2px #e9e9e9;
+  border: 1px solid #aeaeae;
+  height: 24px;
+  padding-left: 8px;
+}
+
+.time-period input:focus {
+  outline: none;
+  border-color: #aeaeae;
+  box-shadow: inset 0 2px 2px #e9e9e9, 0 0 10px 0 rgba(73, 107, 125, 0.3);
+}
+
+.time-period .field-name {
+  margin: 0 16px;
+  color: #666666;
+}
+
+.time-pickup-group {
+  display: flex;
+  align-items: center;
+  margin-top: -80px;
+  font-size: 12px;
+  visibility: hidden;
+  transition: margin-top 300ms, visibility 300ms;
+}
+
+.time-pickup-group[data-status=active] {
+  margin: 0;
+  visibility: visible;
+}
+
+#x-axis2 text {
+  fill: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
+
+#x-axis2 line,
+#x-axis2 path {
+  stroke: rgba(255, 255, 255, 0.4);
+}
+
+#time-period-brush {
+  position: absolute;
+  height: 100%;
+  width: calc(100% - 260px);
+  top: 56px;
+  left: 120px;
+  /* right: 150px; */
+  pointer-events: none;
+  transition: top 300ms, visibility 300ms;
+}
+
+#time-period-brush[data-status=active] {
+  top: 0px;
+  pointer-events: none;
+  display: block;
+  visibility: visible;
+}
+
+.x-brush .selection {
+  fill-opacity: 0.25;
+  fill: #1BAB83;
+  stroke: #1BAB83;
+  /* fill: rgba(254, 206, 0, 0.25);
+  stroke: #fece00; */
+  stroke-width: 2px;
+}
+
+
+.tp-button-container {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-items: center;
+  top: 0;
+  right: 8px;
+  height: 100%;
+}
+
+.tp-icon-button {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  /* margin: 0 4px; */
+  background-size: 32px;
+  border-radius: 24px;
+  cursor: pointer;
+}
+
+
+.tp-icon-button[data-type=switch] {
+  background: url(../assets/switch.svg) center no-repeat;
+  background-size: 28px;
+  margin-right: 4px;
+  cursor: pointer;
+}
+
+.tp-icon-button[data-type=switch]:hover {
+  background: url(../assets/switch_selected.svg) center no-repeat;
+  background-size: 28px;
+  background-color: rgba(0, 0, 0, 1);
+  cursor: pointer;
+}
+
+.tp-icon-button[data-type=close] {
+  background: url(../assets/close.svg) center no-repeat;
+  background-size: 28px;
+  cursor: pointer;
+}
+
+.tp-icon-button[data-type=close]:hover {
+  background: url(../assets/close_selected.svg) center no-repeat;
+  background-size: 28px;
+  background-color: rgba(0, 0, 0, 1);
+  cursor: pointer;
+}
+
+.tp-icon-button:hover {
+  background-color: rgba(0, 0, 0, 1);
+  opacity: 1;
+  transition: background-color 500ms, opacity 500ms;
+}

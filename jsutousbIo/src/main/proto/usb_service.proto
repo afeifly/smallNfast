@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package com.cs.usb.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.cs.usb.grpc";
+option java_outer_classname = "UsbDriverProto";
+
+service UsbDriverService {
+  // Initialize the USB device
+  rpc Connect (ConnectRequest) returns (ConnectResponse);
+  
+  // Clean disconnect
+  rpc Disconnect (Empty) returns (StatusResponse);
+  
+  // Send bytes and wait for response
+  rpc SendCommand (CommandRequest) returns (CommandResponse);
+  
+  // Heartbeat
+  rpc Ping (Empty) returns (StatusResponse);
+}
+
+message Empty {}
+
+message ConnectRequest {
+  string device_id = 1;
+}
+
+message ConnectResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message StatusResponse {
+  bool success = 1;
+}
+
+message CommandRequest {
+  bytes data = 1;
+  int32 timeout_ms = 2;
+  int32 expected_response_size = 3;
+}
+
+message CommandResponse {
+  bool success = 1;
+  bytes data = 2;
+  string error_message = 3;
+}

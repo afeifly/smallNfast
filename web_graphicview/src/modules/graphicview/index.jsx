@@ -54,80 +54,96 @@ class GraphicView extends Component {
     }
 
     let timeSelectorEnabled = true;
-    
+
     if (this.chartController.datasourceMode === 'Realtime') {
       timeSelectorEnabled = false;
     }
 
-    if(noLoggingChannels) {
+    if (noLoggingChannels) {
       actionButtonsEnabled = 'disabled';
     }
 
     return (
       <div id="graphic-view-wrapper">
-        <ChannelList ref="channelList" chartController={this.chartController}/>
+        <ChannelList ref="channelList" chartController={this.chartController} />
 
         <div className="graphic-view" ref="graphicView">
           <div className="app-window-title">
-            <span>{ intl.get('GRAPHIC_VIEW') }</span>
+            <span>{intl.get('GRAPHIC_VIEW')}</span>
 
             <div className="window-title-right-area">
               <div className="toggle-button-group" >
-                <div className="toggle-selected-mask"/>
+                <div className="toggle-selected-mask" />
                 <div className="toggle-button" data-type="realtime"
-                  onClick={ () => this.switchDataSource('realtime') }>
-                  { intl.get('REALTIME_DATA') }
+                  onClick={() => this.switchDataSource('realtime')}>
+                  {intl.get('REALTIME_DATA')}
                 </div>
                 <div className="toggle-button" data-type="history"
-                  onClick={ () => this.switchDataSource('history') }>
-                  { intl.get('HISTORY_DATA') }
+                  onClick={() => this.switchDataSource('history')}>
+                  {intl.get('HISTORY_DATA')}
                 </div>
               </div>
-              
+
               {/* Time period button */}
-              <Tooltip title={ intl.get('TIME_PERIOD') }>
+              <Tooltip title={intl.get('TIME_PERIOD')}>
                 <div>
-                  <IconButton style={ buttonStyle } 
-                    disabled={ !timeSelectorEnabled } 
-                    onClick={ () => this.showOrHideTimePeriod() }>
-                    <RangeIcon style={ iconStyle }/>
+                  <IconButton style={buttonStyle}
+                    disabled={!timeSelectorEnabled}
+                    onClick={() => this.showOrHideTimePeriod()}>
+                    <RangeIcon style={iconStyle} />
                   </IconButton>
                 </div>
               </Tooltip>
 
               {/* Print button */}
-              <Tooltip title={ intl.get('PRINT') }>
+              <Tooltip title={intl.get('PRINT')}>
                 <div>
-                  <IconButton style={ buttonStyle }  
-                    disabled={ noLoggingChannels } 
-                    onClick={ this.printChart }>
-                    <PrintIcon  style={ iconStyle }/>
+                  <IconButton style={buttonStyle}
+                    disabled={noLoggingChannels}
+                    onClick={this.printChart}>
+                    <PrintIcon style={iconStyle} />
                   </IconButton>
                 </div>
               </Tooltip>
 
               {/* Channel list button */}
-              <Tooltip title={ intl.get('CHANNEL') }>
-                <IconButton onClick={ () => this.switchChannelList() } style={ buttonStyle }>
-                  <ListAltIcon style={ iconStyle }/>
+              <Tooltip title={intl.get('CHANNEL')}>
+                <IconButton onClick={() => this.switchChannelList()} style={buttonStyle}>
+                  <ListAltIcon style={iconStyle} />
                 </IconButton>
               </Tooltip>
             </div>
 
-          </div>    
-          
-          <LineChart ref="lineChart" chartController={this.chartController}/>
-          <Loading ref="loading"/>
-          <YAxisSetting ref="ySetting"/>
-          <ChannelSetting ref="channelSetting"/>
+          </div>
+
+          <LineChart ref="lineChart" chartController={this.chartController} />
+          <Loading ref="loading" />
+          <YAxisSetting ref="ySetting" />
+          <ChannelSetting ref="channelSetting" />
         </div>
       </div>
-      
+
     );
   }
 
   componentDidMount() {
     this.graphicView = d3.select(this.refs.graphicView);
+
+    // Expose for Flutter/External control
+    window.updateChannelData = (channelId, data) => {
+      const channel = this.chartController.selectedChannels.find(c => c.id === channelId);
+      if (channel) {
+        // Mocking the structure expected by DataUtil.handleMeasurementData
+        // The API returns [ { ... } ], so we expect 'data' to be that object
+        DataUtil.handleMeasurementData(channel, data);
+        d3.select('#line-chart').dispatch('changeTimePeriod');
+      } else {
+        console.warn('Channel not found:', channelId);
+      }
+    };
+
+    // allow accessing controller
+    window.chartController = this.chartController;
 
 
     //Read current user settings
@@ -138,11 +154,11 @@ class GraphicView extends Component {
 
     d3.select(window).on('resize.updateChart', () => {
       let chartX = 0;
-      
+
       if (this.channelListVisible) {
         chartX = $('.channel-list').width() + 20;
       }
-      
+
       const chartWidth = window.innerWidth - chartX;
       this.graphicView.style('width', chartWidth + 'px');
       this.refs.lineChart.updateHeight();
@@ -151,13 +167,13 @@ class GraphicView extends Component {
 
     //Change browser tabs, need to hand the timer of reading data
     d3.select('#App').on('checkTimer', () => {
-      if(this.chartController.datasourceMode !== 'Realtime') {
+      if (this.chartController.datasourceMode !== 'Realtime') {
         return;
       }
 
-      if(document.visibilityState === 'hidden') {
+      if (document.visibilityState === 'hidden') {
         this.chartController.clearTimer();
-      }else {
+      } else {
         this.chartController.startTimer();
       }
     });
@@ -187,7 +203,7 @@ class GraphicView extends Component {
       .on(SystemEvent.INIT_SELECTED_CHANNELS, () => {
         this.initData();
       })
-      .on(SystemEvent.SHOW_YAXIS_SETTING, () => { 
+      .on(SystemEvent.SHOW_YAXIS_SETTING, () => {
         const channel = d3.event.detail;
         if (!channel) {
           return;
@@ -195,12 +211,12 @@ class GraphicView extends Component {
 
         this.refs.ySetting.handleClickOpen(channel);
       })
-      .on(SystemEvent.CLOSE_YAXIS_SETTING, () => { 
+      .on(SystemEvent.CLOSE_YAXIS_SETTING, () => {
         this.setState({
           showYAxisSetting: false
         });
       })
-      .on(SystemEvent.SHOW_CHANNEL_SETTING, () => { 
+      .on(SystemEvent.SHOW_CHANNEL_SETTING, () => {
         const channel = d3.event.detail;
         if (!channel) {
           return;
@@ -217,13 +233,13 @@ class GraphicView extends Component {
 
 
   getUserSettingsHandler = (responseData) => {
-    if(!responseData) {
+    if (!responseData) {
       this.refs.loading.hide();
       return;
     }
-    
+
     const result = responseData[0];
-    
+
     if (!result) {
       this.refs.channelList.getData();
       this.setState({
@@ -235,7 +251,7 @@ class GraphicView extends Component {
 
     const displayChannelOption = result.display_channel_option;
     const displayChannels = {};
-    
+
     let d, id, channelObj;
     for (let i = 0; i < displayChannelOption.length; i++) {
       d = displayChannelOption[i];
@@ -244,7 +260,7 @@ class GraphicView extends Component {
         id: id,
         color: d.color,
       };
-      
+
       displayChannels[id] = channelObj;
     }
 
@@ -254,11 +270,11 @@ class GraphicView extends Component {
         noLoggingChannels: false
       });
       this.chartController.setDisplayChannels(displayChannels);
-    }else {
+    } else {
       this.refs.lineChart.setNoLoggingChannels(true);
       this.refs.loading.hide();
     }
-    
+
 
     this.refs.channelList.getData();
   };
@@ -267,10 +283,10 @@ class GraphicView extends Component {
   getData = () => {
     this.refs.loading.show();
     const username = localStorage.getItem('username');
-    
+
     if (username) {
       TestAPI.getUserSettings(username, this.getUserSettingsHandler);
-    }else {
+    } else {
       this.refs.loading.hide();
     }
   };
@@ -283,10 +299,10 @@ class GraphicView extends Component {
       return;
     }
 
-    if(this.chartController.datasourceMode === 'Realtime') {
+    if (this.chartController.datasourceMode === 'Realtime') {
       setTimeout(() => {
         //Scenario: switch to "History" mode in 5 seconds
-        if(this.chartController.datasourceMode === 'Realtime') {
+        if (this.chartController.datasourceMode === 'Realtime') {
           this.chartController.startTimer();
         }
       }, 5000);
@@ -299,7 +315,7 @@ class GraphicView extends Component {
         this.getMeasurementData(channel);
       }
     }
-  } 
+  }
 
 
   getMeasurementData(channel) {
@@ -313,20 +329,20 @@ class GraphicView extends Component {
 
     startTime += 3600000 * 8;
     endTime += 3600000 * 8;
-    
-    TestAPI.getMeasurementData(channel.id, 
-      startTime, 
-      endTime, 
-      interval, 
-      2, 
+
+    TestAPI.getMeasurementData(channel.id,
+      startTime,
+      endTime,
+      interval,
+      2,
       (responseData) => this.getMeasurementDataHandler(channel, responseData)
-    );  
+    );
   }
 
 
   getMeasurementDataHandler = (channel, responseData) => {
     channel.dataLoading = false;  //Reset the status
-    if(responseData) {
+    if (responseData) {
       const result = responseData[0];
       DataUtil.handleMeasurementData(channel, result);
     }
@@ -339,7 +355,7 @@ class GraphicView extends Component {
     });
 
     if (allDone) {
-      if(this.refs.lineChart) {
+      if (this.refs.lineChart) {
         this.refs.lineChart.changeSelectedChannelsHandler();
       }
 
@@ -348,14 +364,14 @@ class GraphicView extends Component {
   };
 
 
-  setPosition = (x=null) => {
+  setPosition = (x = null) => {
     let chartX = 0;
     let chartWidth = 0;
 
-    if(x === 0) {
+    if (x === 0) {
       chartX = x;
       this.refs.channelList.hide();
-    }else {
+    } else {
       chartX = $('.channel-list').width() + 20;
       this.refs.channelList.show();
     }
@@ -375,32 +391,32 @@ class GraphicView extends Component {
     this.initToggleButton(type);
 
     setTimeout(() => {
-      if(type === 'realtime') {
+      if (type === 'realtime') {
         this.chartController.openRealtimeMode();
         this.refs.lineChart.updateViewForRealtimeMode();
-      }else {
+      } else {
         // if(this.chartController.displayChannels
         //   && this.chartController.displayChannels.length > 0) {
         //   this.refs.loading.show();
         // }
-        
+
         this.chartController.openHistoryMode();
       }
-  
+
       this.updateControlButtons(type);
     }, 350);
   }
 
 
   initToggleButton(type) {
-    const currentBtn =$(`.toggle-button[data-type=${type}]`);
-    if(!currentBtn) {
+    const currentBtn = $(`.toggle-button[data-type=${type}]`);
+    if (!currentBtn) {
       return;
     }
 
     const x = Math.round(currentBtn.position().left);
     const w = Math.round(currentBtn.width()) + 62;
-    
+
     $('.toggle-button').attr('data-status', '');
     currentBtn.attr('data-status', 'selected');
 
@@ -435,7 +451,7 @@ class GraphicView extends Component {
 
   switchChannelList = () => {
     this.channelListVisible = !this.channelListVisible;
-    
+
     if (this.channelListVisible) {
       this.setPosition(420);
     } else {
@@ -457,12 +473,12 @@ class GraphicView extends Component {
 
 
   changeSelectedChannelsHandler = () => {
-    const { selectedChannels }  = this.chartController;
-    if(selectedChannels && selectedChannels.length === 0) {
+    const { selectedChannels } = this.chartController;
+    if (selectedChannels && selectedChannels.length === 0) {
       this.setState({
         noLoggingChannels: true
       });
-    }else {
+    } else {
       this.setState({
         noLoggingChannels: false
       });
@@ -470,7 +486,7 @@ class GraphicView extends Component {
 
     this.refs.lineChart.changeSelectedChannelsHandler();
   };
-  
+
 }
 
 

@@ -15,10 +15,12 @@ import (
 	"smallNfast/internal/db"
 	filelogger "smallNfast/internal/logger"
 	"smallNfast/internal/monitor"
+	"smallNfast/internal/webview_runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	windowsOptions "github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 	"golang.org/x/sys/windows"
@@ -131,6 +133,23 @@ func main() {
 	}
 	defer filelogger.Close()
 
+	// Set Logger for WebView2 Runtime
+	webview_runtime.SetLogger(func(format string, args ...interface{}) {
+		msg := fmt.Sprintf(format, args...)
+		sugar.Info(msg)
+		filelogger.Write(msg)
+	})
+
+	// Setup embedded WebView2 runtime (if available) before Wails starts
+	webviewPath := webview_runtime.EnsureAndGetPath()
+
+	// Critical for Windows 7 Stability:
+	// Set WebView2 arguments via environment variable since wails options might be limited.
+	// --disable-gpu: Prevents white screen/crashes on older GPUs
+	// --no-sandbox: Prevents crashes on Win7 systems missing specific patches
+	// --disable-features=RendererCodeIntegrity: Prevents crashes specific to Win7 + certain AVs
+	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --no-sandbox --disable-features=RendererCodeIntegrity")
+
 	// Setup Wails App Bridge
 	monitorService := monitor.NewService(nil)
 	myApp := app.NewApp(monitorService)
@@ -213,7 +232,7 @@ func main() {
 				http.FileServer(http.FS(assets)).ServeHTTP(w, r)
 			}),
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 255}, // Opaque background for stability
 		OnStartup: func(ctx context.Context) {
 			filelogger.Write("DEBUG: OnStartup callback called")
 			myApp.AddLog("OnStartup: Window opened successfully")
@@ -258,6 +277,12 @@ func main() {
 		},
 		Bind: []interface{}{
 			myApp,
+		},
+		Windows: &windowsOptions.Options{
+			WebviewBrowserPath:   webviewPath,
+			WebviewGpuIsDisabled: true,  // Essential for Windows 7 stability
+			WindowIsTranslucent:  false, // Disable translucency to prevent DWM crashes on Win7
+			DisableWindowIcon:    true,  // Prevent possible crash when DWM tries to render icon
 		},
 	})
 

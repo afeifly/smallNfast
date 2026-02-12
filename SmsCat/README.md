@@ -73,40 +73,65 @@ SMSCat is a Windows application written in **Go (Golang)** using **Wails** for t
 
 ## Building
 
-### Quick Build (without icon)
+### 1. Windows Build (on Windows)
+Run the `build.bat` script. It will prompt you to choose the build mode:
+- **Standard Build**: Small executable, requires WebView2 Runtime installed on the target machine (Windows 10/11 default).
+- **Windows 7 Build**: Embeds a fixed version of WebView2 Runtime into the executable for standalone deployment on Windows 7.
 
-To build the executable for Windows:
-
-```bash
-go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o SMSCat.exe
+```cmd
+build.bat
 ```
 
-### Build with Icon
+### 2. Cross-Compile for Windows (on macOS/Linux)
+Run the `build_windows_on_mac.sh` script:
 
-To build with a custom exe icon:
+**Standard Build:**
+```bash
+./build_windows_on_mac.sh
+```
 
-1. **Use the build script** (recommended):
-   ```bash
-   build.bat
-   ```
+**Windows 7 Build (Embedded Runtime):**
+```bash
+./build_windows_on_mac.sh win7
+```
 
-2. **Or manually:**
-   - Install rsrc: `go install github.com/akavel/rsrc@latest`
-   - Convert PNG to ICO (if needed): Use ImageMagick or online converter
-   - Generate resource: `rsrc -ico SMSLogo.ico -o resource.syso`
-   - Build: `go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o SMSCat.exe`
+### 3. macOS Build (for testing on Mac)
+```bash
+./build_macos.sh
+```
 
-*Note: Ensure the `frontend/` directory exists when building, as assets are embedded.*
+---
 
-## Running
+## Windows 7 Support & WebView2 Embedding
 
-1.  Run `SMSCat.exe`.
-2.  The app will attempt to **auto-detect** the modem port.
-3.  If successful, it starts monitoring.
-4.  Open the UI via the System Tray icon or it will open on launch.
-5.  Use the "Auto-Start" checkbox in the UI to toggle starting with Windows.
+To support Windows 7, you **MUST** embed a specific "Fixed Version" of the WebView2 Runtime, because:
+1.  Windows 7 does not have WebView2 installed by default.
+2.  Modern WebView2 versions (110+) do **NOT** support Windows 7.
+
+**Steps to prepare for Windows 7 Build:**
+
+1.  **Download the Runtime**:
+    You need the **Fixed Version Runtime x64** for version **109.0.1518.78**. This is the last version supporting Windows 7.
+    - Official Source: [Microsoft Edge WebView2 Download](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) (Select "Fixed Version", Version "109.0.1518.78", Architecture "x64").
+    - Archive Mirror: [WebView2RuntimeArchive (109.0.1518.78)](https://github.com/westinyang/WebView2RuntimeArchive/releases/tag/109.0.1518.78)
+
+2.  **Prepare the Zip**:
+    - Extract the downloaded file. you should see a folder named `Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.x64` or similar.
+    - **Zip the contents** of this folder (or the folder itself) into a file named `WebView2.zip`.
+    - Ensure the zip structure is flat or has the version folder at the root. The app will search for `msedgewebview2.exe` inside.
+
+3.  **Place the File**:
+    Put the `WebView2.zip` file in:
+    `internal/webview_runtime/WebView2.zip`
+
+4.  **Build**:
+    Run `build.bat` (select Y) or `./build_windows_on_mac.sh win7`.
 
 ## Troubleshooting
 
 - **"Auto-detection failed"**: Ensure drivers for Quectel USB Modem are installed and the device is plugged in.
 - **Database errors**: Check `database.properties` and firewall settings.
+- **Windows 7 Crashes**:
+    - Ensure you are using WebView2 Runtime **v109.x**. Newer versions will crash.
+    - Ensure `KB2533623` or newer updates are installed on Windows 7.
+    - The app is configured with `--disable-gpu` and `--no-sandbox` for maximum compatibility on older hardware.

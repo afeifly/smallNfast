@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "node server.js",
     "preview": "vite preview",
     "pm2:dev": "pm2 start ecosystem.config.js --only barcode-label-maker-dev",
     "pm2:prod": "npm run build && pm2 start ecosystem.config.js --only barcode-label-maker-prod",

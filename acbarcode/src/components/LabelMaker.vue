@@ -85,6 +85,7 @@ const products = [
 
   { item: '1830138002', name: 'FL S185 T' },
   { item: '1830138003', name: 'FL S185 T' },
+  { item: '1830174224', name: 'FL S185 T' },
   { item: '1830174226', name: 'FL S185 T' },
   { item: '1830174239', name: 'FL S185 T' },
 

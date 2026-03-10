@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id       String @id @default(uuid())
+  username String @unique
+  password String
+}
+
+model CompanyUser {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  email       String   @unique
+  companyName String
+  note        String?
+  serviceTime DateTime
+  passcode    String   @unique
+  deviceId    String?
+  status      Int      @default(1) // 0: Init, 1: Enabled, 2: Blocked
+  sensors     Sensor[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Sensor {
+  id                  String              @id @default(uuid())
+  serialNumber        String              @unique
+  sensorType          String
+  hwVersion           String
+  swVersion           String
+  companyUser         CompanyUser         @relation(fields: [companyUserId], references: [id])
+  companyUserId       String
+  calibrationRecords  CalibrationRecord[] @relation("SensorToCalibrationRecord")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+}
+
+model CalibrationRecord {
+  id                  String   @id @default(uuid())
+  calibrationDate     DateTime
+  calibrationLocation String
+  operationName       String?
+  operationAddress    String?
+  currentSettings     String   // Stored as JSON string for SQLite
+  calibrationPoints   String   // Stored as JSON string for SQLite
+  sensor              Sensor   @relation("SensorToCalibrationRecord", fields: [sensorId], references: [id], onDelete: Cascade)
+  sensorId            String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+

@@ -39,3 +39,36 @@ npm run dev # Runs on http://localhost:5174
 - `POST /api/sensors/verify`: Mobile app verification (passcode + deviceId).
 - `POST /api/sensors/upload`: Mobile app data upload.
 - `GET /api/sensors/company/:id`: Admin sensor view.
+
+## Deployment
+
+In production, the backend server serves both the API and the static frontend assets.
+
+### 1. Build & Start with PM2
+
+```bash
+# Build the frontend
+cd client
+npm run build
+
+# Start the server with PM2 from the server directory
+cd ../server
+pm2 start index.js --name "thirdcali-server"
+```
+
+### 2. Caddy2 Configuration
+
+Configure Caddy to proxy all traffic to the backend port (default `3001`). The backend is automatically configured to detect and serve the built frontend assets from `client/dist`.
+
+Example `Caddyfile`:
+```caddy
+your-domain.com {
+    reverse_proxy localhost:3001
+}
+```
+
+### How it Works:
+- **API**: Paths starting with `/api/` are handled by Express routes.
+- **Static Assets**: All other paths attempt to serve files from `client/dist`.
+- **SPA Routing**: If a file isn't found, it falls back to `index.html` to support Vue Router navigation.
+

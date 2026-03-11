@@ -40,7 +40,7 @@ if (fs.existsSync(frontendPath)) {
     app.use(express.static(frontendPath));
 
     // Handle all other routes for SPA (e.g., page refreshes)
-    app.get('*', (req, res) => {
+    app.get('/*path', (req, res) => {
         // Don't accidentally serve index.html for non-existent API routes
         if (req.path.startsWith('/api/')) {
             return res.status(404).json({ error: 'API route not found' });

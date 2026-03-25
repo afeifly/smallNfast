@@ -5,9 +5,24 @@
         <h1>Lab calibration management</h1>
         <p class="subtitle">Manage individual users and their calibration records</p>
       </div>
-      <button @click="showAddModal = true" class="primary">
-        <Plus :size="18" /> Add New User
-      </button>
+      <div class="flex gap-12 center">
+        <button
+          @click="exportAll"
+          class="secondary export-btn"
+          :disabled="exporting || !hasAnyData"
+          :title="!hasAnyData ? 'No calibration data to export' : 'Export all calibration data to Excel'"
+        >
+          <template v-if="exporting">
+            <span class="spinner-sm"></span> Exporting…
+          </template>
+          <template v-else>
+            <Download :size="18" /> Export All
+          </template>
+        </button>
+        <button @click="showAddModal = true" class="primary">
+          <Plus :size="18" /> Add New User
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -174,8 +189,10 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAppStore } from '../store'
 import { useRouter } from 'vue-router'
-import { Plus, Eye, UserX, UserCheck, Pencil } from 'lucide-vue-next'
+import { Plus, Eye, UserX, UserCheck, Pencil, Download } from 'lucide-vue-next'
 import ConfirmModal from '../components/ConfirmModal.vue'
+import * as XLSX from 'xlsx'
+import api from '../api/axios'
 
 const store = useAppStore()
 const router = useRouter()
@@ -183,6 +200,7 @@ const router = useRouter()
 const showAddModal = ref(false)
 const showEditModal = ref(false)
 const editingUser = ref(null)
+const exporting = ref(false)
 
 const confirmData = ref({
   show: false,
@@ -272,6 +290,110 @@ const handleUpdateUser = async () => {
     showEditModal.value = false
   }
 }
+
+const hasAnyData = computed(() =>
+  companyUsers.value.some(u => (u._count?.sensors ?? 0) > 0)
+)
+
+const exportAll = async () => {
+  exporting.value = true
+  try {
+    const usersWithData = companyUsers.value.filter(u => (u._count?.sensors ?? 0) > 0)
+
+    // Fetch all users' sensor data in parallel
+    const results = await Promise.all(
+      usersWithData.map(u =>
+        api.get(`/api/sensors/company/${u.id}`)
+          .then(res => ({ user: u, sensors: res.data }))
+          .catch(() => ({ user: u, sensors: [] }))
+      )
+    )
+
+    const workbook = XLSX.utils.book_new()
+
+    for (const { user, sensors } of results) {
+      const rows = []
+
+      for (const sensor of sensors) {
+        // Flag flips to false after the very first row of this sensor is written
+        let firstRowOfSensor = true
+
+        for (const record of sensor.calibrationRecords ?? []) {
+          const dp = record.currentSettings?.unit?.flowResolutionDecimalPlaces
+          const precision = dp != null ? parseInt(dp) : 2
+          const fmt = v => (v == null || v === '') ? '' : Number(v).toFixed(precision)
+          const calDate = record.calibrationDate
+            ? new Date(record.calibrationDate).toLocaleString()
+            : ''
+
+          // Record-level fields only appear on the first point row of each record
+          const recordMeta = (isFirst) => isFirst
+            ? {
+                'Calibration Date': calDate,
+                'Operation': record.operationName || '',
+                'Location': record.calibrationLocation || record.operationAddress || '',
+                'Flow Unit': record.currentSettings?.unit?.flowUnit || '',
+                'Pipe Diameter (mm)': record.currentSettings?.flow?.pipeDiameter_mm || '',
+                'Gas Type': record.currentSettings?.flow?.gasType || '',
+                'Insertion Depth': record.currentSettings?.flow?.insertionDepth || '',
+                'Cutoff Threshold': record.currentSettings?.flow?.cutoffThreshold || '',
+                'Ref. Temp (°C)': record.currentSettings?.reference?.temperature_C || '',
+                'Ref. Pressure (hPa)': record.currentSettings?.reference?.pressure_hPa || '',
+                'Filter Grade': record.currentSettings?.advanced?.filterGrade || '',
+                'Slope': record.currentSettings?.advanced?.slope || '',
+              }
+            : {
+                'Calibration Date': '', 'Operation': '', 'Location': '',
+                'Flow Unit': '', 'Pipe Diameter (mm)': '', 'Gas Type': '',
+                'Insertion Depth': '', 'Cutoff Threshold': '',
+                'Ref. Temp (°C)': '', 'Ref. Pressure (hPa)': '',
+                'Filter Grade': '', 'Slope': '',
+              }
+
+          const points = record.calibrationPoints ?? []
+          const pointsToWrite = points.length > 0 ? points : [null]
+
+          pointsToWrite.forEach((p, idx) => {
+            // Sensor-level columns only on the very first row emitted for this sensor
+            const sensorCols = firstRowOfSensor
+              ? { 'Serial Number': sensor.serialNumber, 'Sensor Type': sensor.sensorType, 'HW Version': sensor.hwVersion, 'SW Version': sensor.swVersion }
+              : { 'Serial Number': '', 'Sensor Type': '', 'HW Version': '', 'SW Version': '' }
+            firstRowOfSensor = false
+
+            rows.push({
+              ...sensorCols,
+              ...recordMeta(idx === 0),
+              'Point #': p != null ? (p.point != null ? p.point + 1 : idx + 1) : '',
+              'Actual Flow': p != null ? fmt(p.actual) : '',
+              'Reference Flow': p != null ? fmt(p.standard) : '',
+            })
+          })
+        }
+      }
+
+      if (rows.length === 0) continue
+
+      const ws = XLSX.utils.json_to_sheet(rows)
+
+      // Auto-fit column widths based on content
+      const colWidths = Object.keys(rows[0]).map(key => ({
+        wch: Math.max(key.length, ...rows.map(r => String(r[key] ?? '').length)) + 2
+      }))
+      ws['!cols'] = colWidths
+
+      // Sheet name: "username (company)", max 31 chars for Excel
+      const sheetName = `${user.username} (${user.companyName})`.slice(0, 31)
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName)
+    }
+
+    if (workbook.SheetNames.length === 0) return
+
+    const date = new Date().toISOString().split('T')[0]
+    XLSX.writeFile(workbook, `calibration-export-${date}.xlsx`)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -354,4 +476,26 @@ const handleUpdateUser = async () => {
 .modal-content { width: 100%; max-width: 600px; }
 
 .small { padding: 4px 12px; font-size: 0.8rem; }
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.export-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
+import api from '../api/axios'
 
 const API_URL = '/api'
 
@@ -13,6 +14,7 @@ export const useAppStore = defineStore('app', {
     actions: {
         async login(username, password) {
             try {
+                // Use bare axios for login — no auth header needed here
                 const res = await axios.post(`${API_URL}/auth/login`, { username, password })
                 this.token = res.data.token
                 localStorage.setItem('admin_token', this.token)
@@ -29,9 +31,7 @@ export const useAppStore = defineStore('app', {
         async fetchUsers() {
             this.loading = true
             try {
-                const res = await axios.get(`${API_URL}/company-users`, {
-                    headers: { Authorization: `Bearer ${this.token}` }
-                })
+                const res = await api.get(`${API_URL}/company-users`)
                 this.companyUsers = res.data
             } catch (err) {
                 this.error = 'Failed to fetch users'
@@ -41,9 +41,7 @@ export const useAppStore = defineStore('app', {
         },
         async createUser(userData) {
             try {
-                await axios.post(`${API_URL}/company-users`, userData, {
-                    headers: { Authorization: `Bearer ${this.token}` }
-                })
+                await api.post(`${API_URL}/company-users`, userData)
                 await this.fetchUsers()
                 return true
             } catch (err) {
@@ -53,9 +51,7 @@ export const useAppStore = defineStore('app', {
         },
         async updateStatus(userId, status) {
             try {
-                await axios.patch(`${API_URL}/company-users/${userId}/status`, { status }, {
-                    headers: { Authorization: `Bearer ${this.token}` }
-                })
+                await api.patch(`${API_URL}/company-users/${userId}/status`, { status })
                 await this.fetchUsers()
                 return true
             } catch (err) {
@@ -65,9 +61,7 @@ export const useAppStore = defineStore('app', {
         },
         async updateUser(userId, userData) {
             try {
-                await axios.put(`${API_URL}/company-users/${userId}`, userData, {
-                    headers: { Authorization: `Bearer ${this.token}` }
-                })
+                await api.put(`${API_URL}/company-users/${userId}`, userData)
                 await this.fetchUsers()
                 return true
             } catch (err) {

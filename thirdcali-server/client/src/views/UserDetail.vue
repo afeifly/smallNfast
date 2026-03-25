@@ -145,7 +145,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../store'
-import axios from 'axios'
+import api from '../api/axios'
 import { ArrowLeft, Calendar, MapPin, Activity, Settings2, Trash2, User, Briefcase } from 'lucide-vue-next'
 import ConfirmModal from '../components/ConfirmModal.vue'
 
@@ -175,9 +175,7 @@ onMounted(async () => {
 
 const fetchSensors = async () => {
   try {
-    const res = await axios.get(`/api/sensors/company/${route.params.id}`, {
-      headers: { Authorization: `Bearer ${store.token}` }
-    })
+    const res = await api.get(`/api/sensors/company/${route.params.id}`)
     sensors.value = res.data
   } catch (err) {
     console.error(err)
@@ -220,9 +218,7 @@ const deleteSensor = (sensor) => {
     type: 'danger',
     onConfirm: async () => {
       try {
-        await axios.delete(`/api/sensors/${sensor.id}`, {
-          headers: { Authorization: `Bearer ${store.token}` }
-        })
+        await api.delete(`/api/sensors/${sensor.id}`)
         fetchSensors()
       } catch (err) {
         alert('Failed to delete sensor')
@@ -240,9 +236,7 @@ const deleteRecord = (record) => {
     type: 'danger',
     onConfirm: async () => {
       try {
-        await axios.delete(`/api/sensors/calibration/${record.id}`, {
-          headers: { Authorization: `Bearer ${store.token}` }
-        })
+        await api.delete(`/api/sensors/calibration/${record.id}`)
         fetchSensors()
       } catch (err) {
         alert('Failed to delete calibration record')

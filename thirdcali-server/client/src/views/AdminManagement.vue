@@ -96,10 +96,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
-import { useAppStore } from '../store'
+import api from '../api/axios'
 
-const store = useAppStore()
 const admins = ref([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -116,9 +114,7 @@ const newAdmin = ref({
 const fetchAdmins = async () => {
   loading.value = true
   try {
-    const res = await axios.get('/api/admins', {
-      headers: { Authorization: `Bearer ${store.token}` }
-    })
+    const res = await api.get('/api/admins')
     admins.value = res.data
   } catch (err) {
     console.error('Failed to fetch admins', err)
@@ -136,11 +132,9 @@ const handleAddAdmin = async () => {
     submitting.value = true
     error.value = ''
     try {
-        await axios.post('/api/admins', {
+        await api.post('/api/admins', {
             username: newAdmin.value.username,
             password: newAdmin.value.password
-        }, {
-            headers: { Authorization: `Bearer ${store.token}` }
         })
         await fetchAdmins()
         showAddModal.value = false
@@ -156,9 +150,7 @@ const deleteAdmin = async (admin) => {
     if (!confirm(`Are you sure you want to revoke access for "${admin.username}"?`)) return
     
     try {
-        await axios.delete(`/api/admins/${admin.id}`, {
-            headers: { Authorization: `Bearer ${store.token}` }
-        })
+        await api.delete(`/api/admins/${admin.id}`)
         await fetchAdmins()
     } catch (err) {
         alert(err.response?.data?.error || 'Failed to delete admin')

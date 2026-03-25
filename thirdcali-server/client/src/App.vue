@@ -80,7 +80,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from './store'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from './api/axios'
 
 const store = useAppStore()
 const router = useRouter()
@@ -118,11 +118,9 @@ const handleChangePassword = async () => {
   submitting.value = true
   error.value = ''
   try {
-    await axios.put('/api/admins/me/password', {
+    await api.put('/api/admins/me/password', {
       oldPassword: passChange.value.oldPassword,
       password: passChange.value.password
-    }, {
-      headers: { Authorization: `Bearer ${store.token}` }
     })
     showPasswordModal.value = false
     alert('Password updated successfully')

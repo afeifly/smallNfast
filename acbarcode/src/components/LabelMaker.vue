@@ -116,7 +116,7 @@ const products = [
 
   { item: '1830174203', name: 'FLI D15 A' },
   { item: '1830174206', name: 'FLI D20 A' },
-  { item: '1830174219', name: 'FLI D25 A' },
+  { item: '1830174209', name: 'FLI D25 A' },
   { item: '1830174212', name: 'FLI D32 A' },
 
 
@@ -188,6 +188,7 @@ const products = [
   { item: '1830154912', name: 'DP T20 P' },
   { item: '1830154914', name: 'DP T60 P' },
   { item: '1830154916', name: 'DP T100 P' },
+  // add to below 
 ];
 
 const selectedItemNumber = ref(products[0].item);

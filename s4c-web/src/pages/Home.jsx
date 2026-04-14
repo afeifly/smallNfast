@@ -1,13 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
+import iconAlertBig from '../assets/images/icon_alert_big.png';
+import OnlineValueCard from '../components/OnlineValueCard';
 
 const Home = () => {
+  const [showCards, setShowCards] = useState(false);
+
+  if (showCards) {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 368px)', gap: '16px' }}>
+        <OnlineValueCard />
+        <OnlineValueCard />
+        <OnlineValueCard />
+        <OnlineValueCard />
+        <OnlineValueCard />
+      </div>
+    );
+  }
+
   return (
     <div className="content-card">
       <div className="empty-state">
         <div className="empty-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <img src={iconAlertBig} alt="Alert" style={{ width: 40, height: 40, objectFit: 'contain' }} />
         </div>
         <p className="empty-text">Add more at sensor configuration page</p>
+        <button className="create-logger-btn" onClick={() => setShowCards(true)}>Test</button>
       </div>
     </div>
   );

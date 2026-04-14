@@ -2,12 +2,7 @@
   <LoginPage v-if="!isAuthenticated" @login-success="onLoginSuccess" />
   <template v-else>
     <div class="floating-actions">
-      <button class="action-btn" @click="showChangePassword = true" title="Change Password">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-      </button>
+
       <button class="action-btn logout-btn" @click="handleLogout" title="Logout">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -17,7 +12,7 @@
       </button>
     </div>
     <LabelMaker />
-    <ChangePassword v-if="showChangePassword" @close="showChangePassword = false" />
+
   </template>
 </template>
 
@@ -25,11 +20,10 @@
 import { ref, onMounted } from 'vue';
 import LoginPage from './components/LoginPage.vue';
 import LabelMaker from './components/LabelMaker.vue';
-import ChangePassword from './components/ChangePassword.vue';
+
 
 const isAuthenticated = ref(false);
 const currentRole = ref('user');
-const showChangePassword = ref(false);
 
 onMounted(() => {
   if (sessionStorage.getItem('acbarcode_auth') === 'true') {

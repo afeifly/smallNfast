@@ -50,20 +50,10 @@ const password = ref('');
 const errorMessage = ref('');
 const isLoading = ref(false);
 const passwordInput = ref(null);
-let userPassword = '';
-
-// Fixed hidden admin password
+const userPassword = 'SUTOuser1234';
 const ADMIN_PASSWORD = 'SUTOadmin1234';
 
-onMounted(async () => {
-  // Load the user password from server API (reads from data/password.json on disk)
-  try {
-    const response = await fetch('/api/password');
-    const data = await response.json();
-    userPassword = data.password || '';
-  } catch (e) {
-    console.warn('Could not load password from API, only admin password will work.');
-  }
+onMounted(() => {
   // Focus the password input
   if (passwordInput.value) {
     passwordInput.value.focus();

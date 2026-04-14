@@ -199,7 +199,6 @@ const products = [
   { item: '1830070889', name: 'AQM Ex.' },
   { item: '1830071656', name: 'WAF Ex.' },
   { item: '1830147340', name: 'DL P50' },
-  { item: '1830174209', name: 'FLI D25 A' },
   { item: '1830174225', name: 'FL S185 T' },
   { item: '1830174227', name: 'FL S224 T' },
   { item: '1830174228', name: 'FL S224 T' },

@@ -7,11 +7,11 @@ import { useConfig } from '../context/ConfigContext';
 const ChannelSelectModal = ({ isOpen, onClose }) => {
   const { configData, setConfigData } = useConfig();
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Get current graphic config
   const graphicConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgGraphic.json'));
   const graphicConfig = configData?.configs?.[graphicConfigPath] || {};
-  
+
   // Track selected IDs (CreateTime)
   const [selectedIds, setSelectedIds] = useState([]);
 
@@ -30,8 +30,8 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   // Extract channels from configData
-  const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor || 
-                  configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
+  const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
+    configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
 
   const allChannels = [];
   sensors.forEach(sensor => {
@@ -48,7 +48,7 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
     }
   });
 
-  const filteredChannels = allChannels.filter(ch => 
+  const filteredChannels = allChannels.filter(ch =>
     ch.sensorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     ch.channelName.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -76,13 +76,13 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
     // Update the FIRST graphic in the list (current view)
     const updatedGraphicList = [...graphicList];
     const targetGraphic = { ...updatedGraphicList[0] };
-    
+
     // Maintain exactly 5 slots in graphicChannels
     // We update isShow based on selection
     const updatedGraphicChannels = allChannels.map((ch, index) => {
       // Find existing config for this channel to preserve other fields (like color)
       const existing = (targetGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.id));
-      
+
       return {
         isShow: selectedIds.includes(ch.id),
         channelIndex: index,
@@ -123,9 +123,9 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '32px', flex: 1 }}>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Channel configuration</h3>
             <div className="search-input-wrapper" style={{ width: '320px' }}>
-              <input 
-                type="text" 
-                placeholder="please search sensor name" 
+              <input
+                type="text"
+                placeholder="please search sensor name"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -135,13 +135,13 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
             </div>
           </div>
           {/* Close Button with Yellow Background Container */}
-          <div 
-            onClick={onClose} 
-            style={{ 
-              cursor: 'pointer', 
-              width: '32px', 
-              height: '32px', 
-              background: '#FFE000', 
+          <div
+            onClick={onClose}
+            style={{
+              cursor: 'pointer',
+              width: '32px',
+              height: '32px',
+              background: '#FFE000',
               borderRadius: '4px',
               display: 'flex',
               alignItems: 'center',
@@ -157,8 +157,8 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
             <thead>
               <tr>
                 <th style={{ width: '54px', textAlign: 'center' }}>
-                  <div 
-                    className={`custom-checkbox ${selectedIds.length === filteredChannels.length && filteredChannels.length > 0 ? 'checked' : ''}`} 
+                  <div
+                    className={`custom-checkbox ${selectedIds.length === filteredChannels.length && filteredChannels.length > 0 ? 'checked' : ''}`}
                     style={{ margin: '0 auto', cursor: 'pointer' }}
                     onClick={() => {
                       if (selectedIds.length === filteredChannels.length) {
@@ -201,25 +201,25 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
 
         {/* Footer - Confirm is SPECIAL GREEN and on the LEFT */}
         <footer className="modal-footer" style={{ borderTop: '1px solid #E7E7E7', height: '72px', background: 'white' }}>
-          <button 
-            className="btn-primary" 
-            style={{ 
-              background: '#00AB84', 
-              border: '1px solid #00AB84', 
+          <button
+            className="btn-primary"
+            style={{
+              background: '#00AB84',
+              border: '1px solid #00AB84',
               color: 'white',
               order: 1,
               width: '120px'
-            }} 
+            }}
             onClick={handleConfirm}
           >
             Confirm
           </button>
-          <button 
-            className="btn-secondary" 
-            style={{ 
+          <button
+            className="btn-secondary"
+            style={{
               order: 2,
               width: '120px'
-            }} 
+            }}
             onClick={onClose}
           >
             Cancel
@@ -235,7 +235,7 @@ const EditIcon = () => (
   <div style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5775 3.12302 14.5742 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z"
-        stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   </div>
 );
@@ -244,21 +244,21 @@ const EditIcon = () => (
 
 const ChevronLeft = ({ color = '#4E5969' }) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <path d="M15 18L9 12L15 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M15 18L9 12L15 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const ChevronRight = ({ color = '#191919' }) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <path d="M9 18L15 12L9 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M9 18L15 12L9 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const PlusCircleLarge = () => (
   <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="#FFE000" stroke="#FFE000"/>
-    <line x1="28" y1="16" x2="28" y2="40" stroke="#191919" strokeWidth="3" strokeLinecap="round"/>
-    <line x1="16" y1="28" x2="40" y2="28" stroke="#191919" strokeWidth="3" strokeLinecap="round"/>
+    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="#FFE000" stroke="#FFE000" />
+    <line x1="28" y1="16" x2="28" y2="40" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
+    <line x1="16" y1="28" x2="40" y2="28" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
   </svg>
 );
 
@@ -293,21 +293,21 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
   });
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      flex: 1, 
-      height: '100%', 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      flex: 1,
+      height: '100%',
       overflow: 'hidden',
       background: 'white'
     }}>
       {/* ── Channel Tab Bar ──────────────────────────── */}
       <div className="channel-bar" style={{ height: isMini ? '40px' : '72px', padding: isMini ? '0 8px' : '0 24px' }}>
-        {!isMini && (
+        {/* {!isMini && (
           <div style={{ width: 40, height: 72, background: '#F3F3F3', borderRadius: '0 0 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <ChevronLeft />
           </div>
-        )}
+        )} */}
 
         <div className="scroll-wrapper" style={{ display: 'flex', gap: 4, flex: 1, overflowX: 'hidden' }}>
           {slots.map((slot, i) => (
@@ -348,11 +348,11 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
           ))}
         </div>
 
-        {!isMini && (
+        {/* {!isMini && (
           <div style={{ width: 40, height: 72, background: '#FFE000', borderRadius: '0 0 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <ChevronRight />
           </div>
-        )}
+        )} */}
       </div>
 
       {/* ── Chart Section ────────────────────────────── */}
@@ -367,16 +367,16 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
         </div>
 
         <div className="chart-area">
-          <div 
-            className="grid-workspace" 
-            style={{ 
+          <div
+            className="grid-workspace"
+            style={{
               backgroundSize: isMini ? '10px 10px' : '20px 20px',
               borderLeft: '1.5px solid #86909C',
               borderBottom: '1.5px solid #86909C'
             }}
           >
             {/* Real lines would be rendered here from data. Mock lines removed. */}
-            
+
             {!isMini && activeChannelsInConfig.length === 0 && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                 <PlusCircleLarge />
@@ -407,23 +407,23 @@ const Graphic = () => {
   const { configData } = useConfig();
 
   // Extract sensors for info lookup
-  const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor || 
-                  configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
+  const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
+    configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
 
   // Get current active channels from graphic config
   const graphicConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgGraphic.json'));
-  const graphicList = configData?.configs?.[graphicConfigPath] || []; 
-  
-  const currentGraphic = graphicList[0] || {}; 
+  const graphicList = configData?.configs?.[graphicConfigPath] || [];
+
+  const currentGraphic = graphicList[0] || {};
 
   // Grid View Rendering - REPLACES entire content-card
   if (isGridView) {
     return (
-      <div style={{ 
+      <div style={{
         width: '100%',
         height: '100%',
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fill, 560px)', 
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, 560px)',
         gap: '24px',
         justifyContent: 'center',
         alignContent: 'start',
@@ -433,12 +433,12 @@ const Graphic = () => {
         {[...Array(4)].map((_, i) => {
           const graphic = graphicList[i];
           return (
-            <div 
-              key={i} 
-              style={{ 
-                width: 560, height: 375, 
-                background: 'white', 
-                borderRadius: '8px', 
+            <div
+              key={i}
+              style={{
+                width: 560, height: 375,
+                background: 'white',
+                borderRadius: '8px',
                 boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -446,7 +446,7 @@ const Graphic = () => {
                 position: 'relative'
               }}
             >
-              <div 
+              <div
                 onClick={() => setIsGridView(false)}
                 style={{
                   position: 'absolute',
@@ -466,11 +466,11 @@ const Graphic = () => {
                   <div style={{ height: '48px', borderBottom: '1px solid #E7E7E7', display: 'flex', alignItems: 'center', padding: '0 16px', flexShrink: 0 }}>
                     <span style={{ fontWeight: 'bold' }}>{graphic.tableName}</span>
                   </div>
-                  <div 
-                    style={{ flex: 1, cursor: 'pointer', overflow: 'hidden' }} 
+                  <div
+                    style={{ flex: 1, cursor: 'pointer', overflow: 'hidden' }}
                     onClick={() => setIsGridView(false)}
                   >
-                     <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
+                    <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
                   </div>
                 </>
               ) : (
@@ -510,7 +510,7 @@ const Graphic = () => {
               whiteSpace: 'nowrap'
             }}
           >
-            <img src={iconSmallPlusCircle} width={16} height={16} alt="add graphic" style={{flexShrink: 0}} />
+            <img src={iconSmallPlusCircle} width={16} height={16} alt="add graphic" style={{ flexShrink: 0 }} />
             <span style={{
               fontSize: 14, fontFamily: 'Arial', fontWeight: 700,
               color: '#191919', textTransform: 'capitalize',
@@ -534,10 +534,10 @@ const Graphic = () => {
         </div>
       </header>
 
-      <GraphicView 
-        graphic={currentGraphic} 
-        sensors={sensors} 
-        onAddChannel={() => setIsModalOpen(true)} 
+      <GraphicView
+        graphic={currentGraphic}
+        sensors={sensors}
+        onAddChannel={() => setIsModalOpen(true)}
       />
 
       {/* ── Channel Select Modal ─────────────────────── */}

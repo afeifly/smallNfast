@@ -145,11 +145,16 @@ const Sidebar = () => {
             : item.to && currentPath.startsWith(item.to);
 
           const hasChildren = !!item.children;
-          const isGroupActive = hasChildren && item.children.some(c => currentPath.startsWith(c.to));
-          const isActive = isLeafActive || isGroupActive;
+          const isActive = isLeafActive;
           const isOpen = !!openMenus[item.key];
 
           const iconSrc = isActive ? item.icons.active : item.icons.inactive;
+
+          const normalIconStyle = {
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain'
+          };
 
           return (
             <div key={item.key} className="nav-group">
@@ -160,21 +165,30 @@ const Sidebar = () => {
                   className={`nav-item ${isLeafActive ? 'active' : ''}`}
                 >
                   <div className="nav-icon">
-                    <img src={iconSrc} alt={item.label} />
+                    <img
+                      src={iconSrc}
+                      alt={item.label}
+                      style={normalIconStyle}
+                    />
                   </div>
                   <span>{item.label}</span>
                 </Link>
               ) : (
                 <div
-                  className={`nav-item ${isGroupActive ? 'active' : ''}`}
+                  className="nav-item"
                   onClick={() => toggle(item.key)}
-                  style={{ cursor: 'pointer' }}
                 >
                   <div className="nav-icon">
-                    <img src={iconSrc} alt={item.label} />
+                    <img
+                      src={iconSrc}
+                      alt={item.label}
+                      style={normalIconStyle}
+                    />
                   </div>
                   <span>{item.label}</span>
-                  <span style={{ marginLeft: 'auto' }}>{Icons.chevron(isOpen)}</span>
+                  <span className="chevron">
+                    {Icons.chevron(isOpen)}
+                  </span>
                 </div>
               )}
 
@@ -187,10 +201,9 @@ const Sidebar = () => {
                       <Link
                         key={child.to}
                         to={child.to}
-                        className={`submenu-item ${childActive ? 'submenu-item-active' : ''}`}
+                        className={`submenu-item ${childActive ? 'active' : ''}`}
                       >
-                        {/* <span className="submenu-dot" /> */}
-                        {child.label}
+                        <span>{child.label}</span>
                       </Link>
                     );
                   })}

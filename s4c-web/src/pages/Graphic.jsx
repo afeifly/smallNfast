@@ -230,6 +230,108 @@ const ChannelSelectModal = ({ isOpen, onClose }) => {
   );
 };
 
+const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
+  const [name, setName] = useState(initialName || '');
+
+  React.useEffect(() => {
+    if (isOpen) setName(initialName || '');
+  }, [isOpen, initialName]);
+
+  if (!isOpen) return null;
+
+  const handleConfirm = () => {
+    if (name.trim()) {
+      onSave(name.trim());
+      onClose();
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div style={{
+        width: 440, height: 282, position: 'relative', background: 'white',
+        overflow: 'hidden', borderRadius: 8, display: 'flex', flexDirection: 'column'
+      }} onClick={e => e.stopPropagation()}>
+        {/* Title */}
+        <div style={{
+          left: 155, top: 24, position: 'absolute', textAlign: 'center',
+          justifyContent: 'center', display: 'flex', flexDirection: 'column'
+        }}>
+          <span style={{ color: 'black', fontSize: 16, fontFamily: 'Arial', fontWeight: '700', textTransform: 'uppercase', wordWrap: 'break-word' }}>C</span>
+          <span style={{ color: 'black', fontSize: 16, fontFamily: 'Arial', fontWeight: '700', textTransform: 'lowercase', wordWrap: 'break-word' }}>hart Name</span>
+        </div>
+
+        {/* Input */}
+        <div style={{
+          width: 296, paddingBottom: 4, left: 120, top: 72, position: 'absolute',
+          flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'flex-start', display: 'inline-flex'
+        }}>
+          <div style={{
+            alignSelf: 'stretch', position: 'relative', justifyContent: 'flex-start',
+            alignItems: 'flex-start', display: 'inline-flex'
+          }}>
+            <div style={{
+              flex: '1 1 0', paddingLeft: 8, paddingRight: 8, paddingTop: 5, paddingBottom: 5,
+              background: 'white', overflow: 'hidden', borderRadius: 3, outline: '1px #DCDCDC solid',
+              outlineOffset: '-1px', justifyContent: 'flex-start', alignItems: 'center', gap: 8, display: 'flex'
+            }}>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={20}
+                placeholder="请输入内容"
+                style={{
+                  flex: '1 1 0', height: 22, border: 'none', outline: 'none',
+                  fontSize: 14, fontFamily: 'PingFang SC', color: 'rgba(0, 0, 0, 0.90)'
+                }}
+              />
+            </div>
+            <div style={{
+              width: 80, left: -96, top: 5, position: 'absolute', justifyContent: 'flex-end',
+              alignItems: 'center', gap: 2, display: 'flex'
+            }}>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', textTransform: 'uppercase', lineHeight: 22, wordWrap: 'break-word' }}>C</span>
+                <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: 22, wordWrap: 'break-word' }}>hart name</span>
+              </div>
+            </div>
+          </div>
+          <div data-statustype-状态="default 默认" style={{
+            alignSelf: 'stretch', justifyContent: 'flex-start', alignItems: 'flex-start', gap: 10, display: 'inline-flex'
+          }}>
+            <div style={{
+              flex: '1 1 0', justifyContent: 'center', display: 'flex', flexDirection: 'column',
+              color: 'rgba(0, 0, 0, 0.40)', fontSize: 12, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: 20, wordWrap: 'break-word'
+            }}>The maximum length is 20 characters</div>
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div style={{
+          width: 440, height: 72, left: 0, top: 210, position: 'absolute',
+          justifyContent: 'center', alignItems: 'center', gap: 16, display: 'inline-flex'
+        }}>
+          <button onClick={handleConfirm} style={{
+            paddingLeft: 16, paddingRight: 16, paddingTop: 5, paddingBottom: 5,
+            background: '#00AB84', borderRadius: 3, justifyContent: 'center',
+            alignItems: 'center', gap: 10, display: 'flex', border: 'none', cursor: 'pointer'
+          }}>
+            <span style={{ color: 'rgba(255, 255, 255, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400' }}>Confirm</span>
+          </button>
+          <button onClick={onClose} style={{
+            paddingLeft: 16, paddingRight: 16, paddingTop: 5, paddingBottom: 5,
+            background: '#E7E7E7', borderRadius: 3, justifyContent: 'center',
+            alignItems: 'center', gap: 8, display: 'flex', border: 'none', cursor: 'pointer'
+          }}>
+            <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400' }}>Cancel</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── Icon Components ─────────────────────────────── */
 const EditIcon = () => (
   <div style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -324,7 +426,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
                 padding: '0 4px',
                 textAlign: 'center',
                 cursor: !isMini ? 'pointer' : 'default',
-                background: slot.isSet ? 'white' : 'transparent',
+                background: slot.isSet ? slot.color : 'transparent',
                 border: slot.isSet ? '1px solid #E7E7E7' : '1px dashed #E7E7E7',
                 borderRadius: '4px',
                 display: 'flex',
@@ -338,10 +440,10 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
                 </>
               ) : (
                 <>
-                  <span style={{ fontSize: isMini ? '10px' : '13px', fontWeight: 'bold', color: '#191919', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                  <span style={{ fontSize: isMini ? '10px' : '13px', fontWeight: 'bold', color: slot.color ? 'white' : '#191919', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', textShadow: slot.color ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}>
                     {slot.label}
                   </span>
-                  <span style={{ fontSize: isMini ? '8px' : '11px', color: '#4E5969' }}>{slot.unit}</span>
+                  <span style={{ fontSize: isMini ? '8px' : '11px', color: slot.color ? 'rgba(255,255,255,0.85)' : '#4E5969' }}>{slot.unit}</span>
                 </>
               )}
             </div>
@@ -404,7 +506,8 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
 const Graphic = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
-  const { configData } = useConfig();
+  const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+  const { configData, setConfigData } = useConfig();
 
   // Extract sensors for info lookup
   const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
@@ -425,9 +528,8 @@ const Graphic = () => {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, 560px)',
         gap: '24px',
-        justifyContent: 'center',
+        justifyContent: 'start',
         alignContent: 'start',
-        padding: '0',
         overflowY: 'auto'
       }}>
         {[...Array(4)].map((_, i) => {
@@ -490,7 +592,7 @@ const Graphic = () => {
     <div className="content-card graphic-view">
       {/* ── Header Row ───────────────────────────────── */}
       <header className="card-header">
-        <div className="graphic-title">
+        <div className="graphic-title" onClick={() => setIsNameModalOpen(true)} style={{ cursor: 'pointer' }}>
           <span style={{ fontSize: 18, fontFamily: 'Arial', fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>
             {currentGraphic.tableName || 'create chart name'}
           </span>
@@ -538,6 +640,25 @@ const Graphic = () => {
         graphic={currentGraphic}
         sensors={sensors}
         onAddChannel={() => setIsModalOpen(true)}
+      />
+
+      {/* ── Chart Name Modal ─────────────────────── */}
+      <ChartNameModal
+        isOpen={isNameModalOpen}
+        onClose={() => setIsNameModalOpen(false)}
+        initialName={currentGraphic.tableName}
+        onSave={(newName) => {
+          const updatedGraphic = { ...currentGraphic, tableName: newName };
+          const updatedList = [...graphicList];
+          updatedList[0] = updatedGraphic;
+          setConfigData({
+            ...configData,
+            configs: {
+              ...configData.configs,
+              [graphicConfigPath]: updatedList
+            }
+          });
+        }}
       />
 
       {/* ── Channel Select Modal ─────────────────────── */}

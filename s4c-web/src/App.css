@@ -104,6 +104,10 @@
   border-bottom-right-radius: 24px;
 }
 
+.nav-item.active span {
+  color: white;
+}
+
 .nav-item.active .nav-icon img {
   filter: brightness(0) invert(1);
 }
@@ -150,6 +154,10 @@
   padding-left: 48px;
   border-top-right-radius: 24px;
   border-bottom-right-radius: 24px;
+}
+
+.submenu-item.active span {
+  color: white;
 }
 
 .chevron {

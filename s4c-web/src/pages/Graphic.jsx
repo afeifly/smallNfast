@@ -250,15 +250,16 @@ const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
     <div className="modal-backdrop" onClick={onClose}>
       <div style={{
         width: 440, height: 282, position: 'relative', background: 'white',
-        overflow: 'hidden', borderRadius: 8, display: 'flex', flexDirection: 'column'
+        overflow: 'hidden', borderRadius: 8
       }} onClick={e => e.stopPropagation()}>
         {/* Title */}
         <div style={{
           left: 155, top: 24, position: 'absolute', textAlign: 'center',
           justifyContent: 'center', display: 'flex', flexDirection: 'column'
         }}>
-          <span style={{ color: 'black', fontSize: 16, fontFamily: 'Arial', fontWeight: '700', textTransform: 'uppercase', wordWrap: 'break-word' }}>C</span>
-          <span style={{ color: 'black', fontSize: 16, fontFamily: 'Arial', fontWeight: '700', textTransform: 'lowercase', wordWrap: 'break-word' }}>hart Name</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            <span style={{ color: 'black', fontSize: 16, fontFamily: 'Arial', fontWeight: '700', wordWrap: 'break-word' }}>Create Chart Name</span>
+          </div>
         </div>
 
         {/* Input */}
@@ -283,7 +284,8 @@ const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
                 placeholder="请输入内容"
                 style={{
                   flex: '1 1 0', height: 22, border: 'none', outline: 'none',
-                  fontSize: 14, fontFamily: 'PingFang SC', color: 'rgba(0, 0, 0, 0.90)'
+                  fontSize: 14, fontFamily: 'PingFang SC', color: 'rgba(0, 0, 0, 0.90)',
+                  background: 'transparent'
                 }}
               />
             </div>
@@ -292,17 +294,16 @@ const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
               alignItems: 'center', gap: 2, display: 'flex'
             }}>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', textTransform: 'uppercase', lineHeight: 22, wordWrap: 'break-word' }}>C</span>
-                <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: 22, wordWrap: 'break-word' }}>hart name</span>
+                <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: '22px', wordWrap: 'break-word' }}>Chart name</span>
               </div>
             </div>
           </div>
-          <div data-statustype-状态="default 默认" style={{
+          <div style={{
             alignSelf: 'stretch', justifyContent: 'flex-start', alignItems: 'flex-start', gap: 10, display: 'inline-flex'
           }}>
             <div style={{
               flex: '1 1 0', justifyContent: 'center', display: 'flex', flexDirection: 'column',
-              color: 'rgba(0, 0, 0, 0.40)', fontSize: 12, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: 20, wordWrap: 'break-word'
+              color: 'rgba(0, 0, 0, 0.40)', fontSize: 12, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: '20px', wordWrap: 'break-word'
             }}>The maximum length is 20 characters</div>
           </div>
         </div>
@@ -317,14 +318,18 @@ const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
             background: '#00AB84', borderRadius: 3, justifyContent: 'center',
             alignItems: 'center', gap: 10, display: 'flex', border: 'none', cursor: 'pointer'
           }}>
-            <span style={{ color: 'rgba(255, 255, 255, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400' }}>Confirm</span>
+            <div style={{ textAlign: 'center', justifyContent: 'center', display: 'flex', flexDirection: 'column' }}>
+              <span style={{ color: 'rgba(255, 255, 255, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: '22px', wordWrap: 'break-word' }}>Confirm</span>
+            </div>
           </button>
           <button onClick={onClose} style={{
             paddingLeft: 16, paddingRight: 16, paddingTop: 5, paddingBottom: 5,
             background: '#E7E7E7', borderRadius: 3, justifyContent: 'center',
             alignItems: 'center', gap: 8, display: 'flex', border: 'none', cursor: 'pointer'
           }}>
-            <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400' }}>Cancel</span>
+            <div style={{ textAlign: 'center', justifyContent: 'center', display: 'flex', flexDirection: 'column' }}>
+              <span style={{ color: 'rgba(0, 0, 0, 0.90)', fontSize: 14, fontFamily: 'PingFang SC', fontWeight: '400', lineHeight: '22px', wordWrap: 'break-word' }}>Cancel</span>
+            </div>
           </button>
         </div>
       </div>

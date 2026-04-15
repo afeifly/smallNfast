@@ -207,6 +207,7 @@
   gap: 8px;
   font-family: 'PingFang SC', sans-serif;
   font-size: 14px;
+  text-decoration: none;
 }
 
 .breadcrumb-item {
@@ -215,6 +216,7 @@
   font-family: 'PingFang SC', sans-serif;
   font-weight: 600;
   line-height: 22px;
+  text-decoration: none;
 }
 
 .breadcrumb-item.active {
@@ -439,35 +441,47 @@
   align-items: center;
   padding: 0 24px;
   gap: 4px;
-  overflow-x: auto;
+  overflow: hidden;
   border-bottom: 1px solid #F0F0F0;
 }
 
+.scroll-wrapper {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scroll-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
 .channel-item {
+  width: 166px;
   min-width: 166px;
   height: 72px;
   background: #F3F3F3;
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  gap: 12px;
+  padding: 0 17px;
+  gap: 2px;
   cursor: pointer;
-  border-radius: 4px;
   flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .channel-item span {
   font-family: Arial, sans-serif;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 18px;
   color: #191919;
+  white-space: nowrap;
 }
 
 .chart-section {
   flex: 1;
   display: flex;
   padding: 40px 24px;
-  gap: 16px;
+  gap: 0;
   position: relative;
 }
 
@@ -476,12 +490,32 @@
   flex-direction: column;
   justify-content: space-between;
   height: calc(100% - 40px);
-  width: 40px;
+  width: 46px;
   color: #86909C;
   font-family: Arial;
   font-weight: 700;
   font-size: 14px;
-  padding-bottom: 10px;
+  padding-bottom: 0;
+}
+
+/* Each Y-axis row: number left, dot right (flush to chart border) */
+.y-axis-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 0;
+  /* height is controlled by space-between in parent */
+  position: relative;
+}
+
+.y-axis-item span {
+  color: #86909C;
+  font-family: Arial;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .chart-area {
@@ -492,8 +526,7 @@
 
 .grid-workspace {
   flex: 1;
-  border-left: 1px solid #E7E7E7;
-  border-bottom: 1px solid #E7E7E7;
+  border: none;
   background-image:
     linear-gradient(to right, #f0f0f0 1px, transparent 1px),
     linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
@@ -501,16 +534,52 @@
   position: relative;
 }
 
+/* X-axis row: flex between each time node */
 .x-axis-labels {
   height: 40px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   color: #86909C;
   font-family: Arial;
   font-weight: 700;
   font-size: 14px;
-  padding: 0 10px;
+  padding: 0;
+}
+
+/* Each X-axis column: tick on top (touching chart border), label below */
+.x-axis-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 0;
+}
+
+.x-axis-item span {
+  color: #86909C;
+  font-family: Arial;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Y-axis tick: short horizontal line pushed right to overlap inside the chart border */
+.y-axis-item .axis-tick {
+  width: 6px;
+  height: 1px;
+  background: #86909C;
+  flex-shrink: 0;
+  margin-right: -6px;
+}
+
+/* X-axis tick: short vertical line pushed up to overlap inside the chart border */
+.x-axis-item .axis-tick {
+  width: 1px;
+  height: 6px;
+  background: #86909C;
+  flex-shrink: 0;
+  margin-top: -6px;
 }
 
 .info-footer {

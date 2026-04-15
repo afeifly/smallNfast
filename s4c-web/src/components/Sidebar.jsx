@@ -96,6 +96,7 @@ export const NAV = [
       { label: 'Time & Date', to: '/system/time' },
       { label: 'Firmware Update', to: '/system/firmware' },
       { label: 'Backup & Restore', to: '/system/backup' },
+      { label: 'Config Manager', to: '/config-manager' },
       { label: 'License', to: '/system/license' },
     ],
   },

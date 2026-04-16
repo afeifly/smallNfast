@@ -1,0 +1,10 @@
+<svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Black Circle part (the 'O' base) -->
+  <path d="M65 18C52 11 35 13 24 24C10 38 10 62 24 76C38 90 62 90 76 76C87 65 89 48 82 35" stroke="#1D1D1B" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- Green Gauge part -->
+  <path d="M82 22C88 32 90 45 87 58" stroke="#00AB84" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- Needle -->
+  <path d="M50 50L75 28" stroke="#00AB84" stroke-width="10" stroke-linecap="round"/>
+</svg>

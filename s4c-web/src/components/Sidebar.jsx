@@ -19,6 +19,7 @@ import iconSystemD from '../assets/images/icon_system_d.png';
 import iconDashbL from '../assets/images/icon_dashb_l.png';
 import iconDashbD from '../assets/images/icon_dashb_d.png';
 import btnItems from '../assets/images/btn-items.png';
+import mainLogo from '../assets/images/main_logo.png';
 
 const Icons = {
   chevron: (open) => (
@@ -81,7 +82,7 @@ export const NAV = [
     label: 'Sensor Configuration',
     icons: { active: iconSettingL, inactive: iconSettingD },
     children: [
-      { label: 'Add sUTO Sensor', to: '/sensor/add-suto' },
+      { label: 'Add SUTO Sensor', to: '/sensor/add-suto' },
       { label: 'Add 3rd-Party Sensor', to: '/sensor/add-3rd' },
       { label: 'Add Virtual Channel', to: '/sensor/add-virtual' },
       { label: 'Sensor List', to: '/sensor/list' },
@@ -134,7 +135,7 @@ const Sidebar = () => {
     <aside className="sidebar">
       {/* Logo */}
       <div className="sidebar-header">
-        <img src="/images/main_logo.png" alt="S4C Logo" className="main-logo" />
+        <img src={mainLogo} alt="S4C Logo" className="main-logo" />
         <div className="logo-text">S4C-Web</div>
       </div>
 

@@ -186,19 +186,17 @@
 }
 
 .sidebar-footer-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #F3F3F3;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: opacity 0.2s;
 }
 
 .sidebar-footer-icon:hover {
-  background: #E7E7E7;
+  opacity: 0.8;
 }
 
 .topbar-icon-btn {
@@ -217,10 +215,10 @@
 }
 
 .sidebar-footer {
-  padding: 16px 12px;
+  padding: 16px;
   border-top: 1px solid var(--border-color);
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -344,7 +342,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 48px;
 }
 
 .empty-icon {
@@ -354,9 +352,11 @@
 }
 
 .empty-text {
-  color: #8c8c8c;
-  font-size: 14px;
+  color: #4E5969;
+  font-size: 16px;
   font-family: 'PingFang SC', sans-serif;
+  font-weight: bold;
+
 }
 
 

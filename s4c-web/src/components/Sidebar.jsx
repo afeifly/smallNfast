@@ -18,6 +18,7 @@ import iconSystemL from '../assets/images/icon_system_l.png';
 import iconSystemD from '../assets/images/icon_system_d.png';
 import iconDashbL from '../assets/images/icon_dashb_l.png';
 import iconDashbD from '../assets/images/icon_dashb_d.png';
+import btnItems from '../assets/images/btn-items.png';
 
 const Icons = {
   chevron: (open) => (
@@ -217,11 +218,7 @@ const Sidebar = () => {
       {/* Footer */}
       <div className="sidebar-footer">
         <div className="sidebar-footer-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.45)" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <circle cx="12" cy="10" r="3" />
-            <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
-          </svg>
+          <img src={btnItems} alt="Items" style={{ width: 32, height: 32 }} />
         </div>
       </div>
     </aside>

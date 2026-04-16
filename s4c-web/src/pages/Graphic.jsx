@@ -409,7 +409,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
       background: 'white'
     }}>
       {/* ── Channel Tab Bar ──────────────────────────── */}
-      <div className="channel-bar" style={{ height: isMini ? '40px' : '72px', padding: isMini ? '0 8px' : '0 24px' }}>
+      <div className="channel-bar" style={{ height: isMini ? '40px' : '72px', padding: isMini ? '0 8px' : '0 68px' }}>
         {/* {!isMini && (
           <div style={{ width: 40, height: 72, background: '#F3F3F3', borderRadius: '0 0 4px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <ChevronLeft />
@@ -426,7 +426,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
                 flexDirection: 'column',
                 justifyContent: 'center',
                 alignItems: 'center',
-                flex: 1,
+                // flex: 1,
                 minWidth: 0,
                 padding: '0 4px',
                 textAlign: 'center',

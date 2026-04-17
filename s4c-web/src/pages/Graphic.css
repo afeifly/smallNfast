@@ -89,7 +89,7 @@
   transform: translateX(-50%);
   background: white;
   overflow: hidden;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
   z-index: 3001;
 }
 
@@ -470,52 +470,77 @@
 .chart-section {
   flex: 1;
   display: flex;
-  padding: 40px 24px;
+  padding: 30px 24px;
 }
 
 .chart-section.mini {
-  padding: 16px 8px;
+  padding: 20px 12px;
+}
+
+.y-axis-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .y-axis-labels {
+  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  width: 46px;
+  width: 48px;
+  padding-right: 2px;
 }
 
 .graphic-view-box.mini .y-axis-labels {
-  width: 20px;
+  width: 38px;
+}
+
+.y-axis-spacer {
+  height: 40px;
+}
+
+.graphic-view-box.mini .y-axis-spacer {
+  height: 24px;
 }
 
 .y-axis-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: 4px;
   width: 100%;
 }
 
 .axis-tick {
-  background: #86909C;
+  background: #1D1D1B;
   flex-shrink: 0;
 }
 
 .y-axis-item .axis-tick {
   width: 6px;
   height: 1px;
-  margin-right: -6px;
+}
+
+.graphic-view-box.mini .y-axis-item .axis-tick {
+  width: 4px;
 }
 
 .x-axis-item .axis-tick {
   width: 1px;
   height: 6px;
-  margin-top: -6px;
+}
+
+.graphic-view-box.mini .x-axis-item .axis-tick {
+  height: 4px;
 }
 
 .grid-workspace {
   flex: 1;
-  border-left: 1.5px solid #86909C;
-  border-bottom: 1.5px solid #86909C;
+  border-left: 1px solid #1D1D1B;
+  border-bottom: 1px solid #1D1D1B;
+  border-right: none;
+  border-top: none;
   position: relative;
   background-image:
     linear-gradient(to right, #f0f0f0 1px, transparent 1px),
@@ -526,16 +551,23 @@
   height: 40px;
   display: flex;
   justify-content: space-between;
+  padding-left: 2px;
 }
 
 .graphic-view-box.mini .x-axis-labels {
-  height: 16px;
+  height: 24px;
 }
 
 .x-axis-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 1px;
+  overflow: visible;
+}
+
+.x-axis-item span {
+  white-space: nowrap;
 }
 
 /* Main Layout & Cards */
@@ -554,11 +586,19 @@
   height: 375px;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
+}
+
+.mini-chart-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: pointer;
 }
 
 .card-top-header {
@@ -569,4 +609,37 @@
   justify-content: space-between;
   padding: 0 16px;
   flex-shrink: 0;
+}
+
+/* Custom Checkbox */
+.custom-checkbox {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #DCDCDC;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  background: white;
+  position: relative;
+}
+
+.custom-checkbox:hover {
+  border-color: #00AB84;
+}
+
+.custom-checkbox.checked {
+  background: #00AB84;
+  border-color: #00AB84;
+}
+
+.custom-checkbox.checked::after {
+  content: '';
+  width: 10px;
+  height: 5px;
+  border-left: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(-45deg) translateY(-1px);
 }

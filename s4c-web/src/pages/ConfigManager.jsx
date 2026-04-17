@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { unzipConfigFile, parseSummary, calculateConfigHash } from '../util/configFileUtils';
+import { unzipConfigFile, parseSummary, calculateConfigHash, exportConfigPackage } from '../util/configFileUtils';
 import { useConfig } from '../context/ConfigContext';
 import iconAlertBig from '../assets/images/icon_alert_big.png';
 import iconSmallPlusCircle from '../assets/images/icon-small-plus-circle.png';
@@ -47,6 +47,7 @@ const ConfigManager = () => {
       const fullConfig = {
         summary,
         configs: extractedConfigs,
+        fileMap: fileMap, // Preserve binary contents for export
         fileName: file.name,
         fileSize: (file.size / 1024).toFixed(1) + ' KB',
         importTime: new Date().toLocaleString()
@@ -69,6 +70,32 @@ const ConfigManager = () => {
     }
   };
 
+  const handleExport = async () => {
+    if (!globalConfigData) return;
+    setLoading(true);
+    try {
+      const blob = await exportConfigPackage(
+        globalConfigData.configs, 
+        globalConfigData.summary, 
+        globalConfigData.fileMap
+      );
+      
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `exported_${globalConfigData.fileName || 'config.cfgf'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to export configuration. See console for details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', height: '100%' }}>
       {/* Header */}
@@ -83,25 +110,48 @@ const ConfigManager = () => {
           <h1 style={{ margin: 0, fontSize: '24px', color: '#1D1D1B' }}>Configuration Manager</h1>
           <p style={{ margin: '4px 0 0 0', color: '#86909C', fontSize: '14px' }}>Import and manage your device configuration files (.cfgf)</p>
         </div>
-        {globalConfigData && (
-          <button 
-            onClick={handleClear}
-            style={{ 
-              background: '#FFF2F0', 
-              color: '#F53F3F', 
-              border: '1px solid #FFCFCA', 
-              padding: '8px 16px', 
-              borderRadius: '4px', 
-              fontWeight: '600', 
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            Clear All Data
-          </button>
-        )}
+        
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {globalConfigData && (
+            <button 
+              onClick={handleExport}
+              disabled={loading}
+              style={{ 
+                background: '#00AB84', 
+                color: 'white', 
+                border: 'none', 
+                padding: '8px 24px', 
+                borderRadius: '4px', 
+                fontWeight: '600', 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {loading ? 'Exporting...' : 'Export .cfgf'}
+            </button>
+          )}
+          {globalConfigData && (
+            <button 
+              onClick={handleClear}
+              style={{ 
+                background: '#FFF2F0', 
+                color: '#F53F3F', 
+                border: '1px solid #FFCFCA', 
+                padding: '8px 16px', 
+                borderRadius: '4px', 
+                fontWeight: '600', 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              Clear All Data
+            </button>
+          )}
+        </div>
       </div>
 
       {!globalConfigData ? (

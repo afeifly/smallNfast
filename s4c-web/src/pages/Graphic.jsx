@@ -128,14 +128,14 @@ const HeaderControls = ({ isMini, onAddGraphic, onToggleGrid }) => {
   return (
     <div className={`header-controls-container ${isMini ? 'mini' : ''}`}>
       <button
-        onClick={onAddGraphic}
+        onClick={(e) => { e.stopPropagation(); onAddGraphic(); }}
         className={`btn-graphic-control ${isMini ? 'mini' : ''}`}
       >
         <img src={iconSmallPlusCircle} width={isMini ? 11 : 16} height={isMini ? 11 : 16} alt="add" />
         <span className={`label-text ${isMini ? 'mini' : ''}`}>Add graphic</span>
       </button>
       <div
-        onClick={onToggleGrid}
+        onClick={(e) => { e.stopPropagation(); onToggleGrid(); }}
         className={`btn-icon-square ${isMini ? 'mini' : ''}`}
       >
         <img src={iconShowGrid} width={isMini ? 11 : 16} height={isMini ? 11 : 16} alt="grid" />
@@ -190,14 +190,18 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
       </div>
 
       <div className={`chart-section ${isMini ? 'mini' : ''}`}>
-        <div className="y-axis-labels">
-          {yLabels.map((label, i) => (
-            <div key={i} className="y-axis-item">
-              <span style={{ fontSize: isMini ? '8px' : '14px' }}>{label}</span>
-              {!isMini && <div className="axis-tick" />}
-            </div>
-          ))}
+        <div className="y-axis-container">
+          <div className="y-axis-labels">
+            {yLabels.map((label, i) => (
+              <div key={i} className="y-axis-item">
+                <span style={{ fontSize: isMini ? '11px' : '14px', color: '#4E5969' }}>{label}</span>
+                <div className="axis-tick" />
+              </div>
+            ))}
+          </div>
+          <div className="y-axis-spacer" />
         </div>
+
         <div className="chart-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div className="grid-workspace" style={{ backgroundSize: isMini ? '10px 10px' : '20px 20px' }}>
             {!isMini && activeChannelsInConfig.length === 0 && (
@@ -208,10 +212,10 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
             )}
           </div>
           <div className="x-axis-labels">
-            {(isMini ? xLabels.slice(0, 4) : xLabels).map((t, i) => (
+            {xLabels.map((t, i) => (
               <div key={i} className="x-axis-item">
-                {!isMini && <div className="axis-tick" />}
-                <span style={{ fontSize: isMini ? '8px' : '14px' }}>{t}</span>
+                <div className="axis-tick" />
+                <span style={{ fontSize: isMini ? '11px' : '14px', color: '#4E5969' }}>{t}</span>
               </div>
             ))}
           </div>
@@ -227,12 +231,13 @@ const Graphic = () => {
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
+  const [selectedGraphicIndex, setSelectedGraphicIndex] = useState(0);
   const { configData, setConfigData } = useConfig();
 
   const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor || configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
   const graphicConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgGraphic.json'));
   const graphicList = configData?.configs?.[graphicConfigPath] || [];
-  const currentGraphic = graphicList[0] || {};
+  const currentGraphic = graphicList[selectedGraphicIndex] || graphicList[0] || {};
 
   const allChannels = [];
   const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
@@ -258,48 +263,82 @@ const Graphic = () => {
     }
   });
 
+  const handleAddGraphic = () => {
+    if (!graphicConfigPath) return;
+    const newIndex = graphicList.length;
+    const newGraphic = {
+      tableName: `New Chart ${newIndex + 1}`,
+      graphicChannels: []
+    };
+    const updatedList = [...graphicList, newGraphic];
+    setConfigData({
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [graphicConfigPath]: updatedList
+      }
+    });
+    setSelectedGraphicIndex(newIndex);
+    setIsGridView(false);
+  };
+
   const handleChannelConfirm = (selectedIds) => {
     if (!graphicConfigPath || graphicList.length === 0) { setIsModalOpen(false); return; }
-    const updatedGraphicList = [...graphicList];
-    const targetGraphic = { ...updatedGraphicList[0] };
-    const updatedGraphicChannels = allChannels.map((ch, index) => {
-      const existing = (targetGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime));
-      return { isShow: selectedIds.includes(ch.CreateTime), channelIndex: index, channelId: index, channelSensorId: 0, sensorCreateTime: ch.sensorCreateTime, channelCreateTime: ch.CreateTime, channelSensorName: ch.sensorName, channelName: ch.channelName, channelUnitInASCII: ch.unit, isAutomaticScale: existing ? existing.isAutomaticScale : true, yMin: existing ? existing.yMin : 0, yMax: existing ? existing.yMax : 100, color: existing ? existing.color : ['#019A68', '#04CD94', '#6FB996', '#008F85', '#1E7FF7'][index % 5] };
-    }).slice(0, 5);
+    const updatedList = [...graphicList];
+    const targetGraphic = { ...updatedList[selectedGraphicIndex] };
+    
+    // Only process channels that are actually selected
+    const updatedGraphicChannels = allChannels
+      .filter(ch => selectedIds.includes(ch.CreateTime))
+      .map((ch, index) => {
+        const existing = (targetGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime));
+        return { 
+          isShow: true, 
+          channelIndex: index, 
+          channelId: index, 
+          channelSensorId: 0, 
+          sensorCreateTime: ch.sensorCreateTime, 
+          channelCreateTime: ch.CreateTime, 
+          channelSensorName: ch.sensorName, 
+          channelName: ch.channelName, 
+          channelUnitInASCII: ch.unit, 
+          isAutomaticScale: existing ? existing.isAutomaticScale : true, 
+          yMin: existing ? existing.yMin : 0, 
+          yMax: existing ? existing.yMax : 100, 
+          color: existing ? existing.color : ['#019A68', '#04CD94', '#6FB996', '#008F85', '#1E7FF7'][index % 5] 
+        };
+      })
+      .slice(0, 5); // Limit to 5 active channels as per requirements
+
     targetGraphic.graphicChannels = updatedGraphicChannels;
-    updatedGraphicList[0] = targetGraphic;
-    setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedGraphicList } });
+    updatedList[selectedGraphicIndex] = targetGraphic;
+    setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } });
     setIsModalOpen(false);
   };
 
   if (isGridView) {
     return (
       <div className="graphic-grid-layout">
-        {[...Array(4)].map((_, i) => {
-          const graphic = graphicList[i];
-          return (
-            <div key={i} className="graphic-mini-card">
-              {graphic ? (
-                <>
-                  <div className="card-top-header">
-                    <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{graphic.tableName}</span>
-                    <HeaderControls isMini={true} onAddGraphic={() => setIsModalOpen(true)} onToggleGrid={() => setIsGridView(false)} />
-                  </div>
-                  <div style={{ flex: 1, cursor: 'pointer', overflow: 'hidden' }} onClick={() => setIsGridView(false)}>
-                    <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
-                  </div>
-                </>
-              ) : (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <button onClick={() => setIsModalOpen(true)} style={{ width: 128, height: 32, background: '#FFE000', borderRadius: 3.2, border: 'none', display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center', cursor: 'pointer' }}>
-                    <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
-                    <span style={{ fontSize: 14, fontWeight: 700, color: '#191919' }}>Add graphic</span>
-                  </button>
-                </div>
-              )}
+        {graphicList.map((graphic, i) => (
+          <div key={i} className="graphic-mini-card">
+            <div className="card-top-header">
+              <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{graphic.tableName}</span>
+              <HeaderControls isMini={true} onAddGraphic={handleAddGraphic} onToggleGrid={() => setIsGridView(false)} />
             </div>
-          );
-        })}
+            <div className="mini-chart-wrapper" onClick={() => { setSelectedGraphicIndex(i); setIsGridView(false); }}>
+              <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
+            </div>
+          </div>
+        ))}
+        {/* Empty slot for adding new graphic */}
+        <div className="graphic-mini-card" style={{ border: '1px dashed #DCDCDC', background: 'transparent', boxShadow: 'none' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={handleAddGraphic} className="btn-graphic-control">
+              <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
+              <span className="label-text">Add graphic</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -311,16 +350,16 @@ const Graphic = () => {
           <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{currentGraphic.tableName || 'create chart name'}</span>
           <div className="edit-icon-wrapper">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5775 3.12302 14.5742 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
         </div>
-        <HeaderControls isMini={false} onAddGraphic={() => setIsModalOpen(true)} onToggleGrid={() => setIsGridView(true)} />
+        <HeaderControls isMini={false} onAddGraphic={handleAddGraphic} onToggleGrid={() => setIsGridView(true)} />
       </header>
       <GraphicView graphic={currentGraphic} sensors={sensors} onAddChannel={() => setIsModalOpen(true)} />
-      <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={currentGraphic.tableName} onSave={(newName) => { const updatedGraphic = { ...currentGraphic, tableName: newName }; const updatedList = [...graphicList]; updatedList[0] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); }} />
+      <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={currentGraphic.tableName} onSave={(newName) => { const updatedGraphic = { ...currentGraphic, tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); }} />
       <ChannelSelectModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} allChannels={allChannels} initialSelectedIds={(currentGraphic.graphicChannels || []).filter(c => c.isShow === true).map(c => String(c.channelCreateTime))} onConfirm={handleChannelConfirm} onSettingClick={(ch) => { const existing = (currentGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime)); setEditingChannel(existing ? { ...ch, ...existing } : ch); setIsSettingsOpen(true); }} />
-      <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...currentGraphic }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[0] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); setIsSettingsOpen(false); }} />
+      <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...currentGraphic }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); setIsSettingsOpen(false); }} />
     </div>
   );
 };

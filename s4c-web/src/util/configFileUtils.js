@@ -100,3 +100,42 @@ export function generateSummary(summaryData) {
   const encoder = new TextEncoder();
   return encoder.encode(yamlText);
 }
+
+/**
+ * Prepares and zips a complete configuration package.
+ * 
+ * @param {Object} configs - Map of paths to JSON objects.
+ * @param {Object} summary - The summary object.
+ * @param {Map<string, Uint8Array>} [originalFileMap] - Optional original binary files to preserve non-config files.
+ * @returns {Promise<Blob>}
+ */
+export async function exportConfigPackage(configs, summary, originalFileMap) {
+  const fileMap = originalFileMap ? new Map(originalFileMap) : new Map();
+  const encoder = new TextEncoder();
+
+  // 1. Update/Add all JSON configs back to the fileMap
+  for (const [path, data] of Object.entries(configs)) {
+    const jsonString = JSON.stringify(data, null, 2);
+    fileMap.set(path, encoder.encode(jsonString));
+  }
+
+  // 2. Remove summary.yml temporarily to calculate hash of payload
+  fileMap.delete('summary.yml');
+
+  // 3. Calculate new hash
+  const newHash = await calculateConfigHash(fileMap);
+
+  // 4. Update summary with new hash and timestamp
+  const updatedSummary = {
+    ...summary,
+    hash: newHash,
+    'Config-Date': new Date().toISOString()
+  };
+
+  // 5. Add updated summary.yml
+  const summaryContent = generateSummary(updatedSummary);
+  fileMap.set('summary.yml', summaryContent);
+
+  // 6. Zip it all up
+  return await zipConfigFile(fileMap);
+}

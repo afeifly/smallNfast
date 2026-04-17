@@ -1,83 +1,25 @@
-import React, { useState } from 'react';
-import { useConfig } from '../context/ConfigContext';
+import React, { useState, useEffect } from 'react';
+import '../pages/Graphic.css';
 
-const ChannelSelectModal = ({ isOpen, onClose, onSettingClick }) => {
-  const { configData, setConfigData } = useConfig();
+const ChannelSelectModal = ({ 
+  isOpen, 
+  onClose, 
+  onSettingClick, 
+  onConfirm, 
+  allChannels = [], 
+  initialSelectedIds = [] 
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Get current graphic config (assuming we're updating the first graphic in the list)
-  const graphicConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgGraphic.json'));
-  const graphicList = configData?.configs?.[graphicConfigPath] || [];
-  const currentGraphic = graphicList[0] || {};
-
-  // Track selected IDs (CreateTime)
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // Initialize selection from config
-  React.useEffect(() => {
-    if (isOpen && currentGraphic.graphicChannels) {
-      const activeIds = currentGraphic.graphicChannels
-        .filter(c => c.isShow === true)
-        .map(c => String(c.channelCreateTime));
-      setSelectedIds(activeIds);
+  // Initialize selection from prop
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedIds(initialSelectedIds);
     }
-  }, [isOpen, currentGraphic]);
+  }, [isOpen, initialSelectedIds]);
 
   if (!isOpen) return null;
-
-  // Extract channels from configData
-  const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
-    configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
-
-  // Get location/measurepoint mappings
-  const configs = configData?.configs || {};
-  const locationConfigPath = Object.keys(configs).find(p => p.endsWith('cfgLocation.json'));
-  const locationJson = configs[locationConfigPath] || {};
-  
-  // Use the exact structure: Locations -> meapoints -> channels
-  const locationsArray = locationJson.Locations || [];
-
-  const allChannels = [];
-  sensors.forEach(sensor => {
-    if (sensor.cfgchannel) {
-      sensor.cfgchannel.forEach(ch => {
-        const createTimeStr = String(ch.CreateTime);
-
-        // Find location info from cfgLocation.json nested structure
-        let locationValue = '---';
-        let pointValue = '---';
-
-        // Search through the nested Locations -> meapoints structure
-        if (Array.isArray(locationsArray)) {
-          for (const locObj of locationsArray) {
-            const meapoints = locObj.meapoints || [];
-            if (Array.isArray(meapoints)) {
-              const matchedPoint = meapoints.find(pointObj => 
-                Array.isArray(pointObj.channels) && pointObj.channels.some(cid => String(cid) === createTimeStr)
-              );
-              
-              if (matchedPoint) {
-                // Get info from the matched point object
-                locationValue = matchedPoint.location || '---';
-                pointValue = matchedPoint.meapoint || '---';
-                break; // Found the match, exit the loops
-              }
-            }
-          }
-        }
-
-        allChannels.push({
-          CreateTime: createTimeStr,
-          sensorCreateTime: String(sensor.CreateTime || ''),
-          sensorName: sensor.Name || sensor.Description,
-          channelName: ch.ChannelDescription,
-          location: locationValue,
-          point: pointValue,
-          unit: ch.UnitInASCII
-        });
-      });
-    }
-  });
 
   const filteredChannels = allChannels.filter(ch =>
     ch.sensorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -101,53 +43,16 @@ const ChannelSelectModal = ({ isOpen, onClose, onSettingClick }) => {
   };
 
   const handleConfirm = () => {
-    if (!graphicConfigPath || graphicList.length === 0) {
-      onClose();
-      return;
+    if (onConfirm) {
+      onConfirm(selectedIds);
     }
-
-    const updatedGraphicList = [...graphicList];
-    const targetGraphic = { ...updatedGraphicList[0] };
-
-    // Update isShow based on selection
-    const updatedGraphicChannels = allChannels.map((ch, index) => {
-      const existing = (targetGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime));
-
-      return {
-        isShow: selectedIds.includes(ch.CreateTime),
-        channelIndex: index,
-        channelId: index,
-        channelSensorId: 0,
-        sensorCreateTime: ch.sensorCreateTime,
-        channelCreateTime: ch.CreateTime,
-        channelSensorName: ch.sensorName,
-        channelName: ch.channelName,
-        channelUnitInASCII: ch.unit,
-        isAutomaticScale: existing ? existing.isAutomaticScale : true,
-        yMin: existing ? existing.yMin : 0,
-        yMax: existing ? existing.yMax : 100,
-        color: existing ? existing.color : (index === 0 ? '#019A68' : index === 1 ? '#04CD94' : index === 2 ? '#6FB996' : index === 3 ? '#008F85' : '#1E7FF7')
-      };
-    }).slice(0, 5);
-
-    targetGraphic.graphicChannels = updatedGraphicChannels;
-    updatedGraphicList[0] = targetGraphic;
-
-    setConfigData({
-      ...configData,
-      configs: {
-        ...configData.configs,
-        [graphicConfigPath]: updatedGraphicList
-      }
-    });
-    onClose();
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-container" onClick={e => e.stopPropagation()}>
         <header className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '32px', flex: 1 }}>
+          <div className="modal-header-content">
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Channel configuration</h3>
             <div className="search-input-wrapper" style={{ width: '320px' }}>
               <input
@@ -161,24 +66,12 @@ const ChannelSelectModal = ({ isOpen, onClose, onSettingClick }) => {
               </span>
             </div>
           </div>
-          <div
-            onClick={onClose}
-            style={{
-              cursor: 'pointer',
-              width: '32px',
-              height: '32px',
-              background: '#FFE000',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
+          <div className="modal-close-btn" onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#191919" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </div>
         </header>
 
-        <div className="modal-content-table" style={{ padding: '24px', maxHeight: '400px', overflowY: 'auto' }}>
+        <div className="modal-content-area">
           <table className="channel-table">
             <thead>
               <tr>
@@ -190,7 +83,7 @@ const ChannelSelectModal = ({ isOpen, onClose, onSettingClick }) => {
                       if (selectedIds.length === filteredChannels.length) {
                         setSelectedIds([]);
                       } else {
-                        setSelectedIds(filteredChannels.map(ch => ch.CreateTime));
+                        setSelectedIds(filteredChannels.slice(0, 5).map(ch => ch.CreateTime));
                       }
                     }}
                   ></div>
@@ -231,7 +124,7 @@ const ChannelSelectModal = ({ isOpen, onClose, onSettingClick }) => {
               ) : (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                    {configData ? 'No channels found matching search' : 'Please import a configuration file first'}
+                    No channels found matching search
                   </td>
                 </tr>
               )}
@@ -239,30 +132,9 @@ const ChannelSelectModal = ({ isOpen, onClose, onSettingClick }) => {
           </table>
         </div>
 
-        <footer className="modal-footer" style={{ borderTop: '1px solid #E7E7E7', height: '72px', background: 'white' }}>
-          <button
-            className="btn-primary"
-            style={{
-              background: '#00AB84',
-              border: '1px solid #00AB84',
-              color: 'white',
-              order: 1,
-              width: '120px'
-            }}
-            onClick={handleConfirm}
-          >
-            Confirm
-          </button>
-          <button
-            className="btn-secondary"
-            style={{
-              order: 2,
-              width: '120px'
-            }}
-            onClick={onClose}
-          >
-            Cancel
-          </button>
+        <footer className="modal-footer">
+          <button className="btn-drawer-confirm" style={{ width: '120px' }} onClick={handleConfirm}>Confirm</button>
+          <button className="btn-drawer-cancel" style={{ width: '120px' }} onClick={onClose}>Cancel</button>
         </footer>
       </div>
     </div>

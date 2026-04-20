@@ -7,7 +7,10 @@ const ChannelSelectModal = ({
   onSettingClick, 
   onConfirm, 
   allChannels = [], 
-  initialSelectedIds = [] 
+  initialSelectedIds = [],
+  maxLimit = 5,
+  selectionMessage = 'You can only select up to 5 channels for this graphic.',
+  showOperate = true
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -33,8 +36,8 @@ const ChannelSelectModal = ({
       if (prev.includes(id)) {
         return prev.filter(i => i !== id);
       } else {
-        if (prev.length >= 5) {
-          alert('You can only select up to 5 channels for this graphic.');
+        if (maxLimit && prev.length >= maxLimit) {
+          alert(selectionMessage);
           return prev;
         }
         return [...prev, id];
@@ -83,7 +86,7 @@ const ChannelSelectModal = ({
                       if (selectedIds.length === filteredChannels.length) {
                         setSelectedIds([]);
                       } else {
-                        setSelectedIds(filteredChannels.slice(0, 5).map(ch => ch.CreateTime));
+                        setSelectedIds(filteredChannels.slice(0, maxLimit || filteredChannels.length).map(ch => ch.CreateTime));
                       }
                     }}
                   ></div>
@@ -93,7 +96,7 @@ const ChannelSelectModal = ({
                 <th>Unit</th>
                 <th>Location</th>
                 <th>Point</th>
-                <th>Operate</th>
+                {showOperate && <th>Operate</th>}
               </tr>
             </thead>
             <tbody>
@@ -108,17 +111,19 @@ const ChannelSelectModal = ({
                     <td>{ch.unit}</td>
                     <td>{ch.location}</td>
                     <td>{ch.point}</td>
-                    <td>
-                      <span
-                        style={{ color: '#00AB84', cursor: 'pointer', textDecoration: 'underline' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onSettingClick) onSettingClick(ch);
-                        }}
-                      >
-                        Setting
-                      </span>
-                    </td>
+                    {showOperate && (
+                      <td>
+                        <span
+                          style={{ color: '#00AB84', cursor: 'pointer', textDecoration: 'underline' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onSettingClick) onSettingClick(ch);
+                          }}
+                        >
+                          Setting
+                        </span>
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (

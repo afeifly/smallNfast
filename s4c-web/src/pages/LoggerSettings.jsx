@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
+import { useConfig } from '../context/ConfigContext';
+import ChannelSelectModal from '../components/ChannelSelectModal';
 
 // ── Create Logger Drawer ────────────────────────────────────────────────────
-const CreateLoggerDrawer = ({ isOpen, onClose }) => {
+const CreateLoggerDrawer = ({ 
+  isOpen, 
+  onClose, 
+  selectedIds, 
+  setSelectedIds, 
+  allChannels, 
+  onOpenModal 
+}) => {
   const [form, setForm] = useState({
     startupMode: 'key start',
     fileName: '',
@@ -9,6 +18,8 @@ const CreateLoggerDrawer = ({ isOpen, onClose }) => {
     stopTime: '',
     loggerRate: '5s',
   });
+
+  const selectedChannels = allChannels.filter(ch => selectedIds.includes(ch.CreateTime));
 
   const handleChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -167,20 +178,23 @@ const CreateLoggerDrawer = ({ isOpen, onClose }) => {
               color: '#191919',
               lineHeight: '24px',
             }}>
-              Selected Channels (0)
+              Selected Channels ({selectedIds.length})
             </span>
-            <button style={{
-              padding: '2px 8px',
-              background: '#00AB84',
-              border: 'none',
-              borderRadius: 3,
-              color: 'rgba(255,255,255,0.9)',
-              fontSize: 12,
-              fontFamily: 'PingFang SC, sans-serif',
-              fontWeight: 400,
-              lineHeight: '20px',
-              cursor: 'pointer',
-            }}>
+            <button 
+              onClick={onOpenModal}
+              style={{
+                padding: '2px 8px',
+                background: '#00AB84',
+                border: 'none',
+                borderRadius: 3,
+                color: 'rgba(255,255,255,0.9)',
+                fontSize: 12,
+                fontFamily: 'PingFang SC, sans-serif',
+                fontWeight: 400,
+                lineHeight: '20px',
+                cursor: 'pointer',
+              }}
+            >
               Select Channels
             </button>
           </div>
@@ -225,22 +239,46 @@ const CreateLoggerDrawer = ({ isOpen, onClose }) => {
                 </tr>
               </thead>
               <tbody>
-                {/* Empty — no channels selected yet */}
-                <tr>
-                  <td colSpan={2} style={{
-                    padding: '40px 16px',
-                    textAlign: 'center',
-                    fontSize: 14,
-                    color: 'rgba(0,0,0,0.4)',
-                    fontFamily: 'PingFang SC, sans-serif',
-                  }}>
-                    No channels selected
-                  </td>
-                </tr>
+                {selectedChannels.length > 0 ? (
+                  selectedChannels.map(ch => (
+                    <tr key={ch.CreateTime}>
+                      <td style={{
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #F0F0F0',
+                        fontSize: 14,
+                        color: '#191919',
+                      }}>
+                        {ch.channelName}
+                      </td>
+                      <td style={{
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #F0F0F0',
+                        fontSize: 14,
+                        color: '#4E5969',
+                      }}>
+                        {ch.location} / {ch.point}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={2} style={{
+                      padding: '40px 16px',
+                      textAlign: 'center',
+                      fontSize: 14,
+                      color: 'rgba(0,0,0,0.4)',
+                      fontFamily: 'PingFang SC, sans-serif',
+                    }}>
+                      No channels selected
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
+
+
 
         {/* ── Footer ── */}
         <div style={{
@@ -303,6 +341,47 @@ const EmptyIcon = () => (
 const LoggerSettings = () => {
   const [loggers] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Calculate all channels for the modal
+  const { configData } = useConfig();
+  const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor || configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
+  const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
+  const locationsArray = configData?.configs?.[locationConfigPath]?.Locations || [];
+
+  const allChannels = [];
+  sensors.forEach(sensor => {
+    if (sensor.cfgchannel) {
+      sensor.cfgchannel.forEach(ch => {
+        const createTimeStr = String(ch.CreateTime);
+        let locationValue = '---';
+        let pointValue = '---';
+        if (Array.isArray(locationsArray)) {
+          for (const locObj of locationsArray) {
+            const meapoints = locObj.meapoints || [];
+            if (Array.isArray(meapoints)) {
+              const matchedPoint = meapoints.find(pointObj => Array.isArray(pointObj.channels) && pointObj.channels.some(cid => String(cid) === createTimeStr));
+              if (matchedPoint) {
+                locationValue = matchedPoint.location || '---';
+                pointValue = matchedPoint.meapoint || '---';
+                break;
+              }
+            }
+          }
+        }
+        allChannels.push({
+          CreateTime: createTimeStr,
+          sensorCreateTime: String(sensor.CreateTime || ''),
+          sensorName: sensor.Name || sensor.Description,
+          channelName: ch.ChannelDescription,
+          location: locationValue,
+          point: pointValue,
+          unit: ch.UnitInASCII
+        });
+      });
+    }
+  });
 
   return (
     <div className="content-card logger-settings-page">
@@ -379,6 +458,25 @@ const LoggerSettings = () => {
       <CreateLoggerDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        allChannels={allChannels}
+        onOpenModal={() => setIsModalOpen(true)}
+      />
+
+      {/* Channel Select Modal */}
+      <ChannelSelectModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        allChannels={allChannels}
+        initialSelectedIds={selectedIds}
+        onConfirm={(ids) => {
+          setSelectedIds(ids);
+          setIsModalOpen(false);
+        }}
+        maxLimit={0} // No limit for logging
+        selectionMessage="You can select channels for logging."
+        showOperate={false}
       />
     </div>
   );

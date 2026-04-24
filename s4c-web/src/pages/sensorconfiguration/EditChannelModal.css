@@ -1,0 +1,158 @@
+/* Edit Channel Modal - Refined to match AddSutoSensor style */
+.edit-channel-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  backdrop-filter: blur(2px);
+}
+
+.edit-channel-modal {
+  width: 520px; /* Scaled down from 623px for better proportions with standard fonts */
+  background: white;
+  border-radius: 8px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.edit-channel-header {
+  height: 56px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #F0F0F0;
+}
+
+.edit-channel-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #191919;
+  font-family: 'Arial', sans-serif;
+}
+
+.edit-channel-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.edit-channel-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.edit-channel-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Reusing the form-item pattern from ChannelConfigModal */
+.edit-form-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.edit-form-label {
+  flex: 1;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.9);
+  font-family: 'PingFang SC', sans-serif;
+  text-transform: capitalize;
+}
+
+.edit-form-input-wrapper {
+  width: 253px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #D4D4D8;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  background: white;
+}
+
+.edit-form-input-wrapper.active {
+  border: 1px solid #00AB84;
+  outline: 1px solid #00AB84;
+}
+
+.edit-form-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.9);
+  font-family: 'Arial', sans-serif;
+}
+
+.edit-form-select {
+  width: 253px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #D4D4D8;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+  background: white;
+}
+
+.edit-channel-footer {
+  height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  border-top: 1px solid #F0F0F0;
+  background: #FAFAFA;
+}
+
+.btn-edit-cancel {
+  padding: 6px 32px;
+  background: #E5E5E5;
+  border-radius: 3px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.9);
+  border: none;
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.btn-edit-confirm {
+  padding: 6px 32px;
+  background: #00AB84;
+  border-radius: 3px;
+  font-size: 14px;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.btn-edit-confirm:hover {
+  background: #009070;
+}

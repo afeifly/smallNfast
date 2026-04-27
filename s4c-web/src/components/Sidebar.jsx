@@ -58,12 +58,8 @@ export const NAV = [
   {
     key: 'alarm',
     label: 'Alarm',
+    to: '/alarm',
     icons: { active: iconAlarmL, inactive: iconAlarmD },
-    children: [
-      { label: 'Alarm List', to: '/alarm/list' },
-      { label: 'Alarm Settings', to: '/alarm/settings' },
-      { label: 'Email Notification', to: '/alarm/email' },
-    ],
   },
   {
     key: 'communication',
@@ -83,8 +79,9 @@ export const NAV = [
     icons: { active: iconSettingL, inactive: iconSettingD },
     children: [
       { label: 'Add SUTO Sensor', to: '/sensor/add-suto' },
-      { label: 'Add 3rd-Party Sensor', to: '/sensor/add-3rd' },
-      { label: 'Add Virtual Channel', to: '/sensor/add-virtual' },
+      { label: '3-Party sensor', to: '/sensor/add-3rd' },
+      { label: 'Analog & digital input', to: '/sensor/analog-digital' },
+      { label: 'Virtual channel', to: '/sensor/virtual-channel' },
       { label: 'Sensor List', to: '/sensor/list' },
     ],
   },

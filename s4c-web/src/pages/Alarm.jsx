@@ -1,40 +1,29 @@
 import React, { useState } from 'react';
-import { useConfig } from '../../context/ConfigContext';
-import SensorConfigModal from './SensorConfigModal';
-import EditChannelModal from './EditChannelModal';
-import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
-import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
-import './SUTOSensor.css';
+import { useConfig } from '../context/ConfigContext';
+import iconBtnEdit from '../assets/images/icon_btn_edit.png';
+import iconBtnDelete from '../assets/images/icon_btn_delete.png';
+import './sensorconfiguration/SUTOSensor.css';
 
-const SUTOSensor = () => {
+const Alarm = () => {
   const { configData } = useConfig();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSensor, setEditingSensor] = useState(null);
-
-  // Extract and filter sensors
-  const sensors = (
-    configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
-    configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor ||
-    []
-  ).filter(s => s.isSuto === true);
+  const [alarms, setAlarms] = useState([]); // Placeholder for alarm data
 
   return (
     <div className="content-card suto-sensor-page">
       {/* Header */}
       <header className="suto-header">
-        <h2 className="suto-title">SUTO sensor list</h2>
+        <h2 className="suto-title">Alarm list</h2>
         <button
           className="add-sensor-btn"
           onClick={() => {
-            setEditingSensor(null);
-            setIsModalOpen(true);
+            // Handle add alarm
           }}
         >
           <svg viewBox="0 0 16 16" fill="none">
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>Add SUTO Sensor</span>
+          <span>Add Alarm</span>
         </button>
       </header>
 
@@ -44,31 +33,34 @@ const SUTOSensor = () => {
           <table className="suto-table">
             <thead>
               <tr>
-                <th className="col-sensor">Sensor</th>
-                <th className="col-description">Description</th>
-                <th className="col-address">Address</th>
-                <th className="col-sn">S/N</th>
-                <th className="col-operate">Operate</th>
+                <th>Sensor</th>
+                <th>Channel</th>
+                <th>Unit</th>
+                <th>Threshold</th>
+                <th>Hysteresis</th>
+                <th>Direction</th>
+                <th>Delay</th>
+                <th>Relay</th>
+                <th>Pending</th>
+                <th className="col-operate">Action</th>
               </tr>
             </thead>
             <tbody>
-              {sensors.length > 0 ? (
-                sensors.map((sensor, index) => (
+              {alarms.length > 0 ? (
+                alarms.map((alarm, index) => (
                   <tr key={index}>
-                    <td>{sensor.Name || '---'}</td>
-                    <td>{sensor.Description || '---'}</td>
-                    <td>{sensor.Addr || '---'}</td>
-                    <td>{sensor.SN || '---'}</td>
+                    <td>{alarm.Sensor || '---'}</td>
+                    <td>{alarm.Channel || '---'}</td>
+                    <td>{alarm.Unit || '---'}</td>
+                    <td>{alarm.Threshold || '---'}</td>
+                    <td>{alarm.Hysteresis || '---'}</td>
+                    <td>{alarm.Direction || '---'}</td>
+                    <td>{alarm.Delay || '---'}</td>
+                    <td>{alarm.Relay || '---'}</td>
+                    <td>{alarm.Pending || '---'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className="btn-icon-img"
-                          title="Edit"
-                          onClick={() => {
-                            setEditingSensor(sensor);
-                            setIsModalOpen(true);
-                          }}
-                        >
+                        <button className="btn-icon-img" title="Edit">
                           <img src={iconBtnEdit} alt="Edit" style={{ width: 18, height: 18 }} />
                         </button>
                         <button className="btn-icon-img" title="Delete">
@@ -80,9 +72,9 @@ const SUTOSensor = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} style={{ borderBottom: 'none', padding: 0 }}>
+                  <td colSpan={10} style={{ borderBottom: 'none', padding: 0 }}>
                     <div className="suto-empty-container">
-                      No SUTO sensors configured. Click "Add SUTO Sensor" to get started.
+                      No Alarms configured. Click "Add Alarm" to get started.
                     </div>
                   </td>
                 </tr>
@@ -105,7 +97,7 @@ const SUTOSensor = () => {
         </div>
 
         <div className="page-counter">
-          {sensors.length} of {sensors.length}
+          {alarms.length} of {alarms.length}
         </div>
 
         <div className="pagination-controls">
@@ -131,18 +123,8 @@ const SUTOSensor = () => {
           </button>
         </div>
       </footer>
-      {/* Sensor Config Modal (Add/Edit) */}
-      <SensorConfigModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingSensor(null);
-        }}
-        initialData={editingSensor}
-        isSuto={true}
-      />
     </div>
   );
 };
 
-export default SUTOSensor;
+export default Alarm;

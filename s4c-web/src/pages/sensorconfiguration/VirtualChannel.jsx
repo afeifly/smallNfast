@@ -1,32 +1,34 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
-import SensorConfigModal from './SensorConfigModal';
-import EditChannelModal from './EditChannelModal';
+import VirtualChannelModal from './VirtualChannelModal';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import './SUTOSensor.css';
 
-const SUTOSensor = () => {
+const VirtualChannel = () => {
   const { configData } = useConfig();
+  const [items, setItems] = useState([]); 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSensor, setEditingSensor] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
 
-  // Extract and filter sensors
-  const sensors = (
-    configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
-    configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor ||
-    []
-  ).filter(s => s.isSuto === true);
+  const handleSave = (newItem) => {
+    if (editingItem) {
+      setItems(items.map(item => item === editingItem ? newItem : item));
+    } else {
+      setItems([...items, newItem]);
+    }
+    setIsModalOpen(false);
+  };
 
   return (
     <div className="content-card suto-sensor-page">
       {/* Header */}
       <header className="suto-header">
-        <h2 className="suto-title">SUTO sensor list</h2>
+        <h2 className="suto-title">Virtual channel list</h2>
         <button
           className="add-sensor-btn"
           onClick={() => {
-            setEditingSensor(null);
+            setEditingItem(null);
             setIsModalOpen(true);
           }}
         >
@@ -34,7 +36,7 @@ const SUTOSensor = () => {
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>Add SUTO Sensor</span>
+          <span>Create Virtual channel</span>
         </button>
       </header>
 
@@ -44,28 +46,30 @@ const SUTOSensor = () => {
           <table className="suto-table">
             <thead>
               <tr>
-                <th className="col-sensor">Sensor</th>
-                <th className="col-description">Description</th>
-                <th className="col-address">Address</th>
-                <th className="col-sn">S/N</th>
+                <th>Created on</th>
+                <th>Virtual channel</th>
+                <th>Unit</th>
+                <th>Resolution</th>
+                <th>Sensor</th>
                 <th className="col-operate">Operate</th>
               </tr>
             </thead>
             <tbody>
-              {sensors.length > 0 ? (
-                sensors.map((sensor, index) => (
+              {items.length > 0 ? (
+                items.map((item, index) => (
                   <tr key={index}>
-                    <td>{sensor.Name || '---'}</td>
-                    <td>{sensor.Description || '---'}</td>
-                    <td>{sensor.Addr || '---'}</td>
-                    <td>{sensor.SN || '---'}</td>
+                    <td>{item.CreatedOn || '---'}</td>
+                    <td>{item.Name || '---'}</td>
+                    <td>{item.Unit || '---'}</td>
+                    <td>{item.Resolution || '---'}</td>
+                    <td>{item.Sensor || '---'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className="btn-icon-img"
+                        <button 
+                          className="btn-icon-img" 
                           title="Edit"
                           onClick={() => {
-                            setEditingSensor(sensor);
+                            setEditingItem(item);
                             setIsModalOpen(true);
                           }}
                         >
@@ -80,9 +84,9 @@ const SUTOSensor = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} style={{ borderBottom: 'none', padding: 0 }}>
+                  <td colSpan={6} style={{ borderBottom: 'none', padding: 0 }}>
                     <div className="suto-empty-container">
-                      No SUTO sensors configured. Click "Add SUTO Sensor" to get started.
+                      No Virtual channel configured. Click "Create Virtual channel"
                     </div>
                   </td>
                 </tr>
@@ -105,7 +109,7 @@ const SUTOSensor = () => {
         </div>
 
         <div className="page-counter">
-          {sensors.length} of {sensors.length}
+          {items.length} of {items.length}
         </div>
 
         <div className="pagination-controls">
@@ -131,18 +135,15 @@ const SUTOSensor = () => {
           </button>
         </div>
       </footer>
-      {/* Sensor Config Modal (Add/Edit) */}
-      <SensorConfigModal
+
+      <VirtualChannelModal
         isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingSensor(null);
-        }}
-        initialData={editingSensor}
-        isSuto={true}
+        onClose={() => setIsModalOpen(false)}
+        initialData={editingItem}
+        onSave={handleSave}
       />
     </div>
   );
 };
 
-export default SUTOSensor;
+export default VirtualChannel;

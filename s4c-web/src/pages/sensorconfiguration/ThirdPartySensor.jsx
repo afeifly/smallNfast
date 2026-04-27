@@ -1,28 +1,27 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import SensorConfigModal from './SensorConfigModal';
-import EditChannelModal from './EditChannelModal';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import './SUTOSensor.css';
 
-const SUTOSensor = () => {
+const ThirdPartySensor = () => {
   const { configData } = useConfig();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSensor, setEditingSensor] = useState(null);
 
-  // Extract and filter sensors
+  // Extract and filter sensors (isSuto !== true for 3-Party sensors)
   const sensors = (
     configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
     configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor ||
     []
-  ).filter(s => s.isSuto === true);
+  ).filter(s => s.isSuto !== true);
 
   return (
     <div className="content-card suto-sensor-page">
       {/* Header */}
       <header className="suto-header">
-        <h2 className="suto-title">SUTO sensor list</h2>
+        <h2 className="suto-title">3-Party sensor list</h2>
         <button
           className="add-sensor-btn"
           onClick={() => {
@@ -34,7 +33,7 @@ const SUTOSensor = () => {
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>Add SUTO Sensor</span>
+          <span>Add 3-Party sensor</span>
         </button>
       </header>
 
@@ -82,7 +81,7 @@ const SUTOSensor = () => {
                 <tr>
                   <td colSpan={5} style={{ borderBottom: 'none', padding: 0 }}>
                     <div className="suto-empty-container">
-                      No SUTO sensors configured. Click "Add SUTO Sensor" to get started.
+                      No 3-Party sensor configured. Click "Add 3-Party sensor"
                     </div>
                   </td>
                 </tr>
@@ -139,10 +138,10 @@ const SUTOSensor = () => {
           setEditingSensor(null);
         }}
         initialData={editingSensor}
-        isSuto={true}
+        isSuto={false}
       />
     </div>
   );
 };
 
-export default SUTOSensor;
+export default ThirdPartySensor;

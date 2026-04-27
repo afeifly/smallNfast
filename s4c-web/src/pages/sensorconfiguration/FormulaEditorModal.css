@@ -1,0 +1,286 @@
+.formula-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  backdrop-filter: blur(2px);
+}
+
+.formula-modal {
+  width: 1221px;
+  height: 702px;
+  background: white;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
+}
+
+/* Header Styles */
+.formula-header {
+  height: 96px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #F0F0F0;
+  position: relative;
+}
+
+.formula-title {
+  color: #4E5969;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.formula-subtitle {
+  color: #4E5969;
+  font-size: 14px;
+  margin: 4px 0 0 0;
+}
+
+.formula-search-container {
+  width: 360px;
+}
+
+.search-box {
+  height: 48px;
+  border: 1.5px solid #D9D9D9;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 12px;
+}
+
+.search-icon {
+  width: 20px;
+  height: 20px;
+  color: #191919;
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  color: #191919;
+}
+
+.search-box input::placeholder {
+  color: #86909C;
+}
+
+.formula-close {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  color: #4E5969;
+}
+
+.formula-close:hover {
+  background: #F3F3F3;
+}
+
+/* Content Styles */
+.formula-content {
+  flex: 1;
+  display: flex;
+  padding: 24px;
+  gap: 24px;
+  overflow: hidden;
+}
+
+.formula-left {
+  width: 586px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.formula-display-area label,
+.keypad-group label {
+  display: block;
+  font-size: 16px;
+  color: #4E5969;
+  margin-bottom: 8px;
+}
+
+.formula-builder-box {
+  width: 586px;
+  height: 200px;
+  border: 2px solid #00AB84;
+  border-radius: 4px;
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  overflow-y: auto;
+  background: white;
+  box-sizing: border-box;
+}
+
+.formula-token {
+  background: #F3F3F3;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 16px;
+  color: #191919;
+  display: flex;
+  align-items: center;
+}
+
+.formula-placeholder {
+  color: #86909C;
+  font-size: 16px;
+}
+
+.formula-keypad-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.keypad-grid-unified {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6.77px;
+  width: 586px;
+}
+
+.key-btn {
+  width: 52.5px;
+  height: 52.5px;
+  background: #F3F3F3;
+  border: none;
+  border-radius: 3.39px;
+  font-size: 22px;
+  color: #191919;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.key-btn:hover {
+  background: #E5E5E5;
+}
+
+.key-btn:active {
+  background: #D9D9D9;
+}
+
+.key-btn.highlight {
+  background: #00AB84;
+  color: white;
+}
+
+.key-btn.highlight:hover {
+  background: #009070;
+}
+
+.key-btn.backspace-btn {
+  background: #F3F3F3;
+}
+
+/* Right Side Styles */
+.formula-right {
+  flex: 1;
+  border-radius: 4px;
+  border: 1px solid #F0F0F0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-table-container {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.channel-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.channel-table th {
+  background: #F3F3F3;
+  height: 36px;
+  padding: 0 12px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+  color: #191919;
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+
+.channel-table td {
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid #F0F0F0;
+  font-size: 13px;
+  color: #191919;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.channel-table tr:hover td {
+  background: rgba(0, 171, 132, 0.1);
+}
+
+/* Footer Styles */
+.formula-footer {
+  height: 72px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  border-top: 1px solid #F0F0F0;
+  background: #FAFAFA;
+}
+
+.btn-formula-cancel {
+  height: 36px;
+  padding: 0 32px;
+  background: #E5E5E5;
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  color: #4E5969;
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.btn-formula-confirm {
+  height: 36px;
+  padding: 0 32px;
+  background: #00AB84;
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  color: white;
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.btn-formula-confirm:hover {
+  background: #009070;
+}

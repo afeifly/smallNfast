@@ -1,4 +1,4 @@
-/* Edit Channel Modal - Refined to match AddSutoSensor style */
+/* Analog & Digital Input Modal - Same style as EditChannelModal */
 .edit-channel-modal-overlay {
   position: fixed;
   top: 0;
@@ -14,7 +14,7 @@
 }
 
 .edit-channel-modal {
-  width: 520px; /* Scaled down from 623px for better proportions with standard fonts */
+  width: 520px;
   background: white;
   border-radius: 8px;
   position: relative;
@@ -62,7 +62,6 @@
   gap: 16px;
 }
 
-/* Reusing the form-item pattern from ChannelConfigModal */
 .edit-form-item {
   display: flex;
   flex-direction: row;
@@ -90,11 +89,6 @@
   background: white;
 }
 
-.edit-form-input-wrapper.active {
-  border: 1px solid #00AB84;
-  outline: 1px solid #00AB84;
-}
-
 .edit-form-input {
   width: 100%;
   height: 100%;
@@ -103,21 +97,6 @@
   font-size: 14px;
   color: rgba(0, 0, 0, 0.9);
   font-family: 'Arial', sans-serif;
-}
-
-.edit-form-select {
-  width: 253px;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid #D4D4D8;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.9);
-  cursor: pointer;
-  background: white;
 }
 
 .edit-channel-footer {
@@ -155,17 +134,4 @@
 
 .btn-edit-confirm:hover {
   background: #009070;
-}
-
-.edit-form-item.disabled {
-  opacity: 0.6;
-}
-
-.edit-form-item.disabled .edit-form-input-wrapper {
-  background-color: #F5F5F5;
-}
-
-.edit-form-item.disabled .edit-form-input {
-  background-color: transparent;
-  cursor: not-allowed;
 }

@@ -12,6 +12,8 @@ import VirtualChannel from './pages/sensorconfiguration/VirtualChannel';
 import ModbusRTU from './pages/communication/ModbusRTU';
 import HoldingRegister from './pages/communication/HoldingRegister';
 import Alarm from './pages/Alarm';
+import Support from './pages/system/Support';
+
 import './App.css';
 
 function App() {
@@ -29,6 +31,8 @@ function App() {
         <Route path="/communication/modbus-rtu" element={<ModbusRTU />} />
         <Route path="/communication/holding-register" element={<HoldingRegister />} />
         <Route path="/alarm" element={<Alarm />} />
+        <Route path="/system/support" element={<Support />} />
+
       </Routes>
     </Layout>
   );

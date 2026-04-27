@@ -98,6 +98,7 @@ export const NAV = [
       { label: 'Backup & Restore', to: '/system/backup' },
       { label: 'Config Manager', to: '/config-manager' },
       { label: 'License', to: '/system/license' },
+      { label: 'Support', to: '/system/support' },
     ],
   },
   {

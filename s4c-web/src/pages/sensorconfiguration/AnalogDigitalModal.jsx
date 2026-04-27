@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import './AnalogDigitalModal.css';
 
 const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
@@ -60,9 +61,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
         <header className="edit-channel-header">
           <div className="edit-channel-title">Add analog & digital input</div>
           <div className="edit-channel-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+            <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
           </div>
         </header>
 

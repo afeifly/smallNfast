@@ -1,0 +1,191 @@
+.modbus-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1300;
+  backdrop-filter: blur(2px);
+}
+
+.modbus-modal {
+  width: 1136px;
+  height: 796px;
+  background: white;
+  border-radius: 8px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.modbus-header {
+  height: 68px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #F0F0F0;
+  flex-shrink: 0;
+}
+
+.modbus-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #191919;
+  font-family: 'Arial', sans-serif;
+  text-transform: lowercase; /* Matching snippet's request */
+}
+
+/* Capitalize the first letter for readability despite lowercase request */
+.modbus-title::first-letter {
+  text-transform: uppercase;
+}
+
+.modbus-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.modbus-close:hover {
+  opacity: 0.7;
+}
+
+.modbus-body {
+  flex: 1;
+  padding: 33px 108px; /* Starting top: 101, minus header 68 = 33 */
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.modbus-row {
+  display: flex;
+  gap: 26px; /* 442 - 108 - 308 = 26 */
+}
+
+.modbus-field {
+  width: 308px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.modbus-label {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.required {
+  color: #FF4D4F;
+  margin-left: 2px;
+}
+
+.modbus-input-readonly {
+  width: 280px;
+  height: 32px;
+  background: #F3F3F3;
+  border-radius: 3px;
+  outline: 1px solid #DCDCDC;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+}
+
+.modbus-select-wrapper {
+  width: 308px;
+  height: 32px;
+  position: relative;
+}
+
+.modbus-select {
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  background: white;
+  border-radius: 3px;
+  border: 1px solid #DCDCDC;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  outline: none;
+  appearance: auto; /* Show standard arrow */
+}
+
+.modbus-input-container {
+  width: 280px;
+  height: 32px;
+  position: relative;
+}
+
+.modbus-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  background: white;
+  border-radius: 3px;
+  border: 1px solid #DCDCDC;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  outline: none;
+}
+
+.modbus-range-hint {
+  position: absolute;
+  left: 284px;
+  top: 5px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  font-family: 'PingFang SC', sans-serif;
+  white-space: nowrap;
+}
+
+.modbus-footer {
+  height: 72px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 24px;
+  border-top: 1px solid #E7E7E7;
+  flex-shrink: 0;
+}
+
+.btn-modbus-cancel {
+  padding: 5px 24px;
+  background: #E7E7E7;
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.btn-modbus-save {
+  min-width: 78px;
+  padding: 5px 24px;
+  background: #00AB84; /* Standard green instead of the 0.38 alpha one in snippet */
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  color: white;
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.btn-modbus-save:hover {
+  background: #009070;
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import EditChannelModal from './EditChannelModal';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
+import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import './SensorConfigModal.css';
 
 // Dynamically import all .sutoch files from the sensordata directory as raw text
@@ -11,7 +12,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   const { configData, setConfigData } = useConfig();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
-  
+
   // Dynamic data state
   const [sensorNames, setSensorNames] = useState([]);
   const [selectedSensor, setSelectedSensor] = useState('');
@@ -30,7 +31,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       return fileName.replace('.sutoch', '');
     });
     setSensorNames(names);
-    
+
     if (initialData) {
       // Edit mode
       const configName = initialData.ConfigFileName ? initialData.ConfigFileName.replace('.sutoch', '') : (initialData.Name || '');
@@ -187,15 +188,31 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
         <header className="config-header">
           <div className="config-title">Channel configuration</div>
           <div className="close-btn" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+            <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
-        {/* Warning */}
-        <div className="config-warning">
-          Please check and confirm that the unit matches the sensor
+        {/* Warning & Add Channel */}
+        <div className="config-warning" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Please check and confirm that the unit matches the sensor</span>
+          {!isSuto && (
+            <button
+              className="btn-add-channel"
+              onClick={addChannel}
+              style={{
+                background: '#00AB84',
+                color: 'white',
+                border: 'none',
+                padding: '8px 12px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: '600'
+              }}
+            >
+              + Add channel
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -301,26 +318,6 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
 
           {/* Right Table */}
           <div className="config-right">
-            <div className="config-right-header" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-              {!isSuto && (
-                <button 
-                  className="btn-add-channel" 
-                  onClick={addChannel}
-                  style={{ 
-                    background: '#00AB84', 
-                    color: 'white', 
-                    border: 'none', 
-                    padding: '4px 12px', 
-                    borderRadius: '4px', 
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '600'
-                  }}
-                >
-                  Add channel
-                </button>
-              )}
-            </div>
             <div className="config-table-container">
               <table className="config-table">
                 <thead>

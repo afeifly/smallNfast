@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useConfig } from '../context/ConfigContext';
+import iconBtnClose from '../assets/images/icon_btn_close.png';
 import ChannelSelectModal from '../components/ChannelSelectModal';
 
 // ── Create Logger Drawer ────────────────────────────────────────────────────
@@ -78,14 +79,10 @@ const CreateLoggerDrawer = ({
             style={{
               width: 32, height: 32,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              borderRadius: 4,
+              border: 'none', background: 'transparent', cursor: 'pointer'
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <line x1="2" y1="2" x2="14" y2="14" stroke="#191919" strokeWidth="1.5"/>
-              <line x1="14" y1="2" x2="2" y2="14" stroke="#191919" strokeWidth="1.5"/>
-            </svg>
+            <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
           </button>
         </div>
 

@@ -68,6 +68,7 @@ export const NAV = [
     children: [
       { label: 'Modbus RTU', to: '/communication/modbus-rtu' },
       { label: 'Modbus TCP', to: '/communication/modbus-tcp' },
+      { label: 'Holding register', to: '/communication/holding-register' },
       { label: 'IO-Link', to: '/communication/io-link' },
       { label: 'Protocol Settings', to: '/communication/protocol' },
       { label: 'Connection Status', to: '/communication/status' },

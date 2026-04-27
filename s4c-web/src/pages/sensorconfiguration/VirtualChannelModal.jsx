@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import FormulaEditorModal from './FormulaEditorModal';
 import './VirtualChannelModal.css';
 
@@ -43,9 +44,7 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
           <header className="edit-channel-header">
             <div className="edit-channel-title">Add virtual channel</div>
             <div className="edit-channel-close" onClick={onClose}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
             </div>
           </header>
 
@@ -96,7 +95,7 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
 
             <div className="edit-form-item" style={{ alignItems: 'flex-start' }}>
               <label className="edit-form-label" style={{ marginTop: '8px', background: '#F9FAFB' }}>Formula</label>
-              <div className="edit-form-input-wrapper" style={{ height: '80px', padding: '8px' }}>
+              <div className="edit-form-input-wrapper" style={{ height: '80px', padding: '0px' }}>
                 <textarea
                   className="edit-form-input"
                   style={{ resize: 'none', background: '#F9FAFB', cursor: 'pointer' }}

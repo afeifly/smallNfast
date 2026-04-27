@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import iconBtnClose from '../assets/images/icon_btn_close.png';
 import '../pages/Graphic.css';
 
-const ChannelSelectModal = ({ 
-  isOpen, 
-  onClose, 
-  onSettingClick, 
-  onConfirm, 
-  allChannels = [], 
+const ChannelSelectModal = ({
+  isOpen,
+  onClose,
+  onSettingClick,
+  onConfirm,
+  allChannels = [],
   initialSelectedIds = [],
   maxLimit = 5,
-  selectionMessage = 'You can only select up to 5 channels for this graphic.',
-  showOperate = true
+  selectionMessage = 'You can only select up to 5 channels.',
+  showOperate = true,
+  title = 'Channel configuration'
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -36,13 +38,35 @@ const ChannelSelectModal = ({
       if (prev.includes(id)) {
         return prev.filter(i => i !== id);
       } else {
-        if (maxLimit && prev.length >= maxLimit) {
+        // Only enforce limit if maxLimit is a positive number
+        if (typeof maxLimit === 'number' && maxLimit > 0 && prev.length >= maxLimit) {
           alert(selectionMessage);
           return prev;
         }
         return [...prev, id];
       }
     });
+  };
+
+  const isAllVisibleSelected = filteredChannels.length > 0 &&
+    filteredChannels.every(ch => selectedIds.includes(ch.CreateTime));
+
+  const handleSelectAll = () => {
+    if (isAllVisibleSelected) {
+      // Unselect all visible
+      const visibleIds = filteredChannels.map(ch => ch.CreateTime);
+      setSelectedIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      // Select all visible (respecting limit if any)
+      const visibleIds = filteredChannels.map(ch => ch.CreateTime);
+      setSelectedIds(prev => {
+        const combined = [...new Set([...prev, ...visibleIds])];
+        if (typeof maxLimit === 'number' && maxLimit > 0) {
+          return combined.slice(0, maxLimit);
+        }
+        return combined;
+      });
+    }
   };
 
   const handleConfirm = () => {
@@ -56,7 +80,7 @@ const ChannelSelectModal = ({
       <div className="modal-container" onClick={e => e.stopPropagation()}>
         <header className="modal-header">
           <div className="modal-header-content">
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Channel configuration</h3>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{title}</h3>
             <div className="search-input-wrapper" style={{ width: '320px' }}>
               <input
                 type="text"
@@ -70,7 +94,7 @@ const ChannelSelectModal = ({
             </div>
           </div>
           <div className="modal-close-btn" onClick={onClose}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#191919" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
@@ -80,15 +104,9 @@ const ChannelSelectModal = ({
               <tr>
                 <th style={{ width: '54px', textAlign: 'center' }}>
                   <div
-                    className={`custom-checkbox ${selectedIds.length === filteredChannels.length && filteredChannels.length > 0 ? 'checked' : ''}`}
+                    className={`custom-checkbox ${isAllVisibleSelected ? 'checked' : ''}`}
                     style={{ margin: '0 auto', cursor: 'pointer' }}
-                    onClick={() => {
-                      if (selectedIds.length === filteredChannels.length) {
-                        setSelectedIds([]);
-                      } else {
-                        setSelectedIds(filteredChannels.slice(0, maxLimit || filteredChannels.length).map(ch => ch.CreateTime));
-                      }
-                    }}
+                    onClick={handleSelectAll}
                   ></div>
                 </th>
                 <th>Sensor</th>
@@ -104,7 +122,14 @@ const ChannelSelectModal = ({
                 filteredChannels.map(ch => (
                   <tr key={ch.CreateTime} onClick={() => toggleSelection(ch.CreateTime)} style={{ cursor: 'pointer' }}>
                     <td style={{ textAlign: 'center' }}>
-                      <div className={`custom-checkbox ${selectedIds.includes(ch.CreateTime) ? 'checked' : ''}`} style={{ margin: '0 auto' }}></div>
+                      <div
+                        className={`custom-checkbox ${selectedIds.includes(ch.CreateTime) ? 'checked' : ''}`}
+                        style={{ margin: '0 auto', cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelection(ch.CreateTime);
+                        }}
+                      ></div>
                     </td>
                     <td>{ch.sensorName}</td>
                     <td>{ch.channelName}</td>

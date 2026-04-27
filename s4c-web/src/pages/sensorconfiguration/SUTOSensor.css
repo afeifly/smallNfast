@@ -116,17 +116,32 @@
 }
 
 /* Column widths based on snippet data-↳direction-方向="n/a" style={{width: 258...}} */
-.col-sensor { width: 258px; }
-.col-description { width: 258px; }
-.col-address { width: 210px; }
-.col-sn { width: 210px; }
-.col-operate { width: 152px; }
+.col-sensor {
+  width: 258px;
+}
+
+.col-description {
+  width: 258px;
+}
+
+.col-address {
+  width: 210px;
+}
+
+.col-sn {
+  width: 210px;
+}
+
+.col-operate {
+  width: 152px;
+}
 
 .suto-empty-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 130px; /* Position it roughly as in the snippet */
+  margin-top: 130px;
+  /* Position it roughly as in the snippet */
   color: #4E5969;
   font-size: 14px;
   font-family: 'Arial', sans-serif;
@@ -211,4 +226,76 @@
   width: 16px;
   height: 16px;
   color: #A2A2A2;
+}
+
+/* Alarm Configuration Table Styles */
+.alarm-config-table th,
+.alarm-config-table td {
+  padding: 8px 12px;
+}
+
+.alarm-inline-input {
+  width: 100%;
+  height: 32px;
+  background: #F3F3F3;
+  border: 1px solid #D9D9D9;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 14px;
+  color: #191919;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* Hide number input spinners */
+.alarm-inline-input[type="number"]::-webkit-outer-spin-button,
+.alarm-inline-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.alarm-inline-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.alarm-inline-input:focus {
+  border-color: #00AB84;
+  background: white;
+}
+
+/* Custom Alarm Switch */
+.alarm-switch {
+  width: 32px;
+  height: 16px;
+  background: #E7E7E7;
+  border-radius: 8px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.alarm-switch.on {
+  background: #00AB84;
+}
+
+.switch-knob {
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.alarm-switch.on .switch-knob {
+  left: 18px;
+}
+
+.alarm-config-table select.alarm-inline-input {
+  appearance: auto;
 }

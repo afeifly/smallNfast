@@ -9,6 +9,8 @@ import SUTOSensor from './pages/sensorconfiguration/SUTOSensor';
 import ThirdPartySensor from './pages/sensorconfiguration/ThirdPartySensor';
 import AnalogDigitalInput from './pages/sensorconfiguration/AnalogDigitalInput';
 import VirtualChannel from './pages/sensorconfiguration/VirtualChannel';
+import ModbusRTU from './pages/communication/ModbusRTU';
+import HoldingRegister from './pages/communication/HoldingRegister';
 import Alarm from './pages/Alarm';
 import './App.css';
 
@@ -24,6 +26,8 @@ function App() {
         <Route path="/sensor/add-3rd" element={<ThirdPartySensor />} />
         <Route path="/sensor/analog-digital" element={<AnalogDigitalInput />} />
         <Route path="/sensor/virtual-channel" element={<VirtualChannel />} />
+        <Route path="/communication/modbus-rtu" element={<ModbusRTU />} />
+        <Route path="/communication/holding-register" element={<HoldingRegister />} />
         <Route path="/alarm" element={<Alarm />} />
       </Routes>
     </Layout>

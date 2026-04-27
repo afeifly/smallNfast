@@ -54,8 +54,6 @@
   cursor: pointer;
   width: 32px;
   height: 32px;
-  background: #FFE000;
-  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -240,7 +238,7 @@
 
 /* Button Variants */
 .btn-drawer-cancel {
-  padding: 5px 16px;
+  padding: 8px 24px;
   background: #E7E7E7;
   border-radius: 3px;
   cursor: pointer;
@@ -254,7 +252,7 @@
 }
 
 .btn-drawer-confirm {
-  padding: 5px 16px;
+  padding: 8px 24px;
   background: #00AB84;
   border-radius: 3px;
   cursor: pointer;

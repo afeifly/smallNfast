@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
+import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import './FormulaEditorModal.css';
 
 const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
@@ -82,9 +83,7 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
             </div>
 
             <div className="formula-close" onClick={onClose}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
             </div>
           </div>
         </div>

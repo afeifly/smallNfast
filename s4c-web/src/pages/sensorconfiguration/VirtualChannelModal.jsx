@@ -42,7 +42,9 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
         <div className="edit-channel-modal">
           {/* Header */}
           <header className="edit-channel-header">
-            <div className="edit-channel-title">Add virtual channel</div>
+            <div className="edit-channel-title">
+              {initialData ? 'Edit virtual channel' : 'Add virtual channel'}
+            </div>
             <div className="edit-channel-close" onClick={onClose}>
               <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
             </div>
@@ -94,7 +96,7 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
             </div>
 
             <div className="edit-form-item" style={{ alignItems: 'flex-start' }}>
-              <label className="edit-form-label" style={{ marginTop: '8px', background: '#F9FAFB' }}>Formula</label>
+              <label className="edit-form-label" style={{ marginTop: '8px' }}>Formula</label>
               <div className="edit-form-input-wrapper" style={{ height: '80px', padding: '0px' }}>
                 <textarea
                   className="edit-form-input"

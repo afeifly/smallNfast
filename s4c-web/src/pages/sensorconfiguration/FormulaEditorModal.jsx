@@ -182,10 +182,7 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
                       ) : (
                         <button 
                           key={idx} 
-                          className={`key-btn ${
-                            ['+', '-', '*', '/', '(', ')', 'π', '√'].includes(token) ? 'operator-btn' :
-                            ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '.'].includes(token) ? 'number-btn' : ''
-                          }`} 
+                          className={`key-btn number-btn`} 
                           onClick={() => handleKeyPressed(token)}
                         >
                           {token === '*' ? '×' : token === '/' ? '÷' : token}

@@ -15,7 +15,7 @@ const ThirdPartySensor = () => {
     configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
     configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor ||
     []
-  ).filter(s => s.isSuto !== true);
+  ).filter(s => s.isSuto !== true && s.isVirtualSensor !== true);
 
   return (
     <div className="content-card suto-sensor-page">

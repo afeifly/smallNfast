@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import FormulaEditorModal from './FormulaEditorModal';
+import CustomDialog from '../../components/CustomDialog';
 import './VirtualChannelModal.css';
 
 const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
@@ -9,6 +10,8 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
   const [resolution, setResolution] = useState('1');
   const [formula, setFormula] = useState('');
   const [isFormulaEditorOpen, setIsFormulaEditorOpen] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (initialData) {
@@ -27,6 +30,17 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
   if (!isOpen) return null;
 
   const handleConfirm = () => {
+    if (!name.trim()) {
+      setErrorMessage('Please enter a virtual channel name.');
+      setShowErrorDialog(true);
+      return;
+    }
+    if (!formula.trim()) {
+      setErrorMessage('Please enter a formula.');
+      setShowErrorDialog(true);
+      return;
+    }
+
     onSave({
       Name: name,
       Unit: unit,
@@ -34,6 +48,7 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
       Formula: formula,
       CreatedOn: initialData?.CreatedOn || new Date().toISOString().split('T')[0]
     });
+    onClose();
   };
 
   return (
@@ -100,7 +115,7 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
               <div className="edit-form-input-wrapper" style={{ height: '80px', padding: '0px' }}>
                 <textarea
                   className="edit-form-input"
-                  style={{ resize: 'none', background: '#F9FAFB', cursor: 'pointer' }}
+                  style={{ resize: 'none', background: '#F9FAFB', cursor: 'pointer', padding: '15px' }}
                   value={formula || 'Click to create formula...'}
                   readOnly
                   onClick={() => setIsFormulaEditorOpen(true)}
@@ -122,6 +137,17 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
         onClose={() => setIsFormulaEditorOpen(false)}
         initialFormula={formula}
         onConfirm={(newFormula) => setFormula(newFormula)}
+      />
+
+      <CustomDialog
+        isOpen={showErrorDialog}
+        onClose={() => setShowErrorDialog(false)}
+        onConfirm={() => setShowErrorDialog(false)}
+        title="警告通知"
+        body={errorMessage}
+        confirmText="好的"
+        showCancel={false}
+        type="err"
       />
     </>
   );

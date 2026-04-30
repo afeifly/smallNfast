@@ -6,18 +6,107 @@ import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import './SUTOSensor.css';
 
 const VirtualChannel = () => {
-  const { configData } = useConfig();
-  const [items, setItems] = useState([]); 
+  const { configData, setConfigData } = useConfig();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
 
+  // Dynamically find the config path
+  const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('SUTO-SensorList.sutolist'));
+
+  // Extract channels from the Virtual Sensor entry in configData
+  const virtualSensorEntry = configPath ? configData?.configs?.[configPath]?.cfgsensor?.find(s => s.isVirtualSensor) : null;
+  const items = virtualSensorEntry?.cfgchannel || [];
+
   const handleSave = (newItem) => {
+    if (!configPath) return;
+    const currentConfig = configData.configs[configPath];
+    if (!currentConfig) return;
+
+    // 1. Ensure "Virtual Sensor" exists in cfgsensor
+    let sensorList = [...(currentConfig.cfgsensor || [])];
+    let vSensorIdx = sensorList.findIndex(s => s.isVirtualSensor);
+    let virtualSensor = vSensorIdx !== -1 ? { ...sensorList[vSensorIdx] } : {
+      Index: sensorList.length + 1,
+      SensorID: sensorList.length + 1,
+      Name: "Virtual Sensor",
+      Description: "Virtual Sensor",
+      ConnectType: 8,
+      ProtocolType: 0,
+      Addr: 0,
+      IpAddr: "0.0.0.0",
+      Port: 502,
+      isSuto: false,
+      isVirtualSensor: true,
+      isReadMultRegister: false,
+      RegisterNumber: 0,
+      DataStartAddr: 0,
+      UnitStartAddr: 0,
+      ResolutionStartAddr: 0,
+      RelayIndex: 0,
+      SN: "", PN: "", FW: "", HW: "", Location: "", Meapoint: "", ConfigFileName: "",
+      CreateTime: Date.now().toString(),
+      cfgchannel: []
+    };
+
+    // 2. Update the cfgchannel within that virtual sensor
+    let channels = [...(virtualSensor.cfgchannel || [])];
+    const channelData = {
+      channelid: editingItem ? editingItem.channelid : (channels.length > 0 ? Math.max(...channels.map(c => c.channelid)) + 1 : 0),
+      ChannelDescription: newItem.Name,
+      UnitInASCII: newItem.Unit,
+      Resolution: newItem.Resolution,
+      Formula: newItem.Formula,
+      isvirtualsensor: true,
+      Show: true,
+      logger: true,
+      CreatedOn: newItem.CreatedOn
+    };
+
     if (editingItem) {
-      setItems(items.map(item => item === editingItem ? newItem : item));
+      channels = channels.map(ch => ch.channelid === editingItem.channelid ? channelData : ch);
     } else {
-      setItems([...items, newItem]);
+      channels.push(channelData);
     }
+    virtualSensor.cfgchannel = channels;
+
+    // 3. Update the sensor in the list
+    if (vSensorIdx !== -1) {
+      sensorList[vSensorIdx] = virtualSensor;
+    } else {
+      sensorList.push(virtualSensor);
+    }
+
+    // 4. Update Global Context
+    setConfigData({
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [configPath]: { ...currentConfig, cfgsensor: sensorList }
+      }
+    });
+
     setIsModalOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleDelete = (channelId) => {
+    if (!configPath) return;
+    const currentConfig = configData.configs[configPath];
+    if (!currentConfig) return;
+
+    let sensorList = [...(currentConfig.cfgsensor || [])];
+    let vSensor = sensorList.find(s => s.isVirtualSensor);
+    if (!vSensor) return;
+
+    vSensor.cfgchannel = (vSensor.cfgchannel || []).filter(ch => ch.channelid !== channelId);
+
+    setConfigData({
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [configPath]: { ...currentConfig, cfgsensor: sensorList }
+      }
+    });
   };
 
   return (
@@ -50,7 +139,7 @@ const VirtualChannel = () => {
                 <th>Virtual channel</th>
                 <th>Unit</th>
                 <th>Resolution</th>
-                <th>Sensor</th>
+                <th>Formula</th>
                 <th className="col-operate">Operate</th>
               </tr>
             </thead>
@@ -59,10 +148,10 @@ const VirtualChannel = () => {
                 items.map((item, index) => (
                   <tr key={index}>
                     <td>{item.CreatedOn || '---'}</td>
-                    <td>{item.Name || '---'}</td>
-                    <td>{item.Unit || '---'}</td>
+                    <td>{item.ChannelDescription || '---'}</td>
+                    <td>{item.UnitInASCII || '---'}</td>
                     <td>{item.Resolution || '---'}</td>
-                    <td>{item.Sensor || '---'}</td>
+                    <td>{item.Formula || '---'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button 
@@ -75,7 +164,11 @@ const VirtualChannel = () => {
                         >
                           <img src={iconBtnEdit} alt="Edit" style={{ width: 18, height: 18 }} />
                         </button>
-                        <button className="btn-icon-img" title="Delete">
+                        <button 
+                          className="btn-icon-img" 
+                          title="Delete"
+                          onClick={() => handleDelete(item.channelid)}
+                        >
                           <img src={iconBtnDelete} alt="Delete" style={{ width: 18, height: 18 }} />
                         </button>
                       </div>

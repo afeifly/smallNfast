@@ -1,34 +1,86 @@
 import React from 'react';
+import { useConfig } from '../../context/ConfigContext';
 import './HoldingRegister.css';
 
 const HoldingRegister = () => {
-  // Sample data for the table
-  const registers = [
-    { point: 'Pressure', sensor: 'S335', channel: 'CH1', address: '0x0000', unit: 'bar', bytes: 4 },
-    { point: 'Temperature', sensor: 'S335', channel: 'CH2', address: '0x0002', unit: '°C', bytes: 4 },
-    { point: 'Humidity', sensor: 'S335', channel: 'CH3', address: '0x0004', unit: '%RH', bytes: 4 },
-  ];
+  const { configData } = useConfig();
+
+  // Extract configuration
+  const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('SUTO-SensorList.sutolist'));
+  const currentConfig = configData?.configs?.[configPath];
+
+  // Extract all channels from all sensors
+  const allChannels = [];
+  (currentConfig?.cfgsensor || []).forEach(sensor => {
+    (sensor.cfgchannel || []).forEach((ch) => {
+      console.log(ch.Location, ch.Meapoint)
+      allChannels.push({
+        location: `${ch.Location || ''}/${ch.Meapoint || ''}`.replace(/^\/|\/$/g, '') || '---',
+        sensorDescription: sensor.Description || sensor.Name || '---',
+        channelDescription: ch.ChannelDescription || '---',
+        address: ch.channelid,
+        type: ch.ValueType || 8,
+        unit: ch.UnitInASCII,
+        resolution: ch.Resolution,
+        rw: ch.rw || 0
+      });
+    });
+  });
+
+  const getResolutionText = (res) => {
+    const resolutions = {
+      0: '1',
+      1: '0.1',
+      2: '0.01',
+      3: '0.001',
+      4: '0.0001',
+      5: '0.00001',
+      6: '0.000001'
+    };
+    return resolutions[res] || res || '---';
+  };
+
+  const getDataTypeName = (type) => {
+    const types = {
+      1: 'INT16', 2: 'UINT16', 3: 'INT32_B', 4: 'INT32_L',
+      5: 'UINT32_B', 6: 'UINT32_L', 7: 'FLOAT_B', 8: 'FLOAT_L',
+      9: 'UINT64_B', 10: 'UINT64_L'
+    };
+    return types[type] || 'Unknown';
+  };
+
+  const getRWText = (rw) => {
+    const rws = { 0: 'R', 1: 'W', 2: 'R/W' };
+    return rws[rw] || 'R';
+  };
+
+  const getByteCount = (type) => {
+    if ([1, 2].includes(type)) return 2;
+    if ([3, 4, 5, 6, 7, 8].includes(type)) return 4;
+    if ([9, 10].includes(type)) return 8;
+    return 4;
+  };
 
   return (
     <div className="content-card holding-register-page">
-      {/* Header */}
+      {/* Header - RESTORED STYLE */}
       <header className="holding-header">
         <div className="holding-title-section">
-          <h2 className="holding-title">S335 holding register table</h2>
+          <h2 className="holding-title">Holding register table</h2>
           <p className="holding-subtitle">
-            Use this holding register table to read data from the S335 via Modbus/RTU or Modbus/TCP.
+            Use this holding register table to read data via Modbus/RTU or Modbus/TCP.
           </p>
         </div>
         <button className="btn-export-pdf">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-             <path d="M12 10V12H4V10H2V12C2 13.1 2.9 14 4 14H12C13.1 14 14 13.1 14 12V10H12ZM9 7H11L8 11L5 7H7V2H9V7Z" fill="white"/>
+            <path d="M12 10V12H4V10H2V12C2 13.1 2.9 14 4 14H12C13.1 14 14 13.1 14 12V10H12ZM9 7H11L8 11L5 7H7V2H9V7Z" fill="white" />
           </svg>
           <span>Export PDF</span>
         </button>
       </header>
 
       <div className="holding-content">
-        {/* Summary Box */}
+        {/* Summary Box - RESTORED STYLE */}
         <div className="holding-summary-box">
           <div className="summary-column">
             <div className="summary-item">
@@ -76,28 +128,34 @@ const HoldingRegister = () => {
           </div>
         </div>
 
-        {/* Register Table */}
+        {/* Register Table - RESTORED ORIGINAL COLUMN STRUCTURE */}
         <div className="holding-table-container">
           <table className="holding-table">
             <thead>
               <tr>
-                <th>Measurement point</th>
-                <th>Sensor</th>
-                <th>Channel</th>
-                <th>Address</th>
-                <th>Unit</th>
+                <th>Location</th>
+                <th>Sensor Description</th>
+                <th>Channel Description</th>
+                <th>Holding register</th>
+                <th>Data type</th>
                 <th>No. of byte</th>
+                <th>Unit</th>
+                <th>Resolution</th>
+                <th>Read/Write</th>
               </tr>
             </thead>
             <tbody>
-              {registers.map((reg, idx) => (
+              {allChannels.map((ch, idx) => (
                 <tr key={idx}>
-                  <td>{reg.point}</td>
-                  <td>{reg.sensor}</td>
-                  <td>{reg.channel}</td>
-                  <td className="addr-font">{reg.address}</td>
-                  <td>{reg.unit}</td>
-                  <td>{reg.bytes}</td>
+                  <td>{ch.location}</td>
+                  <td>{ch.sensorDescription}</td>
+                  <td>{ch.channelDescription}</td>
+                  <td className="addr-font">{ch.address}</td>
+                  <td>{getDataTypeName(ch.type)}</td>
+                  <td>{getByteCount(ch.type)}</td>
+                  <td>{ch.unit}</td>
+                  <td>{getResolutionText(ch.resolution)}</td>
+                  <td>{getRWText(ch.rw)}</td>
                 </tr>
               ))}
             </tbody>

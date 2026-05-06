@@ -66,7 +66,8 @@ export const NAV = [
     label: 'Communication',
     icons: { active: iconOrgL, inactive: iconOrgD },
     children: [
-      { label: 'Modbus RTU', to: '/communication/modbus-rtu' },
+      { label: 'Modbus RTU Master', to: '/communication/modbus-rtu-master' },
+      { label: 'Modbus RTU Slave', to: '/communication/modbus-rtu-slave' },
       { label: 'Modbus TCP', to: '/communication/modbus-tcp' },
       { label: 'Holding register', to: '/communication/holding-register' },
       { label: 'IO-Link', to: '/communication/io-link' },
@@ -83,6 +84,7 @@ export const NAV = [
       { label: '3-Party sensor', to: '/sensor/add-3rd' },
       { label: 'Analog & digital input', to: '/sensor/analog-digital' },
       { label: 'Virtual channel', to: '/sensor/virtual-channel' },
+      { label: 'Layout setting', to: '/sensor/layout-setting' },
       { label: 'Sensor List', to: '/sensor/list' },
     ],
   },

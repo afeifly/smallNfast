@@ -3,38 +3,44 @@ import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import './AnalogDigitalModal.css';
 
 const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
-  const [inputModule, setInputModule] = useState('');
-  const [terminal, setTerminal] = useState('');
+  const [optionBoardType, setOptionBoardType] = useState(0); // 0: Analog, 1: Digital
+  const [terminalNo, setTerminalNo] = useState(1);
   const [sensorDescription, setSensorDescription] = useState('');
   const [channelDescription, setChannelDescription] = useState('');
-  const [signal, setSignal] = useState('');
-  const [unitType, setUnitType] = useState('');
-  const [unit, setUnit] = useState('');
-  const [resolution, setResolution] = useState('1');
-  const [displayScale4mA, setDisplayScale4mA] = useState('');
+  const [analogSignalType, setAnalogSignalType] = useState(0);
+  const [uintType, setUintType] = useState(0);
+  const [preDefineUnit, setPreDefineUnit] = useState('');
+  const [resolution, setResolution] = useState(1);
+  const [minScale, setMinScale] = useState(0);
+  const [maxScale, setMaxScale] = useState(10);
+  const [digitalType, setDigitalType] = useState(0);
 
   useEffect(() => {
     if (initialData) {
-      setInputModule(initialData.Module || '');
-      setTerminal(initialData.Terminal || '');
-      setSensorDescription(initialData.Sensor || '');
-      setChannelDescription(initialData.Channel || '');
-      setSignal(initialData.Signal || '');
-      setUnitType(initialData.UnitType || '');
-      setUnit(initialData.Unit || '');
-      setResolution(initialData.Resolution?.toString() || '1');
-      setDisplayScale4mA(initialData.DisplayScale4mA || '');
+      setOptionBoardType(initialData.OptionBoardType ?? 0);
+      setTerminalNo(initialData.TerminalNo ?? 1);
+      setSensorDescription(initialData.SensorDescription || '');
+      setChannelDescription(initialData.ChannelDescription || '');
+      setAnalogSignalType(initialData.AnalogSignalType ?? 0);
+      setUintType(initialData.UintType ?? 0);
+      setPreDefineUnit(initialData.PreDefineUnit || '');
+      setResolution(initialData.Resolution ?? 1);
+      setMinScale(initialData.MinScale ?? 0);
+      setMaxScale(initialData.MaxScale ?? 10);
+      setDigitalType(initialData.DigitalType ?? 0);
     } else {
       // Reset for new item
-      setInputModule('');
-      setTerminal('');
+      setOptionBoardType(0);
+      setTerminalNo(1);
       setSensorDescription('');
       setChannelDescription('');
-      setSignal('');
-      setUnitType('');
-      setUnit('');
-      setResolution('1');
-      setDisplayScale4mA('');
+      setAnalogSignalType(0);
+      setUintType(0);
+      setPreDefineUnit('');
+      setResolution(1);
+      setMinScale(0);
+      setMaxScale(10);
+      setDigitalType(0);
     }
   }, [initialData, isOpen]);
 
@@ -42,15 +48,20 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
 
   const handleConfirm = () => {
     onSave({
-      Module: inputModule,
-      Terminal: terminal,
-      Sensor: sensorDescription,
-      Channel: channelDescription,
-      Signal: signal,
-      UnitType: unitType,
-      Unit: unit,
+      ...initialData,
+      OptionBoardType: Number(optionBoardType),
+      TerminalNo: Number(terminalNo),
+      SensorDescription: sensorDescription,
+      ChannelDescription: channelDescription,
+      AnalogSignalType: Number(analogSignalType),
+      UintType: Number(uintType),
+      PreDefineUnit: preDefineUnit,
       Resolution: Number(resolution),
-      DisplayScale4mA: displayScale4mA
+      MinScale: Number(minScale),
+      MaxScale: Number(maxScale),
+      DigitalType: Number(digitalType),
+      shown: true,
+      ChannelId: 2000 + Number(terminalNo)
     });
   };
 
@@ -72,12 +83,11 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               <select 
                 className="edit-form-input"
                 style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={inputModule}
-                onChange={(e) => setInputModule(e.target.value)}
+                value={optionBoardType}
+                onChange={(e) => setOptionBoardType(e.target.value)}
               >
-                <option value="">Select Module</option>
-                <option value="Module A">Module A</option>
-                <option value="Module B">Module B</option>
+                <option value={0}>Analog</option>
+                <option value={1}>Digital</option>
               </select>
             </div>
           </div>
@@ -88,12 +98,12 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               <select 
                 className="edit-form-input"
                 style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={terminal}
-                onChange={(e) => setTerminal(e.target.value)}
+                value={terminalNo}
+                onChange={(e) => setTerminalNo(e.target.value)}
               >
-                <option value="">Select Terminal</option>
-                <option value="T1">T1</option>
-                <option value="T2">T2</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(no => (
+                  <option key={no} value={no}>T{no}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -126,13 +136,22 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               <select 
                 className="edit-form-input"
                 style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={signal}
-                onChange={(e) => setSignal(e.target.value)}
+                value={optionBoardType === 0 ? analogSignalType : digitalType}
+                onChange={(e) => optionBoardType === 0 ? setAnalogSignalType(e.target.value) : setDigitalType(e.target.value)}
               >
-                <option value="">Select Signal</option>
-                <option value="4-20mA">4-20mA</option>
-                <option value="0-10V">0-10V</option>
-                <option value="Pulse">Pulse</option>
+                {optionBoardType === 0 ? (
+                  <>
+                    <option value={0}>4-20mA</option>
+                    <option value={1}>0-20mA</option>
+                    <option value={2}>0-1V</option>
+                    <option value={3}>0-10V</option>
+                  </>
+                ) : (
+                  <>
+                    <option value={0}>Pulse</option>
+                    <option value={1}>State</option>
+                  </>
+                )}
               </select>
             </div>
           </div>
@@ -143,12 +162,12 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               <select 
                 className="edit-form-input"
                 style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={unitType}
-                onChange={(e) => setUnitType(e.target.value)}
+                value={uintType}
+                onChange={(e) => setUintType(e.target.value)}
               >
-                <option value="">Select Type</option>
-                <option value="Flow">Flow</option>
-                <option value="Pressure">Pressure</option>
+                <option value={0}>Flow</option>
+                <option value={10}>Voltage</option>
+                <option value={1}>Pressure</option>
               </select>
             </div>
           </div>
@@ -156,16 +175,12 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
           <div className="edit-form-item">
             <label className="edit-form-label">Unit</label>
             <div className="edit-form-input-wrapper">
-              <select 
-                className="edit-form-input"
-                style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-              >
-                <option value="">Select Unit</option>
-                <option value="m3/h">m3/h</option>
-                <option value="bar">bar</option>
-              </select>
+              <input 
+                className="edit-form-input" 
+                value={preDefineUnit}
+                onChange={(e) => setPreDefineUnit(e.target.value)}
+                placeholder="e.g. V, A, m3/h"
+              />
             </div>
           </div>
 
@@ -190,12 +205,25 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
           </div>
 
           <div className="edit-form-item">
-            <label className="edit-form-label">Display scale 4mA</label>
+            <label className="edit-form-label">Scale Min</label>
             <div className="edit-form-input-wrapper">
               <input 
+                type="number"
                 className="edit-form-input" 
-                value={displayScale4mA}
-                onChange={(e) => setDisplayScale4mA(e.target.value)}
+                value={minScale}
+                onChange={(e) => setMinScale(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="edit-form-item">
+            <label className="edit-form-label">Scale Max</label>
+            <div className="edit-form-input-wrapper">
+              <input 
+                type="number"
+                className="edit-form-input" 
+                value={maxScale}
+                onChange={(e) => setMaxScale(e.target.value)}
               />
             </div>
           </div>

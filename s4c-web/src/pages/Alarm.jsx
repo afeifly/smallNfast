@@ -184,7 +184,7 @@ const Alarm = () => {
         channel_identify_id: ch.channelId,
         measurement_point: '',
         location: '',
-        threshold: 100,
+        threshold: 0,
         hysteresis: 0,
         direction: 'up',
         delay: 0,
@@ -206,7 +206,7 @@ const Alarm = () => {
         Direction: 'UP',
         Delay: '0',
         RelayId: '0',
-        RelayFlag: 1,
+        RelayFlag: 0,
       });
     }
 

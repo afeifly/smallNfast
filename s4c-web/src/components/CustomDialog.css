@@ -26,6 +26,7 @@
   align-items: flex-end;
   gap: 16px;
   min-width: 400px;
+  max-width: 470px;
 }
 
 .custom-dialog-content {

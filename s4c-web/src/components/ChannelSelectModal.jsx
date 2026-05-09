@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
+import CustomDialog from './CustomDialog';
 import '../pages/Graphic.css';
 
 const ChannelSelectModal = ({
@@ -16,6 +17,7 @@ const ChannelSelectModal = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
+  const [isLimitAlertOpen, setIsLimitAlertOpen] = useState(false);
 
   // Initialize selection from prop
   useEffect(() => {
@@ -27,10 +29,10 @@ const ChannelSelectModal = ({
   if (!isOpen) return null;
 
   const filteredChannels = allChannels.filter(ch =>
-    ch.sensorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ch.channelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ch.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ch.point.toLowerCase().includes(searchTerm.toLowerCase())
+    (ch?.sensorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ch?.channelName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ch?.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ch?.point || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const toggleSelection = (id) => {
@@ -40,7 +42,7 @@ const ChannelSelectModal = ({
       } else {
         // Only enforce limit if maxLimit is a positive number
         if (typeof maxLimit === 'number' && maxLimit > 0 && prev.length >= maxLimit) {
-          alert(selectionMessage);
+          setIsLimitAlertOpen(true);
           return prev;
         }
         return [...prev, id];
@@ -167,6 +169,16 @@ const ChannelSelectModal = ({
           <button className="btn-drawer-cancel" style={{ width: '120px' }} onClick={onClose}>Cancel</button>
         </footer>
       </div>
+
+      <CustomDialog
+        isOpen={isLimitAlertOpen}
+        onClose={() => setIsLimitAlertOpen(false)}
+        onConfirm={() => setIsLimitAlertOpen(false)}
+        title="Selection Limit"
+        body={selectionMessage}
+        type="warn"
+        showCancel={false}
+      />
     </div>
   );
 };

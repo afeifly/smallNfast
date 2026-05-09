@@ -3,12 +3,26 @@ import { unzipConfigFile, parseSummary, calculateConfigHash, exportConfigPackage
 import { useConfig } from '../context/ConfigContext';
 import iconAlertBig from '../assets/images/icon_alert_big.png';
 import iconSmallPlusCircle from '../assets/images/icon-small-plus-circle.png';
+import CustomDialog from '../components/CustomDialog';
 
 const ConfigManager = () => {
   const { configData: globalConfigData, setConfigData: setGlobalConfigData } = useConfig();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hashStatus, setHashStatus] = useState(null);
+
+  // Dialog state for CustomDialog
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+    onConfirm: null,
+    showCancel: true,
+    confirmText: 'Confirm'
+  });
+
+  const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -64,10 +78,19 @@ const ConfigManager = () => {
   };
 
   const handleClear = () => {
-    if (window.confirm('Are you sure you want to clear all loaded configuration data?')) {
-      setGlobalConfigData(null);
-      setHashStatus(null);
-    }
+    setDialogState({
+      isOpen: true,
+      title: 'Clear Data',
+      body: 'Are you sure you want to clear all loaded configuration data?',
+      type: 'warn',
+      showCancel: true,
+      confirmText: 'Clear',
+      onConfirm: () => {
+        setGlobalConfigData(null);
+        setHashStatus(null);
+        closeDialog();
+      }
+    });
   };
 
   const handleExport = async () => {
@@ -90,7 +113,15 @@ const ConfigManager = () => {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert('Failed to export configuration. See console for details.');
+      setDialogState({
+        isOpen: true,
+        title: 'Export Failed',
+        body: 'Failed to export configuration. See console for details.',
+        type: 'err',
+        showCancel: false,
+        confirmText: 'OK',
+        onConfirm: closeDialog
+      });
     } finally {
       setLoading(false);
     }
@@ -257,9 +288,19 @@ const ConfigManager = () => {
               ))}
             </div>
           </div>
-
         </div>
       )}
+
+      <CustomDialog
+        isOpen={dialogState.isOpen}
+        onClose={closeDialog}
+        onConfirm={dialogState.onConfirm}
+        title={dialogState.title}
+        body={dialogState.body}
+        type={dialogState.type}
+        showCancel={dialogState.showCancel}
+        confirmText={dialogState.confirmText}
+      />
     </div>
   );
 };

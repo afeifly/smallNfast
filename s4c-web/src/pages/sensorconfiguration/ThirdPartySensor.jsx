@@ -1,14 +1,71 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import SensorConfigModal from './SensorConfigModal';
+import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
+import { isSensorUsedInLogger, remarshalAll } from '../../util/remarshalUtils';
 import './SUTOSensor.css';
 
 const ThirdPartySensor = () => {
-  const { configData } = useConfig();
+  const { configData, setConfigData } = useConfig();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSensor, setEditingSensor] = useState(null);
+
+  // Dialog state for CustomDialog
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+    onConfirm: null,
+    showCancel: true
+  });
+
+  const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
+
+  const handleDeleteSensor = (sensor) => {
+    const usedChannel = isSensorUsedInLogger(configData, sensor);
+    if (usedChannel) {
+      setDialogState({
+        isOpen: true,
+        title: 'Delete Restricted',
+        body: `Cannot delete sensor. Channel "${usedChannel}" is currently used in Logger settings. Please remove it from Logger settings first.`,
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+
+    setDialogState({
+      isOpen: true,
+      title: 'Delete Confirmation',
+      body: `Are you sure you want to delete sensor "${sensor.Name || sensor.Description}"?`,
+      type: 'warn',
+      showCancel: true,
+      onConfirm: () => {
+        const listPath = Object.keys(configData.configs).find(p => p.endsWith('SUTO-SensorList.sutolist'));
+        if (listPath) {
+          const currentList = configData.configs[listPath];
+          const updatedSensors = (currentList.cfgsensor || []).filter(s => s !== sensor);
+          const intermediateConfig = {
+            ...configData,
+            configs: {
+              ...configData.configs,
+              [listPath]: {
+                ...currentList,
+                cfgsensor: updatedSensors
+              }
+            }
+          };
+          const finalizedConfig = remarshalAll(intermediateConfig);
+          setConfigData(finalizedConfig);
+        }
+        closeDialog();
+      }
+    });
+  };
 
   // Extract and filter sensors (isSuto !== true for 3-Party sensors)
   const sensors = (
@@ -70,7 +127,11 @@ const ThirdPartySensor = () => {
                         >
                           <img src={iconBtnEdit} alt="Edit" style={{ width: 18, height: 18 }} />
                         </button>
-                        <button className="btn-icon-img" title="Delete">
+                        <button 
+                          className="btn-icon-img" 
+                          title="Delete"
+                          onClick={() => handleDeleteSensor(sensor)}
+                        >
                           <img src={iconBtnDelete} alt="Delete" style={{ width: 18, height: 18 }} />
                         </button>
                       </div>
@@ -139,6 +200,16 @@ const ThirdPartySensor = () => {
         }}
         initialData={editingSensor}
         isSuto={false}
+      />
+
+      <CustomDialog
+        isOpen={dialogState.isOpen}
+        onClose={closeDialog}
+        onConfirm={dialogState.onConfirm}
+        title={dialogState.title}
+        body={dialogState.body}
+        type={dialogState.type}
+        showCancel={dialogState.showCancel}
       />
     </div>
   );

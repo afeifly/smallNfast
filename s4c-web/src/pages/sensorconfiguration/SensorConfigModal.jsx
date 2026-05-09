@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import EditChannelModal from './EditChannelModal';
+import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
+import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import iconBtnClose from '../../assets/images/icon_btn_close.png';
+import { isChannelUsedInLogger, remarshalAll } from '../../util/remarshalUtils';
 import './SensorConfigModal.css';
 
 // Dynamically import all .sutoch files from the sensordata directory as raw text
@@ -23,6 +26,18 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   const [ipAddress, setIpAddress] = useState(''); // IpAddr
   const [port, setPort] = useState(''); // Port
   const [sn, setSn] = useState('');
+
+  // Dialog state for CustomDialog
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+    onConfirm: null,
+    showCancel: true
+  });
+
+  const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
   useEffect(() => {
     // Process sensor names from the globbed files
@@ -70,10 +85,16 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     if (path && sensorFiles[path]) {
       try {
         const content = JSON.parse(sensorFiles[path]);
-        setChannels(content.cfgchannel || []);
+        const loadedChannels = (content.cfgchannel || []).map((ch, idx) => ({
+          ...ch,
+          CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
+        }));
+        setChannels(loadedChannels);
         if (content.ConnectType) {
           setProtocol(content.ConnectType);
         }
+        // Copy sensor name to description as requested
+        setDescription(name);
       } catch (err) {
         console.error('Failed to parse .sutoch file:', path, err);
         setChannels([]);
@@ -96,7 +117,10 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       ConnectType: protocol,
       ConfigFileName: isSuto ? `${selectedSensor}.sutoch` : '',
       isSuto: initialData ? initialData.isSuto : isSuto,
-      cfgchannel: channels
+      cfgchannel: channels.map((ch, idx) => ({
+        ...ch,
+        CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
+      }))
     };
 
     // Find the sensor list path
@@ -110,6 +134,26 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     const currentList = configData.configs[listPath];
     let updatedSensors = [...(currentList.cfgsensor || [])];
 
+    // Address uniqueness check for Modbus/RTU
+    if (protocol === 4) {
+      const isDuplicate = updatedSensors.some(s => 
+        s !== initialData && 
+        String(s.Addr) === String(address) && 
+        s.ConnectType === 4
+      );
+      if (isDuplicate) {
+        setDialogState({
+          isOpen: true,
+          title: 'Duplicate Address',
+          body: `The Modbus Address "${address}" is already in use by another sensor. Please use a unique address.`,
+          type: 'err',
+          showCancel: false,
+          onConfirm: closeDialog
+        });
+        return;
+      }
+    }
+
     if (initialData) {
       // Update existing
       const index = updatedSensors.findIndex(s => s === initialData);
@@ -122,7 +166,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     }
 
     // Update global config
-    const newConfigData = {
+    const intermediateConfig = {
       ...configData,
       configs: {
         ...configData.configs,
@@ -133,7 +177,8 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       }
     };
 
-    setConfigData(newConfigData);
+    const finalizedConfig = remarshalAll(intermediateConfig);
+    setConfigData(finalizedConfig);
     onClose();
   };
 
@@ -166,9 +211,38 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       InDataType: 0,
       OutDataType: 0,
       FunctionCode: '3',
-      ErrorValue: '0'
+      ErrorValue: '0',
+      CreateTime: `${Date.now()}_${Math.floor(Math.random() * 1000)}`
     };
     setChannels([...channels, newChannel]);
+  };
+
+  const deleteChannel = (index) => {
+    const channel = channels[index];
+    if (isChannelUsedInLogger(configData, channel)) {
+      setDialogState({
+        isOpen: true,
+        title: 'Delete Restricted',
+        body: `Cannot delete channel "${channel.ChannelDescription}". it is currently used in Logger settings. Please remove it from Logger settings first.`,
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+
+    setDialogState({
+      isOpen: true,
+      title: 'Delete Confirmation',
+      body: `Are you sure you want to delete channel "${channel.ChannelDescription}"?`,
+      type: 'warn',
+      showCancel: true,
+      onConfirm: () => {
+        const updatedChannels = channels.filter((_, i) => i !== index);
+        setChannels(updatedChannels);
+        closeDialog();
+      }
+    });
   };
 
   const updateChannelData = (index, newData) => {
@@ -350,13 +424,22 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                       <td>{ch.UnitInASCII}</td>
                       <td>{ch.Resolution}</td>
                       <td>
-                        <button
-                          className="btn-icon-img"
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          onClick={() => handleEditClick(ch, idx)}
-                        >
-                          <img src={iconBtnEdit} alt="Edit" style={{ width: 18, height: 18 }} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            className="btn-icon-img"
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onClick={() => handleEditClick(ch, idx)}
+                          >
+                            <img src={iconBtnEdit} alt="Edit" style={{ width: 18, height: 18 }} />
+                          </button>
+                          <button
+                            className="btn-icon-img"
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onClick={() => deleteChannel(idx)}
+                          >
+                            <img src={iconBtnDelete} alt="Delete" style={{ width: 18, height: 18 }} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -379,6 +462,16 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
           channelData={editingChannel}
           onSave={(newData) => updateChannelData(editingChannel.index, newData)}
           isSuto={isSuto}
+        />
+
+        <CustomDialog
+          isOpen={dialogState.isOpen}
+          onClose={closeDialog}
+          onConfirm={dialogState.onConfirm}
+          title={dialogState.title}
+          body={dialogState.body}
+          type={dialogState.type}
+          showCancel={dialogState.showCancel}
         />
       </div>
     </div>

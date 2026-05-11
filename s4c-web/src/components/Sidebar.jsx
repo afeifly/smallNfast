@@ -91,8 +91,8 @@ export const NAV = [
     icons: { active: iconSystemL, inactive: iconSystemD },
     children: [
       { label: 'User Management', to: '/system/users' },
-      { label: 'Time & Date', to: '/system/time' },
-      { label: 'Config Manager', to: '/config-manager' },
+      { label: 'Config file', to: '/config-manager' },
+      { label: 'License', to: '/system/license' },
       { label: 'Support', to: '/system/support' },
     ],
   },

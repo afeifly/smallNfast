@@ -1,20 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useConfig } from '../../context/ConfigContext';
 import './ModbusRTU.css';
 
 const ModbusRTUMaster = () => {
-  const [baudRate, setBaudRate] = useState('19200');
-  const [parity, setParity] = useState('8,N,1');
-  const [timeout, setTimeout] = useState('10');
+  const { configData, setConfigData } = useConfig();
+  const [baudRate, setBaudRate] = useState(19200);
+  const [parity, setParity] = useState(3);
+  const [timeout, setTimeoutVal] = useState(10);
 
-  const handleSave = () => {
-    console.log('Saving Modbus RTU Master data:', { baudRate, parity, timeout });
-    // TODO: Persist to config
-  };
+  // Dynamically find the config path
+  const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
+  const currentConfig = configData?.configs?.[configPath];
+  const masterConfig = currentConfig?.rs485m0;
 
-  const handleCancel = () => {
-    setBaudRate('19200');
-    setParity('8,N,1');
-    setTimeout('10');
+  useEffect(() => {
+    if (masterConfig) {
+      setBaudRate(masterConfig.baudrate ?? 19200);
+      setParity(masterConfig.parityFrameIndex ?? 3);
+      setTimeoutVal(masterConfig.responseTimeout ?? 10);
+    }
+  }, [masterConfig]);
+
+  const updateConfig = (field, value) => {
+    if (!configPath || !currentConfig) return;
+
+    const newConfigData = {
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [configPath]: {
+          ...currentConfig,
+          rs485m0: {
+            ...masterConfig,
+            [field]: value
+          }
+        }
+      }
+    };
+
+    setConfigData(newConfigData);
   };
 
   return (
@@ -38,13 +62,16 @@ const ModbusRTUMaster = () => {
               <select 
                 className="modbus-select"
                 value={baudRate}
-                onChange={(e) => setBaudRate(e.target.value)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setBaudRate(val);
+                  updateConfig('baudrate', val);
+                }}
               >
-                <option value="9600">9600</option>
-                <option value="19200">19200</option>
-                <option value="38400">38400</option>
-                <option value="57600">57600</option>
-                <option value="115200">115200</option>
+                <option value={9600}>9600</option>
+                <option value={19200}>19200</option>
+                <option value={38400}>38400</option>
+                <option value={115200}>115200</option>
               </select>
             </div>
           </div>
@@ -57,12 +84,16 @@ const ModbusRTUMaster = () => {
               <select 
                 className="modbus-select"
                 value={parity}
-                onChange={(e) => setParity(e.target.value)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setParity(val);
+                  updateConfig('parityFrameIndex', val);
+                }}
               >
-                <option value="8,N,1">8,N,1</option>
-                <option value="8,E,1">8,E,1</option>
-                <option value="8,O,1">8,O,1</option>
-                <option value="8,N,2">8,N,2</option>
+                <option value={3}>8,N,1</option>
+                <option value={0}>8,E,1</option>
+                <option value={1}>8,O,1</option>
+                <option value={2}>8,N,2</option>
               </select>
             </div>
           </div>
@@ -74,7 +105,11 @@ const ModbusRTUMaster = () => {
                 type="number"
                 className="modbus-input"
                 value={timeout}
-                onChange={(e) => setTimeout(e.target.value)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setTimeoutVal(val);
+                  updateConfig('responseTimeout', val);
+                }}
                 min="1"
                 max="25"
               />
@@ -83,11 +118,6 @@ const ModbusRTUMaster = () => {
           </div>
         </div>
       </div>
-
-      <footer className="modbus-footer">
-        <button className="btn-modbus-cancel" onClick={handleCancel}>Cancel</button>
-        <button className="btn-modbus-save" onClick={handleSave}>Save</button>
-      </footer>
     </div>
   );
 };

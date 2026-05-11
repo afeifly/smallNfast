@@ -1,20 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useConfig } from '../../context/ConfigContext';
 import './ModbusRTU.css';
 
 const ModbusRTUSlave = () => {
-  const [address, setAddress] = useState('3');
-  const [baudRate, setBaudRate] = useState('19200');
-  const [parity, setParity] = useState('8,N,1');
+  const { configData, setConfigData } = useConfig();
+  const [baudRate, setBaudRate] = useState(19200);
+  const [parity, setParity] = useState(3);
+  const [timeout, setTimeoutVal] = useState(10);
+  const [address, setAddress] = useState(1);
 
-  const handleSave = () => {
-    console.log('Saving Modbus RTU Slave data:', { address, baudRate, parity });
-    // TODO: Persist to config
-  };
+  // Dynamically find the config path
+  const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
+  const currentConfig = configData?.configs?.[configPath];
+  const slaveConfig = currentConfig?.rs485s0;
 
-  const handleCancel = () => {
-    setAddress('3');
-    setBaudRate('19200');
-    setParity('8,N,1');
+  useEffect(() => {
+    if (slaveConfig) {
+      setBaudRate(slaveConfig.baudrate ?? 19200);
+      setParity(slaveConfig.parityFrameIndex ?? 3);
+      setTimeoutVal(slaveConfig.responseTimeout ?? 10);
+      setAddress(slaveConfig.address ?? 1);
+    }
+  }, [slaveConfig]);
+
+  const updateConfig = (field, value) => {
+    if (!configPath || !currentConfig) return;
+
+    const newConfigData = {
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [configPath]: {
+          ...currentConfig,
+          rs485s0: {
+            ...slaveConfig,
+            [field]: value
+          }
+        }
+      }
+    };
+
+    setConfigData(newConfigData);
   };
 
   return (
@@ -39,7 +65,11 @@ const ModbusRTUSlave = () => {
                 type="number"
                 className="modbus-input"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setAddress(val);
+                  updateConfig('address', val);
+                }}
                 min="1"
                 max="247"
               />
@@ -55,13 +85,16 @@ const ModbusRTUSlave = () => {
               <select 
                 className="modbus-select"
                 value={baudRate}
-                onChange={(e) => setBaudRate(e.target.value)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setBaudRate(val);
+                  updateConfig('baudrate', val);
+                }}
               >
-                <option value="9600">9600</option>
-                <option value="19200">19200</option>
-                <option value="38400">38400</option>
-                <option value="57600">57600</option>
-                <option value="115200">115200</option>
+                <option value={9600}>9600</option>
+                <option value={19200}>19200</option>
+                <option value={38400}>38400</option>
+                <option value={115200}>115200</option>
               </select>
             </div>
           </div>
@@ -72,22 +105,42 @@ const ModbusRTUSlave = () => {
               <select 
                 className="modbus-select"
                 value={parity}
-                onChange={(e) => setParity(e.target.value)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setParity(val);
+                  updateConfig('parityFrameIndex', val);
+                }}
               >
-                <option value="8,N,1">8,N,1</option>
-                <option value="8,E,1">8,E,1</option>
-                <option value="8,O,1">8,O,1</option>
-                <option value="8,N,2">8,N,2</option>
+                <option value={3}>8,N,1</option>
+                <option value={0}>8,E,1</option>
+                <option value={1}>8,O,1</option>
+                <option value={2}>8,N,2</option>
               </select>
             </div>
           </div>
         </div>
-      </div>
 
-      <footer className="modbus-footer">
-        <button className="btn-modbus-cancel" onClick={handleCancel}>Cancel</button>
-        <button className="btn-modbus-save" onClick={handleSave}>Save</button>
-      </footer>
+        <div className="modbus-row">
+          <div className="modbus-field">
+            <label className="modbus-label">Response timeout(s) <span className="required">*</span></label>
+            <div className="modbus-input-container">
+              <input 
+                type="number"
+                className="modbus-input"
+                value={timeout}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setTimeoutVal(val);
+                  updateConfig('responseTimeout', val);
+                }}
+                min="1"
+                max="25"
+              />
+              <span className="modbus-range-hint">(1~25)</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

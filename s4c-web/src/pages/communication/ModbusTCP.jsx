@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useConfig } from '../../context/ConfigContext';
 import './ModbusTCP.css';
 
 const ModbusTCP = () => {
@@ -8,30 +9,38 @@ const ModbusTCP = () => {
   const [gateway, setGateway] = useState('192.168.1.1');
   const [port, setPort] = useState('502');
 
-  const handleSave = () => {
-    console.log('Saving Modbus TCP data:', { dhcp, ipAddress, subnetMask, gateway, port });
-    // TODO: Persist to config
-  };
+  const { configData, setConfigData } = useConfig();
+  const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
+  const currentConfig = configData?.configs?.[configPath];
+  const tcpConfig = currentConfig?.retcp;
 
-  const handleCancel = () => {
-    setDhcp(false);
-    setIpAddress('192.168.1.100');
-    setSubnetMask('255.255.255.0');
-    setGateway('192.168.1.1');
-    setPort('502');
+  const updateConfig = (field, value) => {
+    if (!configPath || !currentConfig) return;
+
+    const newConfigData = {
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [configPath]: {
+          ...currentConfig,
+          retcp: {
+            ...tcpConfig,
+            [field]: value
+          }
+        }
+      }
+    };
+    setConfigData(newConfigData);
   };
 
   return (
     <div className="content-card modbus-tcp-page">
-      {/* Header */}
       <header className="modbus-header">
         <h2 className="modbus-title">Modbus TCP connection information</h2>
       </header>
 
-      {/* Content Body */}
       <div className="modbus-body">
         <div className="modbus-row">
-          {/* Protocol */}
           <div className="modbus-field">
             <label className="modbus-label">Protocol <span className="required">*</span></label>
             <div className="modbus-input-readonly">
@@ -39,12 +48,15 @@ const ModbusTCP = () => {
             </div>
           </div>
 
-          {/* DHCP Switch */}
           <div className="modbus-field">
             <label className="modbus-label">DHCP Enable</label>
             <div 
               className={`modbus-switch ${dhcp ? 'on' : ''}`} 
-              onClick={() => setDhcp(!dhcp)}
+              onClick={() => {
+                const newVal = !dhcp;
+                setDhcp(newVal);
+                // Future: update network config here
+              }}
             >
               <div className="switch-knob"></div>
             </div>
@@ -54,7 +66,6 @@ const ModbusTCP = () => {
         {!dhcp && (
           <>
             <div className="modbus-row">
-              {/* IP Address */}
               <div className="modbus-field">
                 <label className="modbus-label">IP address <span className="required">*</span></label>
                 <div className="modbus-input-container">
@@ -68,7 +79,6 @@ const ModbusTCP = () => {
                 </div>
               </div>
 
-              {/* Subnet Mask */}
               <div className="modbus-field">
                 <label className="modbus-label">Sub mask <span className="required">*</span></label>
                 <div className="modbus-input-container">
@@ -84,7 +94,6 @@ const ModbusTCP = () => {
             </div>
 
             <div className="modbus-row">
-              {/* Default Gateway */}
               <div className="modbus-field">
                 <label className="modbus-label">Default gateway <span className="required">*</span></label>
                 <div className="modbus-input-container">
@@ -98,7 +107,6 @@ const ModbusTCP = () => {
                 </div>
               </div>
 
-              {/* Port */}
               <div className="modbus-field">
                 <label className="modbus-label">Port <span className="required">*</span></label>
                 <div className="modbus-input-container">
@@ -114,12 +122,6 @@ const ModbusTCP = () => {
           </>
         )}
       </div>
-
-      {/* Footer */}
-      <footer className="modbus-footer">
-        <button className="btn-modbus-cancel" onClick={handleCancel}>Cancel</button>
-        <button className="btn-modbus-save" onClick={handleSave}>Save</button>
-      </footer>
     </div>
   );
 };

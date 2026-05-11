@@ -56,27 +56,23 @@ const Support = () => {
   }, [getInitialState]);
 
   const handleChange = (field, value) => {
+    // Update local state for immediate UI feedback
     setSupportInfo(prev => ({ ...prev, [field]: value }));
-  };
 
-  const handleSave = () => {
-    if (!configData) {
-      console.warn('[Support] No config loaded — nothing to save into.');
-      return;
-    }
-
+    // Persist to global config immediately
+    if (!configData) return;
     const systemInfoPath = findSystemInfoPath(configData.configs);
-    if (!systemInfoPath) {
-      console.warn('[Support] system_info.json not found in loaded config.');
-      return;
-    }
+    if (!systemInfoPath) return;
+
+    // We need the latest local state including this change
+    const nextSupportInfo = { ...supportInfo, [field]: value };
 
     const updatedUserInfo = {
-      service_company_name: supportInfo.companyName,
-      address:              supportInfo.address,
-      telephone:            supportInfo.telephone,
-      email:                supportInfo.email,
-      website:              supportInfo.website,
+      service_company_name: nextSupportInfo.companyName,
+      address:              nextSupportInfo.address,
+      telephone:            nextSupportInfo.telephone,
+      email:                nextSupportInfo.email,
+      website:              nextSupportInfo.website,
     };
 
     const updatedSystemInfo = {
@@ -91,12 +87,6 @@ const Support = () => {
         [systemInfoPath]: updatedSystemInfo,
       },
     });
-
-    console.log('[Support] Saved user_info_config:', updatedUserInfo);
-  };
-
-  const handleCancel = () => {
-    setSupportInfo(getInitialState());
   };
 
   return (
@@ -179,12 +169,6 @@ const Support = () => {
           </div>
         </div>
       </div>
-
-      {/* Footer */}
-      <footer className="support-footer">
-        <button className="btn-support-cancel" onClick={handleCancel}>Cancel</button>
-        <button className="btn-support-save" onClick={handleSave}>Save</button>
-      </footer>
     </div>
   );
 };

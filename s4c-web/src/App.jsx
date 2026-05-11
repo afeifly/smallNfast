@@ -10,7 +10,9 @@ import ThirdPartySensor from './pages/sensorconfiguration/ThirdPartySensor';
 import AnalogDigitalInput from './pages/sensorconfiguration/AnalogDigitalInput';
 import VirtualChannel from './pages/sensorconfiguration/VirtualChannel';
 import LayoutSetting from './pages/sensorconfiguration/LayoutSetting';
-import ModbusRTU from './pages/communication/ModbusRTU';
+import ModbusRTUMaster from './pages/communication/ModbusRTUMaster';
+import ModbusRTUSlave from './pages/communication/ModbusRTUSlave';
+import ModbusTCP from './pages/communication/ModbusTCP';
 import HoldingRegister from './pages/communication/HoldingRegister';
 import Alarm from './pages/Alarm';
 import Support from './pages/system/Support';
@@ -30,8 +32,9 @@ function App() {
         <Route path="/sensor/analog-digital" element={<AnalogDigitalInput />} />
         <Route path="/sensor/virtual-channel" element={<VirtualChannel />} />
         <Route path="/sensor/layout-setting" element={<LayoutSetting />} />
-        <Route path="/communication/modbus-rtu-master" element={<ModbusRTU />} />
-        <Route path="/communication/modbus-rtu-slave" element={<ModbusRTU />} />
+        <Route path="/communication/modbus-rtu-master" element={<ModbusRTUMaster />} />
+        <Route path="/communication/modbus-rtu-slave" element={<ModbusRTUSlave />} />
+        <Route path="/communication/modbus-tcp" element={<ModbusTCP />} />
         <Route path="/communication/holding-register" element={<HoldingRegister />} />
         <Route path="/alarm" element={<Alarm />} />
         <Route path="/system/support" element={<Support />} />

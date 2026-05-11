@@ -61,20 +61,7 @@ export const NAV = [
     to: '/alarm',
     icons: { active: iconAlarmL, inactive: iconAlarmD },
   },
-  {
-    key: 'communication',
-    label: 'Communication',
-    icons: { active: iconOrgL, inactive: iconOrgD },
-    children: [
-      { label: 'Modbus RTU Master', to: '/communication/modbus-rtu-master' },
-      { label: 'Modbus RTU Slave', to: '/communication/modbus-rtu-slave' },
-      { label: 'Modbus TCP', to: '/communication/modbus-tcp' },
-      { label: 'Holding register', to: '/communication/holding-register' },
-      { label: 'IO-Link', to: '/communication/io-link' },
-      { label: 'Protocol Settings', to: '/communication/protocol' },
-      { label: 'Connection Status', to: '/communication/status' },
-    ],
-  },
+
   {
     key: 'sensor',
     label: 'Sensor Configuration',
@@ -85,7 +72,17 @@ export const NAV = [
       { label: 'Analog & digital input', to: '/sensor/analog-digital' },
       { label: 'Virtual channel', to: '/sensor/virtual-channel' },
       { label: 'Layout setting', to: '/sensor/layout-setting' },
-      { label: 'Sensor List', to: '/sensor/list' },
+    ],
+  },
+  {
+    key: 'communication',
+    label: 'Communication',
+    icons: { active: iconOrgL, inactive: iconOrgD },
+    children: [
+      { label: 'Modbus RTU Master', to: '/communication/modbus-rtu-master' },
+      { label: 'Modbus RTU Slave', to: '/communication/modbus-rtu-slave' },
+      { label: 'Modbus TCP', to: '/communication/modbus-tcp' },
+      { label: 'Holding register', to: '/communication/holding-register' },
     ],
   },
   {
@@ -94,12 +91,8 @@ export const NAV = [
     icons: { active: iconSystemL, inactive: iconSystemD },
     children: [
       { label: 'User Management', to: '/system/users' },
-      { label: 'Network Settings', to: '/system/network' },
       { label: 'Time & Date', to: '/system/time' },
-      { label: 'Firmware Update', to: '/system/firmware' },
-      { label: 'Backup & Restore', to: '/system/backup' },
       { label: 'Config Manager', to: '/config-manager' },
-      { label: 'License', to: '/system/license' },
       { label: 'Support', to: '/system/support' },
     ],
   },

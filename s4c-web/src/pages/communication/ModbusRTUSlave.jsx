@@ -1,34 +1,30 @@
 import React, { useState } from 'react';
 import './ModbusRTU.css';
 
-const ModbusRTU = () => {
+const ModbusRTUSlave = () => {
+  const [address, setAddress] = useState('3');
   const [baudRate, setBaudRate] = useState('19200');
   const [parity, setParity] = useState('8,N,1');
-  const [timeout, setTimeout] = useState('10');
 
   const handleSave = () => {
-    console.log('Saving Modbus RTU data:', { baudRate, parity, timeout });
+    console.log('Saving Modbus RTU Slave data:', { address, baudRate, parity });
     // TODO: Persist to config
   };
 
   const handleCancel = () => {
-    // Reset to default or initial
+    setAddress('3');
     setBaudRate('19200');
     setParity('8,N,1');
-    setTimeout('10');
   };
 
   return (
     <div className="content-card modbus-rtu-page">
-      {/* Header */}
       <header className="modbus-header">
-        <h2 className="modbus-title">Modbus connection information</h2>
+        <h2 className="modbus-title">Modbus RTU slave information</h2>
       </header>
 
-      {/* Content Body */}
       <div className="modbus-body">
         <div className="modbus-row">
-          {/* Protocol */}
           <div className="modbus-field">
             <label className="modbus-label">Protocol <span className="required">*</span></label>
             <div className="modbus-input-readonly">
@@ -36,7 +32,23 @@ const ModbusRTU = () => {
             </div>
           </div>
 
-          {/* Baud rate */}
+          <div className="modbus-field">
+            <label className="modbus-label">Slave address <span className="required">*</span></label>
+            <div className="modbus-input-container">
+              <input 
+                type="number"
+                className="modbus-input"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                min="1"
+                max="247"
+              />
+              <span className="modbus-range-hint">(1~247)</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="modbus-row">
           <div className="modbus-field">
             <label className="modbus-label">Baud rate <span className="required">*</span></label>
             <div className="modbus-select-wrapper">
@@ -53,10 +65,7 @@ const ModbusRTU = () => {
               </select>
             </div>
           </div>
-        </div>
 
-        <div className="modbus-row">
-          {/* Frame parity */}
           <div className="modbus-field">
             <label className="modbus-label">Frame parity <span className="required">*</span></label>
             <div className="modbus-select-wrapper">
@@ -72,26 +81,9 @@ const ModbusRTU = () => {
               </select>
             </div>
           </div>
-
-          {/* Response timeout */}
-          <div className="modbus-field">
-            <label className="modbus-label">Response timeout(s) <span className="required">*</span></label>
-            <div className="modbus-input-container">
-              <input 
-                type="number"
-                className="modbus-input"
-                value={timeout}
-                onChange={(e) => setTimeout(e.target.value)}
-                min="1"
-                max="25"
-              />
-              <span className="modbus-range-hint">(1~25)</span>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Footer */}
       <footer className="modbus-footer">
         <button className="btn-modbus-cancel" onClick={handleCancel}>Cancel</button>
         <button className="btn-modbus-save" onClick={handleSave}>Save</button>
@@ -100,4 +92,4 @@ const ModbusRTU = () => {
   );
 };
 
-export default ModbusRTU;
+export default ModbusRTUSlave;

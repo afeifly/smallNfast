@@ -1,0 +1,166 @@
+.modbus-tcp-page {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.modbus-header {
+  height: 68px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #F0F0F0;
+  flex-shrink: 0;
+}
+
+.modbus-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #191919;
+  font-family: 'Arial', sans-serif;
+  text-transform: lowercase;
+}
+
+.modbus-title::first-letter {
+  text-transform: uppercase;
+}
+
+.modbus-body {
+  flex: 1;
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.modbus-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+}
+
+.modbus-field {
+  width: 308px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modbus-label {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  font-family: 'PingFang SC', sans-serif;
+}
+
+.required {
+  color: #FF4D4F;
+  margin-left: 2px;
+}
+
+.modbus-input-readonly {
+  width: 280px;
+  height: 32px;
+  background: #F3F3F3;
+  border-radius: 3px;
+  outline: 1px solid #DCDCDC;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+}
+
+.modbus-input-container {
+  width: 280px;
+  height: 32px;
+  position: relative;
+}
+
+.modbus-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  background: white;
+  border-radius: 3px;
+  border: 1px solid #DCDCDC;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  outline: none;
+}
+
+/* DHCP Switch */
+.modbus-switch {
+  width: 48px;
+  height: 24px;
+  background: #E7E7E7;
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.modbus-switch.on {
+  background: #00AB84;
+}
+
+.switch-knob {
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.modbus-switch.on .switch-knob {
+  left: 26px;
+}
+
+.modbus-footer {
+  height: 72px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 24px;
+  border-top: 1px solid #E7E7E7;
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.btn-modbus-cancel {
+  padding: 8px 24px;
+  background: #E7E7E7;
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.90);
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+  font-weight: 600;
+}
+
+.btn-modbus-save {
+  min-width: 78px;
+  padding: 8px 24px;
+  background: #00AB84;
+  border: none;
+  border-radius: 3px;
+  font-size: 14px;
+  color: white;
+  cursor: pointer;
+  font-family: 'PingFang SC', sans-serif;
+  font-weight: 600;
+}
+
+.btn-modbus-save:hover {
+  background: #009070;
+}

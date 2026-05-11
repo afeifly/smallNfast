@@ -8,14 +8,31 @@ const HoldingRegister = () => {
   // Extract configuration
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('SUTO-SensorList.sutolist'));
   const currentConfig = configData?.configs?.[configPath];
+  const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
+  const locationsArray = configData?.configs?.[locationConfigPath]?.Locations || [];
 
   // Extract all channels from all sensors
   const allChannels = [];
   (currentConfig?.cfgsensor || []).forEach(sensor => {
     (sensor.cfgchannel || []).forEach((ch) => {
-      console.log(ch.Location, ch.Meapoint)
+      // Find location and meapoint for this channel
+      let locationText = '---';
+      const createTimeStr = String(ch.CreateTime);
+      
+      if (Array.isArray(locationsArray)) {
+        for (const locObj of locationsArray) {
+          const matchedPoint = (locObj.meapoints || []).find(pt => 
+            Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
+          );
+          if (matchedPoint) {
+            locationText = `${matchedPoint.location}/${matchedPoint.meapoint}`;
+            break;
+          }
+        }
+      }
+
       allChannels.push({
-        location: `${ch.Location || ''}/${ch.Meapoint || ''}`.replace(/^\/|\/$/g, '') || '---',
+        location: locationText,
         sensorDescription: sensor.Description || sensor.Name || '---',
         channelDescription: ch.ChannelDescription || '---',
         address: ch.channelid,

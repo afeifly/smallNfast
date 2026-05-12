@@ -118,8 +118,11 @@ describe('exportConfigPackage', () => {
     const summary = { version: 1, name: 'test-pkg' };
 
     const blob = await exportConfigPackage(configs, summary);
-    expect(blob).toBeInstanceOf(Blob);
+    // @zip.js/zip.js may return a Blob from a different realm on some platforms,
+    // so instanceof Blob is unreliable. Check duck-typing instead.
     expect(blob.type).toBe('application/zip');
+    expect(blob.size).toBeGreaterThan(0);
+    expect(typeof blob.arrayBuffer).toBe('function');
   });
 
   it('includes a fresh summary.yml with hash and Config-Date', async () => {

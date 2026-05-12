@@ -11,13 +11,16 @@ vi.mock('../util/fileMapStorage', () => ({
   clearFileMap: vi.fn(() => Promise.resolve()),
 }));
 
-// Mock localStorage since jsdom in vitest 4 may not provide it
+// Mock localStorage — must set on both globalThis AND window because jsdom
+// resolves bare `localStorage` through the window proxy, not globalThis.
 const store = {};
-vi.stubGlobal('localStorage', {
+const storageMock = {
   getItem: vi.fn((key) => store[key] ?? null),
   setItem: vi.fn((key, value) => { store[key] = String(value); }),
   removeItem: vi.fn((key) => { delete store[key]; }),
-});
+};
+vi.stubGlobal('localStorage', storageMock);
+Object.defineProperty(window, 'localStorage', { value: storageMock, writable: true, configurable: true });
 
 // Consumer component to expose context values for testing
 function TestConsumer() {

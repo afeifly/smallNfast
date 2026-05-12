@@ -27,6 +27,6 @@ jobs:
       - run: npm run lint
         continue-on-error: true
 
-      - run: npm test
+      - run: npm test -- --reporter=verbose
 
       - run: npm run build

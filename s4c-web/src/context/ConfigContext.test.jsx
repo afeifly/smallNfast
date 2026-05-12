@@ -11,17 +11,6 @@ vi.mock('../util/fileMapStorage', () => ({
   clearFileMap: vi.fn(() => Promise.resolve()),
 }));
 
-// Mock localStorage — must set on both globalThis AND window because jsdom
-// resolves bare `localStorage` through the window proxy, not globalThis.
-const store = {};
-const storageMock = {
-  getItem: vi.fn((key) => store[key] ?? null),
-  setItem: vi.fn((key, value) => { store[key] = String(value); }),
-  removeItem: vi.fn((key) => { delete store[key]; }),
-};
-vi.stubGlobal('localStorage', storageMock);
-Object.defineProperty(window, 'localStorage', { value: storageMock, writable: true, configurable: true });
-
 // Consumer component to expose context values for testing
 function TestConsumer() {
   const ctx = useConfig();
@@ -75,8 +64,7 @@ function renderWithProvider() {
 
 describe('ConfigContext', () => {
   beforeEach(() => {
-    Object.keys(store).forEach((k) => delete store[k]);
-    vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('initializes with null activeConfigId and empty configList', () => {
@@ -168,10 +156,13 @@ describe('ConfigContext', () => {
   });
 
   it('restores state from localStorage on init', () => {
-    store['s4c_config_manager_state'] = JSON.stringify({
-      activeConfigId: 'stored-id',
-      configList: [{ id: 'stored-id', name: 'stored-config' }],
-    });
+    localStorage.setItem(
+      's4c_config_manager_state',
+      JSON.stringify({
+        activeConfigId: 'stored-id',
+        configList: [{ id: 'stored-id', name: 'stored-config' }],
+      })
+    );
 
     renderWithProvider();
 
@@ -181,7 +172,10 @@ describe('ConfigContext', () => {
   });
 
   it('migrates legacy s4c_config_data key', () => {
-    store['s4c_config_data'] = JSON.stringify({ name: 'legacy-config', someData: true });
+    localStorage.setItem(
+      's4c_config_data',
+      JSON.stringify({ name: 'legacy-config', someData: true })
+    );
 
     renderWithProvider();
 

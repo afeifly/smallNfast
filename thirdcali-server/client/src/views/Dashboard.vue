@@ -29,6 +29,11 @@
       <div class="spinner"></div>
     </div>
 
+    <div v-else-if="store.error" class="glass error-state text-center p-32">
+      <p class="text-danger mb-16">{{ store.error }}</p>
+      <button @click="store.fetchUsers()" class="secondary">Try Again</button>
+    </div>
+
     <div v-else class="glass user-table-wrapper">
       <table class="user-table">
         <thead>
@@ -398,6 +403,11 @@ const exportAll = async () => {
 
 <style scoped>
 .header { margin-bottom: 40px; }
+.error-state { border: 1px solid #fee2e2; background: #fffcfc; }
+.text-danger { color: #cf222e; font-weight: 600; }
+.text-center { text-align: center; }
+.mb-16 { margin-bottom: 16px; }
+.p-32 { padding: 32px; }
 .subtitle { color: var(--text-muted); font-size: 0.9rem; }
 .user-table-wrapper { overflow: hidden; }
 .user-table { width: 100%; border-collapse: collapse; text-align: left; }

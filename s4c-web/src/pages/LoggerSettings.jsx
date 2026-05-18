@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useConfig } from '../context/ConfigContext';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
 import ChannelSelectModal from '../components/ChannelSelectModal';
@@ -58,7 +58,7 @@ function extractLogger(configs) {
  *   - native <input type="date"> for the date part (OS date picker, locale-independent)
  *   - two scroll-wheel columns for hour (0–23) and minute (0–59)
  */
-const DateTimePicker = ({ value, onChange }) => {
+const DateTimePicker = ({ value, onChange, disabled }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -90,7 +90,8 @@ const DateTimePicker = ({ value, onChange }) => {
       {/* Trigger button */}
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => !disabled && setOpen(o => !o)}
+        disabled={disabled}
         style={{
           width: '100%',
           textAlign: 'right',
@@ -100,8 +101,8 @@ const DateTimePicker = ({ value, onChange }) => {
           padding: '2px 4px',
           fontSize: 14,
           fontFamily: 'PingFang SC, sans-serif',
-          color: value ? 'rgba(0,0,0,0.9)' : '#aaa',
-          cursor: 'pointer',
+          color: disabled ? 'rgba(0,0,0,0.35)' : (value ? 'rgba(0,0,0,0.9)' : '#aaa'),
+          cursor: disabled ? 'not-allowed' : 'pointer',
           outline: 'none',
           letterSpacing: '0.3px',
         }}
@@ -110,7 +111,7 @@ const DateTimePicker = ({ value, onChange }) => {
       </button>
 
       {/* Popover */}
-      {open && (
+      {!disabled && open && (
         <div style={{
           position: 'absolute',
           right: 0,
@@ -270,11 +271,50 @@ const ScrollWheel = ({ value, min, max, onChange, label }) => {
   );
 };
 
-// ── Create Logger Drawer ──────────────────────────────────────────────────────
-const CreateLoggerDrawer = ({ isOpen, onClose, selectedIds, setSelectedIds, allChannels, onOpenModal }) => {
-  const [form, setForm] = useState({ mode: 0, filename: '', starttime: 0, samplerate: 1 });
-  const selectedChannels = allChannels.filter(ch => selectedIds.includes(ch.CreateTime));
+// ── Edit Logger Drawer ────────────────────────────────────────────────────────
+const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdToCreateTime, onSave }) => {
+  const [form, setForm] = useState({ mode: 0, filename: '', starttime: 0, samplerate: 1, channelArray: [] });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Sync drawer form state when drawer opens or rawLogger changes
+  useEffect(() => {
+    if (isOpen && rawLogger) {
+      setForm({
+        mode: rawLogger.mode ?? 0,
+        filename: rawLogger.filename ?? '',
+        starttime: rawLogger.starttime ?? 0,
+        samplerate: rawLogger.samplerate ?? 1,
+        channelArray: rawLogger.channelArray ? [...rawLogger.channelArray] : [],
+      });
+    }
+  }, [isOpen, rawLogger]);
+
   const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+
+  // Selected CreateTime IDs for the channel selector modal
+  const selectedIds = form.channelArray
+    .map(ch => channelIdToCreateTime[ch.channelid])
+    .filter(Boolean);
+
+  const handleChannelsConfirm = (ids) => {
+    const newChannelArray = ids.map((id, idx) => {
+      const ch = allChannels.find(c => c.CreateTime === id);
+      return { 
+        channelid: ch?.ChannelId ?? idx,
+        meapoint: ch?.point || '', 
+        location: ch?.location || '' 
+      };
+    });
+    handleChange('channelArray', newChannelArray);
+    setIsModalOpen(false);
+  };
+
+  const selectedChannels = allChannels.filter(ch => selectedIds.includes(ch.CreateTime));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(form);
+  };
 
   return (
     <>
@@ -308,8 +348,8 @@ const CreateLoggerDrawer = ({ isOpen, onClose, selectedIds, setSelectedIds, allC
             </select>
           </div>
           <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>Selected Channels ({selectedIds.length})</span>
-            <button className="btn-select-channels" onClick={onOpenModal}>Select Channels</button>
+            <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>Selected Channels ({form.channelArray.length})</span>
+            <button className="btn-select-channels" onClick={() => setIsModalOpen(true)}>Select Channels</button>
           </div>
           <div style={{ border: '1px solid #E6E6E6', borderRadius: 8, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -333,10 +373,22 @@ const CreateLoggerDrawer = ({ isOpen, onClose, selectedIds, setSelectedIds, allC
           </div>
         </div>
         <div style={{ height: 72, borderTop: '1px solid #E7E7E7', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8, flexShrink: 0 }}>
-          <button style={{ padding: '5px 16px', background: '#00AB84', border: 'none', borderRadius: 3, color: 'rgba(255,255,255,0.9)', fontSize: 14, cursor: 'pointer' }}>Submit</button>
+          <button onClick={handleSubmit} style={{ padding: '5px 16px', background: '#00AB84', border: 'none', borderRadius: 3, color: 'rgba(255,255,255,0.9)', fontSize: 14, cursor: 'pointer' }}>Submit</button>
           <button onClick={onClose} style={{ padding: '5px 16px', background: '#E7E7E7', border: 'none', borderRadius: 3, color: 'rgba(0,0,0,0.9)', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
         </div>
       </div>
+
+      {/* Channel Select Modal */}
+      <ChannelSelectModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        allChannels={allChannels}
+        initialSelectedIds={selectedIds}
+        onConfirm={handleChannelsConfirm}
+        maxLimit={0}
+        selectionMessage="Select channels to include in the logger."
+        showOperate={false}
+      />
     </>
   );
 };
@@ -344,27 +396,10 @@ const CreateLoggerDrawer = ({ isOpen, onClose, selectedIds, setSelectedIds, allC
 // ── Logger Settings Page ──────────────────────────────────────────────────────
 const LoggerSettings = () => {
   const { configData, setConfigData } = useConfig();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const rawLogger    = extractLogger(configData?.configs);
   const channelArray = rawLogger?.channelArray || [];
-
-  // ── Persist a single field directly to the store ──────────────────────────
-  const persistField = useCallback((field, rawValue) => {
-    const loggerPath = findLoggerPath(configData?.configs);
-    if (!loggerPath) return;
-    const existingLogger = configData.configs[loggerPath]?.logger || {};
-    setConfigData({
-      ...configData,
-      configs: {
-        ...configData.configs,
-        [loggerPath]: {
-          ...configData.configs[loggerPath],
-          logger: { ...existingLogger, [field]: rawValue },
-        },
-      },
-    });
-  }, [configData, setConfigData]);
 
   // ── Build sensor channel lookup: ChannelId (capital) → ChannelDescription ─
   const sensors =
@@ -410,23 +445,9 @@ const LoggerSettings = () => {
     });
   });
 
-  // ── Channel selection: rebuilds channelArray in the store ─────────────────
-  // Map logger's channelid (numeric) back to CreateTime string for the modal
-  const selectedIds = channelArray
-    .map(ch => channelIdToCreateTime[ch.channelid])
-    .filter(Boolean); // Ensure we only include valid IDs found in current sensors
-
-  const handleChannelsConfirm = (ids) => {
+  const handleSave = (updatedForm) => {
     const loggerPath = findLoggerPath(configData?.configs);
     if (!loggerPath) return;
-    const newChannelArray = ids.map((id, idx) => {
-      const ch = allChannels.find(c => c.CreateTime === id);
-      return { 
-        channelid: ch?.ChannelId ?? idx, // Use the real sensor ChannelId
-        meapoint: ch?.point || '', 
-        location: ch?.location || '' 
-      };
-    });
     const existingLogger = configData.configs[loggerPath]?.logger || {};
     setConfigData({
       ...configData,
@@ -434,11 +455,19 @@ const LoggerSettings = () => {
         ...configData.configs,
         [loggerPath]: {
           ...configData.configs[loggerPath],
-          logger: { ...existingLogger, channels: newChannelArray.length, channelArray: newChannelArray },
+          logger: {
+            ...existingLogger,
+            mode: updatedForm.mode,
+            filename: updatedForm.filename,
+            starttime: updatedForm.starttime,
+            samplerate: updatedForm.samplerate,
+            channels: updatedForm.channelArray.length,
+            channelArray: updatedForm.channelArray,
+          },
         },
       },
     });
-    setIsModalOpen(false);
+    setIsDrawerOpen(false);
   };
 
   return (
@@ -450,6 +479,12 @@ const LoggerSettings = () => {
           <h2 className="logger-title">Logger settings</h2>
           <p className="logger-subtitle">Configure the data logger for your device.</p>
         </div>
+        <button className="btn-header-edit" onClick={() => setIsDrawerOpen(true)}>
+          <svg viewBox="0 0 16 16" fill="none" width="16" height="16" style={{ marginRight: 6 }}>
+            <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Edit
+        </button>
       </header>
 
       {/* Content */}
@@ -462,19 +497,15 @@ const LoggerSettings = () => {
           <div className="logger-fields-column">
             <div className="logger-field-item">
               <label>Startup mode</label>
-              <select value={rawLogger?.mode ?? 0} onChange={e => persistField('mode', Number(e.target.value))}>
-                {MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <div className="logger-display-value">
+                {rawLogger?.mode === 1 ? 'Time start' : 'Key start'}
+              </div>
             </div>
             <div className="logger-field-item">
               <label>Recorded file name</label>
-              <input
-                type="text"
-                placeholder="—"
-                maxLength={30}
-                value={rawLogger?.filename ?? ''}
-                onChange={e => persistField('filename', e.target.value)}
-              />
+              <div className="logger-display-value">
+                {rawLogger?.filename || '—'}
+              </div>
             </div>
           </div>
 
@@ -482,16 +513,20 @@ const LoggerSettings = () => {
           <div className="logger-fields-column">
             <div className="logger-field-item">
               <label>Start time</label>
-              <DateTimePicker
-                value={rawLogger?.starttime ?? 0}
-                onChange={v => persistField('starttime', v)}
-              />
+              <div className="logger-display-value">
+                {rawLogger?.starttime ? (
+                  (() => {
+                    const { year, month, day, hour, minute } = msToLocalParts(rawLogger.starttime);
+                    return `${year}-${pad2(month)}-${pad2(day)}  ${pad2(hour)}:${pad2(minute)}`;
+                  })()
+                ) : '—'}
+              </div>
             </div>
             <div className="logger-field-item">
               <label>Logger rate (s)</label>
-              <select value={rawLogger?.samplerate ?? 1} onChange={e => persistField('samplerate', Number(e.target.value))}>
-                {RATE_OPTIONS.map(r => <option key={r} value={r}>{r}s</option>)}
-              </select>
+              <div className="logger-display-value">
+                {rawLogger?.samplerate !== undefined ? `${rawLogger.samplerate}s` : '—'}
+              </div>
             </div>
           </div>
         </div>
@@ -499,7 +534,6 @@ const LoggerSettings = () => {
         {/* Channel table */}
         <div className="logger-table-header">
           <span className="logger-table-title">Channel list ({channelArray.length})</span>
-          <button className="btn-select-channels" onClick={() => setIsModalOpen(true)}>Select Channels</button>
         </div>
 
         <div className="logger-table-container">
@@ -528,16 +562,14 @@ const LoggerSettings = () => {
         </div>
       </div>
 
-      {/* Channel Select Modal */}
-      <ChannelSelectModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+      {/* Edit Logger Drawer */}
+      <EditLoggerDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        rawLogger={rawLogger}
         allChannels={allChannels}
-        initialSelectedIds={selectedIds}
-        onConfirm={handleChannelsConfirm}
-        maxLimit={0}
-        selectionMessage="Select channels to include in the logger."
-        showOperate={false}
+        channelIdToCreateTime={channelIdToCreateTime}
+        onSave={handleSave}
       />
     </div>
   );

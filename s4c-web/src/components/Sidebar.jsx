@@ -81,7 +81,6 @@ export const NAV = [
     children: [
       { label: 'Modbus RTU Master', to: '/communication/modbus-rtu-master' },
       { label: 'Modbus RTU Slave', to: '/communication/modbus-rtu-slave' },
-      { label: 'Modbus TCP', to: '/communication/modbus-tcp' },
       { label: 'Holding register', to: '/communication/holding-register' },
     ],
   },
@@ -90,9 +89,7 @@ export const NAV = [
     label: 'System',
     icons: { active: iconSystemL, inactive: iconSystemD },
     children: [
-      { label: 'User Management', to: '/system/users' },
       { label: 'Config file', to: '/config-manager' },
-      { label: 'License', to: '/system/license' },
       { label: 'Support', to: '/system/support' },
     ],
   },

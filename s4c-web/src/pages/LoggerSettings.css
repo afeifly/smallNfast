@@ -130,6 +130,18 @@
   cursor: pointer;
 }
 
+.logger-display-value {
+  color: rgba(0, 0, 0, 0.90);
+  font-size: 14px;
+  font-family: 'PingFang SC', sans-serif;
+  font-weight: 500;
+  text-align: right;
+  padding: 2px 4px;
+  min-width: 0;
+  width: 180px;
+  border-bottom: 1px solid transparent;
+}
+
 .logger-field-item select:focus,
 .logger-field-item input:focus {
   border-bottom-color: #00AB84;
@@ -241,6 +253,90 @@
 
 .logger-drawer.open  { transform: translateX(0); }
 .logger-drawer.closed { transform: translateX(100%); }
+
+/* Header Actions */
+.btn-header-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #00AB84;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 18px;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  margin-top: 4px;
+  box-shadow: 0 2px 6px rgba(0, 171, 132, 0.15);
+}
+
+.btn-header-edit:hover {
+  background: #009070;
+  box-shadow: 0 4px 12px rgba(0, 171, 132, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-header-edit:active {
+  transform: translateY(0);
+}
+
+.header-actions-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.btn-header-cancel {
+  display: flex;
+  align-items: center;
+  background: transparent;
+  color: #4E5969;
+  border: 1px solid #E7E7E7;
+  border-radius: 4px;
+  padding: 8px 18px;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-header-cancel:hover {
+  background: #F3F3F3;
+  color: #191919;
+  border-color: #C9CDD4;
+}
+
+.btn-header-save {
+  display: flex;
+  align-items: center;
+  background: #00AB84;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 18px;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 2px 6px rgba(0, 171, 132, 0.15);
+}
+
+.btn-header-save:hover {
+  background: #009070;
+  box-shadow: 0 4px 12px rgba(0, 171, 132, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-header-save:active {
+  transform: translateY(0);
+}
+
 
 
 

@@ -193,12 +193,14 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   };
 
   const toggleChannelVisibility = (index) => {
-    const updatedChannels = [...channels];
-    updatedChannels[index] = {
-      ...updatedChannels[index],
-      Show: !updatedChannels[index].Show
-    };
-    setChannels(updatedChannels);
+    setChannels(prev => {
+      const updatedChannels = [...prev];
+      updatedChannels[index] = {
+        ...updatedChannels[index],
+        Show: !updatedChannels[index].Show
+      };
+      return updatedChannels;
+    });
   };
 
   const addChannel = () => {
@@ -214,7 +216,13 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       ErrorValue: '0',
       CreateTime: `${Date.now()}_${Math.floor(Math.random() * 1000)}`
     };
-    setChannels([...channels, newChannel]);
+    const newIndex = channels.length;
+    setChannels(prev => [...prev, newChannel]);
+    setEditingChannel({
+      ...newChannel,
+      index: newIndex
+    });
+    setIsEditModalOpen(true);
   };
 
   const deleteChannel = (index) => {
@@ -238,20 +246,21 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       type: 'warn',
       showCancel: true,
       onConfirm: () => {
-        const updatedChannels = channels.filter((_, i) => i !== index);
-        setChannels(updatedChannels);
+        setChannels(prev => prev.filter((_, i) => i !== index));
         closeDialog();
       }
     });
   };
 
   const updateChannelData = (index, newData) => {
-    const updatedChannels = [...channels];
-    updatedChannels[index] = {
-      ...updatedChannels[index],
-      ...newData
-    };
-    setChannels(updatedChannels);
+    setChannels(prev => {
+      const updatedChannels = [...prev];
+      updatedChannels[index] = {
+        ...updatedChannels[index],
+        ...newData
+      };
+      return updatedChannels;
+    });
     setIsEditModalOpen(false);
   };
 

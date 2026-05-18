@@ -136,12 +136,21 @@ const handleLogout = () => {
   router.push('/login')
 }
 
+const handleStorageChange = (e) => {
+  if (e.key === 'admin_token' && !e.newValue) {
+    store.logout()
+    router.push('/login')
+  }
+}
+
 onMounted(() => {
   window.addEventListener('click', closeDropdown)
+  window.addEventListener('storage', handleStorageChange)
 })
 
 onUnmounted(() => {
   window.removeEventListener('click', closeDropdown)
+  window.removeEventListener('storage', handleStorageChange)
 })
 </script>
 

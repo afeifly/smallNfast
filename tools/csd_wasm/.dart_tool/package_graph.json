@@ -1,0 +1,14 @@
+{
+  "roots": [
+    "csd_wasm"
+  ],
+  "packages": [
+    {
+      "name": "csd_wasm",
+      "version": "0.1.0",
+      "dependencies": [],
+      "devDependencies": []
+    }
+  ],
+  "configVersion": 1
+}

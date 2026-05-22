@@ -1,0 +1,16 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "csd_wasm",
+      "rootUri": "../",
+      "packageUri": "lib/",
+      "languageVersion": "3.4"
+    }
+  ],
+  "generator": "pub",
+  "generatorVersion": "3.10.3",
+  "flutterRoot": "file:///Users/ex/fvm/versions/stable",
+  "flutterVersion": "3.38.4",
+  "pubCache": "file:///Users/ex/.pub-cache"
+}

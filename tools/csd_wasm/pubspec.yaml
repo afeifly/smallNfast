@@ -1,0 +1,10 @@
+name: csd_wasm
+description: CSD file parser compiled to WebAssembly for use in s4a-web browser app.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  # dart:js_interop and dart:typed_data are built-in, no extra packages needed

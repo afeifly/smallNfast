@@ -16,6 +16,7 @@ class TimePeriod extends Component {
 
   constructor() {
     super();
+    this.rootRef = React.createRef();
 
     this.state = {
       startDate: new Date(),
@@ -36,7 +37,7 @@ class TimePeriod extends Component {
     // };
 
     return (
-      <div className="time-period" ref="root">
+      <div className="time-period" ref={this.rootRef}>
         <span className="time-period-label">{intl.get('TIME_PERIOD')}</span>
         <svg id='time-period-brush' data-status="active">
           <g className="overall-xaxis">
@@ -157,7 +158,7 @@ class TimePeriod extends Component {
     ]).range([0, width]);
 
     let brush = d3.brushX().extent([[0, -1], [width, 66]])
-      .on("end", () => this.onBrushEnd());
+      .on("end", (event) => this.onBrushEnd(event));
     d3.select('.x-brush').call(brush);
 
     d3.select('.overall-xaxis').attr('transform', `translate(${x}, ${y})`);
@@ -174,17 +175,12 @@ class TimePeriod extends Component {
     //   .style('stroke', 'rgba(255, 255, 255, 0.5)');
   }
 
-  onBrush = () => {
-    var domain = d3.event.selection.map(scale.invert);
-    this.refs.xAxis.updateScale(domain);
-  }
-
-  onBrushEnd = () => {
-    if (!d3.event.selection) {
+  onBrushEnd = (event) => {
+    if (!event.selection) {
       return;
     }
 
-    const domain = d3.event.selection.map(scale.invert);
+    const domain = event.selection.map(scale.invert);
 
     if (!domain || domain.length < 1) {
       return;

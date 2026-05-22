@@ -2,9 +2,9 @@ import React, { Component } from 'react';
 import * as d3 from 'd3';
 import $ from 'jquery';
 import intl from "react-intl-universal";
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
-import RefreshIcon from '@material-ui/icons/Refresh';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import AxisSeries from './AxisSeries';
 import SplineGroup from './SplineGroup';
 import LegendSvgGroup from './LegendSvgGroup';
@@ -14,7 +14,7 @@ import { SystemEvent } from '../../util/SystemConstant';
 import TimePeriod from './TimePeriod'
 
 import './css/LineChart.css'; 
-import { Button, Fab, Tooltip } from '@material-ui/core';
+import { Button, Fab, Tooltip } from '@mui/material';
 
 let self;
 let yAxisData = [];
@@ -24,6 +24,12 @@ class LineChart extends Component {
   constructor() {
     super();  
     self = this; 
+    this.rootRef = React.createRef();
+    this.AxisSeriesRef = React.createRef();
+    this.LegendGroupRef = React.createRef();
+    this.SplineGroupRef = React.createRef();
+    this.TimePeriodRef = React.createRef();
+    this.scaleActionsRef = React.createRef();
     this.state = {
       backButtonEnabled: false,
       nextButtonEnabled: false,
@@ -41,18 +47,18 @@ class LineChart extends Component {
     };
     
     return(
-      <div id="line-chart" ref="root">
+      <div id="line-chart" ref={this.rootRef}>
         <svg id="line-chart-container"  width={'100%'} height={'100%'}>
-          <AxisSeries ref="AxisSeries" chartController={ chartController }/>;
-          <LegendSvgGroup ref="LegendGroup" chartController={ chartController} />
-          <SplineGroup ref="SplineGroup" hideTimePeriod={ this.hideTimePeriod } chartController={ chartController }/>;
+          <AxisSeries ref={this.AxisSeriesRef} chartController={ chartController }/>;
+          <LegendSvgGroup ref={this.LegendGroupRef} chartController={ chartController} />
+          <SplineGroup ref={this.SplineGroupRef} hideTimePeriod={ this.hideTimePeriod } chartController={ chartController }/>;
         </svg>
-        <TimePeriod ref="TimePeriod" chartController={ chartController }/>
+        <TimePeriod ref={this.TimePeriodRef} chartController={ chartController }/>
         <div className="chart-placeholder">
           <div className="no-data-tip">{ intl.get('NO_CHANNEL') }</div>
         </div>
 
-        <div className="scale-actions" ref="scaleActions">
+        <div className="scale-actions" ref={this.scaleActionsRef}>
           <Tooltip title="Previous scale">
             <div>
               <Button style={ buttonStyle } margin="dense" size="small" variant="outlined" 
@@ -92,35 +98,35 @@ class LineChart extends Component {
 
     // d3.select('.graphic-view').on('changeSelectedChannels', this.changeSelectedChannelsHandler);
 
-    d3.select('#line-chart').on('updatePosition', () => {
-      const x = d3.event.detail.x;
+    d3.select('#line-chart').on('updatePosition', (event) => {
+      const x = event.detail.x;
       chartController.setChartX(x);
       self.forceUpdate();
       self.positionLegend();
     })
     .on('changeTimePeriod', () => {
-      this.refs.AxisSeries.updateXAxis();
-      this.refs.SplineGroup.refreshData();
+      this.AxisSeriesRef.current.updateXAxis();
+      this.SplineGroupRef.current.refreshData();
 
       // setTimeout(this.updateTimePeriodActions, 500);
     })
     .on('updateScaleActions', () => {
       this.updateTimePeriodActions();
     })
-    .on(SystemEvent.UPDATE_CHANNEL_COLOR, () => {
-      const detail = d3.event.detail;
-      this.refs.SplineGroup.updateLineColor(detail.channelId, detail.color);
-      this.refs.LegendGroup.updateColor();
+    .on(SystemEvent.UPDATE_CHANNEL_COLOR, (event) => {
+      const detail = event.detail;
+      this.SplineGroupRef.current.updateLineColor(detail.channelId, detail.color);
+      this.LegendGroupRef.current.updateColor();
     })
     .on(SystemEvent.UPDATE_YAXIS_AND_SPLINES, () => {
-      this.refs.AxisSeries.updateDisplay();
-      this.refs.SplineGroup.updateDisplay();
+      this.AxisSeriesRef.current.updateDisplay();
+      this.SplineGroupRef.current.updateDisplay();
     })
   }
 
 
   updateYAxis = () => {
-    this.refs.AxisSeries.updateYAxis();
+    this.AxisSeriesRef.current.updateYAxis();
   }
 
   updateTimePeriodActions = () => {
@@ -157,7 +163,7 @@ class LineChart extends Component {
     }
 
     const x = chartController.chartX + chartController.chartWidth - 110;
-    d3.select(this.refs.scaleActions)
+    d3.select(this.scaleActionsRef.current)
       // .style('left', x + 'px')
       .attr('data-status', 'active');
   };
@@ -171,8 +177,8 @@ class LineChart extends Component {
     }
 
     chartController.gotoPreTimePeriod();
-    this.refs.AxisSeries.updateXAxis();
-    this.refs.SplineGroup.refreshData();
+    this.AxisSeriesRef.current.updateXAxis();
+    this.SplineGroupRef.current.refreshData();
     
     this.updateTimePeriodActions();
     d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
@@ -181,8 +187,8 @@ class LineChart extends Component {
   gotoNextTimePeriod = () => {
     const { chartController } = this.props;
     chartController.gotoNextTimePeriod();
-    this.refs.AxisSeries.updateXAxis();
-    this.refs.SplineGroup.refreshData();
+    this.AxisSeriesRef.current.updateXAxis();
+    this.SplineGroupRef.current.refreshData();
 
     this.updateTimePeriodActions();
     d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
@@ -194,8 +200,8 @@ class LineChart extends Component {
     
     if (yAxisData.length > 0) {
       setTimeout(() => {
-        this.refs.AxisSeries.updateDisplay();
-        this.refs.SplineGroup.updateDisplay();
+        this.AxisSeriesRef.current.updateDisplay();
+        this.SplineGroupRef.current.updateDisplay();
         this.positionLegend();
       }, 100);
     }
@@ -211,8 +217,8 @@ class LineChart extends Component {
     }
 
     chartController.setChartHeight(chartHeight);
-    this.refs.AxisSeries.updateYAxis();
-    this.refs.AxisSeries.updateLineGrid();
+    this.AxisSeriesRef.current.updateYAxis();
+    this.AxisSeriesRef.current.updateLineGrid();
   }
 
   setX(x) {
@@ -235,10 +241,10 @@ class LineChart extends Component {
     const selectedChannels = chartController.selectedChannels;
     
     yAxisData = selectedChannels;
-    self.refs.AxisSeries.setYDataset(selectedChannels);
-    self.refs.SplineGroup.setData(selectedChannels);
-    self.refs.LegendGroup.setData(selectedChannels);
-    self.refs.SplineGroup.updateDisplay();
+    self.AxisSeriesRef.current.setYDataset(selectedChannels);
+    self.SplineGroupRef.current.setData(selectedChannels);
+    self.LegendGroupRef.current.setData(selectedChannels);
+    self.SplineGroupRef.current.updateDisplay();
     self.positionLegend();
     d3.select('.chart-placeholder').attr('data-status', '');
 
@@ -283,17 +289,17 @@ class LineChart extends Component {
     });
     var x = Math.floor((panelWidth - allWidth)/2);
     if(hasTwoLineLegend){
-      this.refs.LegendGroup.setWidth(maxLegendWidth+15);
-      this.refs.LegendGroup.setHeight(50);
+      this.LegendGroupRef.current.setWidth(maxLegendWidth+15);
+      this.LegendGroupRef.current.setHeight(50);
       x =  Math.floor((panelWidth - maxLegendWidth)/2);
     } else{
-      this.refs.LegendGroup.setWidth(allWidth+15);      
+      this.LegendGroupRef.current.setWidth(allWidth+15);      
     } 
-    this.refs.LegendGroup.setPosition({x: x, y: panelHeight - 60});    
+    this.LegendGroupRef.current.setPosition({x: x, y: panelHeight - 60});    
   }
 
   updateDenoisingSetting = () => {
-    self.refs.SplineGroup.updateDisplay();
+    self.SplineGroupRef.current.updateDisplay();
   };
 
 
@@ -304,7 +310,7 @@ class LineChart extends Component {
   resetTimePeriod = () => {
     const { chartController } = this.props;
     chartController.openHistoryMode();
-    d3.select(this.refs.scaleActions).attr('data-status', '');
+    d3.select(this.scaleActionsRef.current).attr('data-status', '');
 
     this.updateTimePeriodActions();
 
@@ -317,7 +323,7 @@ class LineChart extends Component {
   }
 
   hideScaleActionButtons = () => {
-    d3.select(this.refs.scaleActions).attr('data-status', '');
+    d3.select(this.scaleActionsRef.current).attr('data-status', '');
   }
 
 
@@ -326,16 +332,16 @@ class LineChart extends Component {
     chartController.timePeriodVisible = !chartController.timePeriodVisible; 
     
     if(chartController.timePeriodVisible) {
-      this.refs.TimePeriod.show();
+      this.TimePeriodRef.current.show();
     }else {
-      this.refs.TimePeriod.hide();
+      this.TimePeriodRef.current.hide();
     }
   };
 
   hideTimePeriod = () => {
     const { chartController } = this.props;
     chartController.timePeriodVisible = false; 
-    this.refs.TimePeriod.hide();
+    this.TimePeriodRef.current.hide();
   };
 
 

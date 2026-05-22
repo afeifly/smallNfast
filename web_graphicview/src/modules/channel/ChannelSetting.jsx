@@ -1,17 +1,17 @@
 import React, { Component } from 'react';
 import * as d3 from 'd3';
-import Checkbox from '@material-ui/core/Checkbox';
-import Button from '@material-ui/core/Button';
-import Dialog from '@material-ui/core/Dialog';
-import DialogTitle from '@material-ui/core/DialogTitle';
-import DialogContent from '@material-ui/core/DialogContent';
-import DialogActions from '@material-ui/core/DialogActions';
+import Checkbox from '@mui/material/Checkbox';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 
 
 // import './css/YAxisSetting.css';
 import ColorPicker from '../../components/color/ColorPicker';
 import { SystemEvent } from '../../util/SystemConstant';
-import { Switch } from '@material-ui/core';
+import { Switch } from '@mui/material';
 import intl from "react-intl-universal";
 
 class ChannelSetting extends Component {

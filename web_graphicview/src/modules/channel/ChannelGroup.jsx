@@ -3,10 +3,10 @@ import React, { Component } from 'react';
 import $ from 'jquery';
 import * as d3 from  'd3';
 
-import Checkbox from '@material-ui/core/Checkbox';
-import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank';
-import IndeterminateCheckBoxIcon from '@material-ui/icons/IndeterminateCheckBoxOutlined';
-import CheckBoxIcon from '@material-ui/icons/CheckBox';
+import Checkbox from '@mui/material/Checkbox';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
+import IndeterminateCheckBoxIcon from '@mui/icons-material/IndeterminateCheckBoxOutlined';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import ChannelItem from './ChannelItem';
 
 
@@ -14,6 +14,8 @@ class ChannelGroup extends Component {
 
   constructor() {
     super();
+    this.triangleBtnRef = React.createRef();
+    this.channelListRef = React.createRef();
     this.state = {
       data: {},
       checked: false,
@@ -34,7 +36,7 @@ class ChannelGroup extends Component {
     return (
       <div className="channel-group" onDoubleClick={ this.switchGroup }>
         <div className="channel-group-header">
-          <a className="triangle-btn" ref="triangleBtn" data-expend={ expand } 
+          <a className="triangle-btn" ref={this.triangleBtnRef} data-expend={ expand } 
             onClick={ this.switchGroup }/>
           <Checkbox 
             checked={ checked }
@@ -49,7 +51,7 @@ class ChannelGroup extends Component {
           <div className="CL-item-label" data-type="sensor">{ data.name }</div>
         </div>
 
-        <div className="CG-channel-list" ref="channelList">
+        <div className="CG-channel-list" ref={this.channelListRef}>
           { channelItems }
         </div>
       </div>
@@ -58,7 +60,7 @@ class ChannelGroup extends Component {
   }
 
   componentDidMount() {
-    const channelList = $(this.refs.channelList);
+    const channelList = $(this.channelListRef.current);
     const h = channelList.height();
     channelList.css('height', h + 'px');
   }
@@ -119,9 +121,9 @@ class ChannelGroup extends Component {
 
     if(expand) {
       const h = data.channels.length * 32;
-      d3.select(this.refs.channelList).style('height', h + 'px');
+      d3.select(this.channelListRef.current).style('height', h + 'px');
     }else  {
-      d3.select(this.refs.channelList).style('height', 0);
+      d3.select(this.channelListRef.current).style('height', 0);
     }
   }
 

@@ -15,6 +15,10 @@ class SplineGroup extends Component {
     super();
     self = this;
 
+    this.rootRef = React.createRef();
+    this.mouseLineRef = React.createRef();
+    this.splineRefs = new Map();
+
     this.dragStartX = 0;
     this.dragStartY = 0;
     this.dragEnabled = false;   //Can select time period by dragging
@@ -34,7 +38,7 @@ class SplineGroup extends Component {
       height = chartController.chartHeight;
 
     const items = dataset.map(d =>
-      <ChannelAreaChart ref={`spline${d.id}`}
+      <ChannelAreaChart ref={el => this.splineRefs.set(d.id, el)}
         channel={d} key={d.id}
         chartController={chartController}
       />
@@ -43,7 +47,7 @@ class SplineGroup extends Component {
     const dataTipPanel = this.getDataTip();
 
     return (
-      <g id="line-container" ref="root" transform={`translate(${x}, 70)`}>
+      <g id="line-container" ref={this.rootRef} transform={`translate(${x}, 70)`}>
         <defs>
           <filter id="drop-shadow" x="-100%" y="-100%" width="300%" height="300%">
             <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
@@ -57,7 +61,7 @@ class SplineGroup extends Component {
           </filter>
         </defs>
 
-        <g className="spline-container" ref="root" transform="translate(0, 0)">
+        <g className="spline-container" transform="translate(0, 0)">
           {items}
           <rect id="drag-bound" style={{ pointerEvents: 'none' }}
             width={0} height={0}
@@ -69,7 +73,7 @@ class SplineGroup extends Component {
             fill="rgba(0, 0, 0, 0.01)"
           />
         </g>
-        <path className="mouse-line" ref="mouse-line" />
+        <path className="mouse-line" ref={this.mouseLineRef} />
 
         <g className="current-date-tip" transform={`translate(0, -27)`}>
           <path className="date-tip-back" />
@@ -88,12 +92,15 @@ class SplineGroup extends Component {
 
     this.dataTipPanel = d3.select('.data-tip-panel');
 
-    d3.select('#line-container').on('switch', () => {
-      const data = d3.event.detail.data;
-      const show = d3.event.detail.show;
+    d3.select('#line-container').on('switch', (event) => {
+      const data = event.detail.data;
+      const show = event.detail.show;
 
       data.visible = show;
-      self.refs[`spline${data.id}`].setVisible(show);
+      const spline = this.splineRefs.get(data.id);
+      if (spline) {
+        spline.setVisible(show);
+      }
     });
 
 
@@ -104,12 +111,12 @@ class SplineGroup extends Component {
     d3.select('.line-background').call(drag);
 
     d3.select('#line-container')
-      .on('mouseover', function () {
-        const mouse = d3.mouse(this);
+      .on('mouseover', function (event) {
+        const mouse = d3.pointer(event);
         self.mouseOver(mouse);
       })
-      .on('mousemove', function () {
-        const mouse = d3.mouse(this);
+      .on('mousemove', function (event) {
+        const mouse = d3.pointer(event);
         self.mouseMove(mouse);
       })
       .on('mouseout', () => {
@@ -134,7 +141,7 @@ class SplineGroup extends Component {
     //Redraw the lines
     let lineItem;
     dataset.forEach(d => {
-      lineItem = self.refs[`spline${d.id}`];
+      lineItem = this.splineRefs.get(d.id);
       if (lineItem) {
         lineItem.draw();
       }
@@ -157,7 +164,7 @@ class SplineGroup extends Component {
   refreshData = () => {
     let lineItem;
     dataset.forEach(d => {
-      lineItem = this.refs[`spline${d.id}`];
+      lineItem = this.splineRefs.get(d.id);
       if (lineItem) {
         lineItem.getData();
       }
@@ -477,7 +484,10 @@ class SplineGroup extends Component {
 
 
   updateLineColor(channelId, color) {
-    this.refs[`spline${channelId}`].updateColor(color);
+    const spline = this.splineRefs.get(channelId);
+    if (spline) {
+      spline.updateColor(color);
+    }
 
     d3.selectAll('.current-point')
       .style("stroke", d => d.color);
@@ -486,7 +496,7 @@ class SplineGroup extends Component {
   }
 
 
-  startDrag = () => {
+  startDrag = (event) => {
     const { chartController } = this.props;
 
     if (chartController.datasourceMode === 'History') {
@@ -496,7 +506,7 @@ class SplineGroup extends Component {
       return;
     }
 
-    const { x, y } = d3.event;
+    const { x, y } = event;
     this.dragStartX = x;
     this.dragStartY = y;
 
@@ -507,25 +517,25 @@ class SplineGroup extends Component {
       .attr('visibility', 'visible');
   }
 
-  dragging = () => {
+  dragging = (event) => {
     if (!this.dragEnabled) {
       return;
     }
 
     let x = this.dragStartX,
       y = this.dragStartY,
-      w = d3.event.x - this.dragStartX,
-      h = d3.event.y - this.dragStartY;
+      w = event.x - this.dragStartX,
+      h = event.y - this.dragStartY;
 
 
     if (w < 0) {
       w = Math.abs(w);
-      x = d3.event.x;
+      x = event.x;
     }
 
     if (h < 0) {
       h = Math.abs(h);
-      y = d3.event.y;
+      y = event.y;
     }
 
     d3.select('#drag-bound')

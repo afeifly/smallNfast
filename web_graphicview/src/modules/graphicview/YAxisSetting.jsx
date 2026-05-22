@@ -1,14 +1,14 @@
 import React, { Component } from 'react';
 import * as d3 from 'd3';
-import Checkbox from '@material-ui/core/Checkbox';
-import FormControlLabel from '@material-ui/core/FormControlLabel';
-import Grid from '@material-ui/core/Grid';
-import TextField from '@material-ui/core/TextField';
-import Button from '@material-ui/core/Button';
-import Dialog from '@material-ui/core/Dialog';
-import DialogTitle from '@material-ui/core/DialogTitle';
-import DialogContent from '@material-ui/core/DialogContent';
-import DialogActions from '@material-ui/core/DialogActions';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Grid from '@mui/material/Grid';
+import TextField from '@mui/material/TextField';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 import intl from "react-intl-universal";
 
 
@@ -77,7 +77,7 @@ class YAxisSetting extends Component {
           { intl.get('YAXIS_SETTING') }
        </DialogTitle>
         <DialogContent>
-          <Grid container direction="column" justify="space-around" alignItems="flex-start" style={ w_style }>
+          <Grid container direction="column" justifyContent="space-around" alignItems="flex-start" style={ w_style }>
             <TextField label={ intl.get('YAXIS_DESCRIPTION') } margin="normal"/>
             <FormControlLabel d='yAxisAutoScalingCB'
               // checked= {this.state.auto}
@@ -87,7 +87,7 @@ class YAxisSetting extends Component {
               label={ intl.get('AUTO_SCALING') }
               // onClick={this.onAutoClick }
             />
-            <Grid container direction="row" justify="flex-start" alignItems="flex-start" >
+            <Grid container direction="row" justifyContent="flex-start" alignItems="flex-start" >
               <TextField type="number" label={ intl.get('FROM') }
                          defaultValue={ this.minValue } margin="normal"
                          onChange={ event => this.changeMinValue(event) }/>

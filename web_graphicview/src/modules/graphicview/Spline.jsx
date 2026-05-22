@@ -8,6 +8,7 @@ import { SystemEvent } from '../../util/SystemConstant';
 class Spline extends Component {
   constructor() {
     super();
+    this.rootRef = React.createRef();
     this.channel = null;
     this.summaryData = [];
     this.dataset = [];
@@ -21,15 +22,15 @@ class Spline extends Component {
     this.channel = this.props.channel;
 
     return(
-      <g className="spline" ref="root" style={{ pointerEvents:'none' }}/>
+      <g className="spline" ref={this.rootRef} style={{ pointerEvents:'none' }}/>
     );
   }
 
   setVisible = (show) => {
     if (show) {
-      d3.select(this.refs.root).attr('visibility', 'visible');
+      d3.select(this.rootRef.current).attr('visibility', 'visible');
     } else {
-      d3.select(this.refs.root).attr('visibility', 'hidden');
+      d3.select(this.rootRef.current).attr('visibility', 'hidden');
     }
   }
 
@@ -39,7 +40,7 @@ class Spline extends Component {
       return;
     }
     
-    const container = d3.select(this.refs.root);
+    const container = d3.select(this.rootRef.current);
     const summaryData = this.channel.summaryData;
 
     if (!this.curveLinePath) {
@@ -140,7 +141,7 @@ class Spline extends Component {
   }
 
   updateColor() {
-    const container = d3.select(this.refs.root);
+    const container = d3.select(this.rootRef.current);
     container.selectAll('.sub-line')
              .style('stroke', this.channel.color);
     
@@ -150,7 +151,7 @@ class Spline extends Component {
   updateVisible() {
     const { channel } = this.props;
     const visible = channel.visible ? 'visible' : 'hidden';
-    d3.select(this.refs.root).attr('visibility', visible);
+    d3.select(this.rootRef.current).attr('visibility', visible);
   }
 }
 

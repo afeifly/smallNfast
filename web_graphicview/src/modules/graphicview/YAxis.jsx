@@ -6,6 +6,7 @@ import { SystemEvent } from '../../util/SystemConstant';
 class YAxis extends Component {
   constructor() {
     super();
+    this.rootRef = React.createRef();
 
     this.state = {
       axisWidth: 0
@@ -19,7 +20,7 @@ class YAxis extends Component {
   
   render() {
     return(
-      <g className="y-axis" ref="root"  visibility="hidden">
+      <g className="y-axis" ref={this.rootRef}  visibility="hidden">
         <rect className="y-axis-background" fill="rgb(25, 118, 210)" onClick={ this.showYAxisSetting }/>
       </g>
     );
@@ -33,7 +34,7 @@ class YAxis extends Component {
 
   updateAxisName = (name) => {
     const { data } = this.props;
-    const container = d3.select(this.refs.root);
+    const container = d3.select(this.rootRef.current);
     let axis_info = container.select('.y-axis-info');
     let name_text;
 
@@ -57,7 +58,7 @@ class YAxis extends Component {
 
 
   reviseLayout = (x, withAnimation) => {
-    const container = d3.select(this.refs.root);
+    const container = d3.select(this.rootRef.current);
     let axis_info = container.select('.y-axis-info');
 
     if(!axis_info) return;
@@ -76,12 +77,12 @@ class YAxis extends Component {
 
 
   getWidth = () => {
-    const w = Math.round(this.refs.root.getBBox().width);
+    const w = Math.round(this.rootRef.current.getBBox().width);
     return w;
   }
 
   getHeight = () => {
-    const h = Math.round(this.refs.root.getBBox().height);
+    const h = Math.round(this.rootRef.current.getBBox().height);
     return h;
   }
 
@@ -94,18 +95,18 @@ class YAxis extends Component {
     }
 
     if(withAnimation) {
-      d3.select(this.refs.root)
+      d3.select(this.rootRef.current)
         .transition().duration(500)
         .attr('transform', `translate(${x}, 0)`);
     }else {
-      d3.select(this.refs.root)
+      d3.select(this.rootRef.current)
         .attr('transform', `translate(${x}, 0)`);
     }
   }
 
 
   getX = () => {
-    return this.getTXByTransfrom(d3.select(this.refs.root));
+    return this.getTXByTransfrom(d3.select(this.rootRef.current));
   }
 
   getTXByTransfrom(el) {
@@ -129,7 +130,7 @@ class YAxis extends Component {
   rerender = () => {
     const { data } = this.props;
 
-    const container = d3.select(this.refs.root);
+    const container = d3.select(this.rootRef.current);
     let thickness = 1;
     let foo;
     

@@ -2,17 +2,17 @@ import React, { Component } from 'react';
 import * as d3 from 'd3';
 import $ from 'jquery';
 
-import Tooltip from '@material-ui/core/Tooltip';
-import Dialog from '@material-ui/core/Dialog';
-import DialogContent from '@material-ui/core/DialogContent';
-import DialogContentText from '@material-ui/core/DialogContentText';
-import DialogTitle from '@material-ui/core/DialogTitle';
-import Snackbar from '@material-ui/core/Snackbar';
-import SnackbarContent from '@material-ui/core/SnackbarContent';
-import Slide from '@material-ui/core/Slide';
-import IconButton from '@material-ui/core/IconButton';
-import CloseIcon from '@material-ui/icons/Close';
-import InfoIcon from '@material-ui/icons/Info';
+import Tooltip from '@mui/material/Tooltip';
+import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
+import Snackbar from '@mui/material/Snackbar';
+import SnackbarContent from '@mui/material/SnackbarContent';
+import Slide from '@mui/material/Slide';
+import IconButton from '@mui/material/IconButton';
+import CloseIcon from '@mui/icons-material/Close';
+import InfoIcon from '@mui/icons-material/Info';
 import intl from "react-intl-universal";
 
 
@@ -21,7 +21,7 @@ import TestAPI from '../../api/TestAPI';
 import DataUtil from '../../util/DataUtil';
 
 import './css/style.css';
-import { Menu, MenuItem } from '@material-ui/core';
+import { Menu, MenuItem } from '@mui/material';
 import ChannelGroup from './ChannelGroup';
 
 let colors = ['#0052CC', '#FF5630', '#00B8D9', '#6554C0',
@@ -31,7 +31,7 @@ class ChannelList extends Component {
 
   constructor() {
     super();
-
+    this.rootRef = React.createRef();
     this.state = {
       data: [],
       noMeasurementData: false,
@@ -84,7 +84,7 @@ class ChannelList extends Component {
     }
 
     return (
-      <div className="channel-list" ref="root">
+      <div className="channel-list" ref={this.rootRef}>
         <div className="app-window-title">
           <span>{intl.get('CHANNEL')}</span>
 
@@ -155,7 +155,7 @@ class ChannelList extends Component {
   }
 
   getWidth() {
-    const container = $(this.refs.root);
+    const container = $(this.rootRef.current);
     let w = 0;
     if (container) {
       w = container.width();
@@ -467,12 +467,12 @@ class ChannelList extends Component {
   }
 
   show = () => {
-    d3.select(this.refs.root).attr('data-status', 'active');
+    d3.select(this.rootRef.current).attr('data-status', 'active');
 
   };
 
   hide = () => {
-    d3.select(this.refs.root).attr('data-status', '');
+    d3.select(this.rootRef.current).attr('data-status', '');
   };
 
   checkSelectedFromLocal(channelId) {

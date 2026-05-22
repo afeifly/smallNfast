@@ -2,11 +2,11 @@ import React, { Component } from 'react';
 import * as d3 from 'd3';
 import $ from 'jquery';
 
-import Tooltip from '@material-ui/core/Tooltip';
-import IconButton from '@material-ui/core/IconButton';
-import ListAltIcon from '@material-ui/icons/ListAlt';
-import PrintIcon from '@material-ui/icons/Print';
-import RangeIcon from '@material-ui/icons/DateRange';
+import Tooltip from '@mui/material/Tooltip';
+import IconButton from '@mui/material/IconButton';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import PrintIcon from '@mui/icons-material/Print';
+import RangeIcon from '@mui/icons-material/DateRange';
 import intl from "react-intl-universal";
 
 import ChannelList from '../channel/ChannelList';
@@ -25,6 +25,12 @@ class GraphicView extends Component {
 
   constructor() {
     super();
+    this.channelListRef = React.createRef();
+    this.graphicViewRef = React.createRef();
+    this.lineChartRef = React.createRef();
+    this.loadingRef = React.createRef();
+    this.ySettingRef = React.createRef();
+    this.channelSettingRef = React.createRef();
     this.state = {
       showYAxisSetting: false,
       showChannelSetting: false,
@@ -65,9 +71,9 @@ class GraphicView extends Component {
 
     return (
       <div id="graphic-view-wrapper">
-        <ChannelList ref="channelList" chartController={this.chartController} />
+        <ChannelList ref={this.channelListRef} chartController={this.chartController} />
 
-        <div className="graphic-view" ref="graphicView">
+        <div className="graphic-view" ref={this.graphicViewRef}>
           <div className="app-window-title">
             <span>{intl.get('GRAPHIC_VIEW')}</span>
 
@@ -116,10 +122,10 @@ class GraphicView extends Component {
 
           </div>
 
-          <LineChart ref="lineChart" chartController={this.chartController} />
-          <Loading ref="loading" />
-          <YAxisSetting ref="ySetting" />
-          <ChannelSetting ref="channelSetting" />
+          <LineChart ref={this.lineChartRef} chartController={this.chartController} />
+          <Loading ref={this.loadingRef} />
+          <YAxisSetting ref={this.ySettingRef} />
+          <ChannelSetting ref={this.channelSettingRef} />
         </div>
       </div>
 
@@ -127,7 +133,7 @@ class GraphicView extends Component {
   }
 
   componentDidMount() {
-    this.graphicView = d3.select(this.refs.graphicView);
+    this.graphicView = d3.select(this.graphicViewRef.current);
 
     // Expose for Flutter/External control
     window.updateChannelData = (channelId, data) => {
@@ -161,8 +167,8 @@ class GraphicView extends Component {
 
       const chartWidth = window.innerWidth - chartX;
       this.graphicView.style('width', chartWidth + 'px');
-      this.refs.lineChart.updateHeight();
-      this.refs.lineChart.setWidth(chartWidth);
+      this.lineChartRef.current.updateHeight();
+      this.lineChartRef.current.setWidth(chartWidth);
     });
 
     //Change browser tabs, need to hand the timer of reading data
@@ -183,15 +189,15 @@ class GraphicView extends Component {
         this.getData();
       })
       .on(SystemEvent.LOADING_DATA, () => {
-        this.refs.loading.show();
+        this.loadingRef.current.show();
       })
       .on(SystemEvent.LOADING_DATA_COMPLETED, () => {
-        this.refs.loading.hide();
-        this.refs.lineChart.updateYAxis();
+        this.loadingRef.current.hide();
+        this.lineChartRef.current.updateYAxis();
       })
       .on(SystemEvent.NO_SELECTED_CHANNELS, () => {
         d3.select('.chart-placeholder').attr('data-status', 'active');
-        this.refs.loading.hide();
+        this.loadingRef.current.hide();
       })
       .on(SystemEvent.CHANGE_SELECTED_CHANNELS, this.changeSelectedChannelsHandler)
       .on(SystemEvent.HIDE_CHANNEL_LIST, () => {
@@ -203,26 +209,26 @@ class GraphicView extends Component {
       .on(SystemEvent.INIT_SELECTED_CHANNELS, () => {
         this.initData();
       })
-      .on(SystemEvent.SHOW_YAXIS_SETTING, () => {
-        const channel = d3.event.detail;
+      .on(SystemEvent.SHOW_YAXIS_SETTING, (event) => {
+        const channel = event.detail;
         if (!channel) {
           return;
         }
 
-        this.refs.ySetting.handleClickOpen(channel);
+        this.ySettingRef.current.handleClickOpen(channel);
       })
       .on(SystemEvent.CLOSE_YAXIS_SETTING, () => {
         this.setState({
           showYAxisSetting: false
         });
       })
-      .on(SystemEvent.SHOW_CHANNEL_SETTING, () => {
-        const channel = d3.event.detail;
+      .on(SystemEvent.SHOW_CHANNEL_SETTING, (event) => {
+        const channel = event.detail;
         if (!channel) {
           return;
         }
 
-        this.refs.channelSetting.handleClickOpen(channel);
+        this.channelSettingRef.current.handleClickOpen(channel);
       });
   }
 
@@ -234,18 +240,18 @@ class GraphicView extends Component {
 
   getUserSettingsHandler = (responseData) => {
     if (!responseData) {
-      this.refs.loading.hide();
+      this.loadingRef.current.hide();
       return;
     }
 
     const result = responseData[0];
 
     if (!result) {
-      this.refs.channelList.getData();
+      this.channelListRef.current.getData();
       this.setState({
         noLoggingChannels: true
       });
-      this.refs.loading.hide();
+      this.loadingRef.current.hide();
       return;
     }
 
@@ -271,23 +277,23 @@ class GraphicView extends Component {
       });
       this.chartController.setDisplayChannels(displayChannels);
     } else {
-      this.refs.lineChart.setNoLoggingChannels(true);
-      this.refs.loading.hide();
+      this.lineChartRef.current.setNoLoggingChannels(true);
+      this.loadingRef.current.hide();
     }
 
 
-    this.refs.channelList.getData();
+    this.channelListRef.current.getData();
   };
 
 
   getData = () => {
-    this.refs.loading.show();
+    this.loadingRef.current.show();
     const username = localStorage.getItem('username');
 
     if (username) {
       TestAPI.getUserSettings(username, this.getUserSettingsHandler);
     } else {
-      this.refs.loading.hide();
+      this.loadingRef.current.hide();
     }
   };
 
@@ -295,7 +301,7 @@ class GraphicView extends Component {
   initData = () => {
     const selectedChannels = this.chartController.selectedChannels;
     if (!selectedChannels) {
-      this.refs.loading.hide();
+      this.loadingRef.current.hide();
       return;
     }
 
@@ -355,11 +361,11 @@ class GraphicView extends Component {
     });
 
     if (allDone) {
-      if (this.refs.lineChart) {
-        this.refs.lineChart.changeSelectedChannelsHandler();
+      if (this.lineChartRef.current) {
+        this.lineChartRef.current.changeSelectedChannelsHandler();
       }
 
-      this.refs.loading.hide();
+      this.loadingRef.current.hide();
     }
   };
 
@@ -370,10 +376,10 @@ class GraphicView extends Component {
 
     if (x === 0) {
       chartX = x;
-      this.refs.channelList.hide();
+      this.channelListRef.current.hide();
     } else {
       chartX = $('.channel-list').width() + 20;
-      this.refs.channelList.show();
+      this.channelListRef.current.show();
     }
 
     chartWidth = $('#graphic-view-wrapper').width() - chartX;
@@ -381,19 +387,19 @@ class GraphicView extends Component {
     this.graphicView.style('left', x + 'px')
       .style('width', chartWidth + 'px');
 
-    this.refs.lineChart.setWidth(chartWidth);
+    this.lineChartRef.current.setWidth(chartWidth);
   };
 
 
 
   switchDataSource = (type) => {
-    this.refs.loading.show();
+    this.loadingRef.current.show();
     this.initToggleButton(type);
 
     setTimeout(() => {
       if (type === 'realtime') {
         this.chartController.openRealtimeMode();
-        this.refs.lineChart.updateViewForRealtimeMode();
+        this.lineChartRef.current.updateViewForRealtimeMode();
       } else {
         // if(this.chartController.displayChannels
         //   && this.chartController.displayChannels.length > 0) {
@@ -431,7 +437,7 @@ class GraphicView extends Component {
     const checked = event.target.checked;
 
     this.chartController.denoising = checked;
-    this.refs.lineChart.updateDenoisingSetting();
+    this.lineChartRef.current.updateDenoisingSetting();
 
     this.setState({
       denoisingChecked: checked,
@@ -440,12 +446,12 @@ class GraphicView extends Component {
 
 
   resetTimePeriod = () => {
-    this.refs.lineChart.resetTimePeriod();
+    this.lineChartRef.current.resetTimePeriod();
   }
 
 
   showOrHideTimePeriod = () => {
-    this.refs.lineChart.showOrHideTimePeriod();
+    this.lineChartRef.current.showOrHideTimePeriod();
   };
 
 
@@ -461,7 +467,7 @@ class GraphicView extends Component {
 
 
   printChart = () => {
-    this.refs.lineChart.printChart();
+    this.lineChartRef.current.printChart();
   };
 
 
@@ -484,7 +490,7 @@ class GraphicView extends Component {
       });
     }
 
-    this.refs.lineChart.changeSelectedChannelsHandler();
+    this.lineChartRef.current.changeSelectedChannelsHandler();
   };
 
 }

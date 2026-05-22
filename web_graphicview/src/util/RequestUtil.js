@@ -1,6 +1,4 @@
 import * as d3 from 'd3';
-import 'whatwg-fetch';
-import 'babel-polyfill';
 import { SystemEvent } from './SystemConstant';
 
 // const API_HEADERS = {

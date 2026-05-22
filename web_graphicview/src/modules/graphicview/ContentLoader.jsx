@@ -5,22 +5,26 @@ import Loading from '../../components/loading/Loading';
 
 
 class ContentLoader extends Component {
+  constructor() {
+    super();
+    this.loadingRef = React.createRef();
+  }
   
   render() {
     return(
       <div className="content-loader">
-        <Loading ref="loading"/>
+        <Loading ref={this.loadingRef}/>
       </div>
     );
   }
 
   show = () => {
-    this.refs.loading.show();
+    this.loadingRef.current.show();
     d3.select('.content-loader').attr('data-status', 'active');
   };
 
   hide = () => {
-    this.refs.loading.hide();
+    this.loadingRef.current.hide();
     d3.select('.content-loader').attr('data-status', '');
   };
 }

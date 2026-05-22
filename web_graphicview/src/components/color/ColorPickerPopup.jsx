@@ -9,13 +9,14 @@ import ColorPicker from './ColorPicker';
 class ColorPickerPopup extends Component {
   constructor() {
     super();
+    this.btnRef = React.createRef();
     this.color = '#03a9f4';
   }
 
   render() {
     return(
       <div className="color-picker-box">
-       <div className="color-picker-btn" ref="btn" onClick={ this.openColorBoard }/>
+       <div className="color-picker-btn" ref={this.btnRef} onClick={ this.openColorBoard }/>
        <div className="color-board">
         <ColorPicker onChange={ this.setColor } onClose={ this.closeColorBoard }/>
        </div>
@@ -25,8 +26,8 @@ class ColorPickerPopup extends Component {
 
   componentDidMount() {
     this.setColor(this.color);
-    d3.select(document).on('mousedown.colorPicker', () => {
-      const el = d3.event.target.className;
+    d3.select(document).on('mousedown.colorPicker', (event) => {
+      const el = event.target.className;
       if (el === 'color-picker-btn' || el === 'color-cell') {
         return;
       }
@@ -54,7 +55,7 @@ class ColorPickerPopup extends Component {
     const { onChange } = this.props;
 
     this.color = color;
-    d3.select(this.refs.btn).style('background-color', color);
+    d3.select(this.btnRef.current).style('background-color', color);
 
     if (typeof(onChange) === 'function') {
       onChange(color);

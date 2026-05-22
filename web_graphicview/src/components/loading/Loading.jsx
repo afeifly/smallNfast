@@ -4,11 +4,16 @@ import * as d3 from 'd3';
 import './css/style.css';
 
 class Loading extends Component {
+  constructor() {
+    super();
+    this.rootRef = React.createRef();
+  }
+
   render() {
     const { defaultVisible } = this.props;
 
     return(
-      <div className="loading-box" ref="root" 
+      <div className="loading-box" ref={this.rootRef} 
         data-status={ defaultVisible === true ? 'active' : ''}>
         <svg className="loading-svg" width="64" height="100">
           <g className="loading-back" transform="translate(32, 32)"/>
@@ -45,7 +50,7 @@ class Loading extends Component {
                   .outerRadius(32)
                   .cornerRadius(0);
     
-    const container = d3.select(this.refs.root);
+    const container = d3.select(this.rootRef.current);
     container.select('.loading-back')
       .selectAll(".loading-sector")
       .data(arcs)
@@ -58,11 +63,11 @@ class Loading extends Component {
 
   show() {
     this.draw();
-    d3.select(this.refs.root).attr('data-status', 'active');
+    d3.select(this.rootRef.current).attr('data-status', 'active');
   } 
 
   hide() {
-    d3.select(this.refs.root).attr('data-status', '');
+    d3.select(this.rootRef.current).attr('data-status', '');
   } 
 
 }

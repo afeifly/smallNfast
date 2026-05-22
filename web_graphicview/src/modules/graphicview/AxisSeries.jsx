@@ -20,6 +20,7 @@ class AxisSeries extends Component {
     super();
     self = this;
 
+    this.yAxisRefs = new Map();
     this.yDataset = [];
     this.majorYAxisData = null;
   }
@@ -43,12 +44,12 @@ class AxisSeries extends Component {
 
 
   componentDidMount() {
-    d3.select('#axis-container').on('changePosition', () => {
-      const d = d3.event.detail.data;
+    d3.select('#axis-container').on('changePosition', (event) => {
+      const d = event.detail.data;
       this.changePosition(d);
-    }).on(SystemEvent.UPDATE_YAXIS_VIEW, () => {
-      const type = d3.event.detail.type;
-      const id = d3.event.detail.id;
+    }).on(SystemEvent.UPDATE_YAXIS_VIEW, (event) => {
+      const type = event.detail.type;
+      const id = event.detail.id;
 
       if (type === 'channel') {
         this.updateYAxisViewByChannelId(id);
@@ -87,13 +88,13 @@ class AxisSeries extends Component {
    */
   getYAxisByChannelId(channelId) {
     const yAxisDataId = this.getYAxisIdByChannelId(channelId);
-    const yAxis = this.refs[`yaxis-${ yAxisDataId }`];
+    const yAxis = this.yAxisRefs.get(yAxisDataId);
     return yAxis;
   }
 
 
   getYAxisById(id) {
-    const yAxis = this.refs[`yaxis-${ id }`];
+    const yAxis = this.yAxisRefs.get(id);
     return yAxis;
   }
 
@@ -138,7 +139,7 @@ class AxisSeries extends Component {
     }
 
     const items = dataset.map(d => {
-      return <YAxis ref={ `yaxis-${d.id}` } key={ d.id } data={d}/>;
+      return <YAxis ref={ el => this.yAxisRefs.set(d.id, el) } key={ d.id } data={d}/>;
     });
 
     return items;

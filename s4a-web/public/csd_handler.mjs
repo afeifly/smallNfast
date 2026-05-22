@@ -257,13 +257,15 @@ class CompiledApp {
       _275: f => finalizeWrapper(f, function() { return dartInstance.exports._275(f,arguments.length) }),
       _276: f => finalizeWrapper(f, function() { return dartInstance.exports._276(f,arguments.length) }),
       _277: f => finalizeWrapper(f, function() { return dartInstance.exports._277(f,arguments.length) }),
-      _278: f => finalizeWrapper(f, function(x0,x1,x2,x3) { return dartInstance.exports._278(f,arguments.length,x0,x1,x2,x3) }),
-      _279: f => finalizeWrapper(f, function(x0,x1,x2) { return dartInstance.exports._279(f,arguments.length,x0,x1,x2) }),
-      _280: f => finalizeWrapper(f, function() { return dartInstance.exports._280(f,arguments.length) }),
-      _281: x0 => { globalThis.csdBridge = x0 },
-      _282: Function.prototype.call.bind(Number.prototype.toString),
-      _283: Function.prototype.call.bind(BigInt.prototype.toString),
+      _278: f => finalizeWrapper(f, function() { return dartInstance.exports._278(f,arguments.length) }),
+      _279: f => finalizeWrapper(f, function() { return dartInstance.exports._279(f,arguments.length) }),
+      _280: f => finalizeWrapper(f, function(x0,x1,x2,x3) { return dartInstance.exports._280(f,arguments.length,x0,x1,x2,x3) }),
+      _281: f => finalizeWrapper(f, function(x0,x1,x2) { return dartInstance.exports._281(f,arguments.length,x0,x1,x2) }),
+      _282: f => finalizeWrapper(f, function() { return dartInstance.exports._282(f,arguments.length) }),
+      _283: x0 => { globalThis.csdBridge = x0 },
       _284: Function.prototype.call.bind(Number.prototype.toString),
+      _285: Function.prototype.call.bind(BigInt.prototype.toString),
+      _286: Function.prototype.call.bind(Number.prototype.toString),
 
     };
 

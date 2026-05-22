@@ -22,6 +22,29 @@ class CsdBridge {
   @JSExport()
   bool isLoaded() => _handler.isLoaded;
 
+  /// Returns the pref (database channel ID) for each channel as a JS Array.
+  /// This is the int64 at byte offset 0 of each CsdChannelHeader.
+  /// Used as channel_id in the web UI — matches the real device database IDs.
+  @JSExport()
+  JSArray<JSNumber> getChannelPrefs() {
+    return _handler
+        .getChannelPrefs()
+        .map((v) => v.toDouble().toJS)
+        .toList()
+        .toJS;
+  }
+
+  /// Returns the sensorId for each channel as a JS Array.
+  /// Channels with the same sensorId are grouped under one sensor in the sidebar.
+  @JSExport()
+  JSArray<JSNumber> getChannelSensorIds() {
+    return _handler
+        .getChannelSensorIds()
+        .map((v) => v.toJS)
+        .toList()
+        .toJS;
+  }
+
   /// Returns total number of channels.
   @JSExport()
   int getNumOfChannels() => _handler.getNumOfChannels();

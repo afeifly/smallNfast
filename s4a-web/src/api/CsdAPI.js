@@ -22,10 +22,10 @@ let _fileLoaded = false;        // a .csd file has been parsed
 let _pendingCallbacks = [];     // callbacks queued before Wasm is ready
 
 // Channel cache populated after file load
-let _channels = [];             // [{channel_id, logic_channel_description, unit_in_ascii, ...}]
-let _startTimeMs = 0;           // CSD file start timestamp (ms since epoch)
-let _stopTimeMs = 0;            // CSD file stop timestamp
-let _sampleRate = 1;            // Hz
+let _channels = [];        // [{channel_id (=index), sensor_id, unit_in_ascii, ...}]
+let _startTimeMs = 0;      // CSD file start timestamp (ms since epoch)
+let _stopTimeMs = 0;       // CSD file stop timestamp
+let _sampleRate = 1;       // Hz
 
 // ── Wasm bootstrap ────────────────────────────────────────────────────────────
 
@@ -85,6 +85,11 @@ function _ensureFileInput() {
   _fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csd')) {
+      alert('Only .csd files are supported!');
+      _fileInput.value = '';
+      return;
+    }
     await _loadCsdFile(file);
     // Reset so the same file can be re-selected
     _fileInput.value = '';
@@ -92,10 +97,8 @@ function _ensureFileInput() {
 }
 
 async function _loadCsdFile(file) {
-  if (!_wasmReady) {
-    console.warn('[CsdAPI] Wasm not ready yet, waiting...');
-    await new Promise(resolve => _pendingCallbacks.push(resolve));
-  }
+  // Clear old channel selections so we pick the new default ones for this file
+  localStorage.removeItem('selectedChannels');
 
   console.log('[CsdAPI] Reading file:', file.name, `(${(file.size / 1024).toFixed(1)} KB)`);
 
@@ -112,32 +115,52 @@ async function _loadCsdFile(file) {
 
   _fileLoaded = true;
 
-  // Cache metadata
-  const numChannels = _bridge.getNumOfChannels();
+  // ── Read all channel metadata from the Dart bridge ───────────────────────
+  const numChannels  = _bridge.getNumOfChannels();
   const descriptions = _bridge.getChannelDescriptions();
-  const unitTexts = _bridge.getUnitTexts();
-  const mins = _bridge.getChannelMins();
-  const maxs = _bridge.getChannelMaxs();
+  const unitTexts    = _bridge.getUnitTexts();
+  const mins         = _bridge.getChannelMins();
+  const maxs         = _bridge.getChannelMaxs();
+  const sensorIds    = _bridge.getChannelSensorIds();  // for sidebar grouping
 
-  _sampleRate = Math.max(1, _bridge.getSampleRate());
   _startTimeMs = _bridge.getTimeOfFirstSample();
-  _stopTimeMs = _bridge.getStopTime();
+  _stopTimeMs  = _bridge.getStopTime();
 
-  // Normalise timestamps — CSD stores ms since epoch
+  // Normalise timestamps
   if (_startTimeMs <= 0) _startTimeMs = Date.now() - 3600000;
-  if (_stopTimeMs <= _startTimeMs) _stopTimeMs = _startTimeMs + (_bridge.getNumOfSamples() / _sampleRate) * 1000;
+  if (_stopTimeMs <= _startTimeMs) {
+    const rawRate = Math.max(1, _bridge.getSampleRate());
+    _stopTimeMs = _startTimeMs + (_bridge.getNumOfSamples() / rawRate) * 1000;
+  }
 
-  // Build channel list in the same shape as MockAPI / RealAPI
+  // Compute sample rate dynamically based on actual duration and sample count.
+  // This solves the 'squished chart' issue by spacing samples across the whole range.
+  const numSamples = _bridge.getNumOfSamples();
+  const durationSec = (_stopTimeMs - _startTimeMs) / 1000;
+  if (numSamples > 1 && durationSec > 0) {
+    _sampleRate = numSamples / durationSec;
+  } else {
+    const rawRate = _bridge.getSampleRate();
+    _sampleRate = rawRate > 0 ? rawRate : 1;
+  }
+
+  // ── Build channel list ────────────────────────────────────────────────────
+  // channel_id = array index (0-based, guaranteed unique per file).
+  //   - pref is identical for all channels in this file (device-level ID)
+  //   - channelId from the header is not unique either
+  //   - The array index is what the binary data reader uses to pick the column
+  // sensor_id  = real sensorId from the channel header (for sidebar grouping)
   _channels = [];
+
   for (let i = 0; i < numChannels; i++) {
     _channels.push({
-      channel_id: i,
-      location_id: 1,
-      sensor_id: i,
-      logic_channel_description: descriptions[i] || `Channel ${i}`,
+      channel_id:                   i,               // unique, matches data read order
+      location_id:                  1,
+      sensor_id:                    sensorIds[i] ?? i, // real grouping from file header
+      logic_channel_description:    descriptions[i] || `Channel ${i}`,
       physical_channel_description: descriptions[i] || `Channel ${i}`,
-      sensor_description: descriptions[i] || `Channel ${i}`,
-      unit_in_ascii: unitTexts[i] || '',
+      sensor_description:           descriptions[i] || `Channel ${i}`,
+      unit_in_ascii:                unitTexts[i] || '',
       _min: mins[i] ?? 0,
       _max: maxs[i] ?? 0,
     });
@@ -145,10 +168,10 @@ async function _loadCsdFile(file) {
 
   console.log(`[CsdAPI] Loaded ${numChannels} channels, ${_bridge.getNumOfSamples()} samples @ ${_sampleRate} Hz`);
   console.log(`[CsdAPI] Time range: ${new Date(_startTimeMs).toISOString()} → ${new Date(_stopTimeMs).toISOString()}`);
+  console.log('[CsdAPI] Channels:', _channels.map(c => `[${c.channel_id}] sensorId=${c.sensor_id} "${c.logic_channel_description}" (${c.unit_in_ascii})`));
 
-  // Notify all listeners
+  // Notify all listeners (do not clear them so they remain registered for future files)
   _onFileLoadedCallbacks.forEach(fn => fn());
-  _onFileLoadedCallbacks = [];
 }
 
 // ── Helper: pick default channels (first 2, prefer m³/h unit) ────────────────
@@ -202,16 +225,22 @@ const CsdAPI = {
    * Register a callback to be called once when a file finishes loading.
    */
   onFileLoaded(callback) {
+    if (!_onFileLoadedCallbacks.includes(callback)) {
+      _onFileLoadedCallbacks.push(callback);
+    }
     if (_fileLoaded) {
       // Already loaded — call immediately
       setTimeout(callback, 0);
-    } else {
-      _onFileLoadedCallbacks.push(callback);
     }
   },
 
   isFileLoaded() {
     return _fileLoaded;
+  },
+
+  /** Returns the CSD file's actual time range in ms-since-epoch. */
+  getFileTimeRange() {
+    return { start: _startTimeMs, stop: _stopTimeMs };
   },
 
   // ── API methods (same signature as MockAPI / RealAPI) ─────────────────────
@@ -273,8 +302,10 @@ const CsdAPI = {
       return;
     }
 
+    // channel_id is the array index (0-based)
     const chIdx = parseInt(channelId, 10);
-    if (chIdx < 0 || chIdx >= _channels.length) {
+    if (isNaN(chIdx) || chIdx < 0 || chIdx >= _channels.length) {
+      console.warn(`[CsdAPI] getMeasurementData: unknown channelId ${channelId}`);
       setTimeout(() => callback([]), 50);
       return;
     }
@@ -282,9 +313,14 @@ const CsdAPI = {
     const ch = _channels[chIdx];
     const totalSamples = _bridge.getNumOfSamples();
 
+    // The UI queries with a +8h offset due to timezone handling logic.
+    // We adjust it back to match the actual file timestamps.
+    const queryStartTime = startTime - 3600000 * 8;
+    const queryStopTime  = stopTime - 3600000 * 8;
+
     // Convert time range to sample indices
-    let startSample = _timeToSampleIndex(startTime);
-    let endSample   = _timeToSampleIndex(stopTime);
+    let startSample = _timeToSampleIndex(queryStartTime);
+    let endSample   = _timeToSampleIndex(queryStopTime);
 
     // Clamp to valid range
     startSample = Math.max(0, Math.min(startSample, totalSamples - 1));
@@ -308,10 +344,13 @@ const CsdAPI = {
       }
     }
 
+    // The UI (DataUtil.js) will subtract 8h from realStartTime.
+    // To compensate, we offset realStartTime by +8h so the final time on the chart
+    // matches the file's actual sample timestamps.
     setTimeout(() => callback([{
       channel_id: channelId,
       measurementData: [values],
-      realStartTime: [actualStartMs],
+      realStartTime: [actualStartMs + 3600000 * 8],
       pointInterval: [pointIntervalMs],
       min: ch._min,
       max: ch._max,
@@ -323,8 +362,9 @@ const CsdAPI = {
       callback([]);
       return;
     }
-    // Delegate to single-channel method for the first channel (consistent with MockAPI)
-    const stopTime = _stopTimeMs > _startTimeMs ? _stopTimeMs : startTime + 3600000 * 24;
+    // Delegate to single-channel method for the first channel (consistent with MockAPI).
+    // If we use _stopTimeMs, add 3600000 * 8 to match the UI's timezone offset logic.
+    const stopTime = _stopTimeMs > _startTimeMs ? (_stopTimeMs + 3600000 * 8) : startTime + 3600000 * 24;
     this.getMeasurementData(channelIds[0], startTime, stopTime, tableInterval, getDataWay, callback);
   },
 

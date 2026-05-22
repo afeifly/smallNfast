@@ -202,6 +202,12 @@ class ChannelList extends Component {
 
     const { chartController } = this.props;
     const channels = responseData.logging_chs;
+
+    // Reset accumulated state so re-loading (e.g. after a new CSD file) is clean
+    this.sensorList = [];
+    chartController.selectedChannels = [];
+    chartController.yAxisDataset = [];
+
     let channel;
     let channelObj;
     let sensor;

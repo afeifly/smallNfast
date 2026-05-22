@@ -39,12 +39,15 @@ class GraphicView extends Component {
     this.state = {
       showYAxisSetting: false,
       showChannelSetting: false,
-      dataType: 'Realtime',
+      dataType: isCsdMode ? 'History' : 'Realtime',
       denoisingChecked: true,
       noLoggingChannels: true,
     }
 
     this.chartController = new ChartController();
+    if (isCsdMode) {
+      this.chartController.datasourceMode = 'History';
+    }
     this.graphicView = null;
     this.channelListVisible = false;
   }
@@ -83,17 +86,19 @@ class GraphicView extends Component {
             <span>{intl.get('GRAPHIC_VIEW')}</span>
 
             <div className="window-title-right-area">
-              <div className="toggle-button-group" >
-                <div className="toggle-selected-mask" />
-                <div className="toggle-button" data-type="realtime"
-                  onClick={() => this.switchDataSource('realtime')}>
-                  {intl.get('REALTIME_DATA')}
+              {!isCsdMode && (
+                <div className="toggle-button-group" >
+                  <div className="toggle-selected-mask" />
+                  <div className="toggle-button" data-type="realtime"
+                    onClick={() => this.switchDataSource('realtime')}>
+                    {intl.get('REALTIME_DATA')}
+                  </div>
+                  <div className="toggle-button" data-type="history"
+                    onClick={() => this.switchDataSource('history')}>
+                    {intl.get('HISTORY_DATA')}
+                  </div>
                 </div>
-                <div className="toggle-button" data-type="history"
-                  onClick={() => this.switchDataSource('history')}>
-                  {intl.get('HISTORY_DATA')}
-                </div>
-              </div>
+              )}
 
               {/* Time period button */}
               <Tooltip title={intl.get('TIME_PERIOD')}>
@@ -173,16 +178,18 @@ class GraphicView extends Component {
     //Read current user settings
     this.getData();
 
-    // In CSD mode: register callback so we refresh immediately once a file is loaded
+    // In CSD mode: when a file is opened, switch chart to History mode spanning
+    // the file's actual date range, then reload channel + measurement data.
     if (isCsdMode && TestAPI.onFileLoaded) {
       TestAPI.onFileLoaded(() => {
-        console.log('[GraphicView] CSD file loaded — refreshing data...');
+        console.log('[GraphicView] CSD file loaded — refreshing with correct time range...');
+        this._applyCsdTimeRange();
         this.getData();
       });
     }
 
     this.setPosition(0);
-    this.initToggleButton('realtime');
+    this.initToggleButton(isCsdMode ? 'history' : 'realtime');
 
     d3.select(window).on('resize.updateChart', () => {
       let chartX = 0;
@@ -266,18 +273,24 @@ class GraphicView extends Component {
 
   getUserSettingsHandler = (responseData) => {
     if (!responseData) {
-      this.loadingRef.current.hide();
+      if (this.loadingRef.current) {
+        this.loadingRef.current.hide();
+      }
       return;
     }
 
     const result = responseData[0];
 
     if (!result) {
-      this.channelListRef.current.getData();
+      if (this.channelListRef.current) {
+        this.channelListRef.current.getData();
+      }
       this.setState({
         noLoggingChannels: true
       });
-      this.loadingRef.current.hide();
+      if (this.loadingRef.current) {
+        this.loadingRef.current.hide();
+      }
       return;
     }
 
@@ -303,12 +316,18 @@ class GraphicView extends Component {
       });
       this.chartController.setDisplayChannels(displayChannels);
     } else {
-      this.lineChartRef.current.setNoLoggingChannels(true);
-      this.loadingRef.current.hide();
+      if (this.lineChartRef.current) {
+        this.lineChartRef.current.setNoLoggingChannels(true);
+      }
+      if (this.loadingRef.current) {
+        this.loadingRef.current.hide();
+      }
     }
 
 
-    this.channelListRef.current.getData();
+    if (this.channelListRef.current) {
+      this.channelListRef.current.getData();
+    }
   };
 
 
@@ -442,7 +461,7 @@ class GraphicView extends Component {
 
   initToggleButton(type) {
     const currentBtn = $(`.toggle-button[data-type=${type}]`);
-    if (!currentBtn) {
+    if (!currentBtn || currentBtn.length === 0 || !currentBtn.position()) {
       return;
     }
 
@@ -492,13 +511,39 @@ class GraphicView extends Component {
   };
 
 
+  /**
+   * Switch the chart to History mode using the CSD file's actual time range.
+   * Must be called before getData() so getMeasurementData() receives valid timestamps.
+   */
+  _applyCsdTimeRange = () => {
+    if (!TestAPI.getFileTimeRange) return;
+    const { start, stop } = TestAPI.getFileTimeRange();
+    if (!start || !stop || stop <= start) return;
+
+    const startDate = new Date(start);
+    const stopDate  = new Date(stop);
+
+    const cc = this.chartController;
+    cc.datasourceMode = 'History';
+    cc.denoising = true;
+    clearInterval(cc.timer);
+
+    // Replace the timePeriod used for data fetch and the X scale domain
+    cc.timePeriod = { start: startDate, end: stopDate };
+    cc.historyTimeRange = { start: startDate, end: stopDate };
+    cc.xScale.domain([startDate, stopDate]);
+    cc.timePeriods = [];
+    cc.currentTimePeriodIndex = -1;
+
+    // Update the toggle button UI to reflect History mode
+    this.initToggleButton('history');
+
+    console.log(`[GraphicView] CSD time range: ${startDate.toISOString()} → ${stopDate.toISOString()}`);
+  };
+
+
   openCsdFile = () => {
     if (TestAPI.openFile) {
-      // Register a one-shot callback to reload data once the file parses
-      TestAPI.onFileLoaded(() => {
-        console.log('[GraphicView] CSD file loaded — refreshing data...');
-        this.getData();
-      });
       TestAPI.openFile();
     }
   };

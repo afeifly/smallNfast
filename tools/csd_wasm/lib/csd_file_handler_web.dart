@@ -398,6 +398,24 @@ class CsdFileHandlerWeb {
     return _channelHeaders!.map((h) => h.resolution).toList();
   }
 
+  /// Returns the pref field (int64, byte 0 of each channel header) for each channel.
+  /// This is the real database-assigned channel ID stored in the CSD file.
+  List<int> getChannelPrefs() {
+    if (_channelHeaders == null || _channelHeaders!.isEmpty) {
+      return List.generate(_protocolHeader?.numOfChannels ?? 0, (i) => i);
+    }
+    return _channelHeaders!.map((h) => h.pref).toList();
+  }
+
+  /// Returns the sensorId field from each channel header.
+  /// Channels with the same sensorId should be grouped under one sensor in the UI.
+  List<int> getChannelSensorIds() {
+    if (_channelHeaders == null || _channelHeaders!.isEmpty) {
+      return List.generate(_protocolHeader?.numOfChannels ?? 0, (_) => 0);
+    }
+    return _channelHeaders!.map((h) => h.sensorId).toList();
+  }
+
   CsdChannelHeader? getChannelHeader(int index) {
     if (_channelHeaders == null || index >= _channelHeaders!.length) return null;
     return _channelHeaders![index];

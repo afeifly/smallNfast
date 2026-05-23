@@ -339,7 +339,8 @@ class AxisSeries extends Component {
     d3.select('#x-axis').attr('transform', `translate(${x}, ${y})`);
     
     setTimeout(() => {
-      d3.select('#x-axis').transition()
+      const xAxis = d3.select('#x-axis');
+      xAxis.transition()
         .call(d3.axisBottom(chartController.xScale)
                 .tickFormat(date => {
                   return (d3.timeSecond(date) < date ? formatMillisecond
@@ -350,7 +351,16 @@ class AxisSeries extends Component {
                   : d3.timeYear(date) < date ? formatMonth
                   : formatYear)(date);
                 })
-        );
+        )
+        .on('end', () => {
+          xAxis.selectAll('path').style('stroke', '#333333');
+          xAxis.selectAll('line').style('stroke', '#333333');
+          xAxis.selectAll('text').style('fill', '#333333');
+        });
+
+      xAxis.selectAll('path').style('stroke', '#333333');
+      xAxis.selectAll('line').style('stroke', '#333333');
+      xAxis.selectAll('text').style('fill', '#333333');
     }, 0);
   }
 

@@ -176,10 +176,10 @@ class GraphicView extends Component {
               <List style={{ width: '400px', maxHeight: '300px', overflow: 'auto' }}>
                 {this.state.recentFiles.map((file, idx) => (
                   <ListItem disablePadding key={idx}>
-                    <ListItemButton onClick={() => this.loadRecentFile(file.path)}>
+                    <ListItemButton onClick={() => this.loadRecentFile(file)}>
                       <ListItemText 
                         primary={file.name} 
-                        secondary={file.path} 
+                        secondary={file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')} 
                         primaryTypographyProps={{ style: { fontWeight: 'bold' } }}
                         secondaryTypographyProps={{ style: { fontSize: '11px', wordBreak: 'break-all' } }}
                       />
@@ -618,10 +618,11 @@ class GraphicView extends Component {
 
   openCsdFile = () => {
     const hasFs = !!(window.require && window.require('fs'));
+    const hasFsa = !!(TestAPI && TestAPI.hasFSA);
     const recentFilesStr = localStorage.getItem('recentCsdFiles');
     const recentFiles = recentFilesStr ? JSON.parse(recentFilesStr) : [];
 
-    if (hasFs && recentFiles.length > 0) {
+    if ((hasFs || hasFsa) && recentFiles.length > 0) {
       this.setState({
         recentFilesOpen: true,
         recentFiles
@@ -633,14 +634,20 @@ class GraphicView extends Component {
     }
   };
 
-  loadRecentFile = async (path) => {
+  loadRecentFile = async (file) => {
     this.setState({ recentFilesOpen: false });
-    if (TestAPI.loadFileFromPath) {
-      this.loadingRef.current.show();
-      const success = await TestAPI.loadFileFromPath(path);
-      if (!success) {
-        this.loadingRef.current.hide();
+    this.loadingRef.current.show();
+    let success = false;
+    if (file.path && TestAPI.loadFileFromPath) {
+      success = await TestAPI.loadFileFromPath(file.path);
+    } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
+      const handle = await TestAPI.getHandleForFile(file.name);
+      if (handle) {
+        success = await TestAPI.loadFileFromHandle(handle);
       }
+    }
+    if (!success) {
+      this.loadingRef.current.hide();
     }
   };
 

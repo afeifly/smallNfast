@@ -1,88 +1,379 @@
 /**
  * CsdAPI.js
  *
- * A drop-in replacement for MockAPI that reads real .csd binary files
- * via a Dart-compiled WebAssembly module (csd_handler.wasm).
+ * Pure-JavaScript drop-in replacement for the former Dart/Wasm CSD parser.
+ * No build step required — works in every modern browser.
  *
- * API surface matches MockAPI.js so TestAPI.js can swap them transparently.
+ * Features:
+ *   - Lazy slice-based reading: only the header bytes (+tiny data windows) are
+ *     ever loaded into memory.  A 10 GB file uses ~10 KB of RAM at rest.
+ *   - File System Access API (Chrome / Edge): persists a FileSystemFileHandle
+ *     in IndexedDB so the user can reload previously-opened files with one
+ *     permission click instead of opening the OS picker again.
+ *   - Graceful fallback: on Safari / Firefox the classic <input type="file">
+ *     is used; the rest of the app is unaffected.
  *
- * How it works:
- * NOTE: csd_handler.mjs lives in /public and is loaded at runtime via @vite-ignore dynamic import.
- *       It MUST NOT be bundled by Vite — the Dart Wasm runtime requires its function
- *       references to remain intact.
- *       csd_handler.wasm also lives in /public and is fetched by URL.
+ * CSD binary layout (big-endian throughout):
+ *   0        – 33    File header    (34 bytes)
+ *   34       – 3585  Protocol header (3552 bytes)
+ *   3586     – ...   Channel headers (918 bytes × numChannels)
+ *   after CH – end   Data records   ( (4 + numChannels*8) bytes × numSamples )
+ *
+ * API surface is identical to MockAPI.js.
  */
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-let _wasmReady = false;         // Dart Wasm module is initialised
-let _wasmLoading = false;       // prevent concurrent loads
-let _bridge = null;             // globalThis.csdBridge set by Dart main()
-let _fileLoaded = false;        // a .csd file has been parsed
-let _pendingCallbacks = [];     // callbacks queued before Wasm is ready
+const FILE_HEADER_LEN     = 34;
+const PROTOCOL_HEADER_LEN = 3552;
+const CHANNEL_HEADER_LEN  = 918;
+const RECORD_ID_LEN       = 4;
+const CHANNEL_VALUE_LEN   = 8;    // float64
 
-// Channel cache populated after file load
-let _channels = [];        // [{channel_id (=index), sensor_id, unit_in_ascii, ...}]
-let _startTimeMs = 0;      // CSD file start timestamp (ms since epoch)
-let _stopTimeMs = 0;       // CSD file stop timestamp
-let _sampleRate = 1;       // Hz
+const DATA_INVALID       = -9999;
+const DATA_OVERRANGE     = -8888;
+const DATA_SENSOR_CHANGE = -8887;
+const DATA_UNIT_CHANGE   = -8886;
 
-// ── Wasm bootstrap ────────────────────────────────────────────────────────────
+const PROTOCOL_HEADER_START  = FILE_HEADER_LEN;
+const CHANNEL_HEADERS_START  = PROTOCOL_HEADER_START + PROTOCOL_HEADER_LEN;  // 3586
 
-async function _initWasm() {
-  if (_wasmReady || _wasmLoading) return;
-  _wasmLoading = true;
+const MAX_DISPLAY_SAMPLES = 3000;
 
+// IndexedDB database name / store for file handles
+const IDB_NAME  = 'CsdFilesDB';
+const IDB_STORE = 'fileHandles';
+
+// ── Module state ──────────────────────────────────────────────────────────────
+
+let _file        = null;   // File | FileSystemFileHandle — kept open for lazy reads
+let _fileLoaded  = false;
+let _channels    = [];
+let _startTimeMs = 0;
+let _stopTimeMs  = 0;
+let _sampleRate  = 1;      // Hz (computed)
+let _numSamples  = 0;
+let _numChannels = 0;
+let _dataStart   = 0;      // byte offset where records begin
+let _recordLen   = 0;      // bytes per record
+
+let _onFileLoadedCallbacks = [];
+
+// Classic <input> fallback
+let _fileInput = null;
+
+// ── IndexedDB helpers ─────────────────────────────────────────────────────────
+
+function _openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function _idbPut(key, value) {
   try {
-    // Vite 8 hard-blocks any import() whose path resolves to /public, even with @vite-ignore.
-    // Workaround: fetch the .mjs as raw text, wrap it in a Blob URL, then import that.
-    // Vite sees `import(blobUrl)` where blobUrl is a runtime variable — it cannot
-    // statically analyze the path, so it never triggers the /public block.
-    // The .mjs content is also delivered byte-for-byte with no Vite transformation,
-    // which is required — the Dart Wasm bootstrap's import object must be exact.
-    const mjsText = await fetch('/csd_handler.mjs').then(r => r.text());
-    const blobUrl = URL.createObjectURL(new Blob([mjsText], { type: 'application/javascript' }));
-    const dartModule = await import(/* @vite-ignore */ blobUrl);
-    URL.revokeObjectURL(blobUrl);
-
-    // Fetch + compile the Wasm binary from /public
-    const compiled = await dartModule.compileStreaming(fetch('/csd_handler.wasm'));
-
-    // Instantiate — runs Dart main(), which sets globalThis.csdBridge
-    const app = await compiled.instantiate({});
-    app.invokeMain();
-
-    _bridge = globalThis.csdBridge;
-    _wasmReady = true;
-    console.log('[CsdAPI] Dart Wasm module ready');
-
-    // Flush any callbacks waiting for Wasm
-    _pendingCallbacks.forEach(fn => fn());
-    _pendingCallbacks = [];
-  } catch (err) {
-    console.error('[CsdAPI] Failed to load Wasm module:', err);
-  } finally {
-    _wasmLoading = false;
+    const db = await _openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror    = e => reject(e.target.error);
+    });
+  } catch (e) {
+    console.warn('[CsdAPI] IDB put failed:', e);
   }
 }
 
-// Start loading immediately when this module is imported
-_initWasm();
+async function _idbGet(key) {
+  try {
+    const db = await _openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
+    });
+  } catch (e) {
+    console.warn('[CsdAPI] IDB get failed:', e);
+    return undefined;
+  }
+}
 
-// ── File picker ───────────────────────────────────────────────────────────────
+async function _idbGetAll() {
+  try {
+    const db = await _openIDB();
+    return new Promise((resolve, reject) => {
+      const tx  = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).getAllKeys();
+      req.onsuccess = async e => {
+        const keys    = e.target.result;
+        const entries = [];
+        for (const key of keys) {
+          const handle = await _idbGet(key);
+          if (handle) entries.push({ key, handle });
+        }
+        resolve(entries);
+      };
+      req.onerror = e => reject(e.target.error);
+    });
+  } catch (e) {
+    return [];
+  }
+}
 
-let _fileInput = null;
-let _onFileLoadedCallbacks = [];
+// ── Byte-reading helpers ──────────────────────────────────────────────────────
 
+/** Read exactly `length` bytes starting at `offset` from a File object. */
+async function _readSlice(file, offset, length) {
+  const blob   = file.slice(offset, offset + length);
+  const buffer = await blob.arrayBuffer();
+  return new DataView(buffer);
+}
+
+/** Decode null-terminated UTF-8 from a subarray of a DataView's buffer. */
+function _decodeStr(dv, byteOffset, maxLen) {
+  const bytes = new Uint8Array(dv.buffer, byteOffset, maxLen);
+  let end = 0;
+  while (end < bytes.length && bytes[end] !== 0) end++;
+  try {
+    return new TextDecoder('utf-8').decode(bytes.subarray(0, end)).trim();
+  } catch {
+    return '';
+  }
+}
+
+// ── Core parser ───────────────────────────────────────────────────────────────
+
+/**
+ * Parse file / protocol / channel headers from `file` (File object or
+ * anything with a `.slice(start,end)` → Blob interface).
+ * Populates module-level state; does NOT read sample data.
+ */
+async function _parseHeaders(file) {
+  // ── Protocol header (3552 bytes starting at byte 34) ──
+  const ph = await _readSlice(file, PROTOCOL_HEADER_START, PROTOCOL_HEADER_LEN);
+
+  _numChannels = ph.getInt32(3016, false) || 9;
+  _numSamples  = Math.max(0, ph.getInt32(3020, false));
+  const sampleRateRaw = ph.getInt32(3024, false);
+
+  let rawStart = Number(ph.getBigInt64(3032, false));
+  let rawStop  = Number(ph.getBigInt64(3040, false));
+
+  const MAX_TS = 8640000000000000;
+  if (Math.abs(rawStart) > MAX_TS) rawStart = 0;
+  if (Math.abs(rawStop)  > MAX_TS) rawStop  = 0;
+
+  _startTimeMs = rawStart;
+  _stopTimeMs  = rawStop;
+
+  if (_startTimeMs <= 0) _startTimeMs = Date.now() - 3600000;
+  if (_stopTimeMs  <= _startTimeMs) {
+    const rate = Math.max(1, sampleRateRaw);
+    _stopTimeMs = _startTimeMs + (_numSamples / rate) * 1000;
+  }
+
+  const durationSec = (_stopTimeMs - _startTimeMs) / 1000;
+  _sampleRate = (_numSamples > 1 && durationSec > 0)
+    ? _numSamples / durationSec
+    : Math.max(1, sampleRateRaw);
+
+  // ── Channel headers (918 bytes each) ──
+  _channels = [];
+  for (let i = 0; i < _numChannels; i++) {
+    const chStart = CHANNEL_HEADERS_START + i * CHANNEL_HEADER_LEN;
+    const ch = await _readSlice(file, chStart, CHANNEL_HEADER_LEN);
+
+    // pref = int64 at byte 0
+    const pref     = Number(ch.getBigInt64(0, false));
+    const sensorId = ch.getInt32(CHANNEL_HEADER_LEN - 918 + 752 + 28, false); // fieldPos 752+28
+
+    // Channel description: int16 length + up to 128 bytes at offset 8
+    const descLen = ch.getInt16(8, false);
+    const desc    = _decodeStr(ch, 10, Math.min(descLen, 126)) || `Channel ${i}`;
+
+    // Sub-device desc: length at 8+2+128 = 138
+    const subLen = ch.getInt16(138, false);
+    const subDesc = _decodeStr(ch, 140, Math.min(subLen, 126));
+
+    // Device desc: at 138+2+128 = 268 
+    const devLen  = ch.getInt16(268, false);
+    // Sensor desc: at 268+2+19 = 289
+    const senLen  = ch.getInt16(289, false);
+    const senDesc = _decodeStr(ch, 291, Math.min(senLen, 17)) || desc;
+
+    // unit text: fixed-position area starting at fieldPos=752
+    // fieldPos after skipping 470 reserved bytes starting at 289+2+19=310 → 310+470=780
+    // then channelNumber(4)+unit(4) = 788, then unitTextLen(2)+text
+    const FP = 780 + 4 + 4; // = 788
+    const unitLen  = ch.getInt16(FP, false);
+    const unitText = _decodeStr(ch, FP + 2, Math.min(unitLen, 56)) || '';
+
+    // min/max follow at FP+2+58 = FP+60
+    const statsBase = FP + 60;
+    // resolution(4) + min(8) + max(8)
+    const minVal = ch.getFloat64(statsBase + 4,  false);
+    const maxVal = ch.getFloat64(statsBase + 12, false);
+
+    const sensorIdVal = ch.getInt32(statsBase + 28, false);
+
+    _channels.push({
+      channel_id:                   i,
+      location_id:                  1,
+      sensor_id:                    sensorIdVal || i,
+      pref,
+      logic_channel_description:    desc,
+      physical_channel_description: desc,
+      sensor_description:           senDesc,
+      unit_in_ascii:                unitText,
+      _min: isFinite(minVal) ? minVal : 0,
+      _max: isFinite(maxVal) ? maxVal : 0,
+    });
+  }
+
+  // ── Data record geometry ──
+  _dataStart = CHANNEL_HEADERS_START + _numChannels * CHANNEL_HEADER_LEN;
+  _recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
+
+  console.log(`[CsdAPI] Parsed ${_numChannels} channels, ${_numSamples} samples @ ${_sampleRate.toFixed(3)} Hz`);
+  console.log(`[CsdAPI] Time range: ${new Date(_startTimeMs).toISOString()} → ${new Date(_stopTimeMs).toISOString()}`);
+  console.log('[CsdAPI] Channels:', _channels.map(c => `[${c.channel_id}] "${c.logic_channel_description}" (${c.unit_in_ascii})`));
+}
+
+/**
+ * Lazy read: fetch only the float64 values for `chIdx` in sample range
+ * [startSample, endSample] with stride `step`.
+ * Each record is `_recordLen` bytes; the channel value sits at:
+ *   record_offset + RECORD_ID_LEN + chIdx * 8
+ */
+async function _readChannelData(file, chIdx, startSample, endSample, step) {
+  const values       = [];
+  const chByteOffset = RECORD_ID_LEN + chIdx * CHANNEL_VALUE_LEN;
+
+  const totalRecords = endSample - startSample + 1;
+  const spanBytes    = totalRecords * _recordLen;
+
+  // Optimization 1: If the byte span is small (< 5MB), read the entire block at once
+  if (spanBytes < 5 * 1024 * 1024) {
+    const recordStart = _dataStart + startSample * _recordLen;
+    const dv = await _readSlice(file, recordStart, spanBytes);
+    for (let s = 0; s < totalRecords; s += step) {
+      const recordOffset = s * _recordLen;
+      const v = dv.getFloat64(recordOffset + chByteOffset, false);
+      values.push((v <= DATA_OVERRANGE) ? null : v);
+    }
+    return values;
+  }
+
+  // Optimization 2: For massive ranges, read sampled points in parallel
+  const promises = [];
+  for (let s = startSample; s <= endSample; s += step) {
+    const recordStart = _dataStart + s * _recordLen;
+    promises.push(_readSlice(file, recordStart + chByteOffset, CHANNEL_VALUE_LEN));
+  }
+  const slices = await Promise.all(promises);
+  for (const dv of slices) {
+    const v = dv.getFloat64(0, false);
+    values.push((v <= DATA_OVERRANGE) ? null : v);
+  }
+  return values;
+}
+
+// ── File-load entry point ─────────────────────────────────────────────────────
+
+async function _loadFromFile(file) {
+  localStorage.removeItem('selectedChannels');
+  _fileLoaded = false;
+
+  let fileToLoad = file;
+  const LIMIT = 800 * 1024 * 1024; // 800 MB
+  if (file.size && file.size < LIMIT && typeof file.arrayBuffer === 'function') {
+    try {
+      console.log(`[CsdAPI] File size (${(file.size / 1024 / 1024).toFixed(2)} MB) is under 800MB. Loading completely into memory...`);
+      const fullBuffer = await file.arrayBuffer();
+      fileToLoad = {
+        name: file.name,
+        size: file.size,
+        slice(start, end) {
+          const sliced = fullBuffer.slice(start, end);
+          return {
+            arrayBuffer: async () => sliced
+          };
+        }
+      };
+    } catch (e) {
+      console.warn('[CsdAPI] Failed to load entire file into memory, falling back to lazy load:', e);
+      fileToLoad = file;
+    }
+  }
+
+  try {
+    await _parseHeaders(fileToLoad);
+  } catch (err) {
+    console.error('[CsdAPI] Header parse failed:', err);
+    return false;
+  }
+
+  _file       = fileToLoad;
+  _fileLoaded = true;
+  _onFileLoadedCallbacks.forEach(fn => fn());
+  return true;
+}
+
+// ── Recent-files persistence (localStorage metadata + IDB handles) ────────────
+
+function _saveRecentMeta(name, size, path = null) {
+  try {
+    let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
+    list = list.filter(f => f.name !== name && (!path || f.path !== path));
+    list.unshift({ name, size, path, lastOpened: Date.now() });
+    list = list.slice(0, 10);
+    localStorage.setItem('recentCsdFiles', JSON.stringify(list));
+  } catch { /* ignore */ }
+}
+
+// ── File System Access API helpers ────────────────────────────────────────────
+
+const _fsaSupported = typeof window !== 'undefined' && 'showOpenFilePicker' in window;
+
+/** Show the OS file picker via File System Access API, persist the handle. */
+async function _openWithFSA() {
+  let handles;
+  try {
+    handles = await window.showOpenFilePicker({
+      types: [{ description: 'CSD Files', accept: { 'application/octet-stream': ['.csd'] } }],
+      multiple: false,
+    });
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error('[CsdAPI] showOpenFilePicker error:', e);
+    return;
+  }
+
+  const handle = handles[0];
+  const file   = await handle.getFile();
+
+  // Persist the handle in IndexedDB keyed by filename
+  await _idbPut(file.name, handle);
+  _saveRecentMeta(file.name, file.size);
+
+  await _loadFromFile(file);
+}
+
+/** Classic <input type="file"> fallback. */
 function _ensureFileInput() {
   if (_fileInput) return;
   _fileInput = document.createElement('input');
-  _fileInput.type = 'file';
-  _fileInput.accept = '.csd';
+  _fileInput.type    = 'file';
+  _fileInput.accept  = '.csd';
   _fileInput.style.display = 'none';
   document.body.appendChild(_fileInput);
 
-  _fileInput.addEventListener('change', async (e) => {
+  _fileInput.addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.csd')) {
@@ -90,212 +381,148 @@ function _ensureFileInput() {
       _fileInput.value = '';
       return;
     }
-
-    if (file.path) {
-      CsdAPI.saveToRecentFiles(file.name, file.path, file.size, file.lastModified);
-    }
-
-    await _loadCsdFile(file);
-    // Reset so the same file can be re-selected
+    _saveRecentMeta(file.name, file.size);
+    await _loadFromFile(file);
     _fileInput.value = '';
   });
 }
 
-function _onCsdBytesLoaded(uint8Array) {
-  // Clear old channel selections so we pick the new default ones for this file
-  localStorage.removeItem('selectedChannels');
-
-  // Hand bytes to the Dart bridge
-  _bridge.loadFromBytes(uint8Array);
-
-  if (!_bridge.isLoaded()) {
-    console.error('[CsdAPI] Dart failed to parse the CSD file');
-    return false;
-  }
-
-  _fileLoaded = true;
-
-  // ── Read all channel metadata from the Dart bridge ───────────────────────
-  const numChannels  = _bridge.getNumOfChannels();
-  const descriptions = _bridge.getChannelDescriptions();
-  const unitTexts    = _bridge.getUnitTexts();
-  const mins         = _bridge.getChannelMins();
-  const maxs         = _bridge.getChannelMaxs();
-  const sensorIds    = _bridge.getChannelSensorIds();  // for sidebar grouping
-
-  _startTimeMs = _bridge.getTimeOfFirstSample();
-  _stopTimeMs  = _bridge.getStopTime();
-
-  // Normalise timestamps
-  if (_startTimeMs <= 0) _startTimeMs = Date.now() - 3600000;
-  if (_stopTimeMs <= _startTimeMs) {
-    const rawRate = Math.max(1, _bridge.getSampleRate());
-    _stopTimeMs = _startTimeMs + (_bridge.getNumOfSamples() / rawRate) * 1000;
-  }
-
-  // Compute sample rate dynamically based on actual duration and sample count.
-  const numSamples = _bridge.getNumOfSamples();
-  const durationSec = (_stopTimeMs - _startTimeMs) / 1000;
-  if (numSamples > 1 && durationSec > 0) {
-    _sampleRate = numSamples / durationSec;
-  } else {
-    const rawRate = _bridge.getSampleRate();
-    _sampleRate = rawRate > 0 ? rawRate : 1;
-  }
-
-  // ── Build channel list ────────────────────────────────────────────────────
-  _channels = [];
-
-  for (let i = 0; i < numChannels; i++) {
-    _channels.push({
-      channel_id:                   i,
-      location_id:                  1,
-      sensor_id:                    sensorIds[i] ?? i,
-      logic_channel_description:    descriptions[i] || `Channel ${i}`,
-      physical_channel_description: descriptions[i] || `Channel ${i}`,
-      sensor_description:           descriptions[i] || `Channel ${i}`,
-      unit_in_ascii:                unitTexts[i] || '',
-      _min: mins[i] ?? 0,
-      _max: maxs[i] ?? 0,
-    });
-  }
-
-  console.log(`[CsdAPI] Loaded ${numChannels} channels, ${_bridge.getNumOfSamples()} samples @ ${_sampleRate} Hz`);
-  console.log(`[CsdAPI] Time range: ${new Date(_startTimeMs).toISOString()} → ${new Date(_stopTimeMs).toISOString()}`);
-  console.log('[CsdAPI] Channels:', _channels.map(c => `[${c.channel_id}] sensorId=${c.sensor_id} "${c.logic_channel_description}" (${c.unit_in_ascii})`));
-
-  // Notify all listeners
-  _onFileLoadedCallbacks.forEach(fn => fn());
-  return true;
-}
-
-async function _loadCsdFile(file) {
-  console.log('[CsdAPI] Reading file:', file.name, `(${(file.size / 1024).toFixed(1)} KB)`);
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
-  _onCsdBytesLoaded(uint8Array);
-}
-
-// ── Helper: pick default channels (first 2, prefer m³/h unit) ────────────────
-
-function _pickDefaultChannels() {
-  if (_channels.length === 0) return [];
-
-  // Prefer channels whose unit or description contains m³/h (or similar flow units)
-  const flowPriority = _channels.filter(ch => {
-    const u = (ch.unit_in_ascii || '').toLowerCase();
-    const d = (ch.logic_channel_description || '').toLowerCase();
-    return u.includes('m') || u.includes('flow') || d.includes('m³') || d.includes('m3') || d.includes('flow');
-  });
-
-  const sorted = [...flowPriority, ..._channels.filter(ch => !flowPriority.includes(ch))];
-  return sorted.slice(0, 2);
-}
-
-// ── Sampling helper ───────────────────────────────────────────────────────────
-
-function _computeSamplingStep(startSample, endSample, maxPoints = 3000) {
-  const range = endSample - startSample + 1;
-  return Math.max(1, Math.floor(range / maxPoints));
-}
-
-function _timeToSampleIndex(timeMs) {
-  if (_sampleRate <= 0) return 0;
-  const offsetMs = timeMs - _startTimeMs;
-  return Math.max(0, Math.floor((offsetMs / 1000) * _sampleRate));
-}
-
-// ── CsdAPI public interface (matches MockAPI shape) ───────────────────────────
+// ── Public CsdAPI object ──────────────────────────────────────────────────────
 
 const CsdAPI = {
 
+  /** Returns true if the File System Access API is available (Chrome/Edge). */
+  get hasFSA() { return _fsaSupported; },
+
   /**
-   * Open a file picker so the user can select a .csd file.
-   * Call this from the UI "Open CSD File" button.
+   * Open a .csd file.
+   * - Chrome/Edge: uses showOpenFilePicker and persists the handle.
+   * - Safari/Firefox: falls back to <input type="file">.
    */
   openFile() {
-    if (!_wasmReady) {
-      console.warn('[CsdAPI] Wasm not ready yet, retrying in 500ms...');
-      setTimeout(() => CsdAPI.openFile(), 500);
-      return;
-    }
-    _ensureFileInput();
-    _fileInput.click();
-  },
-
-  async loadFileFromPath(filePath) {
-    if (!_wasmReady) {
-      console.warn('[CsdAPI] Wasm not ready yet');
-      return false;
-    }
-    try {
-      const fs = window.require('fs');
-      const buffer = fs.readFileSync(filePath);
-      const uint8Array = new Uint8Array(buffer);
-      
-      const parsed = _onCsdBytesLoaded(uint8Array);
-      if (parsed) {
-        localStorage.setItem('currentCsdFilePath', filePath);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('[CsdAPI] Failed to load file from path:', err);
-      alert('Failed to load file: ' + err.message);
-      return false;
-    }
-  },
-
-  saveToRecentFiles(name, path, size, lastModified) {
-    try {
-      let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
-      list = list.filter(item => item.path !== path);
-      list.unshift({ name, path, size, lastModified });
-      list = list.slice(0, 5);
-      localStorage.setItem('recentCsdFiles', JSON.stringify(list));
-    } catch (err) {
-      console.error('[CsdAPI] Failed to save recent file:', err);
+    if (_fsaSupported) {
+      _openWithFSA();
+    } else {
+      _ensureFileInput();
+      _fileInput.click();
     }
   },
 
   /**
-   * Register a callback to be called once when a file finishes loading.
+   * Load a file from a previously-persisted FileSystemFileHandle stored in IDB.
+   * Will prompt the user for read permission if needed.
+   * Returns true on success, false on failure.
+   */
+  async loadFileFromHandle(handle) {
+    try {
+      // Request (or verify) read permission
+      const permission = await handle.queryPermission({ mode: 'read' });
+      if (permission !== 'granted') {
+        const request = await handle.requestPermission({ mode: 'read' });
+        if (request !== 'granted') return false;
+      }
+      const file = await handle.getFile();
+      _saveRecentMeta(file.name, file.size);
+      return await _loadFromFile(file);
+    } catch (err) {
+      console.error('[CsdAPI] loadFileFromHandle error:', err);
+      return false;
+    }
+  },
+
+  /**
+   * Load a file from an absolute path (Node/Electron environment only).
+   */
+  async loadFileFromPath(filePath) {
+    try {
+      const fs = window.require('fs');
+      const pathModule = window.require('path');
+      const stats = fs.statSync(filePath);
+      const name = pathModule.basename(filePath);
+
+      const fileWrapper = {
+        name: name,
+        size: stats.size,
+        slice(start, end) {
+          const length = Math.max(0, end - start);
+          const buf = Buffer.alloc(length);
+          const fd = fs.openSync(filePath, 'r');
+          fs.readSync(fd, buf, 0, length, start);
+          fs.closeSync(fd);
+          return {
+            arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+          };
+        },
+        async arrayBuffer() {
+          const buffer = fs.readFileSync(filePath);
+          return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        }
+      };
+
+      _saveRecentMeta(name, stats.size, filePath);
+      return await _loadFromFile(fileWrapper);
+    } catch (err) {
+      console.error('[CsdAPI] loadFileFromPath error:', err);
+      return false;
+    }
+  },
+
+  /**
+   * Return list of recent file metadata (name, size, lastOpened)
+   * stored in localStorage.
+   */
+  getRecentFiles() {
+    try {
+      return JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Retrieve the persisted FileSystemFileHandle for a given filename from IDB.
+   * Returns undefined if not found or IDB is unavailable.
+   */
+  async getHandleForFile(name) {
+    return _idbGet(name);
+  },
+
+  /**
+   * Register a callback invoked once when a file finishes loading.
+   * If a file is already loaded, the callback fires immediately.
    */
   onFileLoaded(callback) {
     if (!_onFileLoadedCallbacks.includes(callback)) {
       _onFileLoadedCallbacks.push(callback);
     }
-    if (_fileLoaded) {
-      // Already loaded — call immediately
-      setTimeout(callback, 0);
-    }
+    if (_fileLoaded) setTimeout(callback, 0);
   },
 
-  isFileLoaded() {
-    return _fileLoaded;
-  },
+  isFileLoaded() { return _fileLoaded; },
 
-  /** Returns the CSD file's actual time range in ms-since-epoch. */
-  getFileTimeRange() {
-    return { start: _startTimeMs, stop: _stopTimeMs };
-  },
+  getFileTimeRange() { return { start: _startTimeMs, stop: _stopTimeMs }; },
 
-  // ── API methods (same signature as MockAPI / RealAPI) ─────────────────────
+  // ── Standard MockAPI-compatible methods ─────────────────────────────────────
 
   getUserSettings(username, callback) {
     if (!_fileLoaded) {
-      // No file yet — return an empty settings object
-      // The UI will show a "no channels" state
       setTimeout(() => callback([]), 50);
       return;
     }
 
-    const defaultChannels = _pickDefaultChannels();
+    // Pick up to 2 default channels (prefer flow-related units)
+    const flowPriority = _channels.filter(ch => {
+      const u = (ch.unit_in_ascii || '').toLowerCase();
+      const d = (ch.logic_channel_description || '').toLowerCase();
+      return u.includes('m') || u.includes('flow') || d.includes('m³') || d.includes('m3') || d.includes('flow');
+    });
+    const sorted = [...flowPriority, ..._channels.filter(ch => !flowPriority.includes(ch))];
+    const defaults = sorted.slice(0, 2);
 
-    // Build display_channel_option in the shape GraphicView expects
     const COLORS = ['#00B8D9', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
                     '#0052CC', '#00875A', '#FF4081', '#FFC107', '#7B1FA2'];
-    const displayChannelOption = defaultChannels.map((ch, idx) => ({
+
+    const displayChannelOption = defaults.map((ch, idx) => ({
       channel_id: {
         channel_id: ch.channel_id,
         logic_channel_description: ch.logic_channel_description,
@@ -319,153 +546,140 @@ const CsdAPI = {
       setTimeout(() => callback({ logging_chs: [] }), 50);
       return;
     }
-
     setTimeout(() => callback({
       logging_chs: _channels.map(ch => ({
-        channel_id: ch.channel_id,
-        location_id: ch.location_id,
-        sensor_id: ch.sensor_id,
-        logic_channel_description: ch.logic_channel_description,
+        channel_id:                   ch.channel_id,
+        location_id:                  ch.location_id,
+        sensor_id:                    ch.sensor_id,
+        logic_channel_description:    ch.logic_channel_description,
         physical_channel_description: ch.physical_channel_description,
-        sensor_description: ch.sensor_description,
-        unit_in_ascii: ch.unit_in_ascii,
+        sensor_description:           ch.sensor_description,
+        unit_in_ascii:                ch.unit_in_ascii,
       }))
     }), 50);
   },
 
   getMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback) {
-    if (!_fileLoaded) {
+    if (!_fileLoaded || !_file) {
       setTimeout(() => callback([]), 50);
       return;
     }
 
-    // channel_id is the array index (0-based)
     const chIdx = parseInt(channelId, 10);
     if (isNaN(chIdx) || chIdx < 0 || chIdx >= _channels.length) {
-      console.warn(`[CsdAPI] getMeasurementData: unknown channelId ${channelId}`);
       setTimeout(() => callback([]), 50);
       return;
     }
 
     const ch = _channels[chIdx];
-    const totalSamples = _bridge.getNumOfSamples();
 
-    // The UI queries with a +8h offset due to timezone handling logic.
-    // We adjust it back to match the actual file timestamps.
-    const queryStartTime = startTime - 3600000 * 8;
-    const queryStopTime  = stopTime - 3600000 * 8;
+    // Adjust for the +8 h the UI adds before calling us
+    const qStart = startTime - 3600000 * 8;
+    const qStop  = stopTime  - 3600000 * 8;
 
-    // Convert time range to sample indices
-    let startSample = _timeToSampleIndex(queryStartTime);
-    let endSample   = _timeToSampleIndex(queryStopTime);
+    // Convert time → sample index
+    const timeToSample = ms => {
+      if (_sampleRate <= 0) return 0;
+      return Math.max(0, Math.floor(((ms - _startTimeMs) / 1000) * _sampleRate));
+    };
 
-    // Clamp to valid range
-    startSample = Math.max(0, Math.min(startSample, totalSamples - 1));
-    endSample   = Math.max(startSample, Math.min(endSample, totalSamples - 1));
+    let startSample = timeToSample(qStart);
+    let endSample   = timeToSample(qStop);
+    startSample = Math.max(0, Math.min(startSample, _numSamples - 1));
+    endSample   = Math.max(startSample, Math.min(endSample, _numSamples - 1));
 
-    const samplingStep = _computeSamplingStep(startSample, endSample);
-    const actualStartMs = _startTimeMs + (startSample / _sampleRate) * 1000;
-    const pointIntervalMs = (samplingStep / _sampleRate) * 1000;
+    // Compute downsampling step
+    const range = endSample - startSample + 1;
+    const step  = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
 
-    // Get raw float64 samples from Dart/Wasm
-    const rawData = _bridge.getChannelData(chIdx, startSample, endSample, samplingStep);
+    const actualStartMs  = _startTimeMs + (startSample / _sampleRate) * 1000;
+    const pointIntervalMs = (step / _sampleRate) * 1000;
 
-    // Filter out special sentinel values (-9999, -8888 etc.)
-    const values = [];
-    for (let i = 0; i < rawData.length; i++) {
-      const v = rawData[i];
-      if (v <= -8880) {
-        values.push(null); // will be treated as gap
-      } else {
-        values.push(v);
-      }
-    }
-
-    // The UI (DataUtil.js) will subtract 8h from realStartTime.
-    // To compensate, we offset realStartTime by +8h so the final time on the chart
-    // matches the file's actual sample timestamps.
-    setTimeout(() => callback([{
-      channel_id: channelId,
-      measurementData: [values],
-      realStartTime: [actualStartMs + 3600000 * 8],
-      pointInterval: [pointIntervalMs],
-      min: ch._min,
-      max: ch._max,
-    }]), 0);
+    // Async read — lazy slice
+    _readChannelData(_file, chIdx, startSample, endSample, step).then(values => {
+      callback([{
+        channel_id:      channelId,
+        measurementData: [values],
+        realStartTime:   [actualStartMs + 3600000 * 8],
+        pointInterval:   [pointIntervalMs],
+        min: ch._min,
+        max: ch._max,
+      }]);
+    }).catch(err => {
+      console.error('[CsdAPI] getMeasurementData slice error:', err);
+      callback([]);
+    });
   },
 
   getMutilMeasurementData(channelIds, startTime, tableInterval, getDataWay, callback) {
-    if (!channelIds || channelIds.length === 0) {
-      callback([]);
-      return;
-    }
-    // Delegate to single-channel method for the first channel (consistent with MockAPI).
-    // If we use _stopTimeMs, add 3600000 * 8 to match the UI's timezone offset logic.
-    const stopTime = _stopTimeMs > _startTimeMs ? (_stopTimeMs + 3600000 * 8) : startTime + 3600000 * 24;
+    if (!channelIds || channelIds.length === 0) { callback([]); return; }
+    const stopTime = _stopTimeMs > _startTimeMs
+      ? (_stopTimeMs + 3600000 * 8)
+      : startTime + 3600000 * 24;
     this.getMeasurementData(channelIds[0], startTime, stopTime, tableInterval, getDataWay, callback);
   },
 
   getLocations(callback) {
     setTimeout(() => callback({
       locations: [{
-        location_id: 1,
-        description: 'CSD File',
+        location_id:    1,
+        description:    'CSD File',
         location_index: 0,
         background_img: '',
-        sensors: [],
+        sensors:        [],
       }]
     }), 50);
   },
 
-  // ── Stubs (unused in CSD mode but required to avoid crashes) ──────────────
-  getDevices(callback) { if (callback) callback([]); },
-  getBackupSettings(callback) { if (callback) callback({}); },
-  updateBackupSettings(json, callback) { if (callback) callback({}); },
-  getUsers(callback) { if (callback) callback([]); },
-  checkUserExist(username, callback) { if (callback) callback([]); },
-  addUser(json, callback) { if (callback) callback({}); },
-  modifyPsw(username, newpsw, oldpsw, callback) { if (callback) callback({}); },
-  deleteUser(username, callback) { if (callback) callback({}); },
-  getFileList(callback) { if (callback) callback([]); },
-  getFileChannelBean(fileType, fileId, groupId, callback) { if (callback) callback({}); },
-  initUserUploadDownLoad(user, callback) { if (callback) callback({}); },
-  getUserUploadDownloadProgress(user, callback) { if (callback) callback({}); },
-  getSampleList(callback) { if (callback) callback([]); },
-  getSampleInfo(sid, callback) { if (callback) callback({}); },
-  getSampleInfoGroup(groupId, callback) { if (callback) callback([]); },
-  login(username, password, callback) { if (callback) callback({}); },
-  getManualAddDevice(deviceids, callback) { if (callback) callback({}); },
-  refreshChannelValues(ids, callback) { if (callback) callback([]); },
-  getRegisterInfo(callback) { if (callback) callback({}); },
-  getRegistration(callback) { if (callback) callback({}); },
-  updateRegistration(json, callback) { if (callback) callback({}); },
-  getReportBasicSetting(callback) { if (callback) callback({}); },
-  changeReportBasicSetting(json, callback) { if (callback) callback({}); },
-  getReportCostCurrency(callback) { if (callback) callback({}); },
-  getReportList(callback) { if (callback) callback([]); },
-  changeReportCost(json, callback) { if (callback) callback({}); },
-  newReport(json, callback) { if (callback) callback({}); },
-  deleteReport(reportId, callback) { if (callback) callback({}); },
-  getReportData(rid, startTime, timeType, callback) { if (callback) callback({}); },
-  getLocationNDevice(callback) { if (callback) callback({}); },
-  getDetectedResult(callback) { if (callback) callback({}); },
-  postLocations(json, callback) { if (callback) callback({}); },
-  getAlarms(callback) { if (callback) callback([]); },
-  getAlarmHistorys(startTime, endTime, startIndex, type, callback) { if (callback) callback([]); },
-  getAlarmTime(orderStr, callback) { if (callback) callback({}); },
-  getLocations4Alarms(callback) { if (callback) callback({}); },
-  postAlarms(json, callback) { if (callback) callback({}); },
-  getEmailSetting(callback) { if (callback) callback({}); },
-  changeEmailSetting(json, callback) { if (callback) callback({}); },
-  verifyEmail(json, callback) { if (callback) callback({}); },
-  checkTaskStatus(id, callback) { if (callback) callback({}); },
-  getSystemStatus(callback) { if (callback) callback({}); },
-  loginConfirm(user, psw, callback) { if (callback) callback({}); },
-  createTask(json, callback) { if (callback) callback({}); },
-  changeCommunication(json, callback) { if (callback) callback({}); },
-  getCommunication(callback) { if (callback) callback({}); },
-  getLoggingChannels(callback) { if (callback) callback({ logging_chs: [] }); },
-  saveSensorPosition(id, x, y, callback) { if (callback) callback({}); },
+  // ── Stubs to satisfy the full MockAPI interface ─────────────────────────────
+  getDevices(callback)                            { if (callback) callback([]); },
+  getBackupSettings(callback)                     { if (callback) callback({}); },
+  updateBackupSettings(json, callback)            { if (callback) callback({}); },
+  getUsers(callback)                              { if (callback) callback([]); },
+  checkUserExist(username, callback)              { if (callback) callback([]); },
+  addUser(json, callback)                         { if (callback) callback({}); },
+  modifyPsw(username, newpsw, oldpsw, callback)   { if (callback) callback({}); },
+  deleteUser(username, callback)                  { if (callback) callback({}); },
+  getFileList(callback)                           { if (callback) callback([]); },
+  getFileChannelBean(ft, fi, gi, callback)        { if (callback) callback({}); },
+  initUserUploadDownLoad(user, callback)          { if (callback) callback({}); },
+  getUserUploadDownloadProgress(user, callback)   { if (callback) callback({}); },
+  getSampleList(callback)                         { if (callback) callback([]); },
+  getSampleInfo(sid, callback)                    { if (callback) callback({}); },
+  getSampleInfoGroup(groupId, callback)           { if (callback) callback({}); },
+  login(username, password, callback)             { if (callback) callback({}); },
+  getManualAddDevice(ids, callback)               { if (callback) callback([]); },
+  refreshChannelValues(ids, callback)             { if (callback) callback([]); },
+  getRegisterInfo(callback)                       { if (callback) callback({}); },
+  getRegistration(callback)                       { if (callback) callback({}); },
+  updateRegistration(json, callback)              { if (callback) callback({}); },
+  getReportBasicSetting(callback)                 { if (callback) callback({}); },
+  changeReportBasicSetting(json, callback)        { if (callback) callback({}); },
+  getReportCostCurrency(callback)                 { if (callback) callback([]); },
+  getReportList(callback)                         { if (callback) callback([]); },
+  changeReportCost(json, callback)                { if (callback) callback({}); },
+  newReport(json, callback)                       { if (callback) callback({}); },
+  deleteReport(reportId, callback)                { if (callback) callback({}); },
+  getReportData(rid, st, tt, callback)            { if (callback) callback({}); },
+  getLocationNDevice(callback)                    { if (callback) callback({}); },
+  getDetectedResult(callback)                     { if (callback) callback({}); },
+  postLocations(json, callback)                   { if (callback) callback({}); },
+  getAlarms(callback)                             { if (callback) callback([]); },
+  getAlarmHistorys(st, et, si, type, callback)    { if (callback) callback([]); },
+  getAlarmTime(orderStr, callback)                { if (callback) callback([]); },
+  getLocations4Alarms(callback)                   { if (callback) callback([]); },
+  postAlarms(json, callback)                      { if (callback) callback({}); },
+  getEmailSetting(callback)                       { if (callback) callback({}); },
+  changeEmailSetting(json, callback)              { if (callback) callback({}); },
+  verifyEmail(json, callback)                     { if (callback) callback({}); },
+  checkTaskStatus(id, callback)                   { if (callback) callback({}); },
+  getSystemStatus(callback)                       { if (callback) callback({}); },
+  loginConfirm(user, psw, callback)               { if (callback) callback({}); },
+  createTask(json, callback)                      { if (callback) callback({}); },
+  changeCommunication(json, callback)             { if (callback) callback({}); },
+  getCommunication(callback)                      { if (callback) callback({}); },
+  getLoggingChannels(callback)                    { if (callback) callback([]); },
+  saveSensorPosition(id, x, y, callback)          { if (callback) callback({}); },
 };
 
 export default CsdAPI;

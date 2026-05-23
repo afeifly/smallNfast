@@ -159,11 +159,15 @@ class YAxis extends Component {
     container.call(foo.ticks(data.ticks));
 
     container.selectAll('path')
-             .style('stroke-width', thickness);
-      // .style('stroke', data.color);
+             .style('stroke-width', thickness)
+             .style('stroke', '#333333');
 
     container.selectAll('line')
-             .style('stroke-width', thickness);
+             .style('stroke-width', thickness)
+             .style('stroke', '#333333');
+
+    container.selectAll('text')
+             .style('fill', '#333333');
 
     //Major YAxis display effect
     if (direction === 'left') {

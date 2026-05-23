@@ -21,5 +21,8 @@ export default {
     "OK": "OK",
     "DISPLAY_SETTING": "Display Setting",
     "COLOR": "Color",
-    "VISIBLE": "Visible"
+    "VISIBLE": "Visible",
+    "SET_AS_MAIN_YAXIS": "Set as Main Y-Axis",
+    "RECENT_CSD_FILES": "Recent CSD Files",
+    "OPEN_NEW_CSD_FILE": "Open New CSD File..."
 };

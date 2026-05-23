@@ -4,6 +4,15 @@ import $ from 'jquery';
 
 import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Button from '@mui/material/Button';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import PrintIcon from '@mui/icons-material/Print';
 import RangeIcon from '@mui/icons-material/DateRange';
@@ -42,6 +51,8 @@ class GraphicView extends Component {
       dataType: isCsdMode ? 'History' : 'Realtime',
       denoisingChecked: true,
       noLoggingChannels: true,
+      recentFilesOpen: false,
+      recentFiles: [],
     }
 
     this.chartController = new ChartController();
@@ -104,8 +115,9 @@ class GraphicView extends Component {
               <Tooltip title={intl.get('TIME_PERIOD')}>
                 <div>
                   <IconButton style={buttonStyle}
-                    disabled={!timeSelectorEnabled}
-                    onClick={() => this.showOrHideTimePeriod()}>
+                    disabled={noLoggingChannels || !timeSelectorEnabled}
+                    onClick={() => this.showOrHideTimePeriod()}
+                    disableRipple>
                     <RangeIcon style={iconStyle} />
                   </IconButton>
                 </div>
@@ -116,7 +128,8 @@ class GraphicView extends Component {
                 <div>
                   <IconButton style={buttonStyle}
                     disabled={noLoggingChannels}
-                    onClick={this.printChart}>
+                    onClick={this.printChart}
+                    disableRipple>
                     <PrintIcon style={iconStyle} />
                   </IconButton>
                 </div>
@@ -127,8 +140,9 @@ class GraphicView extends Component {
                 <Tooltip title="Open CSD File">
                   <IconButton
                     id="open-csd-file-btn"
-                    style={{ ...buttonStyle, color: '#00B8D9' }}
+                    style={buttonStyle}
                     onClick={this.openCsdFile}
+                    disableRipple
                   >
                     <FolderOpenIcon style={iconStyle} />
                   </IconButton>
@@ -137,9 +151,13 @@ class GraphicView extends Component {
 
               {/* Channel list button */}
               <Tooltip title={intl.get('CHANNEL')}>
-                <IconButton onClick={() => this.switchChannelList()} style={buttonStyle}>
-                  <ListAltIcon style={iconStyle} />
-                </IconButton>
+                <div>
+                  <IconButton onClick={() => this.switchChannelList()} style={buttonStyle}
+                    disabled={noLoggingChannels}
+                    disableRipple>
+                    <ListAltIcon style={iconStyle} />
+                  </IconButton>
+                </div>
               </Tooltip>
             </div>
 
@@ -149,6 +167,36 @@ class GraphicView extends Component {
           <Loading ref={this.loadingRef} />
           <YAxisSetting ref={this.ySettingRef} />
           <ChannelSetting ref={this.channelSettingRef} />
+
+          <Dialog maxWidth='md' onClose={this.handleCloseRecentFiles} open={this.state.recentFilesOpen}>
+            <DialogTitle className="dialog-title" onClose={this.handleCloseRecentFiles}>
+              { intl.get('RECENT_CSD_FILES') }
+            </DialogTitle>
+            <DialogContent>
+              <List style={{ width: '400px', maxHeight: '300px', overflow: 'auto' }}>
+                {this.state.recentFiles.map((file, idx) => (
+                  <ListItem disablePadding key={idx}>
+                    <ListItemButton onClick={() => this.loadRecentFile(file.path)}>
+                      <ListItemText 
+                        primary={file.name} 
+                        secondary={file.path} 
+                        primaryTypographyProps={{ style: { fontWeight: 'bold' } }}
+                        secondaryTypographyProps={{ style: { fontSize: '11px', wordBreak: 'break-all' } }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+            </DialogContent>
+            <DialogActions className="dialog-footer">
+              <Button onClick={this.handleOpenNewCsd} color="primary" variant="contained">
+                { intl.get('OPEN_NEW_CSD_FILE') }
+              </Button>
+              <Button onClick={this.handleCloseRecentFiles}>
+                { intl.get('CANCEL') }
+              </Button>
+            </DialogActions>
+          </Dialog>
         </div>
       </div>
 
@@ -174,6 +222,13 @@ class GraphicView extends Component {
     // allow accessing controller
     window.chartController = this.chartController;
 
+    // Initialize chartWidth from the actual DOM so the chart renders correctly
+    // on the very first data load (before AxisSeries.reviseYAxisLayout runs).
+    const wrapperWidth = $('#graphic-view-wrapper').width();
+    if (wrapperWidth > 0) {
+      // Approximate: full wrapper width minus left-margin for the Y-axis (~40px)
+      this.chartController.setChartWidth(wrapperWidth - 40);
+    }
 
     //Read current user settings
     this.getData();
@@ -408,9 +463,20 @@ class GraphicView extends Component {
     if (allDone) {
       if (this.lineChartRef.current) {
         this.lineChartRef.current.changeSelectedChannelsHandler();
+
+        // Force a layout pass so the chart uses the correct pixel width.
+        // AxisSeries.reviseYAxisLayout() sets chartWidth only during its own
+        // updateDisplay, which may not have run yet when channelWidth is still 0.
+        // Calling setWidth() triggers updateDisplay on both AxisSeries and SplineGroup.
+        const chartWidth = $('#graphic-view-wrapper').width() - (this.channelListVisible ? 440 : 0);
+        if (chartWidth > 0) {
+          this.lineChartRef.current.setWidth(chartWidth);
+        }
       }
 
-      this.loadingRef.current.hide();
+      if (this.loadingRef.current) {
+        this.loadingRef.current.hide();
+      }
     }
   };
 
@@ -528,12 +594,20 @@ class GraphicView extends Component {
     cc.denoising = true;
     clearInterval(cc.timer);
 
-    // Replace the timePeriod used for data fetch and the X scale domain
+    // Replace the timePeriod used for data fetch and the X scale domain.
+    // Also set the xScale range so it knows pixel boundaries before AxisSeries renders.
     cc.timePeriod = { start: startDate, end: stopDate };
     cc.historyTimeRange = { start: startDate, end: stopDate };
+    const wrapperWidth = $('#graphic-view-wrapper').width();
+    if (wrapperWidth > 0) {
+      cc.xScale.range([0, wrapperWidth - 40]);
+    }
     cc.xScale.domain([startDate, stopDate]);
     cc.timePeriods = [];
     cc.currentTimePeriodIndex = -1;
+
+    // Dispatch changeTimePeriod so the X axis redraws immediately
+    d3.select('#line-chart').dispatch('changeTimePeriod');
 
     // Update the toggle button UI to reflect History mode
     this.initToggleButton('history');
@@ -543,9 +617,42 @@ class GraphicView extends Component {
 
 
   openCsdFile = () => {
+    const hasFs = !!(window.require && window.require('fs'));
+    const recentFilesStr = localStorage.getItem('recentCsdFiles');
+    const recentFiles = recentFilesStr ? JSON.parse(recentFilesStr) : [];
+
+    if (hasFs && recentFiles.length > 0) {
+      this.setState({
+        recentFilesOpen: true,
+        recentFiles
+      });
+    } else {
+      if (TestAPI.openFile) {
+        TestAPI.openFile();
+      }
+    }
+  };
+
+  loadRecentFile = async (path) => {
+    this.setState({ recentFilesOpen: false });
+    if (TestAPI.loadFileFromPath) {
+      this.loadingRef.current.show();
+      const success = await TestAPI.loadFileFromPath(path);
+      if (!success) {
+        this.loadingRef.current.hide();
+      }
+    }
+  };
+
+  handleOpenNewCsd = () => {
+    this.setState({ recentFilesOpen: false });
     if (TestAPI.openFile) {
       TestAPI.openFile();
     }
+  };
+
+  handleCloseRecentFiles = () => {
+    this.setState({ recentFilesOpen: false });
   };
 
 

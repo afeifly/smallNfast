@@ -132,28 +132,22 @@ class LineChart extends Component {
   updateTimePeriodActions = () => {
     const { chartController } = this.props;
     const { timePeriods, currentTimePeriodIndex } = chartController;
-    
-    if (currentTimePeriodIndex === 0) {
-      this.setState({
-        backButtonEnabled: false
-      })
-    }else if (currentTimePeriodIndex > 0) {
-      this.setState({
-        backButtonEnabled: true
-      })
-    }
 
-    if (currentTimePeriodIndex === timePeriods.length - 1) {
-      this.setState({
-        nextButtonEnabled: false
-      })
-    }else {
-      this.setState({
-        nextButtonEnabled: true
-      })
-    }
+    const hasHistory = timePeriods.length > 0;
+    const atFirst    = currentTimePeriodIndex <= 0;
+    const atLast     = currentTimePeriodIndex >= timePeriods.length - 1;
 
-    this.updateResetButton();
+    this.setState({
+      backButtonEnabled: hasHistory && !atFirst,
+      nextButtonEnabled: hasHistory && !atLast,
+    });
+
+    // Show the whole scale-actions panel whenever there are time periods to navigate
+    if (hasHistory) {
+      d3.select(this.scaleActionsRef.current).attr('data-status', 'active');
+    } else {
+      d3.select(this.scaleActionsRef.current).attr('data-status', '');
+    }
   };
 
   updateResetButton = () => {
@@ -171,21 +165,27 @@ class LineChart extends Component {
   gotoPreTimePeriod = () => {
     const { chartController } = this.props;
 
-    if (chartController.currentTimePeriodIndex === 0) {
-      this.resetTimePeriod();
+    // Guard: already at the beginning — do nothing
+    if (chartController.currentTimePeriodIndex <= 0) {
       return;
     }
 
     chartController.gotoPreTimePeriod();
     this.AxisSeriesRef.current.updateXAxis();
     this.SplineGroupRef.current.refreshData();
-    
+
     this.updateTimePeriodActions();
     d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
   };
 
   gotoNextTimePeriod = () => {
     const { chartController } = this.props;
+
+    // Guard: already at the newest zoom — do nothing
+    if (chartController.currentTimePeriodIndex >= chartController.timePeriods.length - 1) {
+      return;
+    }
+
     chartController.gotoNextTimePeriod();
     this.AxisSeriesRef.current.updateXAxis();
     this.SplineGroupRef.current.refreshData();
@@ -245,13 +245,20 @@ class LineChart extends Component {
     self.SplineGroupRef.current.setData(selectedChannels);
     self.LegendGroupRef.current.setData(selectedChannels);
     self.SplineGroupRef.current.updateDisplay();
-    self.positionLegend();
-    d3.select('.chart-placeholder').attr('data-status', '');
 
+    // Defer positionLegend so it runs after LegendSvgGroup.forceUpdate() has
+    // re-rendered the legend items and their getBBox() returns correct sizes.
+    setTimeout(() => {
+      if (self.LegendGroupRef.current) {
+        self.positionLegend();
+      }
+    }, 50);
+
+    d3.select('.chart-placeholder').attr('data-status', '');
 
     if (selectedChannels && selectedChannels.length > 0) {
       d3.select('.chart-placeholder').attr('data-status', '');
-    }else {
+    } else {
       d3.select('.chart-placeholder').attr('data-status', 'active');
     }
 
@@ -263,39 +270,35 @@ class LineChart extends Component {
     const panelHeight = $('#line-chart').height();
     const panelWidth = $('#line-chart').width();
 
-    if ($('.legend-group').width() > panelWidth - 80) {
-      $('.legend-group').width(panelWidth - 80);
-    }
-    
-    var allWidth = 0;
-    var index = 0;
-    var maxLegendWidth = 0;
-    var hasTwoLineLegend = false;
+    // Layout legend items in rows, wrapping when they would exceed panel width.
+    // Each item is placed with a fixed 15px left-gap from the previous item's
+    // right edge. When a row overflows, start a new row at y=35.
+    let rowX = 0;         // running x within the current row
+    let row = 0;          // 0 = first row, 1 = second row
+    let maxRowX = 0;      // widest row (used to centre the legend box)
+    const GAP = 15;
+
     d3.selectAll('.legend-item').each(function() {
-      var tmpW = this.getBBox().width;           
-      if(allWidth+tmpW+15*(index+1)>panelWidth){
-        maxLegendWidth = allWidth;
-        hasTwoLineLegend = true;
-        d3.select(this).attr('transform','translate('+(15+allWidth)+',15)');
-        allWidth = 0;
+      const itemW = this.getBBox().width;
+      if (row === 0 && rowX > 0 && rowX + GAP + itemW > panelWidth - 30) {
+        // Wrap to second row
+        maxRowX = rowX;
+        row = 1;
+        rowX = 0;
       }
-      if(hasTwoLineLegend){
-        d3.select(this).attr('transform','translate('+(15+allWidth)+',35)');
-      }else{
-        d3.select(this).attr('transform','translate('+(15+allWidth)+',15)');        
-      }
-      allWidth += tmpW+15*(index+1);
-      
+      const y = row === 0 ? 15 : 35;
+      d3.select(this).attr('transform', `translate(${GAP + rowX}, ${y})`);
+      rowX += itemW + GAP;
     });
-    var x = Math.floor((panelWidth - allWidth)/2);
-    if(hasTwoLineLegend){
-      this.LegendGroupRef.current.setWidth(maxLegendWidth+15);
-      this.LegendGroupRef.current.setHeight(50);
-      x =  Math.floor((panelWidth - maxLegendWidth)/2);
-    } else{
-      this.LegendGroupRef.current.setWidth(allWidth+15);      
-    } 
-    this.LegendGroupRef.current.setPosition({x: x, y: panelHeight - 60});    
+
+    if (row === 0) maxRowX = rowX;
+    const legendW = Math.max(maxRowX, rowX) + GAP;
+    const legendH = row > 0 ? 50 : 30;
+    const x = Math.max(0, Math.floor((panelWidth - legendW) / 2));
+
+    this.LegendGroupRef.current.setWidth(legendW);
+    this.LegendGroupRef.current.setHeight(legendH);
+    this.LegendGroupRef.current.setPosition({ x, y: panelHeight - 60 });
   }
 
   updateDenoisingSetting = () => {
@@ -309,15 +312,15 @@ class LineChart extends Component {
 
   resetTimePeriod = () => {
     const { chartController } = this.props;
+
+    // In CSD mode the historyTimeRange was set to the file's actual time range.
+    // openHistoryMode() restores timePeriod from historyTimeRange and resets the
+    // zoom history, then dispatches changeTimePeriod to redraw the X axis.
     chartController.openHistoryMode();
+
+    // Hide the scale-actions panel and update button states
     d3.select(this.scaleActionsRef.current).attr('data-status', '');
-
     this.updateTimePeriodActions();
-
-    //Hide time period component
-    if(chartController.timePeriodVisible) {
-      this.showOrHideTimePeriod();
-    }
 
     d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
   }

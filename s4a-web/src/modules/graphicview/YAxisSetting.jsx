@@ -78,7 +78,6 @@ class YAxisSetting extends Component {
        </DialogTitle>
         <DialogContent>
           <Grid container direction="column" justifyContent="space-around" alignItems="flex-start" style={ w_style }>
-            <TextField label={ intl.get('YAXIS_DESCRIPTION') } margin="normal"/>
             <FormControlLabel d='yAxisAutoScalingCB'
               // checked= {this.state.auto}
               control={
@@ -104,6 +103,11 @@ class YAxisSetting extends Component {
         </DialogContent> 
 
         <DialogActions className="dialog-footer">
+          {this.yAxisData && this.yAxisData.index !== 0 && (
+            <Button onClick={this.setAsMain} color="secondary" style={{ marginRight: 'auto' }}>
+              { intl.get('SET_AS_MAIN_YAXIS') }
+            </Button>
+          )}
           <Button onClick={this.handleClose}>
             { intl.get('CANCEL') }
           </Button>
@@ -114,6 +118,13 @@ class YAxisSetting extends Component {
       </Dialog>
 
     );
+  }
+
+  setAsMain = () => {
+    if (this.yAxisData) {
+      d3.select('#axis-container').dispatch('changePosition', { detail: { data: this.yAxisData } });
+    }
+    this.handleClose();
   }
 
   changeMinValue = (event) => {

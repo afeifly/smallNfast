@@ -127,11 +127,44 @@ class SplineGroup extends Component {
       });
   }
 
+  /**
+   * After React re-renders (triggered by setData → forceUpdate), re-draw the
+   * splines. This is critical for the re-select case: when a channel is deselected,
+   * its ChannelAreaChart unmounts and its ref is set to null. On re-select,
+   * forceUpdate re-mounts it and the ref becomes valid again — but updateDisplay()
+   * called immediately after setData() still sees the null ref. This
+   * componentDidUpdate runs after the re-render, so the refs are valid.
+   */
+  componentDidUpdate() {
+    const { chartController } = this.props;
+    const x = chartController.chartX;
+    const width = chartController.chartWidth;
+    const height = chartController.chartHeight;
+
+    // Keep the container transform in sync
+    d3.select('#line-container').attr('transform', `translate(${x}, 70)`);
+    d3.select('.line-background').attr('width', width).attr('height', height);
+
+    // Re-draw each channel's spline with now-valid refs
+    dataset.forEach(d => {
+      const lineItem = this.splineRefs.get(d.id);
+      if (lineItem) {
+        lineItem.draw();
+      }
+    });
+  }
+
   updateDisplay = () => {
     const { chartController } = this.props;
 
-    const width = chartController.chartWidth,
-      height = chartController.chartHeight;
+    const x = chartController.chartX;
+    const width = chartController.chartWidth;
+    const height = chartController.chartHeight;
+
+    // Sync the container's SVG transform with the current chartX so lines always
+    // start at the Y-axis, not the left edge of the SVG. chartX is set by
+    // AxisSeries.reviseYAxisLayout() which may run after React's render pass.
+    d3.select('#line-container').attr('transform', `translate(${x}, 70)`);
 
     //Update line background size
     d3.select('.line-background')
@@ -150,13 +183,10 @@ class SplineGroup extends Component {
     setTimeout(() => {
       lines = document.getElementsByClassName('sub-line');
       self.initMousePerLine();
-      // self.initDataTipContent();
-      // self.hideLoading();
 
       d3.select('.mouse-line')
         .style('stroke', 'rgba(0, 0, 0, 1)')
         .style('stroke-width', 1);
-      // .style('opacity', 0);  
     }, 1000);
 
   }
@@ -315,20 +345,20 @@ class SplineGroup extends Component {
   }
 
   positionDataTipPanel = (chartController, x, y) => {
-    x = x + 10;
-    y = y + 18;
+    const tipOffsetX = x + 10;
+    const tipOffsetY = y + 18;
     let w = Math.floor(this.dataTipPanel.node().getBBox().width);
-    let containerX = 0;
 
-    if (chartController.channelVisible) {
-      containerX = 320;
-    }
+    // Flip the tip to the LEFT side of the cursor when it would overflow the right
+    // edge of the chart data area. x is in #line-container coordinates
+    // (origin = left edge of the chart area), so chartWidth is the correct boundary.
+    // The old code compared against window.screen.width (monitor resolution) which
+    // is always much larger than the chart, so the flip never triggered.
+    const finalX = (tipOffsetX + w > chartController.chartWidth)
+      ? (x - w - 10)
+      : tipOffsetX;
 
-    if (x + w + chartController.chartX + containerX > window.screen.width) {
-      x = x - w - 12;
-    }
-
-    this.dataTipPanel.attr('transform', `translate(${x}, ${y})`);
+    this.dataTipPanel.attr('transform', `translate(${finalX}, ${tipOffsetY})`);
   }
 
   setDataTipContent = (d, value) => {

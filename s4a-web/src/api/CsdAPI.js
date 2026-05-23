@@ -90,27 +90,27 @@ function _ensureFileInput() {
       _fileInput.value = '';
       return;
     }
+
+    if (file.path) {
+      CsdAPI.saveToRecentFiles(file.name, file.path, file.size, file.lastModified);
+    }
+
     await _loadCsdFile(file);
     // Reset so the same file can be re-selected
     _fileInput.value = '';
   });
 }
 
-async function _loadCsdFile(file) {
+function _onCsdBytesLoaded(uint8Array) {
   // Clear old channel selections so we pick the new default ones for this file
   localStorage.removeItem('selectedChannels');
-
-  console.log('[CsdAPI] Reading file:', file.name, `(${(file.size / 1024).toFixed(1)} KB)`);
-
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
 
   // Hand bytes to the Dart bridge
   _bridge.loadFromBytes(uint8Array);
 
   if (!_bridge.isLoaded()) {
     console.error('[CsdAPI] Dart failed to parse the CSD file');
-    return;
+    return false;
   }
 
   _fileLoaded = true;
@@ -134,7 +134,6 @@ async function _loadCsdFile(file) {
   }
 
   // Compute sample rate dynamically based on actual duration and sample count.
-  // This solves the 'squished chart' issue by spacing samples across the whole range.
   const numSamples = _bridge.getNumOfSamples();
   const durationSec = (_stopTimeMs - _startTimeMs) / 1000;
   if (numSamples > 1 && durationSec > 0) {
@@ -145,18 +144,13 @@ async function _loadCsdFile(file) {
   }
 
   // ── Build channel list ────────────────────────────────────────────────────
-  // channel_id = array index (0-based, guaranteed unique per file).
-  //   - pref is identical for all channels in this file (device-level ID)
-  //   - channelId from the header is not unique either
-  //   - The array index is what the binary data reader uses to pick the column
-  // sensor_id  = real sensorId from the channel header (for sidebar grouping)
   _channels = [];
 
   for (let i = 0; i < numChannels; i++) {
     _channels.push({
-      channel_id:                   i,               // unique, matches data read order
+      channel_id:                   i,
       location_id:                  1,
-      sensor_id:                    sensorIds[i] ?? i, // real grouping from file header
+      sensor_id:                    sensorIds[i] ?? i,
       logic_channel_description:    descriptions[i] || `Channel ${i}`,
       physical_channel_description: descriptions[i] || `Channel ${i}`,
       sensor_description:           descriptions[i] || `Channel ${i}`,
@@ -170,8 +164,16 @@ async function _loadCsdFile(file) {
   console.log(`[CsdAPI] Time range: ${new Date(_startTimeMs).toISOString()} → ${new Date(_stopTimeMs).toISOString()}`);
   console.log('[CsdAPI] Channels:', _channels.map(c => `[${c.channel_id}] sensorId=${c.sensor_id} "${c.logic_channel_description}" (${c.unit_in_ascii})`));
 
-  // Notify all listeners (do not clear them so they remain registered for future files)
+  // Notify all listeners
   _onFileLoadedCallbacks.forEach(fn => fn());
+  return true;
+}
+
+async function _loadCsdFile(file) {
+  console.log('[CsdAPI] Reading file:', file.name, `(${(file.size / 1024).toFixed(1)} KB)`);
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
+  _onCsdBytesLoaded(uint8Array);
 }
 
 // ── Helper: pick default channels (first 2, prefer m³/h unit) ────────────────
@@ -219,6 +221,41 @@ const CsdAPI = {
     }
     _ensureFileInput();
     _fileInput.click();
+  },
+
+  async loadFileFromPath(filePath) {
+    if (!_wasmReady) {
+      console.warn('[CsdAPI] Wasm not ready yet');
+      return false;
+    }
+    try {
+      const fs = window.require('fs');
+      const buffer = fs.readFileSync(filePath);
+      const uint8Array = new Uint8Array(buffer);
+      
+      const parsed = _onCsdBytesLoaded(uint8Array);
+      if (parsed) {
+        localStorage.setItem('currentCsdFilePath', filePath);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('[CsdAPI] Failed to load file from path:', err);
+      alert('Failed to load file: ' + err.message);
+      return false;
+    }
+  },
+
+  saveToRecentFiles(name, path, size, lastModified) {
+    try {
+      let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
+      list = list.filter(item => item.path !== path);
+      list.unshift({ name, path, size, lastModified });
+      list = list.slice(0, 5);
+      localStorage.setItem('recentCsdFiles', JSON.stringify(list));
+    } catch (err) {
+      console.error('[CsdAPI] Failed to save recent file:', err);
+    }
   },
 
   /**

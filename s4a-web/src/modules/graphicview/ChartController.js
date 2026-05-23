@@ -344,11 +344,14 @@ class ChartController {
     this.denoising = true;
     this.resetEnable = false;
 
-    //Stop the timer of reading data realtime 
+    //Stop the timer of reading data realtime
     clearInterval(this.timer);
 
+    // Restore the full time range from historyTimeRange.
+    // In CSD mode historyTimeRange.end is the file's stop timestamp (not today),
+    // so Reset always brings back the whole file view regardless of the current time.
     this.timePeriod.start = new Date(this.historyTimeRange.start);
-    this.timePeriod.end = new Date();
+    this.timePeriod.end   = new Date(this.historyTimeRange.end);
 
     //Reset time periods record
     this.timePeriods.length = 0;

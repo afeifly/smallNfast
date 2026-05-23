@@ -198,3 +198,13 @@
   fill: #666666;
   /* font-weight: bold; */
 }
+
+/* Remove blue focus outline circle from header icon buttons when clicked */
+.window-title-right-area button,
+.window-title-right-area button:focus,
+.window-title-right-area button:focus-visible,
+.window-title-right-area button:active {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}

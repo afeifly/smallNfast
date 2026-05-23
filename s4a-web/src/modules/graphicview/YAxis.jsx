@@ -35,25 +35,28 @@ class YAxis extends Component {
   updateAxisName = (name) => {
     const { data } = this.props;
     const container = d3.select(this.rootRef.current);
-    let axis_info = container.select('.y-axis-info');
-    let name_text;
 
+    // Remove any previously rendered label to avoid duplicates on re-render
+    container.select('.y-axis-info').remove();
 
+    if (!name) return;
 
-    if (!axis_info || !axis_info.node()) {
-      data.baseWidth = this.getWidth() + 10; 
-      axis_info = container.append('g').classed('y-axis-info', true);
-      axis_info.append('text')
-        .classed(`y-axis-name`, true)
-        .attr('text-anchor', 'left')
-        .on('click', this.changePosition);
-    }
+    // Place the unit label just above the top of the axis (y = -14).
+    // Align it the same way as the tick text so it doesn't extend the axis width:
+    //   - left axis  → text-anchor 'end'   (text hangs left, inside existing tick area)
+    //   - right axis → text-anchor 'start' (text hangs right, inside existing tick area)
+    const isLeft = data.index === 0;
+    const axis_info = container.append('g').classed('y-axis-info', true);
 
-    name_text = axis_info.select('.y-axis-name');
-    name_text.text(name);
-
-    
-    axis_info.attr('transform', `translate(0, -16)`);
+    axis_info
+      .attr('transform', 'translate(0, -14)')
+      .append('text')
+      .classed('y-axis-name', true)
+      .attr('text-anchor', isLeft ? 'end' : 'start')
+      .attr('font-size', '11px')
+      .attr('fill', data.color || '#666')
+      .style('pointer-events', 'none')
+      .text(name);
   };
 
 

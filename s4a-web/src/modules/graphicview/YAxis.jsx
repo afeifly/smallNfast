@@ -54,7 +54,7 @@ class YAxis extends Component {
       .classed('y-axis-name', true)
       .attr('text-anchor', isLeft ? 'end' : 'start')
       .attr('font-size', '11px')
-      .attr('fill', data.color || '#666')
+      .attr('fill', '#333333')
       .style('pointer-events', 'none')
       .text(name);
   };

@@ -66,8 +66,21 @@ class Loading extends Component {
     d3.select(this.rootRef.current).attr('data-status', 'active');
   } 
 
+  showWithMessage(message) {
+    this.draw();
+    if (this.rootRef.current) {
+      d3.select(this.rootRef.current).select('.loading-label').text(message);
+    }
+    d3.select(this.rootRef.current).attr('data-status', 'active');
+  }
+
   hide() {
     d3.select(this.rootRef.current).attr('data-status', '');
+    setTimeout(() => {
+      if (this.rootRef.current) {
+        d3.select(this.rootRef.current).select('.loading-label').text('Loading...');
+      }
+    }, 300);
   } 
 
 }

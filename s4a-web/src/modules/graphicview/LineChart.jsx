@@ -12,6 +12,7 @@ import { saveSvgAsPng } from 'save-svg-as-png';
 import html2canvas from 'html2canvas';
 import { SystemEvent } from '../../util/SystemConstant';
 import TimePeriod from './TimePeriod'
+import TestAPI from '../../api/TestAPI';
 
 import './css/LineChart.css'; 
 import { Button, Fab, Tooltip } from '@mui/material';
@@ -35,12 +36,23 @@ class LineChart extends Component {
       nextButtonEnabled: false,
       dataType: 'Realtime',
       denoisingChecked: true,
+      fileLoaded: false,
     };
   }
   
 
   render() {
     const { chartController } = this.props;
+    const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
+
+    let placeholderText = intl.get('NO_CHANNEL');
+    if (isCsdMode) {
+      if (this.state.fileLoaded || (TestAPI.isFileLoaded && TestAPI.isFileLoaded())) {
+        placeholderText = 'No channel selected';
+      } else {
+        placeholderText = 'Open a CSD file to show data';
+      }
+    }
 
     const buttonStyle = {
       marginLeft: 4
@@ -55,7 +67,7 @@ class LineChart extends Component {
         </svg>
         <TimePeriod ref={this.TimePeriodRef} chartController={ chartController }/>
         <div className="chart-placeholder">
-          <div className="no-data-tip">{ intl.get('NO_CHANNEL') }</div>
+          <div className="no-data-tip">{ placeholderText }</div>
         </div>
 
         <div className="scale-actions" ref={this.scaleActionsRef}>
@@ -92,6 +104,13 @@ class LineChart extends Component {
 
   componentDidMount() {
     const { chartController } = this.props;
+
+    const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
+    if (isCsdMode && TestAPI.onFileLoaded) {
+      TestAPI.onFileLoaded(() => {
+        this.setState({ fileLoaded: true });
+      });
+    }
 
     const chartHeight = $('#line-chart').height() - 180;
     chartController.setChartHeight(chartHeight);

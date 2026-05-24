@@ -14,9 +14,11 @@ import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import ListAltIcon from '@mui/icons-material/ListAlt';
-import PrintIcon from '@mui/icons-material/Print';
+import ShareIcon from '@mui/icons-material/Share';
 import RangeIcon from '@mui/icons-material/DateRange';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import intl from "react-intl-universal";
 
 import ChannelList from '../channel/ChannelList';
@@ -53,6 +55,7 @@ class GraphicView extends Component {
       noLoggingChannels: true,
       recentFilesOpen: false,
       recentFiles: [],
+      shareMenuAnchorEl: null,
     }
 
     this.chartController = new ChartController();
@@ -111,6 +114,17 @@ class GraphicView extends Component {
                 </div>
               )}
 
+              {/* Channel list button */}
+              <Tooltip title={intl.get('CHANNEL')}>
+                <div>
+                  <IconButton onClick={() => this.switchChannelList()} style={buttonStyle}
+                    disabled={noLoggingChannels}
+                    disableRipple>
+                    <ListAltIcon style={iconStyle} />
+                  </IconButton>
+                </div>
+              </Tooltip>
+
               {/* Time period button */}
               <Tooltip title={intl.get('TIME_PERIOD')}>
                 <div>
@@ -119,18 +133,6 @@ class GraphicView extends Component {
                     onClick={() => this.showOrHideTimePeriod()}
                     disableRipple>
                     <RangeIcon style={iconStyle} />
-                  </IconButton>
-                </div>
-              </Tooltip>
-
-              {/* Print button */}
-              <Tooltip title={intl.get('PRINT')}>
-                <div>
-                  <IconButton style={buttonStyle}
-                    disabled={noLoggingChannels}
-                    onClick={this.printChart}
-                    disableRipple>
-                    <PrintIcon style={iconStyle} />
                   </IconButton>
                 </div>
               </Tooltip>
@@ -149,16 +151,37 @@ class GraphicView extends Component {
                 </Tooltip>
               )}
 
-              {/* Channel list button */}
-              <Tooltip title={intl.get('CHANNEL')}>
+              {/* Print / Export button */}
+              <Tooltip title={isCsdMode ? "Export / Print" : intl.get('PRINT')}>
                 <div>
-                  <IconButton onClick={() => this.switchChannelList()} style={buttonStyle}
+                  <IconButton style={buttonStyle}
                     disabled={noLoggingChannels}
+                    onClick={this.handleShareClick}
                     disableRipple>
-                    <ListAltIcon style={iconStyle} />
+                    <ShareIcon style={iconStyle} />
                   </IconButton>
                 </div>
               </Tooltip>
+
+              <Menu
+                anchorEl={this.state.shareMenuAnchorEl}
+                open={Boolean(this.state.shareMenuAnchorEl)}
+                onClose={this.handleShareClose}
+              >
+                <MenuItem onClick={this.handlePrintOption}>
+                  {intl.get('PRINT')}
+                </MenuItem>
+                {isCsdMode && (
+                  <MenuItem onClick={this.handleExportCsvOption}>
+                    Export all CSD to CSV
+                  </MenuItem>
+                )}
+                {isCsdMode && (
+                  <MenuItem onClick={this.handleExportExcelOption}>
+                    Export all CSD to Excel
+                  </MenuItem>
+                )}
+              </Menu>
             </div>
 
           </div>
@@ -665,6 +688,57 @@ class GraphicView extends Component {
 
   printChart = () => {
     this.lineChartRef.current.printChart();
+  };
+
+  handleShareClick = (event) => {
+    this.setState({ shareMenuAnchorEl: event.currentTarget });
+  };
+
+  handleShareClose = () => {
+    this.setState({ shareMenuAnchorEl: null });
+  };
+
+  handlePrintOption = () => {
+    this.handleShareClose();
+    this.printChart();
+  };
+
+  handleExportCsvOption = async () => {
+    this.handleShareClose();
+    if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
+      alert("No CSD file is currently loaded.");
+      return;
+    }
+    this.loadingRef.current.showWithMessage("Exporting to CSV... 0%");
+    try {
+      await TestAPI.exportAllChannelsToCsv((progress) => {
+        this.loadingRef.current.showWithMessage(`Exporting to CSV... ${Math.round(progress * 100)}%`);
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to export CSD to CSV: " + e.message);
+    } finally {
+      this.loadingRef.current.hide();
+    }
+  };
+
+  handleExportExcelOption = async () => {
+    this.handleShareClose();
+    if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
+      alert("No CSD file is currently loaded.");
+      return;
+    }
+    this.loadingRef.current.showWithMessage("Exporting to Excel... 0%");
+    try {
+      await TestAPI.exportAllChannelsToExcel((progress) => {
+        this.loadingRef.current.showWithMessage(`Exporting to Excel... ${Math.round(progress * 100)}%`);
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to export CSD to Excel: " + e.message);
+    } finally {
+      this.loadingRef.current.hide();
+    }
   };
 
 

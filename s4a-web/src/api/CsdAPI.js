@@ -680,6 +680,162 @@ const CsdAPI = {
   getCommunication(callback)                      { if (callback) callback({}); },
   getLoggingChannels(callback)                    { if (callback) callback([]); },
   saveSensorPosition(id, x, y, callback)          { if (callback) callback({}); },
+
+  async exportAllChannelsToCsv(onProgress) {
+    if (!_fileLoaded || !_file) {
+      throw new Error("No CSD file loaded");
+    }
+
+    // Prepare CSV header
+    const headers = ['Timestamp', 'Record ID'];
+    _channels.forEach(ch => {
+      const desc = ch.logic_channel_description || `Channel ${ch.channel_id}`;
+      const unit = ch.unit_in_ascii ? ` (${ch.unit_in_ascii})` : '';
+      const escaped = `${desc}${unit}`.replace(/"/g, '""');
+      headers.push(`"${escaped}"`);
+    });
+
+    const csvContentRows = [headers.join(',')];
+
+    const chunkSize = 5000;
+    for (let start = 0; start < _numSamples; start += chunkSize) {
+      const end = Math.min(start + chunkSize, _numSamples);
+      const count = end - start;
+      const offset = _dataStart + start * _recordLen;
+      const byteLength = count * _recordLen;
+
+      const dv = await _readSlice(_file, offset, byteLength);
+
+      for (let i = 0; i < count; i++) {
+        const recordIndex = start + i;
+        const recordOffset = i * _recordLen;
+        const recordId = dv.getInt32(recordOffset, false);
+        
+        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
+        const dateStr = new Date(timestampMs).toISOString();
+
+        const rowValues = [dateStr, recordId];
+
+        for (let c = 0; c < _numChannels; c++) {
+          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
+          const v = dv.getFloat64(valOffset, false);
+          if (v <= DATA_OVERRANGE) {
+            rowValues.push('');
+          } else {
+            rowValues.push(v);
+          }
+        }
+        csvContentRows.push(rowValues.join(','));
+      }
+
+      if (onProgress) {
+        onProgress(end / _numSamples);
+      }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const csvString = csvContentRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    link.setAttribute('download', `${baseName}_all_channels.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  },
+
+  async exportAllChannelsToExcel(onProgress) {
+    if (!_fileLoaded || !_file) {
+      throw new Error("No CSD file loaded");
+    }
+
+    const xmlHeader = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Worksheet ss:Name="CSD Export">
+  <Table>`;
+
+    const xmlFooter = `  </Table>
+ </Worksheet>
+</Workbook>`;
+
+    // Prepare XML header row
+    let headerRow = '   <Row>\n';
+    headerRow += '    <Cell><Data ss:Type="String">Timestamp</Data></Cell>\n';
+    headerRow += '    <Cell><Data ss:Type="String">Record ID</Data></Cell>\n';
+    _channels.forEach(ch => {
+      const desc = ch.logic_channel_description || `Channel ${ch.channel_id}`;
+      const unit = ch.unit_in_ascii ? ` (${ch.unit_in_ascii})` : '';
+      const escaped = `${desc}${unit}`.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      headerRow += `    <Cell><Data ss:Type="String">${escaped}</Data></Cell>\n`;
+    });
+    headerRow += '   </Row>\n';
+
+    const xmlChunks = [xmlHeader, headerRow];
+
+    const chunkSize = 5000;
+    for (let start = 0; start < _numSamples; start += chunkSize) {
+      const end = Math.min(start + chunkSize, _numSamples);
+      const count = end - start;
+      const offset = _dataStart + start * _recordLen;
+      const byteLength = count * _recordLen;
+
+      const dv = await _readSlice(_file, offset, byteLength);
+
+      let chunkXml = '';
+      for (let i = 0; i < count; i++) {
+        const recordIndex = start + i;
+        const recordOffset = i * _recordLen;
+        const recordId = dv.getInt32(recordOffset, false);
+        
+        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
+        const dateStr = new Date(timestampMs).toISOString();
+
+        chunkXml += '   <Row>\n';
+        chunkXml += `    <Cell><Data ss:Type="String">${dateStr}</Data></Cell>\n`;
+        chunkXml += `    <Cell><Data ss:Type="Number">${recordId}</Data></Cell>\n`;
+
+        for (let c = 0; c < _numChannels; c++) {
+          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
+          const v = dv.getFloat64(valOffset, false);
+          if (v <= DATA_OVERRANGE) {
+            chunkXml += '    <Cell><Data ss:Type="String"></Data></Cell>\n';
+          } else {
+            chunkXml += `    <Cell><Data ss:Type="Number">${v}</Data></Cell>\n`;
+          }
+        }
+        chunkXml += '   </Row>\n';
+      }
+      xmlChunks.push(chunkXml);
+
+      if (onProgress) {
+        onProgress(end / _numSamples);
+      }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    xmlChunks.push(xmlFooter);
+
+    const blob = new Blob(xmlChunks, { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    link.setAttribute('download', `${baseName}_all_channels.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 };
 
 export default CsdAPI;

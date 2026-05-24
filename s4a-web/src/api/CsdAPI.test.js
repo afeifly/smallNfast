@@ -143,4 +143,73 @@ describe('CsdAPI Parser', () => {
     expect(dataResult[0].measurementData[0][0]).toBe(10.0);
     expect(dataResult[0].measurementData[0][4]).toBe(14.0);
   });
+
+  it('correctly exports data to CSV and Excel', async () => {
+    const createdBlobs = [];
+    const downloadedFiles = [];
+
+    global.URL.createObjectURL = (blob) => {
+      createdBlobs.push(blob);
+      return 'mock-url';
+    };
+    global.URL.revokeObjectURL = () => {};
+    
+    const originalAppend = document.body.appendChild;
+    const originalRemove = document.body.removeChild;
+    
+    document.body.appendChild = (el) => {
+      if (el.tagName === 'A') {
+        downloadedFiles.push({
+          href: el.href,
+          download: el.getAttribute('download')
+        });
+      }
+      return originalAppend.call(document.body, el);
+    };
+
+    document.body.removeChild = (el) => {
+      try {
+        return originalRemove.call(document.body, el);
+      } catch {
+        return el;
+      }
+    };
+
+    window.HTMLAnchorElement.prototype.click = function() {};
+
+    // Trigger CSV export
+    let csvProgress = [];
+    await CsdAPI.exportAllChannelsToCsv((p) => csvProgress.push(p));
+    
+    expect(csvProgress).toContain(1);
+    expect(createdBlobs).toHaveLength(1);
+    expect(downloadedFiles).toHaveLength(1);
+    expect(downloadedFiles[0].download).toBe('test_all_channels.csv');
+
+    // Read Blob content to verify CSV structure
+    const csvText = await createdBlobs[0].text();
+    const csvLines = csvText.split('\n');
+    expect(csvLines[0]).toBe('Timestamp,Record ID,"Ch_0","Ch_1"');
+    expect(csvLines[1]).toContain(',0,10,20');
+    expect(csvLines[5]).toContain(',4,14,24');
+
+    // Trigger Excel export
+    let excelProgress = [];
+    await CsdAPI.exportAllChannelsToExcel((p) => excelProgress.push(p));
+
+    expect(excelProgress).toContain(1);
+    expect(createdBlobs).toHaveLength(2);
+    expect(downloadedFiles).toHaveLength(2);
+    expect(downloadedFiles[1].download).toBe('test_all_channels.xls');
+
+    const excelText = await createdBlobs[1].text();
+    expect(excelText).toContain('<?xml version="1.0"?>');
+    expect(excelText).toContain('ss:Name="CSD Export"');
+    expect(excelText).toContain('<Cell><Data ss:Type="String">Timestamp</Data></Cell>');
+    expect(excelText).toContain('<Cell><Data ss:Type="Number">10</Data></Cell>');
+
+    // Cleanup
+    document.body.appendChild = originalAppend;
+    document.body.removeChild = originalRemove;
+  });
 });

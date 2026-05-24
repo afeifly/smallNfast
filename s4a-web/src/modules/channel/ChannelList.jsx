@@ -36,6 +36,8 @@ class ChannelList extends Component {
       data: [],
       noMeasurementData: false,
       openAlert: false,
+      alertTitle: '',
+      alertText: '',
 
       anchorLocationBtn: null,
       locationList: [],
@@ -113,17 +115,12 @@ class ChannelList extends Component {
           aria-labelledby="alert-dialog-title"
           aria-describedby="alert-dialog-description"
         >
-          <DialogTitle id="alert-dialog-title">{intl.get('MAX_SELECTED_CHANNELS_TITLE')}</DialogTitle>
+          <DialogTitle id="alert-dialog-title">{this.state.alertTitle || intl.get('MAX_SELECTED_CHANNELS_TITLE')}</DialogTitle>
           <DialogContent>
             <DialogContentText id="alert-dialog-description">
-              {intl.get('MAX_SELECTED_CHANNELS_NOTE')}
+              {this.state.alertText || intl.get('MAX_SELECTED_CHANNELS_NOTE')}
             </DialogContentText>
           </DialogContent>
-          {/* <DialogActions>
-            <Button onClick={ this.handleClose } autoFocus>
-              Close
-            </Button>
-          </DialogActions> */}
         </Dialog>
 
         <Snackbar
@@ -362,11 +359,28 @@ class ChannelList extends Component {
     }
 
     //select channel
-    //The number of selected channels is more than maximum
-    if (chartController.selectedChannels
-      && chartController.selectedChannels.length === 4) {
+    const selectedChannels = chartController.selectedChannels || [];
+    const uniqueUnits = new Set(selectedChannels.map(ch => (ch.unit || '').trim().toLowerCase()));
+    const channelUnit = (channel.unit || '').trim().toLowerCase();
+    const isNewUnit = !uniqueUnits.has(channelUnit);
+
+    // 1. Check max channel count (10)
+    if (selectedChannels.length >= 10) {
       this.setState({
-        openAlert: true
+        openAlert: true,
+        alertTitle: "Max Selected Channels",
+        alertText: "Maximum 10 selected channels reached."
+      });
+      channel.selected = false;
+      return;
+    }
+
+    // 2. Check max different units (4)
+    if (isNewUnit && uniqueUnits.size >= 4) {
+      this.setState({
+        openAlert: true,
+        alertTitle: "Max Different Units",
+        alertText: "Maximum 4 different units (Y-axes) reached."
       });
       channel.selected = false;
       return;
@@ -522,7 +536,7 @@ class ChannelList extends Component {
       localChannels = [];
     }
 
-    if (localChannels.length >= 6) {
+    if (localChannels.length >= 10) {
       return;
     }
 

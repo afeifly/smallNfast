@@ -212,4 +212,131 @@ describe('CsdAPI Parser', () => {
     document.body.appendChild = originalAppend;
     document.body.removeChild = originalRemove;
   });
+
+  it('correctly retrieves pages of rows via getTablePage', async () => {
+    // 1. Construct mock CSD binary buffer with 3 channels and 5 samples
+    const FILE_HEADER_LEN     = 34;
+    const PROTOCOL_HEADER_LEN = 3552;
+    const CHANNEL_HEADER_LEN  = 918;
+    const RECORD_ID_LEN       = 4;
+    const CHANNEL_VALUE_LEN   = 8;
+
+    const numChannels = 3;
+    const numSamples = 5;
+
+    const protocolHeaderStart = FILE_HEADER_LEN;
+    const channelHeadersStart = protocolHeaderStart + PROTOCOL_HEADER_LEN;
+    const dataStart = channelHeadersStart + numChannels * CHANNEL_HEADER_LEN;
+    const recordLen = RECORD_ID_LEN + numChannels * CHANNEL_VALUE_LEN;
+    const totalSize = dataStart + numSamples * recordLen;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+
+    // Write File Header
+    view.setInt32(0, 1, false);
+    const encoder = new TextEncoder();
+    const idBytes = encoder.encode('SUTO CSD');
+    for (let i = 0; i < idBytes.length; i++) {
+      view.setUint8(4 + i, idBytes[i]);
+    }
+
+    // Write Protocol Header
+    view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+    view.setInt32(protocolHeaderStart + 3020, numSamples, false);
+    view.setInt32(protocolHeaderStart + 3024, 2, false); // 2 Hz
+    const startTimeMs = 1716380000000;
+    view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
+    const stopTimeMs = startTimeMs + (numSamples / 2) * 1000;
+    view.setBigInt64(protocolHeaderStart + 3040, BigInt(stopTimeMs), false);
+
+    // Write Channel Headers
+    for (let c = 0; c < numChannels; c++) {
+      const chStart = channelHeadersStart + c * CHANNEL_HEADER_LEN;
+      view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+      const descName = `Ch_${c}`;
+      view.setInt16(chStart + 8, descName.length, false);
+      const descBytes = encoder.encode(descName);
+      for (let i = 0; i < descBytes.length; i++) {
+        view.setUint8(chStart + 10 + i, descBytes[i]);
+      }
+      const statsBase = 848;
+      view.setFloat64(chStart + statsBase + 4, 1.0 * c, false);
+      view.setFloat64(chStart + statsBase + 12, 10.0 * (c + 1), false);
+      view.setInt32(chStart + statsBase + 28, 5000 + c, false);
+    }
+
+    // Write Data Records
+    for (let s = 0; s < numSamples; s++) {
+      const recStart = dataStart + s * recordLen;
+      view.setInt32(recStart, 100 + s, false); // Record ID
+      view.setFloat64(recStart + 4, 10.0 + s, false);  // Ch 0
+      view.setFloat64(recStart + 12, 20.0 + s, false); // Ch 1
+      view.setFloat64(recStart + 20, 30.0 + s, false); // Ch 2
+    }
+
+    const mockFile = {
+      name: 'test-table.csd',
+      size: totalSize,
+      slice(start, end) {
+        return {
+          arrayBuffer: async () => buffer.slice(start, end)
+        };
+      }
+    };
+
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    // Load file
+    const success = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(success).toBe(true);
+
+    // Query Page 0 with pageSize=2, only requesting Ch 0 & Ch 2
+    let page0Result = null;
+    CsdAPI.getTablePage(0, 2, [0, 2], (res) => {
+      page0Result = res;
+    });
+
+    await new Promise(r => setTimeout(r, 60));
+
+    expect(page0Result).not.toBeNull();
+    expect(page0Result.total).toBe(numSamples);
+    expect(page0Result.rows).toHaveLength(2);
+    
+    // Row 0
+    expect(page0Result.rows[0].index).toBe(0);
+    expect(page0Result.rows[0].recordId).toBe(100);
+    expect(page0Result.rows[0].timestampMs).toBe(startTimeMs);
+    expect(page0Result.rows[0].values[0]).toBe(10.0);
+    expect(page0Result.rows[0].values[1]).toBeUndefined(); // Filtered out
+    expect(page0Result.rows[0].values[2]).toBe(30.0);
+
+    // Row 1 (timestamp for 2Hz is +500ms per sample)
+    expect(page0Result.rows[1].index).toBe(1);
+    expect(page0Result.rows[1].recordId).toBe(101);
+    expect(page0Result.rows[1].timestampMs).toBe(startTimeMs + 500);
+    expect(page0Result.rows[1].values[0]).toBe(11.0);
+    expect(page0Result.rows[1].values[2]).toBe(31.0);
+
+    // Query Page 2 (samples 4, pageIndex=2, pageSize=2)
+    let page2Result = null;
+    CsdAPI.getTablePage(2, 2, [0, 1, 2], (res) => {
+      page2Result = res;
+    });
+
+    await new Promise(r => setTimeout(r, 60));
+
+    expect(page2Result).not.toBeNull();
+    expect(page2Result.rows).toHaveLength(1); // Only 1 sample left (index 4)
+    expect(page2Result.rows[0].index).toBe(4);
+    expect(page2Result.rows[0].recordId).toBe(104);
+    expect(page2Result.rows[0].timestampMs).toBe(startTimeMs + 2000);
+    expect(page2Result.rows[0].values[0]).toBe(14.0);
+    expect(page2Result.rows[0].values[1]).toBe(24.0);
+    expect(page2Result.rows[0].values[2]).toBe(34.0);
+  });
 });

@@ -18,8 +18,8 @@ class Loading extends Component {
         <svg className="loading-svg" width="64" height="100">
           <g className="loading-back" transform="translate(32, 32)"/>
           <g transform="translate(32, 32)">
-            <circle r="4" fill="#1BAB83"/>
-            <path id="loading-pointer" d="M-4 0 L0 -16 L4 0z" fill="#1BAB83"/>
+            <circle r="4" fill="#00ac86"/>
+            <path id="loading-pointer" d="M-4 0 L0 -16 L4 0z" fill="#00ac86"/>
           </g>
           <text className="loading-label" x="4" y="88">Loading...</text>
         </svg>
@@ -33,8 +33,8 @@ class Loading extends Component {
 
   draw() {
     let data = [
-      {name: "1", value: 18, color: '#1BAB83'},
-      {name: "2", value: 18, color: '#1BAB83'},
+      {name: "1", value: 18, color: '#00ac86'},
+      {name: "2", value: 18, color: '#00ac86'},
       {name: "3", value: 64, color: '#212121'}
     ];
 

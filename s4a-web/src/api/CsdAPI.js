@@ -24,38 +24,38 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const FILE_HEADER_LEN     = 34;
+const FILE_HEADER_LEN = 34;
 const PROTOCOL_HEADER_LEN = 3552;
-const CHANNEL_HEADER_LEN  = 918;
-const RECORD_ID_LEN       = 4;
-const CHANNEL_VALUE_LEN   = 8;    // float64
+const CHANNEL_HEADER_LEN = 918;
+const RECORD_ID_LEN = 4;
+const CHANNEL_VALUE_LEN = 8;    // float64
 
-const DATA_INVALID       = -9999;
-const DATA_OVERRANGE     = -8888;
+const DATA_INVALID = -9999;
+const DATA_OVERRANGE = -8888;
 const DATA_SENSOR_CHANGE = -8887;
-const DATA_UNIT_CHANGE   = -8886;
+const DATA_UNIT_CHANGE = -8886;
 
-const PROTOCOL_HEADER_START  = FILE_HEADER_LEN;
-const CHANNEL_HEADERS_START  = PROTOCOL_HEADER_START + PROTOCOL_HEADER_LEN;  // 3586
+const PROTOCOL_HEADER_START = FILE_HEADER_LEN;
+const CHANNEL_HEADERS_START = PROTOCOL_HEADER_START + PROTOCOL_HEADER_LEN;  // 3586
 
 const MAX_DISPLAY_SAMPLES = 3000;
 
 // IndexedDB database name / store for file handles
-const IDB_NAME  = 'CsdFilesDB';
+const IDB_NAME = 'CsdFilesDB';
 const IDB_STORE = 'fileHandles';
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
-let _file        = null;   // File | FileSystemFileHandle — kept open for lazy reads
-let _fileLoaded  = false;
-let _channels    = [];
+let _file = null;   // File | FileSystemFileHandle — kept open for lazy reads
+let _fileLoaded = false;
+let _channels = [];
 let _startTimeMs = 0;
-let _stopTimeMs  = 0;
-let _sampleRate  = 1;      // Hz (computed)
-let _numSamples  = 0;
+let _stopTimeMs = 0;
+let _sampleRate = 1;      // Hz (computed)
+let _numSamples = 0;
 let _numChannels = 0;
-let _dataStart   = 0;      // byte offset where records begin
-let _recordLen   = 0;      // bytes per record
+let _dataStart = 0;      // byte offset where records begin
+let _recordLen = 0;      // bytes per record
 
 let _onFileLoadedCallbacks = [];
 
@@ -71,7 +71,7 @@ function _openIDB() {
       e.target.result.createObjectStore(IDB_STORE);
     };
     req.onsuccess = e => resolve(e.target.result);
-    req.onerror   = e => reject(e.target.error);
+    req.onerror = e => reject(e.target.error);
   });
 }
 
@@ -82,7 +82,7 @@ async function _idbPut(key, value) {
       const tx = db.transaction(IDB_STORE, 'readwrite');
       tx.objectStore(IDB_STORE).put(value, key);
       tx.oncomplete = () => resolve();
-      tx.onerror    = e => reject(e.target.error);
+      tx.onerror = e => reject(e.target.error);
     });
   } catch (e) {
     console.warn('[CsdAPI] IDB put failed:', e);
@@ -96,7 +96,7 @@ async function _idbGet(key) {
       const tx = db.transaction(IDB_STORE, 'readonly');
       const req = tx.objectStore(IDB_STORE).get(key);
       req.onsuccess = e => resolve(e.target.result);
-      req.onerror   = e => reject(e.target.error);
+      req.onerror = e => reject(e.target.error);
     });
   } catch (e) {
     console.warn('[CsdAPI] IDB get failed:', e);
@@ -108,10 +108,10 @@ async function _idbGetAll() {
   try {
     const db = await _openIDB();
     return new Promise((resolve, reject) => {
-      const tx  = db.transaction(IDB_STORE, 'readonly');
+      const tx = db.transaction(IDB_STORE, 'readonly');
       const req = tx.objectStore(IDB_STORE).getAllKeys();
       req.onsuccess = async e => {
-        const keys    = e.target.result;
+        const keys = e.target.result;
         const entries = [];
         for (const key of keys) {
           const handle = await _idbGet(key);
@@ -130,7 +130,7 @@ async function _idbGetAll() {
 
 /** Read exactly `length` bytes starting at `offset` from a File object. */
 async function _readSlice(file, offset, length) {
-  const blob   = file.slice(offset, offset + length);
+  const blob = file.slice(offset, offset + length);
   const buffer = await blob.arrayBuffer();
   return new DataView(buffer);
 }
@@ -159,21 +159,21 @@ async function _parseHeaders(file) {
   const ph = await _readSlice(file, PROTOCOL_HEADER_START, PROTOCOL_HEADER_LEN);
 
   _numChannels = ph.getInt32(3016, false) || 9;
-  _numSamples  = Math.max(0, ph.getInt32(3020, false));
+  _numSamples = Math.max(0, ph.getInt32(3020, false));
   const sampleRateRaw = ph.getInt32(3024, false);
 
   let rawStart = Number(ph.getBigInt64(3032, false));
-  let rawStop  = Number(ph.getBigInt64(3040, false));
+  let rawStop = Number(ph.getBigInt64(3040, false));
 
   const MAX_TS = 8640000000000000;
   if (Math.abs(rawStart) > MAX_TS) rawStart = 0;
-  if (Math.abs(rawStop)  > MAX_TS) rawStop  = 0;
+  if (Math.abs(rawStop) > MAX_TS) rawStop = 0;
 
   _startTimeMs = rawStart;
-  _stopTimeMs  = rawStop;
+  _stopTimeMs = rawStop;
 
   if (_startTimeMs <= 0) _startTimeMs = Date.now() - 3600000;
-  if (_stopTimeMs  <= _startTimeMs) {
+  if (_stopTimeMs <= _startTimeMs) {
     const rate = Math.max(1, sampleRateRaw);
     _stopTimeMs = _startTimeMs + (_numSamples / rate) * 1000;
   }
@@ -190,47 +190,47 @@ async function _parseHeaders(file) {
     const ch = await _readSlice(file, chStart, CHANNEL_HEADER_LEN);
 
     // pref = int64 at byte 0
-    const pref     = Number(ch.getBigInt64(0, false));
+    const pref = Number(ch.getBigInt64(0, false));
     const sensorId = ch.getInt32(CHANNEL_HEADER_LEN - 918 + 752 + 28, false); // fieldPos 752+28
 
     // Channel description: int16 length + up to 128 bytes at offset 8
     const descLen = ch.getInt16(8, false);
-    const desc    = _decodeStr(ch, 10, Math.min(descLen, 126)) || `Channel ${i}`;
+    const desc = _decodeStr(ch, 10, Math.min(descLen, 126)) || `Channel ${i}`;
 
     // Sub-device desc: length at 8+2+128 = 138
     const subLen = ch.getInt16(138, false);
     const subDesc = _decodeStr(ch, 140, Math.min(subLen, 126));
 
     // Device desc: at 138+2+128 = 268 
-    const devLen  = ch.getInt16(268, false);
+    const devLen = ch.getInt16(268, false);
     // Sensor desc: at 268+2+19 = 289
-    const senLen  = ch.getInt16(289, false);
+    const senLen = ch.getInt16(289, false);
     const senDesc = _decodeStr(ch, 291, Math.min(senLen, 17)) || desc;
 
     // unit text: fixed-position area starting at fieldPos=752
     // fieldPos after skipping 470 reserved bytes starting at 289+2+19=310 → 310+470=780
     // then channelNumber(4)+unit(4) = 788, then unitTextLen(2)+text
     const FP = 780 + 4 + 4; // = 788
-    const unitLen  = ch.getInt16(FP, false);
+    const unitLen = ch.getInt16(FP, false);
     const unitText = _decodeStr(ch, FP + 2, Math.min(unitLen, 56)) || '';
 
     // min/max follow at FP+2+58 = FP+60
     const statsBase = FP + 60;
     // resolution(4) + min(8) + max(8)
-    const minVal = ch.getFloat64(statsBase + 4,  false);
+    const minVal = ch.getFloat64(statsBase + 4, false);
     const maxVal = ch.getFloat64(statsBase + 12, false);
 
     const sensorIdVal = ch.getInt32(statsBase + 28, false);
 
     _channels.push({
-      channel_id:                   i,
-      location_id:                  1,
-      sensor_id:                    sensorIdVal || i,
+      channel_id: i,
+      location_id: 1,
+      sensor_id: sensorIdVal || i,
       pref,
-      logic_channel_description:    desc,
+      logic_channel_description: desc,
       physical_channel_description: desc,
-      sensor_description:           senDesc,
-      unit_in_ascii:                unitText,
+      sensor_description: senDesc,
+      unit_in_ascii: unitText,
       _min: isFinite(minVal) ? minVal : 0,
       _max: isFinite(maxVal) ? maxVal : 0,
     });
@@ -252,11 +252,11 @@ async function _parseHeaders(file) {
  *   record_offset + RECORD_ID_LEN + chIdx * 8
  */
 async function _readChannelData(file, chIdx, startSample, endSample, step) {
-  const values       = [];
+  const values = [];
   const chByteOffset = RECORD_ID_LEN + chIdx * CHANNEL_VALUE_LEN;
 
   const totalRecords = endSample - startSample + 1;
-  const spanBytes    = totalRecords * _recordLen;
+  const spanBytes = totalRecords * _recordLen;
 
   // Optimization 1: If the byte span is small (< 5MB), read the entire block at once
   if (spanBytes < 5 * 1024 * 1024) {
@@ -319,7 +319,7 @@ async function _loadFromFile(file) {
     return false;
   }
 
-  _file       = fileToLoad;
+  _file = fileToLoad;
   _fileLoaded = true;
   _onFileLoadedCallbacks.forEach(fn => fn());
   return true;
@@ -332,7 +332,7 @@ function _saveRecentMeta(name, size, path = null) {
     let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
     list = list.filter(f => f.name !== name && (!path || f.path !== path));
     list.unshift({ name, size, path, lastOpened: Date.now() });
-    list = list.slice(0, 10);
+    list = list.slice(0, 5);
     localStorage.setItem('recentCsdFiles', JSON.stringify(list));
   } catch { /* ignore */ }
 }
@@ -355,7 +355,7 @@ async function _openWithFSA() {
   }
 
   const handle = handles[0];
-  const file   = await handle.getFile();
+  const file = await handle.getFile();
 
   // Persist the handle in IndexedDB keyed by filename
   await _idbPut(file.name, handle);
@@ -368,8 +368,8 @@ async function _openWithFSA() {
 function _ensureFileInput() {
   if (_fileInput) return;
   _fileInput = document.createElement('input');
-  _fileInput.type    = 'file';
-  _fileInput.accept  = '.csd';
+  _fileInput.type = 'file';
+  _fileInput.accept = '.csd';
   _fileInput.style.display = 'none';
   document.body.appendChild(_fileInput);
 
@@ -502,6 +502,63 @@ const CsdAPI = {
 
   getFileTimeRange() { return { start: _startTimeMs, stop: _stopTimeMs }; },
 
+  getTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
+    if (!_fileLoaded || !_file) {
+      setTimeout(() => callback({ total: 0, rows: [] }), 50);
+      return;
+    }
+
+    const startSample = pageIndex * pageSize;
+    const endSample = Math.min(startSample + pageSize - 1, _numSamples - 1);
+    const count = endSample - startSample + 1;
+
+    if (count <= 0) {
+      setTimeout(() => callback({ total: _numSamples, rows: [] }), 50);
+      return;
+    }
+
+    const offset = _dataStart + startSample * _recordLen;
+    const byteLength = count * _recordLen;
+
+    _readSlice(_file, offset, byteLength).then(dv => {
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const recordIndex = startSample + i;
+        const recordOffset = i * _recordLen;
+        const recordId = dv.getInt32(recordOffset, false);
+        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
+
+        const values = {};
+        for (let c = 0; c < _numChannels; c++) {
+          if (selectedChannelIds && !selectedChannelIds.includes(c)) {
+            continue;
+          }
+          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
+          const v = dv.getFloat64(valOffset, false);
+          values[c] = (v <= DATA_OVERRANGE) ? null : v;
+        }
+
+        rows.push({
+          index: recordIndex,
+          recordId,
+          timestampMs,
+          values
+        });
+      }
+      callback({
+        total: _numSamples,
+        sampleRate: _sampleRate,
+        startTimeMs: _startTimeMs,
+        stopTimeMs: _stopTimeMs,
+        rows
+      });
+    }).catch(err => {
+      console.error('[CsdAPI] getTablePage error:', err);
+      callback({ total: _numSamples, rows: [] });
+    });
+  },
+
+
   // ── Standard MockAPI-compatible methods ─────────────────────────────────────
 
   getUserSettings(username, callback) {
@@ -520,7 +577,7 @@ const CsdAPI = {
     const defaults = sorted.slice(0, 2);
 
     const COLORS = ['#00B8D9', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
-                    '#0052CC', '#00875A', '#FF4081', '#FFC107', '#7B1FA2'];
+      '#0052CC', '#00875A', '#FF4081', '#FFC107', '#7B1FA2'];
 
     const displayChannelOption = defaults.map((ch, idx) => ({
       channel_id: {
@@ -548,13 +605,13 @@ const CsdAPI = {
     }
     setTimeout(() => callback({
       logging_chs: _channels.map(ch => ({
-        channel_id:                   ch.channel_id,
-        location_id:                  ch.location_id,
-        sensor_id:                    ch.sensor_id,
-        logic_channel_description:    ch.logic_channel_description,
+        channel_id: ch.channel_id,
+        location_id: ch.location_id,
+        sensor_id: ch.sensor_id,
+        logic_channel_description: ch.logic_channel_description,
         physical_channel_description: ch.physical_channel_description,
-        sensor_description:           ch.sensor_description,
-        unit_in_ascii:                ch.unit_in_ascii,
+        sensor_description: ch.sensor_description,
+        unit_in_ascii: ch.unit_in_ascii,
       }))
     }), 50);
   },
@@ -575,7 +632,7 @@ const CsdAPI = {
 
     // Adjust for the +8 h the UI adds before calling us
     const qStart = startTime - 3600000 * 8;
-    const qStop  = stopTime  - 3600000 * 8;
+    const qStop = stopTime - 3600000 * 8;
 
     // Convert time → sample index
     const timeToSample = ms => {
@@ -584,24 +641,24 @@ const CsdAPI = {
     };
 
     let startSample = timeToSample(qStart);
-    let endSample   = timeToSample(qStop);
+    let endSample = timeToSample(qStop);
     startSample = Math.max(0, Math.min(startSample, _numSamples - 1));
-    endSample   = Math.max(startSample, Math.min(endSample, _numSamples - 1));
+    endSample = Math.max(startSample, Math.min(endSample, _numSamples - 1));
 
     // Compute downsampling step
     const range = endSample - startSample + 1;
-    const step  = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
+    const step = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
 
-    const actualStartMs  = _startTimeMs + (startSample / _sampleRate) * 1000;
+    const actualStartMs = _startTimeMs + (startSample / _sampleRate) * 1000;
     const pointIntervalMs = (step / _sampleRate) * 1000;
 
     // Async read — lazy slice
     _readChannelData(_file, chIdx, startSample, endSample, step).then(values => {
       callback([{
-        channel_id:      channelId,
+        channel_id: channelId,
         measurementData: [values],
-        realStartTime:   [actualStartMs + 3600000 * 8],
-        pointInterval:   [pointIntervalMs],
+        realStartTime: [actualStartMs + 3600000 * 8],
+        pointInterval: [pointIntervalMs],
         min: ch._min,
         max: ch._max,
       }]);
@@ -622,64 +679,64 @@ const CsdAPI = {
   getLocations(callback) {
     setTimeout(() => callback({
       locations: [{
-        location_id:    1,
-        description:    'CSD File',
+        location_id: 1,
+        description: '',
         location_index: 0,
         background_img: '',
-        sensors:        [],
+        sensors: [],
       }]
     }), 50);
   },
 
   // ── Stubs to satisfy the full MockAPI interface ─────────────────────────────
-  getDevices(callback)                            { if (callback) callback([]); },
-  getBackupSettings(callback)                     { if (callback) callback({}); },
-  updateBackupSettings(json, callback)            { if (callback) callback({}); },
-  getUsers(callback)                              { if (callback) callback([]); },
-  checkUserExist(username, callback)              { if (callback) callback([]); },
-  addUser(json, callback)                         { if (callback) callback({}); },
-  modifyPsw(username, newpsw, oldpsw, callback)   { if (callback) callback({}); },
-  deleteUser(username, callback)                  { if (callback) callback({}); },
-  getFileList(callback)                           { if (callback) callback([]); },
-  getFileChannelBean(ft, fi, gi, callback)        { if (callback) callback({}); },
-  initUserUploadDownLoad(user, callback)          { if (callback) callback({}); },
-  getUserUploadDownloadProgress(user, callback)   { if (callback) callback({}); },
-  getSampleList(callback)                         { if (callback) callback([]); },
-  getSampleInfo(sid, callback)                    { if (callback) callback({}); },
-  getSampleInfoGroup(groupId, callback)           { if (callback) callback({}); },
-  login(username, password, callback)             { if (callback) callback({}); },
-  getManualAddDevice(ids, callback)               { if (callback) callback([]); },
-  refreshChannelValues(ids, callback)             { if (callback) callback([]); },
-  getRegisterInfo(callback)                       { if (callback) callback({}); },
-  getRegistration(callback)                       { if (callback) callback({}); },
-  updateRegistration(json, callback)              { if (callback) callback({}); },
-  getReportBasicSetting(callback)                 { if (callback) callback({}); },
-  changeReportBasicSetting(json, callback)        { if (callback) callback({}); },
-  getReportCostCurrency(callback)                 { if (callback) callback([]); },
-  getReportList(callback)                         { if (callback) callback([]); },
-  changeReportCost(json, callback)                { if (callback) callback({}); },
-  newReport(json, callback)                       { if (callback) callback({}); },
-  deleteReport(reportId, callback)                { if (callback) callback({}); },
-  getReportData(rid, st, tt, callback)            { if (callback) callback({}); },
-  getLocationNDevice(callback)                    { if (callback) callback({}); },
-  getDetectedResult(callback)                     { if (callback) callback({}); },
-  postLocations(json, callback)                   { if (callback) callback({}); },
-  getAlarms(callback)                             { if (callback) callback([]); },
-  getAlarmHistorys(st, et, si, type, callback)    { if (callback) callback([]); },
-  getAlarmTime(orderStr, callback)                { if (callback) callback([]); },
-  getLocations4Alarms(callback)                   { if (callback) callback([]); },
-  postAlarms(json, callback)                      { if (callback) callback({}); },
-  getEmailSetting(callback)                       { if (callback) callback({}); },
-  changeEmailSetting(json, callback)              { if (callback) callback({}); },
-  verifyEmail(json, callback)                     { if (callback) callback({}); },
-  checkTaskStatus(id, callback)                   { if (callback) callback({}); },
-  getSystemStatus(callback)                       { if (callback) callback({}); },
-  loginConfirm(user, psw, callback)               { if (callback) callback({}); },
-  createTask(json, callback)                      { if (callback) callback({}); },
-  changeCommunication(json, callback)             { if (callback) callback({}); },
-  getCommunication(callback)                      { if (callback) callback({}); },
-  getLoggingChannels(callback)                    { if (callback) callback([]); },
-  saveSensorPosition(id, x, y, callback)          { if (callback) callback({}); },
+  getDevices(callback) { if (callback) callback([]); },
+  getBackupSettings(callback) { if (callback) callback({}); },
+  updateBackupSettings(json, callback) { if (callback) callback({}); },
+  getUsers(callback) { if (callback) callback([]); },
+  checkUserExist(username, callback) { if (callback) callback([]); },
+  addUser(json, callback) { if (callback) callback({}); },
+  modifyPsw(username, newpsw, oldpsw, callback) { if (callback) callback({}); },
+  deleteUser(username, callback) { if (callback) callback({}); },
+  getFileList(callback) { if (callback) callback([]); },
+  getFileChannelBean(ft, fi, gi, callback) { if (callback) callback({}); },
+  initUserUploadDownLoad(user, callback) { if (callback) callback({}); },
+  getUserUploadDownloadProgress(user, callback) { if (callback) callback({}); },
+  getSampleList(callback) { if (callback) callback([]); },
+  getSampleInfo(sid, callback) { if (callback) callback({}); },
+  getSampleInfoGroup(groupId, callback) { if (callback) callback({}); },
+  login(username, password, callback) { if (callback) callback({}); },
+  getManualAddDevice(ids, callback) { if (callback) callback([]); },
+  refreshChannelValues(ids, callback) { if (callback) callback([]); },
+  getRegisterInfo(callback) { if (callback) callback({}); },
+  getRegistration(callback) { if (callback) callback({}); },
+  updateRegistration(json, callback) { if (callback) callback({}); },
+  getReportBasicSetting(callback) { if (callback) callback({}); },
+  changeReportBasicSetting(json, callback) { if (callback) callback({}); },
+  getReportCostCurrency(callback) { if (callback) callback([]); },
+  getReportList(callback) { if (callback) callback([]); },
+  changeReportCost(json, callback) { if (callback) callback({}); },
+  newReport(json, callback) { if (callback) callback({}); },
+  deleteReport(reportId, callback) { if (callback) callback({}); },
+  getReportData(rid, st, tt, callback) { if (callback) callback({}); },
+  getLocationNDevice(callback) { if (callback) callback({}); },
+  getDetectedResult(callback) { if (callback) callback({}); },
+  postLocations(json, callback) { if (callback) callback({}); },
+  getAlarms(callback) { if (callback) callback([]); },
+  getAlarmHistorys(st, et, si, type, callback) { if (callback) callback([]); },
+  getAlarmTime(orderStr, callback) { if (callback) callback([]); },
+  getLocations4Alarms(callback) { if (callback) callback([]); },
+  postAlarms(json, callback) { if (callback) callback({}); },
+  getEmailSetting(callback) { if (callback) callback({}); },
+  changeEmailSetting(json, callback) { if (callback) callback({}); },
+  verifyEmail(json, callback) { if (callback) callback({}); },
+  checkTaskStatus(id, callback) { if (callback) callback({}); },
+  getSystemStatus(callback) { if (callback) callback({}); },
+  loginConfirm(user, psw, callback) { if (callback) callback({}); },
+  createTask(json, callback) { if (callback) callback({}); },
+  changeCommunication(json, callback) { if (callback) callback({}); },
+  getCommunication(callback) { if (callback) callback({}); },
+  getLoggingChannels(callback) { if (callback) callback([]); },
+  saveSensorPosition(id, x, y, callback) { if (callback) callback({}); },
 
   async exportAllChannelsToCsv(onProgress) {
     if (!_fileLoaded || !_file) {
@@ -710,7 +767,7 @@ const CsdAPI = {
         const recordIndex = start + i;
         const recordOffset = i * _recordLen;
         const recordId = dv.getInt32(recordOffset, false);
-        
+
         const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
         const dateStr = new Date(timestampMs).toISOString();
 
@@ -739,7 +796,7 @@ const CsdAPI = {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    
+
     const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
     link.setAttribute('download', `${baseName}_all_channels.csv`);
     document.body.appendChild(link);
@@ -795,7 +852,7 @@ const CsdAPI = {
         const recordIndex = start + i;
         const recordOffset = i * _recordLen;
         const recordId = dv.getInt32(recordOffset, false);
-        
+
         const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
         const dateStr = new Date(timestampMs).toISOString();
 
@@ -828,7 +885,7 @@ const CsdAPI = {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    
+
     const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
     link.setAttribute('download', `${baseName}_all_channels.xls`);
     document.body.appendChild(link);

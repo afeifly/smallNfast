@@ -14,11 +14,8 @@ import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import ListAltIcon from '@mui/icons-material/ListAlt';
-import ShareIcon from '@mui/icons-material/Share';
+import PrintIcon from '@mui/icons-material/Print';
 import RangeIcon from '@mui/icons-material/DateRange';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import Menu from '@mui/material/Menu';
-import MenuItem from '@mui/material/MenuItem';
 import intl from "react-intl-universal";
 
 import ChannelList from '../channel/ChannelList';
@@ -97,7 +94,7 @@ class GraphicView extends Component {
 
         <div className="graphic-view" ref={this.graphicViewRef}>
           <div className="app-window-title">
-            <span>{intl.get('GRAPHIC_VIEW')}</span>
+            <span>{!isCsdMode && intl.get('GRAPHIC_VIEW')}</span>
 
             <div className="window-title-right-area">
               {!isCsdMode && (
@@ -137,51 +134,18 @@ class GraphicView extends Component {
                 </div>
               </Tooltip>
 
-              {/* Open CSD File button — only shown in CSD mode */}
-              {isCsdMode && (
-                <Tooltip title="Open CSD File">
-                  <IconButton
-                    id="open-csd-file-btn"
-                    style={buttonStyle}
-                    onClick={this.openCsdFile}
-                    disableRipple
-                  >
-                    <FolderOpenIcon style={iconStyle} />
-                  </IconButton>
-                </Tooltip>
-              )}
-
-              {/* Print / Export button */}
-              <Tooltip title={isCsdMode ? "Export / Print" : intl.get('PRINT')}>
+              {/* Print button */}
+              <Tooltip title={intl.get('PRINT')}>
                 <div>
                   <IconButton style={buttonStyle}
                     disabled={noLoggingChannels}
-                    onClick={this.handleShareClick}
+                    onClick={this.printChart}
                     disableRipple>
-                    <ShareIcon style={iconStyle} />
+                    <PrintIcon style={iconStyle} />
                   </IconButton>
                 </div>
               </Tooltip>
 
-              <Menu
-                anchorEl={this.state.shareMenuAnchorEl}
-                open={Boolean(this.state.shareMenuAnchorEl)}
-                onClose={this.handleShareClose}
-              >
-                <MenuItem onClick={this.handlePrintOption}>
-                  {intl.get('PRINT')}
-                </MenuItem>
-                {isCsdMode && (
-                  <MenuItem onClick={this.handleExportCsvOption}>
-                    Export all CSD to CSV
-                  </MenuItem>
-                )}
-                {isCsdMode && (
-                  <MenuItem onClick={this.handleExportExcelOption}>
-                    Export all CSD to Excel
-                  </MenuItem>
-                )}
-              </Menu>
             </div>
 
           </div>
@@ -244,6 +208,12 @@ class GraphicView extends Component {
 
     // allow accessing controller
     window.chartController = this.chartController;
+
+    d3.select(window).on('globalExportCsv', () => {
+      this.handleExportCsvOption();
+    }).on('globalExportExcel', () => {
+      this.handleExportExcelOption();
+    });
 
     // Initialize chartWidth from the actual DOM so the chart renders correctly
     // on the very first data load (before AxisSeries.reviseYAxisLayout runs).
@@ -346,6 +316,8 @@ class GraphicView extends Component {
   componentWillUnmount() {
     this.chartController.clearTimer();
     d3.select(window).on('resize.updateChart', null);
+    d3.select(window).on('globalExportCsv', null)
+                     .on('globalExportExcel', null);
   }
 
 

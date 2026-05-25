@@ -1,45 +1,420 @@
-#root {
-  /* max-width: 1280px; */
-  /* margin: 0 auto; */
-  /* padding: 2rem; */
+/* Global Layout */
+.flex-column-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Header Bar Styling */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 24px;
+  background-color: #ffe000; /* Company Signature Yellow */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+  border-bottom: 1px solid #ebd000;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-logo {
+  filter: drop-shadow(0 0 4px rgba(15, 23, 42, 0.15));
+  transition: transform 0.4s ease;
+}
+
+.header-left:hover .header-logo {
+  transform: rotate(15deg) scale(1.1);
+}
+
+.app-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a; /* Dark Slate for perfect contrast on yellow */
+  letter-spacing: -0.025em;
+}
+
+/* Tab Navigation */
+.header-tabs {
+  display: flex;
+  gap: 4px;
+  height: 100%;
+  align-items: flex-end;
+  padding-bottom: 1px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  color: #475569; /* Slate 600 */
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 18px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.3s ease;
+  outline: none !important;
+}
+
+.tab-btn:hover {
+  color: #0f172a;
+}
+
+.tab-btn.active {
+  color: #00ac86; /* Company Active Teal/Mint */
+  font-weight: 800;
+}
+
+.tab-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 18px;
+  right: 18px;
+  height: 4px;
+  background-color: #00ac86; /* Company Active Teal/Mint */
+  border-radius: 4px 4px 0 0;
+  opacity: 0;
+  transform: scaleX(0.8);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.tab-btn.active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+/* Header Buttons */
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.btn-primary {
+  background: #00ac86; /* Company Active Teal */
+  color: #ffffff;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 172, 134, 0.25);
+  transition: all 0.2s ease;
+  outline: none !important;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0, 172, 134, 0.35);
+  background-color: #009674; /* Darker teal for hover */
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Main Content Wrapper */
+.app-main-content {
+  flex: 1;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.view-content-wrapper {
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+/* Landing Welcome Page styling */
+.landing-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  background-color: #f8fafc; /* Neutral background color instead of yellow */
+}
+
+.landing-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 40px 32px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 16px;
+  box-shadow: 0 20px 30px -5px rgba(15, 23, 42, 0.15), 0 10px 15px -5px rgba(15, 23, 42, 0.1);
   text-align: center;
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
+@keyframes slideUp {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
+    transform: translateY(20px);
   }
-
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+.landing-logo-container {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 96px;
+  height: 96px;
+  background-color: #f8fafc;
+  border-radius: 24px;
+  margin-bottom: 24px;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.9), 0 4px 12px rgba(0, 172, 134, 0.08);
+}
+
+.landing-card-logo {
+  animation: floatLogo 4s ease-in-out infinite;
+}
+
+@keyframes floatLogo {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
   }
 }
 
-.card {
-  padding: 2em;
+.landing-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.02em;
 }
 
-.read-the-docs {
-  color: #888;
+.landing-subtitle {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #64748b;
+  margin: 0 0 32px 0;
+}
+
+.landing-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 240px;
+  padding: 12px 24px;
+  background: #00ac86; /* Company Active Teal */
+  color: #ffffff;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 172, 134, 0.25);
+  transition: all 0.2s ease;
+  margin-bottom: 36px;
+  outline: none !important;
+}
+
+.landing-cta-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 172, 134, 0.35);
+  background-color: #009674;
+}
+
+.landing-cta-btn:active {
+  transform: translateY(0);
+}
+
+/* Recent Files on landing page */
+.recent-files-section {
+  text-align: left;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 24px;
+}
+
+.recent-files-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 12px 0;
+}
+
+.recent-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.recent-file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.recent-file-item:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateX(2px);
+}
+
+.recent-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.recent-file-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-file-meta {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.recent-file-arrow {
+  color: #94a3b8;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.recent-file-item:hover .recent-file-arrow {
+  color: #475569;
+  transform: translateX(2px);
+}
+
+/* Table View Placeholder Styling */
+.table-view-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #64748b;
+  max-width: 360px;
+  padding: 24px;
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.placeholder-icon {
+  color: #cbd5e1;
+  margin-bottom: 16px;
+}
+
+.placeholder-content h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+}
+
+.placeholder-content p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.loading-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  font-size: 16px;
+  font-weight: 500;
+  color: #64748b;
+  background-color: #f8fafc;
+}
+
+/* Material UI Dialog Button Overrides */
+.MuiButton-containedPrimary {
+  background-color: #00ac86 !important;
+  color: #ffffff !important;
+}
+
+.MuiButton-containedPrimary:hover {
+  background-color: #009674 !important;
+}
+
+.MuiButton-outlinedPrimary {
+  color: #00ac86 !important;
+  border-color: rgba(0, 172, 134, 0.5) !important;
+}
+
+.MuiButton-outlinedPrimary:hover {
+  border-color: #00ac86 !important;
+  background-color: rgba(0, 172, 134, 0.04) !important;
+}
+
+.MuiButton-textPrimary {
+  color: #00ac86 !important;
+}
+
+.MuiButton-textPrimary:hover {
+  background-color: rgba(0, 172, 134, 0.04) !important;
+}
+
+/* Override Secondary buttons if used in main buttons */
+.MuiButton-textSecondary {
+  color: #00ac86 !important;
+}
+
+.MuiButton-textSecondary:hover {
+  background-color: rgba(0, 172, 134, 0.04) !important;
+}
+
+/* Header Icon Buttons Styling */
+.header-icon-btn {
+  color: #0f172a !important;
+  transition: background-color 0.2s ease, transform 0.2s ease !important;
+  outline: none !important;
+}
+
+.header-icon-btn:hover {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+  transform: scale(1.05);
 }

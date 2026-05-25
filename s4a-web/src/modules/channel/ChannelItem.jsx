@@ -30,18 +30,28 @@ class ChannelItem extends Component {
 
   render() {
     const { data } = this.props;
-    const type = this.getChannelType(data);
     return (
-      <div className="CL-channel-item">
-        <Checkbox style={{ padding: 4 }} checked={data.selected}
-                  onChange={this.handleChange(data)}
-                  color="primary"
-                  icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
-                  checkedIcon={<CheckBoxIcon fontSize="small" />}
-                  value={ data.name }
-                />
-          <span className="CL-item-label" data-type={ type }>{ data.name }</span>
-      </div>
+      <label className="CL-channel-item">
+        <div className="CL-channel-item-left">
+          <Checkbox
+            checked={data.selected}
+            onChange={this.handleChange(data)}
+            color="primary"
+            icon={<CheckBoxOutlineBlankIcon fontSize="small" />}
+            checkedIcon={<CheckBoxIcon fontSize="small" />}
+            value={ data.name }
+            sx={{
+              padding: '2px',
+              color: '#cbd5e1',
+              '&.Mui-checked': { color: '#00ac86' }
+            }}
+          />
+          <span className="CL-channel-item-name">{ data.name }</span>
+        </div>
+        {data.unit && (
+          <span className="CL-channel-item-unit">{ data.unit }</span>
+        )}
+      </label>
     );
   }
 

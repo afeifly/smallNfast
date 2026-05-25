@@ -3,11 +3,10 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 400px;
-  border-radius: 8px 8px 0 0;
+  width: 280px;
   background-color: #FFFFFF;
-  box-shadow: 0px 1px 6px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.5);
   visibility: hidden;
+  box-sizing: border-box;
 }
 
 .channel-list[data-status=active] {
@@ -82,14 +81,25 @@
 
 
 .channel-group {
-  /* margin-bottom: 16px; */
+  margin-bottom: 8px;
 }
 
 .channel-group-header {
   display: flex;
   align-items: center;
-  height: 32px;
-  /* background-color: rgba(0, 0, 0, 0.075); */
+  height: 30px;
+  gap: 4px;
+  padding: 2px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.sensor-group-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .triangle-btn {
@@ -144,18 +154,54 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: 32px;
-  padding-left: 57px;
+  justify-content: space-between;
+  padding: 2px 12px 2px 36px;
+  box-sizing: border-box;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.CL-channel-item:hover {
+  background-color: #f1f5f9;
 }
 
 .CL-channel-item::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 21px;
+  left: 18px;
   width: 1px;
   height: 100%;
-  border-left: 1px solid rgba(0, 0, 0, 0.2);
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.CL-channel-item-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.CL-channel-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.CL-channel-item-unit {
+  font-size: 10px;
+  color: #64748b;
+  font-style: italic;
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-weight: 600;
 }
 
 .CL-item-label {

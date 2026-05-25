@@ -241,13 +241,15 @@ class GraphicView extends Component {
 
     d3.select(window).on('resize.updateChart', () => {
       let chartX = 0;
+      const listWidth = $('.channel-list').width() || 280;
 
       if (this.channelListVisible) {
-        chartX = $('.channel-list').width() + 20;
+        chartX = listWidth;
       }
 
-      const chartWidth = window.innerWidth - chartX;
-      this.graphicView.style('width', chartWidth + 'px');
+      const chartWidth = $('#graphic-view-wrapper').width() - chartX;
+      this.graphicView.style('left', chartX + 'px')
+        .style('width', chartWidth + 'px');
       this.lineChartRef.current.updateHeight();
       this.lineChartRef.current.setWidth(chartWidth);
     });
@@ -463,7 +465,8 @@ class GraphicView extends Component {
         // AxisSeries.reviseYAxisLayout() sets chartWidth only during its own
         // updateDisplay, which may not have run yet when channelWidth is still 0.
         // Calling setWidth() triggers updateDisplay on both AxisSeries and SplineGroup.
-        const chartWidth = $('#graphic-view-wrapper').width() - (this.channelListVisible ? 440 : 0);
+        const listWidth = $('.channel-list').width() || 280;
+        const chartWidth = $('#graphic-view-wrapper').width() - (this.channelListVisible ? listWidth : 0);
         if (chartWidth > 0) {
           this.lineChartRef.current.setWidth(chartWidth);
         }
@@ -479,12 +482,17 @@ class GraphicView extends Component {
   setPosition = (x = null) => {
     let chartX = 0;
     let chartWidth = 0;
+    const listWidth = $('.channel-list').width() || 280;
+
+    if (x === null) {
+      x = this.channelListVisible ? listWidth : 0;
+    }
 
     if (x === 0) {
       chartX = x;
       this.channelListRef.current.hide();
     } else {
-      chartX = $('.channel-list').width() + 20;
+      chartX = listWidth;
       this.channelListRef.current.show();
     }
 
@@ -563,12 +571,7 @@ class GraphicView extends Component {
 
   switchChannelList = () => {
     this.channelListVisible = !this.channelListVisible;
-
-    if (this.channelListVisible) {
-      this.setPosition(420);
-    } else {
-      this.setPosition(0);
-    }
+    this.setPosition();
   };
 
 

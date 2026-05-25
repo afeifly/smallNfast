@@ -99,45 +99,46 @@
 
 .channel-checkbox-item {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .channel-checkbox-item:hover {
   background-color: #f1f5f9;
 }
 
-.channel-checkbox-item input[type="checkbox"] {
-  accent-color: #00ac86;
-  margin-top: 3px;
-  cursor: pointer;
-  width: 15px;
-  height: 15px;
-}
-
-.channel-item-label {
+.channel-checkbox-left {
   display: flex;
-  flex-direction: column;
-  font-size: 12px;
-  color: #334155;
-  pointer-events: none;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  flex: 1;
 }
 
 .channel-item-name {
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   color: #1e293b;
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .channel-item-unit {
   font-size: 10px;
   color: #64748b;
   font-style: italic;
-  margin-top: 2px;
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-weight: 600;
 }
 
 /* Right Main Panel */
@@ -198,19 +199,19 @@
   accent-color: #00ac86;
   height: 8px;
   border-radius: 4px;
-  background: #ffe000; /* Track background is yellow! */
+  background: #e2e8f0; /* Soft neutral empty track background */
   cursor: pointer;
   outline: none;
-  border: 1px solid #ebd000;
+  border: 1px solid #cbd5e1;
   -webkit-appearance: none;
 }
 
 /* Chrome/Safari track & thumb styling */
 .time-slider::-webkit-slider-runnable-track {
-  background: #ffe000;
+  background: #e2e8f0;
   height: 8px;
   border-radius: 4px;
-  border: 1px solid #ebd000;
+  border: 1px solid #cbd5e1;
 }
 
 .time-slider::-webkit-slider-thumb {
@@ -232,10 +233,10 @@
 
 /* Firefox track & thumb styling */
 .time-slider::-moz-range-track {
-  background: #ffe000;
+  background: #e2e8f0;
   height: 8px;
   border-radius: 4px;
-  border: 1px solid #ebd000;
+  border: 1px solid #cbd5e1;
 }
 
 .time-slider::-moz-range-thumb {

@@ -18,12 +18,11 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  border-radius: 8px 8px 0 0;
   background-color: #FFFFFF;
-  box-shadow: 0px 1px 6px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
   overflow: hidden;
   user-select: none;
+  box-sizing: border-box;
 }
 
 
@@ -36,11 +35,11 @@
   height: 48px;
   line-height: 48px;
   padding: 0 16px 0 24px;
-  font-size: 18px;
-  font-weight: 500;
-  color: #333333;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  background-color: #FAFBFC;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #FFFFFF;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -207,4 +206,9 @@
   outline: none !important;
   box-shadow: none !important;
   -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Add left border to graphic-view as a separator line only when channel list is visible */
+.channel-list[data-status=active] + .graphic-view {
+  border-left: 1px solid #e2e8f0;
 }

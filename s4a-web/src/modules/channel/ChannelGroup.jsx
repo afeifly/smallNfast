@@ -47,8 +47,14 @@ class ChannelGroup extends Component {
             indeterminateIcon={<IndeterminateCheckBoxIcon fontSize="small"/>}
             indeterminate = { !checked && hasOneSelected }
             value={ data.name }
+            sx={{
+              padding: '4px',
+              color: '#cbd5e1',
+              '&.Mui-checked': { color: '#00ac86' },
+              '&.MuiCheckbox-indeterminate': { color: '#00ac86' }
+            }}
           />
-          <div className="CL-item-label" data-type="sensor">{ data.name }</div>
+          <div className="sensor-group-title">{ data.name }</div>
         </div>
 
         <div className="CG-channel-list" ref={this.channelListRef}>

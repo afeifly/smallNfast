@@ -142,7 +142,7 @@ function App() {
               </linearGradient>
             </defs>
           </svg>
-          <span className="app-title">S4A-web</span>
+          <span className="app-title">S4A-Web</span>
         </div>
 
         {/* View Switcher Tabs (only shown in CSD mode and when a file is loaded, or always in non-CSD mode) */}
@@ -224,10 +224,10 @@ function App() {
               <p className="landing-subtitle">
                 Open a CSD file to show data and start analyzing sensor measurements.
               </p>
-              
+
               <button className="landing-cta-btn" onClick={handleOpenFile}>
                 <svg className="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
                 Open CSD File
               </button>
@@ -249,7 +249,7 @@ function App() {
                           </span>
                         </div>
                         <svg className="recent-file-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
                     ))}
@@ -283,9 +283,9 @@ function App() {
                   setRecentDialogOpen(false);
                   handleLoadRecentFile(file);
                 }}>
-                  <ListItemText 
-                    primary={file.name} 
-                    secondary={file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')} 
+                  <ListItemText
+                    primary={file.name}
+                    secondary={file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')}
                     primaryTypographyProps={{ style: { fontWeight: 'bold' } }}
                     secondaryTypographyProps={{ style: { fontSize: '11px', wordBreak: 'break-all' } }}
                   />

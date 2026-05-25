@@ -14,9 +14,8 @@ const formatTimestamp = (ms) => {
   const hh = pad(date.getHours());
   const mm = pad(date.getMinutes());
   const ss = pad(date.getSeconds());
-  const msStr = pad(date.getMilliseconds(), 3);
   
-  return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}.${msStr}`;
+  return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
 };
 
 const formatShortTime = (ms) => {
@@ -231,19 +230,24 @@ const TableView = () => {
                     const isChecked = selectedChannelIds.includes(ch.channel_id);
                     return (
                       <label key={ch.channel_id} className="channel-checkbox-item">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleChannelCheckboxChange(ch.channel_id)}
-                        />
-                        <div className="channel-item-label">
+                        <div className="channel-checkbox-left">
+                          <Checkbox
+                            size="small"
+                            checked={isChecked}
+                            onChange={() => handleChannelCheckboxChange(ch.channel_id)}
+                            sx={{
+                              padding: '2px',
+                              color: '#cbd5e1',
+                              '&.Mui-checked': { color: '#00ac86' }
+                            }}
+                          />
                           <span className="channel-item-name">
                             {ch.logic_channel_description || `Channel ${ch.channel_id}`}
                           </span>
-                          {ch.unit_in_ascii && (
-                            <span className="channel-item-unit">Unit: {ch.unit_in_ascii}</span>
-                          )}
                         </div>
+                        {ch.unit_in_ascii && (
+                          <span className="channel-item-unit">{ch.unit_in_ascii}</span>
+                        )}
                       </label>
                     );
                   })}

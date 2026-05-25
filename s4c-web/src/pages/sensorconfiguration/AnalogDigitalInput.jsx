@@ -28,8 +28,9 @@ const AnalogDigitalInput = () => {
     return type === 0 ? 'Analog' : (type === 1 ? 'Digital' : '---');
   };
 
-  const formatTerminal = (no) => {
-    return no ? `T${no}` : '---';
+  const formatTerminal = (item) => {
+    if (!item.TerminalNo) return '---';
+    return item.OptionBoardType === 1 ? `x${item.TerminalNo}` : `T${item.TerminalNo}`;
   };
 
   const formatSignal = (item) => {
@@ -38,7 +39,7 @@ const AnalogDigitalInput = () => {
       const types = { 0: '4-20mA', 1: '0-20mA', 2: '0-1V', 3: '0-10V' };
       return types[item.AnalogSignalType] || 'Analog';
     }
-    const types = { 0: 'Pulse', 1: 'State' };
+    const types = { 0: 'Counter', 1: 'Runtime', 2: 'Status' };
     return types[item.DigitalType] || 'Digital';
   };
 
@@ -133,7 +134,7 @@ const AnalogDigitalInput = () => {
                 items.map((item, index) => (
                   <tr key={item.CreateTime || index}>
                     <td>{formatOptionBoardType(item.OptionBoardType)}</td>
-                    <td>{formatTerminal(item.TerminalNo)}</td>
+                    <td>{formatTerminal(item)}</td>
                     <td>{item.SensorDescription || '---'}</td>
                     <td>{item.ChannelDescription || '---'}</td>
                     <td>{formatSignal(item)}</td>

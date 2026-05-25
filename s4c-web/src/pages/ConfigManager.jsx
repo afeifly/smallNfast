@@ -302,13 +302,28 @@ const ConfigManager = () => {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                        {cfg.id !== activeConfigId && (
+                        {cfg.id === activeConfigId ? (
+                          <button 
+                            className="btn-modbus-save" 
+                            style={{ 
+                              padding: '2px 12px', 
+                              fontSize: '12px', 
+                              height: '28px', 
+                              background: '#FFF7E8', 
+                              color: '#E6A23C', 
+                              border: '1px solid #FFE4BA' 
+                            }}
+                            onClick={() => setActiveConfigId(null)}
+                          >
+                            Clear
+                          </button>
+                        ) : (
                           <button 
                             className="btn-modbus-save" 
                             style={{ padding: '2px 12px', fontSize: '12px', height: '28px' }}
                             onClick={() => setActiveConfigId(cfg.id)}
                           >
-                            Switch
+                            Load
                           </button>
                         )}
                         <button 

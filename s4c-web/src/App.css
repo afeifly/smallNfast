@@ -841,3 +841,19 @@
 .drawer-input:focus {
   border-color: #00AB84;
 }
+
+/* Disabled navigation items */
+.nav-item.disabled,
+.submenu-item.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  background: none !important;
+  color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.nav-item.disabled:hover,
+.submenu-item.disabled:hover {
+  background: none !important;
+  color: rgba(0, 0, 0, 0.4) !important;
+}

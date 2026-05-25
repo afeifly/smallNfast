@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useConfig } from '../context/ConfigContext';
 
 // Import PNG Icons
 import iconHomeL from '../assets/images/icon_home_l.png';
@@ -96,18 +97,16 @@ export const NAV = [
   {
     key: 'analysis',
     label: 'Data Analysis',
+    to: '/analysis',
     icons: { active: iconDashbL, inactive: iconDashbD },
-    children: [
-      { label: 'Report', to: '/analysis/report' },
-      { label: 'Export Data', to: '/analysis/export' },
-      { label: 'Energy Analysis', to: '/analysis/energy' },
-    ],
   },
 ];
 
 const Sidebar = () => {
   const location = useLocation();
   const currentPath = location.pathname;
+  const { activeConfigId } = useConfig();
+  const hasConfig = !!activeConfigId;
 
   // Determine which group is initially open based on current path
   const initialOpen = NAV.reduce((acc, item) => {
@@ -138,8 +137,9 @@ const Sidebar = () => {
             : item.to && currentPath.startsWith(item.to);
 
           const hasChildren = !!item.children;
-          const isActive = isLeafActive;
-          const isOpen = !!openMenus[item.key];
+          const isParentDisabled = !hasConfig && item.key !== 'system' && item.key !== 'home';
+          const isActive = isLeafActive && !isParentDisabled;
+          const isOpen = !isParentDisabled && !!openMenus[item.key];
 
           const iconSrc = isActive ? item.icons.active : item.icons.inactive;
 
@@ -153,36 +153,65 @@ const Sidebar = () => {
             <div key={item.key} className="nav-group">
               {/* Parent item */}
               {item.to ? (
-                <Link
-                  to={item.to}
-                  className={`nav-item ${isLeafActive ? 'active' : ''}`}
-                >
-                  <div className="nav-icon">
-                    <img
-                      src={iconSrc}
-                      alt={item.label}
-                      style={normalIconStyle}
-                    />
+                isParentDisabled ? (
+                  <div className="nav-item disabled">
+                    <div className="nav-icon">
+                      <img
+                        src={item.icons.inactive}
+                        alt={item.label}
+                        style={normalIconStyle}
+                      />
+                    </div>
+                    <span>{item.label}</span>
                   </div>
-                  <span>{item.label}</span>
-                </Link>
+                ) : (
+                  <Link
+                    to={item.to}
+                    className={`nav-item ${isLeafActive ? 'active' : ''}`}
+                  >
+                    <div className="nav-icon">
+                      <img
+                        src={iconSrc}
+                        alt={item.label}
+                        style={normalIconStyle}
+                      />
+                    </div>
+                    <span>{item.label}</span>
+                  </Link>
+                )
               ) : (
-                <div
-                  className="nav-item"
-                  onClick={() => toggle(item.key)}
-                >
-                  <div className="nav-icon">
-                    <img
-                      src={iconSrc}
-                      alt={item.label}
-                      style={normalIconStyle}
-                    />
+                isParentDisabled ? (
+                  <div className="nav-item disabled">
+                    <div className="nav-icon">
+                      <img
+                        src={item.icons.inactive}
+                        alt={item.label}
+                        style={normalIconStyle}
+                      />
+                    </div>
+                    <span>{item.label}</span>
+                    <span className="chevron">
+                      {Icons.chevron(false)}
+                    </span>
                   </div>
-                  <span>{item.label}</span>
-                  <span className="chevron">
-                    {Icons.chevron(isOpen)}
-                  </span>
-                </div>
+                ) : (
+                  <div
+                    className="nav-item"
+                    onClick={() => toggle(item.key)}
+                  >
+                    <div className="nav-icon">
+                      <img
+                        src={iconSrc}
+                        alt={item.label}
+                        style={normalIconStyle}
+                      />
+                    </div>
+                    <span>{item.label}</span>
+                    <span className="chevron">
+                      {Icons.chevron(isOpen)}
+                    </span>
+                  </div>
+                )
               )}
 
               {/* Sub-items */}
@@ -190,6 +219,19 @@ const Sidebar = () => {
                 <div className={`submenu ${isOpen ? 'submenu-open' : ''}`}>
                   {item.children.map((child) => {
                     const childActive = currentPath === child.to || currentPath.startsWith(child.to + '/');
+                    const isChildDisabled = !hasConfig && child.to !== '/config-manager';
+                    
+                    if (isChildDisabled) {
+                      return (
+                        <div
+                          key={child.to}
+                          className="submenu-item disabled"
+                        >
+                          <span>{child.label}</span>
+                        </div>
+                      );
+                    }
+
                     return (
                       <Link
                         key={child.to}

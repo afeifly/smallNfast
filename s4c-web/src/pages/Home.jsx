@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import iconAlertBig from '../assets/images/icon_alert_big.png';
 import OnlineValueCard from '../components/OnlineValueCard';
 import { useConfig } from '../context/ConfigContext';
@@ -22,12 +23,33 @@ const Home = () => {
   // If no config data is loaded, show the empty state
   if (!configData || !configData.configs) {
     return (
-      <div className="content-card">
-        <div className="empty-state">
-          <div className="empty-icon">
-            <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain' }} />
-          </div>
-          <p className="empty-text">Add more at sensor configuration page</p>
+      <div className="content-card" style={{ padding: '48px' }}>
+        <div className="empty-state" style={{ maxWidth: '400px', margin: '0 auto', gap: '20px', textAlign: 'center' }}>
+          <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+          <p className="empty-text" style={{ fontSize: '14px', color: '#86909C', fontWeight: 'normal', margin: 0, lineHeight: '1.5' }}>
+            Please load a configuration file first to view the Home dashboard.
+          </p>
+          <Link 
+            to="/config-manager" 
+            style={{ 
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textDecoration: 'none',
+              padding: '8px 24px', 
+              fontSize: '14px', 
+              fontWeight: '600', 
+              borderRadius: '4px',
+              color: '#191919',
+              background: '#FFE000', // Matches --primary-color: #FFE000
+              border: 'none',
+              cursor: 'pointer',
+              marginTop: '12px',
+              transition: 'background 0.2s'
+            }}
+          >
+            Go to Config File Page
+          </Link>
         </div>
       </div>
     );

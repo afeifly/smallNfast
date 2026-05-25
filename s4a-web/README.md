@@ -12,7 +12,7 @@ npm install
 # Mock mode — uses built-in fake data (no device / no file needed)
 npm run dev
 
-# CSD mode — reads real .csd binary files via Dart/Wasm
+# CSD mode — reads real .csd binary files via pure JavaScript parser
 npm run dev:csd
 
 # Real API mode — connects to a live device server
@@ -26,25 +26,17 @@ VITE_API_HOST=http://192.168.1.1 npm run dev
 | Mode | Env flag | Data source |
 |---|---|---|
 | **Mock** | `VITE_USE_MOCK=true` | `MockAPI.js` — hardcoded fake data |
-| **CSD** | `VITE_USE_CSD=true` | `CsdAPI.js` — Dart/Wasm parses a `.csd` file the user picks |
+| **CSD** | `VITE_USE_CSD=true` | `CsdAPI.js` — Pure JavaScript parser reads a `.csd` file the user picks |
 | **Real** | _(neither)_ | `RealAPI` — HTTP calls to a live device |
 
-In **CSD mode** a 📂 button appears in the top-right of the chart header. Click it to open a `.csd` file. The chart auto-refreshes once the file is parsed.
+In **CSD mode** an **Open CSD File** prompt is shown (or folder icon in the top header). Click it to open a `.csd` file. The application auto-refreshes once the file is parsed.
 
 ---
 
-## CSD / Wasm Module
+## Performance & Memory Optimization
 
-The Dart Wasm bridge lives in `../tools/csd_wasm/`. To rebuild after changing Dart code:
-
-```bash
-cd ../tools/csd_wasm
-./build.sh
-# outputs → s4a-web/public/csd_handler.wasm
-#           s4a-web/public/csd_handler.mjs
-```
-
-> **Note:** `csd_handler.mjs` must stay in `public/` and is loaded at runtime with a Blob-URL trick — it must **not** be bundled by Vite. See `CsdAPI.js` for details.
+- **Pure JavaScript CSD Parser**: Written in vanilla JS (`CsdAPI.js`), it uses lazy slice-based reading. Only the header and active data windows are loaded into memory, keeping the RAM footprint minimal (typically under 10 KB of RAM at rest, even for files up to 10 GB+).
+- **Chunk-Based Table Pagination**: The Table View requests only 15–500 rows at a time via `getTablePage(pageIndex, pageSize, selectedChannelIds)`. It reads bytes on-demand, preventing browser tab crashes due to out-of-memory errors on large CSD logs.
 
 ---
 
@@ -55,14 +47,17 @@ src/
 ├── api/
 │   ├── TestAPI.js        ← Single entry point — selects Mock / CSD / Real based on env flags
 │   ├── MockAPI.js        ← Hard-coded fake data
-│   ├── CsdAPI.js         ← Dart/Wasm bridge; exposes same interface as MockAPI
+│   ├── CsdAPI.js         ← Pure-JS parser (lazy slice-based reads); exposes same interface as MockAPI
 │   └── RealAPI (inline in TestAPI.js)
 ├── modules/
 │   ├── graphicview/
-│   │   ├── index.jsx     ← Main view: calls API, owns ChartController
+│   │   ├── index.jsx     ← Graphic View page: calls API, owns ChartController
 │   │   ├── ChartController.js  ← Time period, selected channels, Y-axis state
 │   │   ├── LineChart.jsx ← D3 SVG chart
 │   │   └── YAxisSetting.jsx
+│   ├── tableview/
+│   │   ├── TableView.jsx ← Table View page: paginated grid view of CSD data records
+│   │   └── TableView.css
 │   └── channel/
 │       └── ChannelList.jsx  ← Sidebar: loads locations + channels, handles selection
 └── util/
@@ -275,5 +270,3 @@ The caller adds `+8 h` before calling and `DataUtil` subtracts it back, so **CSD
 | Channels show but chart is blank | `channel_id` mismatch between `getUserSettings` and `getChannels` |
 | "No measuring data" toast | `getMeasurementData` returned all-`null` values or empty array |
 | Line is invisible but no error | Timestamps land outside the current chart time window |
-| Wasm fails to load | Check browser console for fetch errors on `/csd_handler.wasm`; make sure `npm run dev:csd` is used (not `npm run dev`) |
-| `csdBridge is undefined` after Wasm loads | Rebuild the Wasm module with `./tools/csd_wasm/build.sh` and hard-refresh |

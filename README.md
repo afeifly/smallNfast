@@ -34,11 +34,15 @@ A **Browser-Based Configuration Manager** for device settings.
 *   **Purpose**: Allows users to import, modify, and export device configuration files (`.cfgf`) directly in the browser with ZIP encryption and MD5 validation.
 *   **Location**: `s4c-web/`
 
-### 6. Web Graphic View
-A **Data Visualization Library** for sensor data charts.
-*   **Technology**: React, D3.js, Material UI.
-*   **Purpose**: Specialized charting components for rendering high-performance graphic views of sensor log data.
-*   **Location**: `web_graphicview/`
+### 6. S4A Web (s4a-web)
+A **Data Visualization & Analysis Web App** for sensor log files.
+*   **Technology**: React, D3.js, Material UI, Vite.
+*   **Features**:
+    *   High-performance D3 Graphic View of history and realtime sensor log data.
+    *   Memory-efficient Table View with chunk-based lazy loading, allowing browsing of large files (up to 10 GB+) with minimal RAM footprint.
+    *   Timeline navigation slider, datetime picker, and column toggling.
+    *   Pure-JavaScript CSD parser (replacing old Dart/Wasm bridge) for zero-configuration builds.
+*   **Location**: `s4a-web/`
 
 ### 7. Flutter Graphic View Wrapper
 A **Flutter Implementation** of the graphic visualization components.

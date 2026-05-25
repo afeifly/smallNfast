@@ -345,6 +345,7 @@ const TableView = () => {
                 onChange={handlePageSizeChange}
                 disabled={loading}
               >
+                <option value={15}>15</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
                 <option value={200}>200</option>

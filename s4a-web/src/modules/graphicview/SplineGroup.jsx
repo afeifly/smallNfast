@@ -284,6 +284,11 @@ class SplineGroup extends Component {
       return;
     }
 
+    if (!this.dragEnabled && (d3.select('.current-date-tip').attr('data-status') !== 'active' ||
+        (this.dataTipPanel && this.dataTipPanel.attr('data-status') !== 'active'))) {
+      this.mouseOver(mouse);
+    }
+
     d3.select('.mouse-line')
       .attr('stroke-dasharray', '1,1')
       .attr('d', function () {
@@ -620,7 +625,7 @@ class SplineGroup extends Component {
       hideTimePeriod();
     }
 
-
+    this.dragEnabled = false;
   }
 
 }

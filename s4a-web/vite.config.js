@@ -11,7 +11,8 @@ export default defineConfig({
   plugins: isCsdMode ? [react()] : [react(), viteSingleFile()],
   base: './',
   server: {
-    host: true
+    host: true,
+    allowedHosts: true
   },
   test: {
     environment: 'jsdom',

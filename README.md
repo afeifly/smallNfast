@@ -54,3 +54,52 @@ A **Flutter Implementation** of the graphic visualization components.
 Miscellaneous scripts and utilities.
 *   **s332dbview.py**: A Python CLI tool to inspect and query SQLite logger databases (`Logger.db`). Supports time-range filtering and database indexing for performance.
 *   **Location**: `tools/`
+
+## PM2 Deployment
+
+Both web applications (`s4c-web` and `s4a-web`) are configured to run under PM2.
+
+- **s4c-web**: Runs in production mode serving the static build folder.
+- **s4a-web**: Runs in development CSD mode (`npm run dev:csd`) using the Vite dev server to dynamically load and parse `.csd` binary files.
+
+### Ports Configured
+- **s4c-web**: `http://localhost:9017` (production static build)
+- **s4a-web**: `http://localhost:9018` (CSD development server)
+
+### Prerequisites
+Make sure `s4c-web` is built:
+```bash
+# Build s4c-web
+cd s4c-web && npm run build && cd ..
+```
+Note: `s4a-web` runs Vite's development server, so you do not need to build it beforehand.
+
+### Managing via PM2
+You can start, stop, or manage both apps simultaneously using the root-level `ecosystem.config.cjs` from the workspace root:
+
+```bash
+# Start both apps
+pm2 start ecosystem.config.cjs
+
+# Check status
+pm2 status
+
+# Stop both apps
+pm2 stop ecosystem.config.cjs
+
+# Restart both apps
+pm2 restart ecosystem.config.cjs
+
+# View logs
+pm2 logs
+```
+
+For individual application management:
+```bash
+# Standalone s4c-web (serves built dist)
+cd s4c-web && pm2 start ecosystem.config.cjs
+
+# Standalone s4a-web (runs dev:csd server)
+cd s4a-web && pm2 start ecosystem.config.cjs
+```
+

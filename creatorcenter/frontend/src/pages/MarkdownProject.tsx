@@ -35,7 +35,7 @@ export default function MarkdownProject() {
   const [mode, setMode] = useState<Mode>("preview");
   const [content, setContent] = useState("");
   const [saved, setSaved] = useState(true);
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [lang, setLang] = useState(project?.target_lang || "");
   const [provider, setProvider] = useState("minimax");
   const [msg, setMsg] = useState("");
@@ -152,7 +152,7 @@ export default function MarkdownProject() {
   }
 
   const pendingCount = status ? status.total_count - status.translated_count : 0;
-  const modes: { key: Mode; icon: JSX.Element; label: string }[] = [
+  const modes: { key: Mode; icon: React.ReactNode; label: string }[] = [
     { key: "preview", icon: <Eye className="w-4 h-4" />, label: "Preview" },
     { key: "edit", icon: <PenLine className="w-4 h-4" />, label: "Edit" },
     { key: "segments", icon: <List className="w-4 h-4" />, label: "Segments" },

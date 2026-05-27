@@ -29,7 +29,10 @@ export async function getProject(id: number): Promise<ProjectDetail> {
   return res.data;
 }
 
-export async function updateProject(id: number, data: { target_lang?: string }): Promise<Project> {
+export async function updateProject(
+  id: number,
+  data: { name?: string; target_lang?: string; source_lang?: string }
+): Promise<Project> {
   const res = await api.patch(`/projects/${id}`, data);
   return res.data;
 }

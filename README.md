@@ -55,51 +55,60 @@ Miscellaneous scripts and utilities.
 *   **s332dbview.py**: A Python CLI tool to inspect and query SQLite logger databases (`Logger.db`). Supports time-range filtering and database indexing for performance.
 *   **Location**: `tools/`
 
+### 9. Creator Center (creatorcenter)
+A **Full-stack Document Translation & Center** application.
+*   **Technology**: FastAPI (Python 3.13), SQLite, React & Vite (TypeScript).
+*   **Purpose**: A central workspace to upload, parse, translate, edit, and export documents (e.g. `.docx`, Markdown) with automated MiniMax/OpenL translation pipelines and PDF generation.
+*   **Location**: `creatorcenter/`
+
 ## PM2 Deployment
 
-Both web applications (`s4c-web` and `s4a-web`) are configured to run under PM2.
+All three web applications (`s4c-web`, `s4a-web`, and `creatorcenter`) are configured to run under PM2.
 
 - **s4c-web**: Runs in production mode serving the static build folder.
 - **s4a-web**: Runs in development CSD mode (`npm run dev:csd`) using the Vite dev server to dynamically load and parse `.csd` binary files.
+- **creatorcenter**: Runs in production mode serving the built frontend assets directly from the FastAPI backend.
 
 ### Ports Configured
-- **s4c-web**: `http://localhost:9017` (production static build)
-- **s4a-web**: `http://localhost:9018` (CSD development server)
+- **s4c-web**: `http://localhost:9018` (production static build)
+- **s4a-web**: `http://localhost:9019` (CSD development server)
+- **creatorcenter**: `http://localhost:9020` (production FastAPI + React frontend)
 
 ### Prerequisites
-Make sure `s4c-web` is built:
+Make sure `s4c-web` and `creatorcenter` frontend are built, and Python packages are installed:
 ```bash
 # Build s4c-web
 cd s4c-web && npm run build && cd ..
+
+# Setup creatorcenter
+cd creatorcenter
+# Install npm packages and build frontend
+cd frontend && npm ci && npm run build && cd ..
+# Setup Python 3.13 virtual environment and dependencies
+rm -rf .venv
+python3.13 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+cd ..
 ```
 Note: `s4a-web` runs Vite's development server, so you do not need to build it beforehand.
 
 ### Managing via PM2
-You can start, stop, or manage both apps simultaneously using the root-level `ecosystem.config.cjs` from the workspace root:
+You can start, stop, or manage all apps simultaneously using the root-level `ecosystem.config.cjs` from the workspace root:
 
 ```bash
-# Start both apps
+# Start all apps
 pm2 start ecosystem.config.cjs
 
 # Check status
 pm2 status
 
-# Stop both apps
-pm2 stop ecosystem.config.cjs
+# Stop all apps
+pm2 stop all
 
-# Restart both apps
-pm2 restart ecosystem.config.cjs
+# Restart all apps
+pm2 restart all
 
 # View logs
 pm2 logs
-```
-
-For individual application management:
-```bash
-# Standalone s4c-web (serves built dist)
-cd s4c-web && pm2 start ecosystem.config.cjs
-
-# Standalone s4a-web (runs dev:csd server)
-cd s4a-web && pm2 start ecosystem.config.cjs
 ```
 

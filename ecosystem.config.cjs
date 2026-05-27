@@ -7,16 +7,25 @@ module.exports = {
       args: 'serve -s dist',
       env: {
         NODE_ENV: 'production',
-        PORT: 9017
+        PORT: 9018
       }
     },
     {
       name: 's4a-web',
       cwd: './s4a-web',
       script: 'npm',
-      args: 'run dev:csd -- --port 9018 --host',
+      args: 'run dev:csd -- --port 9019 --host',
       env: {
         NODE_ENV: 'development'
+      }
+    },
+    {
+      name: 'creatorcenter',
+      cwd: './creatorcenter',
+      script: './.venv/bin/python',
+      args: '-m uvicorn backend.main:app --host 0.0.0.0 --port 9020',
+      env: {
+        NODE_ENV: 'production'
       }
     }
   ]

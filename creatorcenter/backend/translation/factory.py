@@ -1,8 +1,9 @@
+from typing import Dict, Type
 from backend.translation.base import TranslationProvider
 from backend.translation.openl import OpenLProvider
 from backend.translation.minimax import MiniMaxProvider
 
-PROVIDERS: dict[str, type[TranslationProvider]] = {
+PROVIDERS: Dict[str, Type[TranslationProvider]] = {
     "openl": OpenLProvider,
     "minimax": MiniMaxProvider,
 }

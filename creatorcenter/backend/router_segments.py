@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Dict
 from pydantic import BaseModel
 from backend.database import get_db
 from backend.models import SegmentOut, PaginatedSegments, EditTranslationRequest, BatchEditRequest
@@ -38,7 +39,7 @@ def list_segments(
 
     # Batch-fetch all translations for these segments' key_ids
     key_ids = list({r["key_id"] for r in rows if r["key_id"] is not None})
-    translations_map: dict[int, dict[str, str]] = {}
+    translations_map: Dict[int, Dict[str, str]] = {}
     if key_ids:
         placeholders = ",".join("?" for _ in key_ids)
         trans_rows = db.execute(

@@ -1,6 +1,7 @@
 import json
 import re
 import httpx
+from typing import List
 from backend.translation.base import TranslationProvider
 from backend.config import LANG_TO_API, SUPPORTED_LANGUAGES
 
@@ -26,8 +27,8 @@ class MiniMaxProvider(TranslationProvider):
         return results[0] if results else text
 
     def translate_batch(
-        self, texts: list[str], source_lang: str, target_lang: str
-    ) -> list[str]:
+        self, texts: List[str], source_lang: str, target_lang: str
+    ) -> List[str]:
         if not texts:
             return []
 

@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+from typing import List
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
 from backend.database import get_db
@@ -75,7 +76,7 @@ def upload_project(
     return ProjectOut.from_row(row)
 
 
-def _create_segments_and_keys(project_id: int, parsed: list[dict], db):
+def _create_segments_and_keys(project_id: int, parsed: List[dict], db):
     """Insert segments and link to translation keys (shared by docx and markdown)."""
     for seg in parsed:
         db.execute(

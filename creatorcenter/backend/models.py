@@ -1,12 +1,12 @@
 from pydantic import BaseModel
-
+from typing import Optional, List, Dict
 
 class ProjectOut(BaseModel):
     id: int
     name: str
     content_type: str
     source_lang: str
-    target_lang: str | None
+    target_lang: Optional[str]
     status: str
     segment_count: int
     created_at: str
@@ -19,10 +19,10 @@ class ProjectOut(BaseModel):
 
 
 class ProjectDetail(ProjectOut):
-    original_file: str | None
-    markdown_content: str | None
+    original_file: Optional[str]
+    markdown_content: Optional[str]
     updated_at: str
-    available_languages: list[str] = []
+    available_languages: List[str] = []
 
 
 class SegmentOut(BaseModel):
@@ -30,21 +30,21 @@ class SegmentOut(BaseModel):
     project_id: int
     sequence: int
     paragraph_index: int
-    container_paragraph_index: int | None
+    container_paragraph_index: Optional[int]
     run_index: int
     source_text: str
     formatting_json: dict
     paragraph_formatting_json: dict
     container_type: str
-    container_index: int | None
-    table_row: int | None
-    table_col: int | None
-    section_index: int | None
-    key_id: int | None
-    translated_text: str | None
+    container_index: Optional[int]
+    table_row: Optional[int]
+    table_col: Optional[int]
+    section_index: Optional[int]
+    key_id: Optional[int]
+    translated_text: Optional[str]
     is_translated: bool
     ignored: bool
-    translated_langs: dict[str, str] = {}
+    translated_langs: Dict[str, str] = {}
 
     @classmethod
     def from_row(cls, row) -> "SegmentOut":
@@ -66,7 +66,7 @@ class SegmentOut(BaseModel):
 
 
 class PaginatedSegments(BaseModel):
-    items: list[SegmentOut]
+    items: List[SegmentOut]
     total: int
     page: int
     page_size: int
@@ -75,7 +75,7 @@ class PaginatedSegments(BaseModel):
 class TranslationPair(BaseModel):
     key_id: int
     source_text: str
-    translated_text: str | None
+    translated_text: Optional[str]
     is_edited: bool
     occurrence_count: int
 
@@ -96,9 +96,9 @@ class ExportRequest(BaseModel):
 
 
 class UpdateProjectRequest(BaseModel):
-    name: str | None = None
-    target_lang: str | None = None
-    source_lang: str | None = None
+    name: Optional[str] = None
+    target_lang: Optional[str] = None
+    source_lang: Optional[str] = None
 
 
 class CreateMarkdownRequest(BaseModel):
@@ -117,4 +117,4 @@ class EditTranslationRequest(BaseModel):
 
 
 class BatchEditRequest(BaseModel):
-    edits: list[dict]
+    edits: List[dict]

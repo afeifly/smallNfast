@@ -1,8 +1,9 @@
 import json
 import re
+from typing import List, Tuple
 
 
-def parse_markdown(md_text: str) -> tuple[list[dict], str]:
+def parse_markdown(md_text: str) -> Tuple[List[dict], str]:
     """
     Extract translatable text from markdown, return segments + placeholder-ized markdown.
     Each segment gets a {{SEG_N}} placeholder in the output markdown.
@@ -118,7 +119,7 @@ def parse_markdown(md_text: str) -> tuple[list[dict], str]:
     return segments, "\n".join(placeholder_md)
 
 
-def _extract_inline(text: str, start_idx: int) -> tuple[list[dict], str]:
+def _extract_inline(text: str, start_idx: int) -> Tuple[List[dict], str]:
     """
     Extract translatable text from inline content, accounting for markdown formatting.
     Returns list of segment dicts and a placeholder-ized version of the text.

@@ -1,5 +1,6 @@
 import json
 from docx import Document
+from typing import List
 
 WML_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -133,7 +134,7 @@ def _iter_paragraph_runs(paragraph, para_idx, container_type, container_index,
     return segments
 
 
-def parse_docx(file_path: str) -> list[dict]:
+def parse_docx(file_path: str) -> List[dict]:
     doc = Document(file_path)
     segments = []
     seq = 0

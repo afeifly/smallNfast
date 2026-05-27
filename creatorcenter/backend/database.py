@@ -1,6 +1,7 @@
 import sqlite3
 import json
 from pathlib import Path
+from typing import Optional
 from backend.config import DATABASE_PATH
 
 SCHEMA = """
@@ -66,7 +67,7 @@ def get_db_path() -> Path:
     return DATABASE_PATH
 
 
-def init_db(db_path: Path | None = None) -> None:
+def init_db(db_path: Optional[Path] = None) -> None:
     if db_path is None:
         db_path = DATABASE_PATH
     conn = sqlite3.connect(str(db_path), check_same_thread=False)

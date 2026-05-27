@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 
 class TranslationProvider(ABC):
@@ -8,6 +9,6 @@ class TranslationProvider(ABC):
 
     @abstractmethod
     def translate_batch(
-        self, texts: list[str], source_lang: str, target_lang: str
-    ) -> list[str]:
+        self, texts: List[str], source_lang: str, target_lang: str
+    ) -> List[str]:
         ...

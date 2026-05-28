@@ -228,7 +228,7 @@ let DataUtil = {
       }
 
       if(time <= d.time.getTime()) {
-        if(d.value) {
+        if(d.value !== null && d.value !== undefined) {
           d.max = max;
           d.min = min;
 

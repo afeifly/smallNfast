@@ -107,7 +107,7 @@ class LineChart extends Component {
 
     const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
     if (isCsdMode && TestAPI.onFileLoaded) {
-      TestAPI.onFileLoaded(() => {
+      this.fileLoadedUnsubscribe = TestAPI.onFileLoaded(() => {
         this.setState({ fileLoaded: true });
       });
     }
@@ -141,6 +141,12 @@ class LineChart extends Component {
       this.AxisSeriesRef.current.updateDisplay();
       this.SplineGroupRef.current.updateDisplay();
     })
+  }
+
+  componentWillUnmount() {
+    if (this.fileLoadedUnsubscribe) {
+      this.fileLoadedUnsubscribe();
+    }
   }
 
 

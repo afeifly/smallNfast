@@ -337,7 +337,8 @@ class SplineGroup extends Component {
           }
         }
 
-        value = d.scale.invert(pos.y).toFixed(2);
+        const res = d.resolution !== undefined ? d.resolution : 2;
+        value = d.scale.invert(pos.y).toFixed(res);
         self.setDataTipContent(d, value);
 
         return "translate(" + Math.floor(mouse[0]) + "," + Math.floor(pos.y) + ")";

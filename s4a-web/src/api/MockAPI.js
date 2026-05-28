@@ -56,6 +56,7 @@ let TestAPI = {
             logic_channel_description: "Humidity",
             sensor_description: "Sensor A",
             unit_in_ascii: "%",
+            resolution: 2,
           },
           {
             channel_id: 17,
@@ -64,6 +65,7 @@ let TestAPI = {
             logic_channel_description: "Temperature",
             sensor_description: "Sensor A",
             unit_in_ascii: "°C",
+            resolution: 2,
           }
         ]
       });

@@ -229,7 +229,7 @@ class GraphicView extends Component {
     // In CSD mode: when a file is opened, switch chart to History mode spanning
     // the file's actual date range, then reload channel + measurement data.
     if (isCsdMode && TestAPI.onFileLoaded) {
-      TestAPI.onFileLoaded(() => {
+      this.fileLoadedUnsubscribe = TestAPI.onFileLoaded(() => {
         console.log('[GraphicView] CSD file loaded — refreshing with correct time range...');
         this._applyCsdTimeRange();
         this.getData();
@@ -320,6 +320,9 @@ class GraphicView extends Component {
     d3.select(window).on('resize.updateChart', null);
     d3.select(window).on('globalExportCsv', null)
                      .on('globalExportExcel', null);
+    if (this.fileLoadedUnsubscribe) {
+      this.fileLoadedUnsubscribe();
+    }
   }
 
 
@@ -384,13 +387,17 @@ class GraphicView extends Component {
 
 
   getData = () => {
-    this.loadingRef.current.show();
+    if (this.loadingRef.current) {
+      this.loadingRef.current.show();
+    }
     const username = localStorage.getItem('username');
 
     if (username) {
       TestAPI.getUserSettings(username, this.getUserSettingsHandler);
     } else {
-      this.loadingRef.current.hide();
+      if (this.loadingRef.current) {
+        this.loadingRef.current.hide();
+      }
     }
   };
 

@@ -36,13 +36,13 @@ describe('CsdAPI Parser', () => {
     view.setInt32(protocolHeaderStart + 3016, numChannels, false);
     // rawNumSamples at offset 3020 of protocol header
     view.setInt32(protocolHeaderStart + 3020, numSamples, false);
-    // rawSampleRate at offset 3024 of protocol header
-    view.setInt32(protocolHeaderStart + 3024, 10, false);
+    // rawSampleRate at offset 3024 of protocol header (1 second interval)
+    view.setInt32(protocolHeaderStart + 3024, 1, false);
     // startTime at 3032 (epoch timestamp)
     const startTimeMs = 1716380000000; // May 2024
     view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
     // stopTime at 3040
-    const stopTimeMs = startTimeMs + (numSamples / 10) * 1000;
+    const stopTimeMs = startTimeMs + numSamples * 1000;
     view.setBigInt64(protocolHeaderStart + 3040, BigInt(stopTimeMs), false);
 
     // Write Channel Headers
@@ -62,6 +62,8 @@ describe('CsdAPI Parser', () => {
 
       // statsBase is 848 (FP=788 + 60)
       const statsBase = 848;
+      // resolution (int32) at statsBase
+      view.setInt32(chStart + statsBase, 2 + c, false);
       // min (double) at statsBase + 4 = 852
       view.setFloat64(chStart + statsBase + 4, 1.5 * c, false);
       // max (double) at statsBase + 12 = 860
@@ -121,6 +123,8 @@ describe('CsdAPI Parser', () => {
     expect(channelsResult[1].logic_channel_description).toBe('Ch_1');
     expect(channelsResult[0].sensor_id).toBe(5000);
     expect(channelsResult[1].sensor_id).toBe(5001);
+    expect(channelsResult[0].resolution).toBe(2);
+    expect(channelsResult[1].resolution).toBe(3);
 
     // 5. Verify Measurement Data
     let dataResult = null;
@@ -189,9 +193,18 @@ describe('CsdAPI Parser', () => {
     // Read Blob content to verify CSV structure
     const csvText = await createdBlobs[0].text();
     const csvLines = csvText.split('\n');
-    expect(csvLines[0]).toBe('Timestamp,Record ID,"Ch_0","Ch_1"');
-    expect(csvLines[1]).toContain(',0,10,20');
-    expect(csvLines[5]).toContain(',4,14,24');
+    expect(csvLines[0]).toBe('CSD Device Raw Data');
+    expect(csvLines[2]).toContain('Start Date Time,');
+    expect(csvLines[3]).toContain('End Date Time,');
+    expect(csvLines[4]).toBe('Sample Rate(sec),1');
+    expect(csvLines[5]).toBe('NO.Of Channels,2');
+    expect(csvLines[6]).toBe('NO.Of Records,5');
+    expect(csvLines[8]).toBe('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
+    expect(csvLines[9]).toBe('1,"Ch_0","Ch_0","",0.01,"Location 1/Ch_0"');
+    expect(csvLines[10]).toBe('2,"Ch_1","Ch_1","",0.001,"Location 1/Ch_1"');
+    expect(csvLines[12]).toBe('No.,Date Time,"Ch_0","Ch_1"');
+    expect(csvLines[13]).toContain('1,');
+    expect(csvLines[13]).toContain('2024');
 
     // Trigger Excel export
     let excelProgress = [];
@@ -244,10 +257,10 @@ describe('CsdAPI Parser', () => {
     // Write Protocol Header
     view.setInt32(protocolHeaderStart + 3016, numChannels, false);
     view.setInt32(protocolHeaderStart + 3020, numSamples, false);
-    view.setInt32(protocolHeaderStart + 3024, 2, false); // 2 Hz
+    view.setInt32(protocolHeaderStart + 3024, 2, false); // 2 second interval
     const startTimeMs = 1716380000000;
     view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
-    const stopTimeMs = startTimeMs + (numSamples / 2) * 1000;
+    const stopTimeMs = startTimeMs + numSamples * 2 * 1000;
     view.setBigInt64(protocolHeaderStart + 3040, BigInt(stopTimeMs), false);
 
     // Write Channel Headers
@@ -315,10 +328,10 @@ describe('CsdAPI Parser', () => {
     expect(page0Result.rows[0].values[1]).toBeUndefined(); // Filtered out
     expect(page0Result.rows[0].values[2]).toBe(30.0);
 
-    // Row 1 (timestamp for 2Hz is +500ms per sample)
+    // Row 1 (timestamp for 2s interval is +2000ms per sample)
     expect(page0Result.rows[1].index).toBe(1);
     expect(page0Result.rows[1].recordId).toBe(101);
-    expect(page0Result.rows[1].timestampMs).toBe(startTimeMs + 500);
+    expect(page0Result.rows[1].timestampMs).toBe(startTimeMs + 2000);
     expect(page0Result.rows[1].values[0]).toBe(11.0);
     expect(page0Result.rows[1].values[2]).toBe(31.0);
 
@@ -334,7 +347,7 @@ describe('CsdAPI Parser', () => {
     expect(page2Result.rows).toHaveLength(1); // Only 1 sample left (index 4)
     expect(page2Result.rows[0].index).toBe(4);
     expect(page2Result.rows[0].recordId).toBe(104);
-    expect(page2Result.rows[0].timestampMs).toBe(startTimeMs + 2000);
+    expect(page2Result.rows[0].timestampMs).toBe(startTimeMs + 8000);
     expect(page2Result.rows[0].values[0]).toBe(14.0);
     expect(page2Result.rows[0].values[1]).toBe(24.0);
     expect(page2Result.rows[0].values[2]).toBe(34.0);

@@ -56,6 +56,8 @@ let _numSamples = 0;
 let _numChannels = 0;
 let _dataStart = 0;      // byte offset where records begin
 let _recordLen = 0;      // bytes per record
+let _deviceName = 'CSD Device';
+let _sampleIntervalSec = 1;
 
 let _onFileLoadedCallbacks = [];
 
@@ -137,7 +139,14 @@ async function _readSlice(file, offset, length) {
 
 /** Decode null-terminated UTF-8 from a subarray of a DataView's buffer. */
 function _decodeStr(dv, byteOffset, maxLen) {
-  const bytes = new Uint8Array(dv.buffer, byteOffset, maxLen);
+  const safeLen = Math.max(0, maxLen);
+  if (safeLen <= 0) return '';
+  const start = dv.byteOffset + byteOffset;
+  const available = dv.buffer.byteLength - start;
+  const len = Math.min(safeLen, available);
+  if (len <= 0) return '';
+
+  const bytes = new Uint8Array(dv.buffer, start, len);
   let end = 0;
   while (end < bytes.length && bytes[end] !== 0) end++;
   try {
@@ -155,12 +164,56 @@ function _decodeStr(dv, byteOffset, maxLen) {
  * Populates module-level state; does NOT read sample data.
  */
 async function _parseHeaders(file) {
+  // ── File info header (34 bytes starting at byte 0) ──
+  try {
+    const fh = await _readSlice(file, 0, FILE_HEADER_LEN);
+    const version = fh.getInt32(0, false);
+    const identifier = _decodeStr(fh, 4, 10);
+    console.log(`[CsdAPI] File Info Header parsed - Version: ${version}, Identifier: "${identifier}"`);
+    
+    if (version < 1 || version > 100 || !identifier.includes('SUTO CSD')) {
+      console.warn(`[CsdAPI] Warning: Possibly invalid CSD file signature (Version: ${version}, Identifier: "${identifier}")`);
+    }
+  } catch (err) {
+    console.warn('[CsdAPI] Failed to parse File Info Header:', err);
+  }
+
   // ── Protocol header (3552 bytes starting at byte 34) ──
   const ph = await _readSlice(file, PROTOCOL_HEADER_START, PROTOCOL_HEADER_LEN);
 
-  _numChannels = ph.getInt32(3016, false) || 9;
-  _numSamples = Math.max(0, ph.getInt32(3020, false));
+  _deviceName = _decodeStr(ph, 506, 32) || 'CSD Device';
+
+  let rawChannels = ph.getInt32(3016, false);
+  let rawSamples = ph.getInt32(3020, false);
   const sampleRateRaw = ph.getInt32(3024, false);
+
+  const fileSize = file.size || 0;
+  if (fileSize > 0) {
+    const maxPossibleChannels = Math.floor(fileSize / CHANNEL_HEADER_LEN);
+    if (rawChannels <= 0 || rawChannels > maxPossibleChannels) {
+      console.warn(`[CsdAPI] Parsed invalid channel count (${rawChannels}). Defaulting to 9.`);
+      rawChannels = 9;
+    }
+  } else {
+    if (rawChannels <= 0) {
+      rawChannels = 9;
+    }
+  }
+  _numChannels = rawChannels;
+
+  if (fileSize > 0) {
+    const recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
+    const maxPossibleSamples = Math.floor(fileSize / recordLen);
+    if (rawSamples < 0 || rawSamples > maxPossibleSamples) {
+      console.warn(`[CsdAPI] Parsed invalid sample count (${rawSamples}). Defaulting to 0.`);
+      rawSamples = 0;
+    }
+  } else {
+    if (rawSamples < 0) {
+      rawSamples = 0;
+    }
+  }
+  _numSamples = rawSamples;
 
   let rawStart = Number(ph.getBigInt64(3032, false));
   let rawStop = Number(ph.getBigInt64(3040, false));
@@ -170,18 +223,13 @@ async function _parseHeaders(file) {
   if (Math.abs(rawStop) > MAX_TS) rawStop = 0;
 
   _startTimeMs = rawStart;
-  _stopTimeMs = rawStop;
+  _sampleIntervalSec = sampleRateRaw > 0 ? sampleRateRaw : 1;
+  _sampleRate = 1 / _sampleIntervalSec;
 
   if (_startTimeMs <= 0) _startTimeMs = Date.now() - 3600000;
-  if (_stopTimeMs <= _startTimeMs) {
-    const rate = Math.max(1, sampleRateRaw);
-    _stopTimeMs = _startTimeMs + (_numSamples / rate) * 1000;
-  }
-
-  const durationSec = (_stopTimeMs - _startTimeMs) / 1000;
-  _sampleRate = (_numSamples > 1 && durationSec > 0)
-    ? _numSamples / durationSec
-    : Math.max(1, sampleRateRaw);
+  
+  // Calculate stop time based on start time, sample count, and exact interval
+  _stopTimeMs = _startTimeMs + _numSamples * _sampleIntervalSec * 1000;
 
   // ── Channel headers (918 bytes each) ──
   _channels = [];
@@ -221,6 +269,7 @@ async function _parseHeaders(file) {
     const maxVal = ch.getFloat64(statsBase + 12, false);
 
     const sensorIdVal = ch.getInt32(statsBase + 28, false);
+    const resolution = ch.getInt32(statsBase, false);
 
     _channels.push({
       channel_id: i,
@@ -233,6 +282,7 @@ async function _parseHeaders(file) {
       unit_in_ascii: unitText,
       _min: isFinite(minVal) ? minVal : 0,
       _max: isFinite(maxVal) ? maxVal : 0,
+      resolution: isFinite(resolution) ? resolution : 0,
     });
   }
 
@@ -287,7 +337,13 @@ async function _readChannelData(file, chIdx, startSample, endSample, step) {
 // ── File-load entry point ─────────────────────────────────────────────────────
 
 async function _loadFromFile(file) {
-  localStorage.removeItem('selectedChannels');
+  if (typeof localStorage !== 'undefined' && localStorage) {
+    try {
+      localStorage.removeItem('selectedChannels');
+    } catch (e) {
+      console.warn('[CsdAPI] Failed to access localStorage:', e);
+    }
+  }
   _fileLoaded = false;
 
   let fileToLoad = file;
@@ -496,6 +552,9 @@ const CsdAPI = {
       _onFileLoadedCallbacks.push(callback);
     }
     if (_fileLoaded) setTimeout(callback, 0);
+    return () => {
+      _onFileLoadedCallbacks = _onFileLoadedCallbacks.filter(fn => fn !== callback);
+    };
   },
 
   isFileLoaded() { return _fileLoaded; },
@@ -612,6 +671,7 @@ const CsdAPI = {
         physical_channel_description: ch.physical_channel_description,
         sensor_description: ch.sensor_description,
         unit_in_ascii: ch.unit_in_ascii,
+        resolution: ch.resolution,
       }))
     }), 50);
   },
@@ -743,17 +803,88 @@ const CsdAPI = {
       throw new Error("No CSD file loaded");
     }
 
-    // Prepare CSV header
-    const headers = ['Timestamp', 'Record ID'];
-    _channels.forEach(ch => {
-      const desc = ch.logic_channel_description || `Channel ${ch.channel_id}`;
-      const unit = ch.unit_in_ascii ? ` (${ch.unit_in_ascii})` : '';
-      const escaped = `${desc}${unit}`.replace(/"/g, '""');
-      headers.push(`"${escaped}"`);
+    // Helper to format date for header (e.g., "14.May 2026 10:14")
+    const formatDateTimeHeader = (ms) => {
+      const date = new Date(ms);
+      const day = date.getDate();
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = months[date.getMonth()];
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      const secs = String(date.getSeconds()).padStart(2, '0');
+      return `${day}.${month} ${year} ${hours}:${mins}:${secs}`;
+    };
+
+    // Helper to format date for data row (e.g., "14-05-2026 10:14:35")
+    const formatDateTimeDataRow = (ms) => {
+      const date = new Date(ms);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const mins = String(date.getMinutes()).padStart(2, '0');
+      const secs = String(date.getSeconds()).padStart(2, '0');
+      return `${day}-${month}-${year} ${hours}:${mins}:${secs}`;
+    };
+
+    // Helper to format resolution
+    const getResolutionString = (res) => {
+      const r = Math.max(0, Math.min(20, res || 0));
+      if (r === 0) return '1';
+      return (1 / Math.pow(10, r)).toFixed(r);
+    };
+
+    const csvContentRows = [];
+
+    // 1. Device title (e.g. "S332 Raw Data")
+    csvContentRows.push(`${_deviceName} Raw Data`);
+    csvContentRows.push(''); // Empty line
+
+    // 2. Start / End Date Time
+    csvContentRows.push(`Start Date Time,${formatDateTimeHeader(_startTimeMs)}`);
+    csvContentRows.push(`End Date Time,${formatDateTimeHeader(_stopTimeMs)}`);
+
+    // 3. Sample Rate (sec)
+    csvContentRows.push(`Sample Rate(sec),${_sampleIntervalSec}`);
+
+    // 4. No. of Channels
+    csvContentRows.push(`NO.Of Channels,${_numChannels}`);
+    csvContentRows.push(`NO.Of Records,${_numSamples}`);
+    csvContentRows.push(''); // Empty line
+
+    // 5. Channel Metadata Table
+    csvContentRows.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
+    _channels.forEach((ch, idx) => {
+      const chName = ch.logic_channel_description || `CH${idx + 1}`;
+      const sensor = ch.sensor_description || `Sensor ${idx + 1}`;
+      const unit = ch.unit_in_ascii || '';
+      const resVal = getResolutionString(ch.resolution);
+      const locPoint = `Location ${ch.location_id || 1}/${ch.logic_channel_description || 'MP001'}`;
+      
+      const row = [
+        idx + 1,
+        `"${chName.replace(/"/g, '""')}"`,
+        `"${sensor.replace(/"/g, '""')}"`,
+        `"${unit.replace(/"/g, '""')}"`,
+        resVal,
+        `"${locPoint.replace(/"/g, '""')}"`
+      ];
+      csvContentRows.push(row.join(','));
     });
 
-    const csvContentRows = [headers.join(',')];
+    csvContentRows.push(''); // Empty line
 
+    // 6. Data Header Row
+    const dataHeaders = ['No.', 'Date Time'];
+    _channels.forEach((ch, idx) => {
+      const chName = ch.logic_channel_description || `CH${idx + 1}`;
+      const unit = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
+      dataHeaders.push(`"${(chName + unit).replace(/"/g, '""')}"`);
+    });
+    csvContentRows.push(dataHeaders.join(','));
+
+    // 7. Data Rows
     const chunkSize = 5000;
     for (let start = 0; start < _numSamples; start += chunkSize) {
       const end = Math.min(start + chunkSize, _numSamples);
@@ -766,12 +897,11 @@ const CsdAPI = {
       for (let i = 0; i < count; i++) {
         const recordIndex = start + i;
         const recordOffset = i * _recordLen;
-        const recordId = dv.getInt32(recordOffset, false);
 
         const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
-        const dateStr = new Date(timestampMs).toISOString();
+        const dateStr = formatDateTimeDataRow(timestampMs);
 
-        const rowValues = [dateStr, recordId];
+        const rowValues = [recordIndex + 1, dateStr];
 
         for (let c = 0; c < _numChannels; c++) {
           const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;

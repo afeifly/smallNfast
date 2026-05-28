@@ -234,7 +234,8 @@ class ChannelList extends Component {
         dataLoading: false,   //Set true when loading data from server, and set false after got the data;
         color: color,
         selected: selected,
-        visible: selected
+        visible: selected,
+        resolution: channelObj.resolution,
       };
 
       if (selected) {

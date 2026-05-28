@@ -89,9 +89,11 @@ class YAxisSetting extends Component {
             <Grid container direction="row" justifyContent="flex-start" alignItems="flex-start" >
               <TextField type="number" label={ intl.get('FROM') }
                          defaultValue={ this.minValue } margin="normal"
+                         inputProps={{ step: 'any' }}
                          onChange={ event => this.changeMinValue(event) }/>
               <TextField type="number" label={ intl.get('TO') }
                          defaultValue={ this.maxValue } margin="normal"
+                         inputProps={{ step: 'any' }}
                          onChange={ event => this.changeMaxValue(event) }/>
             </Grid>
             
@@ -128,33 +130,35 @@ class YAxisSetting extends Component {
   }
 
   changeMinValue = (event) => {
-    const value = event.target.value;
-
-    if(value < this.maxValue) {
-      this.minValue = event.target.value;
-    }
+    this.minValue = event.target.value;
   }
 
   changeMaxValue = (event) => {
-    const value = event.target.value;
-
-    if(value > this.minValue) {
-      this.maxValue = event.target.value;
-    }
+    this.maxValue = event.target.value;
   }
 
   changeSteps = (event) => {
-    const value = event.target.value;
-
-    if (value > 0) {
+    const value = parseInt(event.target.value, 10);
+    if (!isNaN(value) && value > 0) {
       this.steps = value;
     }
   }
 
   saveSetting = () => {
-    //todo save the change to server
+    const min = parseFloat(this.minValue);
+    const max = parseFloat(this.maxValue);
 
-    this.yAxisData.scale.domain([this.minValue, this.maxValue]);
+    if (isNaN(min) || isNaN(max)) {
+      alert("Please enter valid numbers for the Y-axis range.");
+      return;
+    }
+
+    if (min === max) {
+      alert("From and To values cannot be equal.");
+      return;
+    }
+
+    this.yAxisData.scale.domain([min, max]);
     this.yAxisData.ticks = this.steps;
 
     d3.select('#line-chart').dispatch(SystemEvent.UPDATE_YAXIS_AND_SPLINES);

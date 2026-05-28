@@ -389,7 +389,7 @@ const TableView = () => {
                         return (
                           <td key={c.channel_id}>
                             {val !== null && val !== undefined ? (
-                              typeof val === 'number' ? val.toFixed(4) : val
+                              typeof val === 'number' ? val.toFixed(c.resolution !== undefined ? c.resolution : 4) : val
                             ) : (
                               <span className="invalid-cell-value">--</span>
                             )}

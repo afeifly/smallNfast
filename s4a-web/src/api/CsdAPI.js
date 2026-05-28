@@ -109,6 +109,20 @@ async function _idbGet(key) {
   }
 }
 
+async function _idbDelete(key) {
+  try {
+    const db = await _openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = e => reject(e.target.error);
+    });
+  } catch (e) {
+    console.warn('[CsdAPI] IDB delete failed:', e);
+  }
+}
+
 async function _idbGetAll() {
   try {
     const db = await _openIDB();
@@ -337,6 +351,33 @@ async function _readChannelData(file, chIdx, startSample, endSample, step) {
   return values;
 }
 
+// Helper to load large files chunk-by-chunk and report real progress
+async function _readArrayBufferWithProgress(file, onProgress) {
+  const size = file.size;
+  const chunkSize = 4 * 1024 * 1024; // 4MB chunks
+  let offset = 0;
+  const chunks = [];
+  
+  while (offset < size) {
+    const end = Math.min(offset + chunkSize, size);
+    const slice = file.slice(offset, end);
+    const buffer = await slice.arrayBuffer();
+    chunks.push(new Uint8Array(buffer));
+    offset = end;
+    if (onProgress) {
+      onProgress(offset / size);
+    }
+  }
+  
+  const fullBuffer = new Uint8Array(size);
+  let writeOffset = 0;
+  for (const chunk of chunks) {
+    fullBuffer.set(chunk, writeOffset);
+    writeOffset += chunk.length;
+  }
+  return fullBuffer.buffer;
+}
+
 // ── File-load entry point ─────────────────────────────────────────────────────
 
 async function _loadFromFile(file) {
@@ -350,15 +391,21 @@ async function _loadFromFile(file) {
   _fileLoaded = false;
   _isCsvMode = false;
 
+  window.dispatchEvent(new CustomEvent('fileLoadStart', { detail: { filename: file.name } }));
+
   if (file && file.name && file.name.toLowerCase().endsWith('.csv')) {
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.1, filename: file.name } }));
     const success = await CsvAPI.loadFromFile(file);
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.8, filename: file.name } }));
     if (success) {
       _file = file;
       _fileLoaded = true;
       _isCsvMode = true;
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
       _onFileLoadedCallbacks.forEach(fn => fn());
       return true;
     }
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0, filename: file.name, error: true } }));
     return false;
   }
 
@@ -367,7 +414,11 @@ async function _loadFromFile(file) {
   if (file.size && file.size < LIMIT && typeof file.arrayBuffer === 'function') {
     try {
       console.log(`[CsdAPI] File size (${(file.size / 1024 / 1024).toFixed(2)} MB) is under 800MB. Loading completely into memory...`);
-      const fullBuffer = await file.arrayBuffer();
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.1, filename: file.name } }));
+      const fullBuffer = await _readArrayBufferWithProgress(file, (p) => {
+        const overallProgress = 0.1 + p * 0.75; // Map chunk reading to 10% - 85%
+        window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: overallProgress, filename: file.name } }));
+      });
       fileToLoad = {
         name: file.name,
         size: file.size,
@@ -385,9 +436,12 @@ async function _loadFromFile(file) {
   }
 
   try {
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.9, filename: file.name } }));
     await _parseHeaders(fileToLoad);
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
   } catch (err) {
     console.error('[CsdAPI] Header parse failed:', err);
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0, filename: file.name, error: true } }));
     return false;
   }
 
@@ -551,6 +605,18 @@ const CsdAPI = {
     }
   },
 
+  async removeRecentFile(name) {
+    try {
+      let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
+      list = list.filter(f => f.name !== name);
+      localStorage.setItem('recentCsdFiles', JSON.stringify(list));
+      await _idbDelete(name);
+      return list;
+    } catch {
+      return [];
+    }
+  },
+
   /**
    * Retrieve the persisted FileSystemFileHandle for a given filename from IDB.
    * Returns undefined if not found or IDB is unavailable.
@@ -574,6 +640,8 @@ const CsdAPI = {
   },
 
   isFileLoaded() { return _fileLoaded; },
+
+  isCsvMode() { return _fileLoaded && _isCsvMode; },
 
   getFileTimeRange() {
     if (_fileLoaded && _isCsvMode) {

@@ -444,14 +444,6 @@ class SplineGroup extends Component {
 
 
   showDateTip = (mouse) => {
-    let w = Math.floor(d3.select('.date-tip-label').node().getBBox().width) + 20;
-    let h = 27;
-
-    if (w % 2 === 0) {
-      w += 1;
-    }
-    let path = `M0 0 L${w} 0 L${w} ${h} L${w / 2 + 4} ${h} L${w / 2} ${h + 4} L${w / 2 - 4} ${h} L0 ${h}z`;
-    d3.select('.date-tip-back').attr('d', path);
     d3.select('.current-date-tip').attr('data-status', 'active');
   }
 
@@ -463,13 +455,28 @@ class SplineGroup extends Component {
   positionDateTip = (chartController, mouse) => {
     const label = d3.select('.date-tip-label');
     const date = chartController.xScale.invert(mouse[0]);
-    let w = Math.round(d3.select('.date-tip-back').node().getBBox().width);
-    const x = Math.round(mouse[0] - w / 2);
-
+    
+    // Update label text first
     label.text(dateFormat(date));
+    
+    // Measure actual text width
+    let labelWidth = Math.floor(label.node().getBBox().width);
+    let w = labelWidth + 24; // Extra padding for premium spacing
+    let h = 27;
+
+    if (w % 2 === 0) {
+      w += 1;
+    }
+
+    // Redraw background path dynamically matching text length
+    let path = `M0 0 L${w} 0 L${w} ${h} L${w / 2 + 4} ${h} L${w / 2} ${h + 4} L${w / 2 - 4} ${h} L0 ${h}z`;
+    d3.select('.date-tip-back').attr('d', path);
+
+    // Position the tooltip panel
+    const x = Math.round(mouse[0] - w / 2);
     d3.select('.current-date-tip').attr('transform', `translate(${x}, -27)`);
 
-    let labelWidth = Math.floor(label.node().getBBox().width);
+    // Center the label text
     let labelX = Math.round((w - labelWidth) / 2);
     label.attr('x', labelX);
   }

@@ -17,6 +17,7 @@ import ListAltIcon from '@mui/icons-material/ListAlt';
 import PrintIcon from '@mui/icons-material/Print';
 import RangeIcon from '@mui/icons-material/DateRange';
 import intl from "react-intl-universal";
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import ChannelList from '../channel/ChannelList';
 import LineChart from './LineChart';
@@ -162,7 +163,20 @@ class GraphicView extends Component {
             <DialogContent>
               <List style={{ width: '400px', maxHeight: '300px', overflow: 'auto' }}>
                 {this.state.recentFiles.map((file, idx) => (
-                  <ListItem disablePadding key={idx}>
+                  <ListItem 
+                    disablePadding 
+                    key={idx}
+                    secondaryAction={
+                      <IconButton 
+                        edge="end" 
+                        aria-label="delete"
+                        onClick={(e) => this.handleRemoveRecentFile(file, e)}
+                        style={{ color: '#94a3b8' }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    }
+                  >
                     <ListItemButton onClick={() => this.loadRecentFile(file)}>
                       <ListItemText 
                         primary={file.name} 
@@ -208,12 +222,6 @@ class GraphicView extends Component {
 
     // allow accessing controller
     window.chartController = this.chartController;
-
-    d3.select(window).on('globalExportCsv', () => {
-      this.handleExportCsvOption();
-    }).on('globalExportExcel', () => {
-      this.handleExportExcelOption();
-    });
 
     // Initialize chartWidth from the actual DOM so the chart renders correctly
     // on the very first data load (before AxisSeries.reviseYAxisLayout runs).
@@ -318,12 +326,18 @@ class GraphicView extends Component {
   componentWillUnmount() {
     this.chartController.clearTimer();
     d3.select(window).on('resize.updateChart', null);
-    d3.select(window).on('globalExportCsv', null)
-                     .on('globalExportExcel', null);
     if (this.fileLoadedUnsubscribe) {
       this.fileLoadedUnsubscribe();
     }
   }
+
+  handleRemoveRecentFile = async (file, e) => {
+    if (e) e.stopPropagation();
+    if (TestAPI.removeRecentFile) {
+      const updated = await TestAPI.removeRecentFile(file.name);
+      this.setState({ recentFiles: updated });
+    }
+  };
 
 
   getUserSettingsHandler = (responseData) => {

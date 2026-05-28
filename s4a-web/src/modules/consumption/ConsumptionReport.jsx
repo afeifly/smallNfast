@@ -57,6 +57,14 @@ const Icons = {
   )
 };
 
+// Helper to format date range beautifully
+const formatDateRange = (startMs, endMs) => {
+  const options = { year: 'numeric', month: 'short', day: 'numeric' };
+  const startStr = new Date(startMs).toLocaleDateString('en-US', options);
+  const endStr = new Date(endMs - 1).toLocaleDateString('en-US', options);
+  return `${startStr} – ${endStr}`;
+};
+
 // ── Reusable sub-component to draw the D3 chart dynamically ──
 function ConsumptionChart({
   page,
@@ -66,7 +74,8 @@ function ConsumptionChart({
   costPerUnit,
   currency,
   reportUnit,
-  height = 320
+  height = 320,
+  isPrint = false
 }) {
   const svgRef = React.useRef(null);
   const tooltipRef = React.useRef(null);
@@ -94,10 +103,14 @@ function ConsumptionChart({
     svgEl.selectAll('*').remove();
 
     const parent = svgRef.current.parentNode;
-    const width = parent.clientWidth || 600;
+    const width = isPrint ? 1060 : (parent.clientWidth || 600);
     const margin = { top: 30, right: 30, bottom: 40, left: 65 };
 
-    svgEl.attr('width', width).attr('height', height);
+    svgEl
+      .attr('width', '100%')
+      .attr('height', height)
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
 
     const colors = ['#00ac86', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6', '#f43f5e'];
 
@@ -148,18 +161,30 @@ function ConsumptionChart({
       .call(g => g.select('.domain').remove())
       .call(g => g.selectAll('.tick line').attr('stroke', '#f1f5f9'));
 
-    const xAxis = d3.axisBottom(x0).tickFormat((d, idx) => {
-      const isFirst = idx === 0;
+    const xAxis = d3.axisBottom(x0).tickFormat((d) => {
       if (page.period === 'hourly') {
-        if (isFirst) return `${page.label} ${d}`;
+        // Daily Report (Hourly points): just return HH:00
         return d;
       } else {
         if (page.label.includes('-W')) {
-          if (isFirst) return d;
-          return d.slice(5); // MM-dd
+          // Weekly Report: map MM-dd date to weekday Mon, Tue, etc.
+          const parts = d.split('-');
+          if (parts.length === 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            const dateObj = new Date(year, month, day);
+            const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            return weekdays[dateObj.getDay()];
+          }
+          return d;
         } else {
-          if (isFirst) return d;
-          return d.slice(8); // dd
+          // Monthly Report: just return day number (1-31)
+          if (d.includes('-')) {
+            const parts = d.split('-');
+            return parts[2] ? parseInt(parts[2], 10).toString() : d;
+          }
+          return d;
         }
       }
     });
@@ -191,7 +216,7 @@ function ConsumptionChart({
       .attr('height', d => y(d[0]) - y(d[1]))
       .attr('width', x1.bandwidth())
       .attr('rx', 2)
-      .on('mouseover', function(event, d) {
+      .on('mouseover', function (event, d) {
         const seriesKey = d3.select(this.parentNode).datum().key;
         const col = reportData.columns.find(c => c.key === seriesKey);
         const name = col ? col.label : seriesKey;
@@ -208,13 +233,13 @@ function ConsumptionChart({
           `);
         d3.select(this).attr('opacity', 0.85);
       })
-      .on('mousemove', function(event) {
+      .on('mousemove', function (event) {
         const [mx, my] = d3.pointer(event, svgEl.node());
         d3.select(tooltipRef.current)
           .style('left', `${mx + 15}px`)
           .style('top', `${my - 25}px`);
       })
-      .on('mouseleave', function() {
+      .on('mouseleave', function () {
         d3.select(tooltipRef.current).style('opacity', 0);
         d3.select(this).attr('opacity', 1);
       });
@@ -231,7 +256,7 @@ function ConsumptionChart({
         .attr('height', d => y(0) - y(d[mainKey]))
         .attr('width', x1.bandwidth())
         .attr('rx', 2)
-        .on('mouseover', function(event, d) {
+        .on('mouseover', function (event, d) {
           const col = reportData.columns.find(c => c.key === mainKey);
           const name = col ? col.label : 'Main Channel';
           const val = d[mainKey];
@@ -247,23 +272,54 @@ function ConsumptionChart({
             `);
           d3.select(this).attr('opacity', 0.85);
         })
-        .on('mousemove', function(event) {
+        .on('mousemove', function (event) {
           const [mx, my] = d3.pointer(event, svgEl.node());
           d3.select(tooltipRef.current)
             .style('left', `${mx + 15}px`)
             .style('top', `${my - 25}px`);
         })
-        .on('mouseleave', function() {
+        .on('mouseleave', function () {
           d3.select(tooltipRef.current).style('opacity', 0);
           d3.select(this).attr('opacity', 1);
         });
     }
   }, [reportData, activeGroup, costPerUnit, currency, reportUnit, height]);
 
+  const legendItems = React.useMemo(() => {
+    if (!activeGroup || !reportData) return [];
+    const items = [];
+    const colors = ['#00ac86', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6', '#f43f5e'];
+    activeGroup.subChannelIds.forEach((cid, i) => {
+      const col = reportData.columns.find(c => c.key === `ch_${cid}`);
+      items.push({
+        label: col ? col.label : `Ch${cid}`,
+        color: colors[i % colors.length]
+      });
+    });
+    if (activeGroup.mainChannelId != null) {
+      const col = reportData.columns.find(c => c.key === `main_${activeGroup.mainChannelId}`);
+      items.push({
+        label: col ? `${col.label} (Main)` : 'Main Channel',
+        color: '#475569'
+      });
+    }
+    return items;
+  }, [activeGroup, reportData]);
+
   return (
-    <div className="chart-container-div" style={{ minHeight: `${height}px` }}>
-      <svg ref={svgRef} className="d3-chart-svg" style={{ height: `${height}px` }}></svg>
+    <div className="chart-container-div" style={{ minHeight: `${height + 35}px`, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <svg ref={svgRef} className="d3-chart-svg" style={{ height: `${height}px`, width: '100%' }}></svg>
       <div ref={tooltipRef} className="d3-tooltip" style={{ opacity: 0 }}></div>
+      {legendItems.length > 0 && (
+        <div className="chart-legend-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', padding: '2px 10px' }}>
+          {legendItems.map((item, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 700, color: '#475569' }}>
+              <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', backgroundColor: item.color }}></span>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -304,11 +360,11 @@ export default function ConsumptionReport() {
           setProgress(p);
         }).then(rows => {
           setAllRows(rows);
-          
+
           if (rows.length > 0) {
             const startMs = rows[0].timestampMs;
             const stopMs = rows[rows.length - 1].timestampMs;
-            
+
             const formatDate = (ms) => {
               const d = new Date(ms);
               const pad = n => String(n).padStart(2, '0');
@@ -317,7 +373,7 @@ export default function ConsumptionReport() {
             setStartDateStr(formatDate(startMs));
             setEndDateStr(formatDate(stopMs));
           }
-          
+
           // Auto-detect groups ("Try Defined First")
           const initialGroups = [];
           const m3Chans = chs.filter(c => {
@@ -330,20 +386,20 @@ export default function ConsumptionReport() {
             return unit.includes('gj') || unit.includes('wh') || unit.includes('cal');
           });
 
-          if (m3Chans.length > 0) {
-            initialGroups.push({
-              id: 'group_water',
-              name: 'Flow & Water Group',
-              subChannelIds: m3Chans.map(c => c.channel_id),
-              mainChannelId: null,
-              needsSum: true
-            });
-          }
           if (gjChans.length > 0) {
             initialGroups.push({
               id: 'group_energy',
               name: 'Energy Group',
               subChannelIds: gjChans.map(c => c.channel_id),
+              mainChannelId: null,
+              needsSum: true
+            });
+          }
+          if (m3Chans.length > 0) {
+            initialGroups.push({
+              id: 'group_water',
+              name: 'Flow & Water Group',
+              subChannelIds: m3Chans.map(c => c.channel_id),
               mainChannelId: null,
               needsSum: true
             });
@@ -388,10 +444,10 @@ export default function ConsumptionReport() {
   // 1. Generate segmented pages (each page handles its own date range + bucket period)
   const pages = React.useMemo(() => {
     if (!startMs || !endMs) return [];
-    
+
     const pageList = [];
     const cursor = new Date(startMs);
-    cursor.setHours(0,0,0,0);
+    cursor.setHours(0, 0, 0, 0);
 
     if (period === 'daily') {
       // Daily Report: Each day is a page with 24 Hourly buckets.
@@ -450,7 +506,7 @@ export default function ConsumptionReport() {
         next.setDate(1);
         const pageEnd = Math.min(next.getTime(), endMs);
 
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const label = `${months[cursor.getMonth()]} ${cursor.getFullYear()}`;
 
         pageList.push({
@@ -469,10 +525,10 @@ export default function ConsumptionReport() {
   // 2. Compute COMPLETE continuous report data for the full table (no page splits)
   const fullReportData = React.useMemo(() => {
     if (!activeGroup || allRows.length === 0 || !startMs || !endMs) return null;
-    
+
     // The table bucket period matches the inner page buckets!
     const tableBucketPeriod = period === 'daily' ? 'hourly' : 'daily';
-    
+
     return runReport(
       [activeGroup],
       allRows,
@@ -587,10 +643,10 @@ export default function ConsumptionReport() {
 
   return (
     <div className="consumption-report-container">
-      
+
       {/* ── Left Sidebar Configuration (Screen Only) ── */}
       <div className="consumption-sidebar screen-only">
-        
+
         {/* Report Settings */}
         <div className="sidebar-section">
           <div className="sidebar-section-title">Report Settings</div>
@@ -604,7 +660,7 @@ export default function ConsumptionReport() {
                 onChange={e => setStartDateStr(e.target.value)}
               />
             </div>
-            
+
             <div className="sidebar-input-group">
               <span className="sidebar-label">End Date</span>
               <input
@@ -629,9 +685,9 @@ export default function ConsumptionReport() {
                 value={period}
                 onChange={e => setPeriod(e.target.value)}
               >
-                <option value="daily">Daily Report (Hourly points)</option>
-                <option value="weekly">Weekly Report (7 day points)</option>
-                <option value="monthly">Monthly Report (Max 31 day points)</option>
+                <option value="daily">Daily Report </option>
+                <option value="weekly">Weekly Report </option>
+                <option value="monthly">Monthly Report </option>
               </select>
             </div>
           </div>
@@ -780,7 +836,7 @@ export default function ConsumptionReport() {
                 })}
               </div>
             )}
-            
+
             <button className="sidebar-add-group-btn" onClick={handleAddGroup}>
               <Icons.Plus /> Add Channel Group
             </button>
@@ -791,10 +847,10 @@ export default function ConsumptionReport() {
 
       {/* ── Right Main Analysis View ── */}
       <div className="consumption-main-content">
-        
+
         {/* ── SCREEN VIEW (Interactive single-chart view + full table) ── */}
         <div className="screen-only" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
+
           <div className="report-header">
             <div className="report-title-section">
               <h1 className="report-main-title">Energy & Consumption Report</h1>
@@ -835,7 +891,7 @@ export default function ConsumptionReport() {
               {/* Active Chart Header & Pagination */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
-                  Active Chart: {activePage.label}
+                  Active Chart: {activePage.label} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({formatDateRange(activePage.startMs, activePage.endMs)})</span>
                 </span>
 
                 {/* Page Navigation only for the chart */}
@@ -887,72 +943,133 @@ export default function ConsumptionReport() {
                     <table className="report-table">
                       <thead>
                         <tr>
-                          <th>Interval</th>
-                          {fullReportData.columns.map(col => (
-                            <th key={col.key}>
-                              {col.label} {col.unit ? `(${col.unit})` : ''}
-                            </th>
-                          ))}
+                          <th rowSpan={2} className="split-col" style={{ verticalAlign: 'middle' }}>
+                            Interval
+                          </th>
+                          {(() => {
+                            const subCols = fullReportData.columns.filter(c => !c.isMain);
+                            const mainCols = fullReportData.columns.filter(c => c.isMain);
+                            return (
+                              <>
+                                {subCols.length > 0 && (
+                                  <th
+                                    colSpan={subCols.length}
+                                    className="group-header-cell split-col"
+                                    style={{ textAlign: 'center' }}
+                                  >
+                                    Sub-branches ({activeGroup ? activeGroup.name : ''})
+                                  </th>
+                                )}
+                                {mainCols.length > 0 && (
+                                  <th
+                                    colSpan={mainCols.length}
+                                    className="group-header-cell"
+                                    style={{ textAlign: 'center' }}
+                                  >
+                                    Main Channel
+                                  </th>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </tr>
+                        <tr>
+                          {(() => {
+                            const subCols = fullReportData.columns.filter(c => !c.isMain);
+                            const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                            return fullReportData.columns.map(col => {
+                              const isSplit = col.key === lastSubKey;
+                              return (
+                                <th
+                                  key={col.key}
+                                  className={isSplit ? 'split-col' : ''}
+                                  style={{ fontWeight: 600 }}
+                                >
+                                  {col.label} {col.unit ? `(${col.unit})` : ''}
+                                </th>
+                              );
+                            });
+                          })()}
                         </tr>
                       </thead>
                       <tbody>
-                        {fullReportData.rows.map((row, rIdx) => (
-                          <tr key={rIdx}>
-                            <td><strong>{row.label}</strong></td>
-                            {fullReportData.columns.map(col => {
-                              const val = row.values[col.key];
-                              return (
-                                <td key={col.key}>
-                                  {val !== null && val !== undefined
-                                    ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })
-                                    : '-'}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
+                        {fullReportData.rows.map((row, rIdx) => {
+                          const subCols = fullReportData.columns.filter(c => !c.isMain);
+                          const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                          return (
+                            <tr key={rIdx}>
+                              <td className="split-col"><strong>{row.label}</strong></td>
+                              {fullReportData.columns.map(col => {
+                                const val = row.values[col.key];
+                                const isSplit = col.key === lastSubKey;
+                                return (
+                                  <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                                    {val !== null && val !== undefined
+                                      ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })
+                                      : '-'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
 
                         {/* Footer Total */}
                         <tr className="footer-total-row">
-                          <td>Total Sum</td>
-                          {fullReportData.columns.map(col => {
-                            const val = fullReportData.totals[col.key];
-                            return (
-                              <td key={col.key}>
-                                {val !== null && val !== undefined
-                                  ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })
-                                  : '-'}
-                              </td>
-                            );
-                          })}
+                          <td className="split-col">Total Sum</td>
+                          {(() => {
+                            const subCols = fullReportData.columns.filter(c => !c.isMain);
+                            const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                            return fullReportData.columns.map(col => {
+                              const val = fullReportData.totals[col.key];
+                              const isSplit = col.key === lastSubKey;
+                              return (
+                                <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                                  {val !== null && val !== undefined
+                                    ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+                                    : '-'}
+                                </td>
+                              );
+                            });
+                          })()}
                         </tr>
 
                         <tr className="footer-avg-row">
-                          <td>Avg. Rate / Hour</td>
-                          {fullReportData.columns.map(col => {
-                            const val = fullReportData.averages[col.key];
-                            return (
-                              <td key={col.key}>
-                                {val !== null && val !== undefined
-                                  ? `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${col.unit ? `${col.unit}/h` : ''}`
-                                  : '-'}
-                              </td>
-                            );
-                          })}
+                          <td className="split-col">Avg. Rate / Hour</td>
+                          {(() => {
+                            const subCols = fullReportData.columns.filter(c => !c.isMain);
+                            const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                            return fullReportData.columns.map(col => {
+                              const val = fullReportData.averages[col.key];
+                              const isSplit = col.key === lastSubKey;
+                              return (
+                                <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                                  {val !== null && val !== undefined
+                                    ? `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${col.unit ? `${col.unit}/h` : ''}`
+                                    : '-'}
+                                </td>
+                              );
+                            });
+                          })()}
                         </tr>
 
                         <tr className="footer-cost-row">
-                          <td>Est. Cost ({currency})</td>
-                          {fullReportData.columns.map(col => {
-                            const val = fullReportData.costs[col.key];
-                            return (
-                              <td key={col.key}>
-                                {val !== null && val !== undefined
-                                  ? `${currency} ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                  : '-'}
-                              </td>
-                            );
-                          })}
+                          <td className="split-col">Est. Cost ({currency})</td>
+                          {(() => {
+                            const subCols = fullReportData.columns.filter(c => !c.isMain);
+                            const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                            return fullReportData.columns.map(col => {
+                              const val = fullReportData.costs[col.key];
+                              const isSplit = col.key === lastSubKey;
+                              return (
+                                <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                                  {val !== null && val !== undefined
+                                    ? `${currency} ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : '-'}
+                                </td>
+                              );
+                            });
+                          })()}
                         </tr>
                       </tbody>
                     </table>
@@ -966,11 +1083,11 @@ export default function ConsumptionReport() {
         {/* ── PRINT VIEW (sequential list of all charts one-by-one + full table, NO empty page, full size charts) ── */}
         {activeGroup && pages.length > 0 && fullReportData && (
           <div className="print-only" style={{ display: 'flex', flexDirection: 'column', gap: '30px', width: '100%' }}>
-            
-            {/* Title Header Card */}
-            <div style={{ borderBottom: '2px solid #00ac86', paddingBottom: '12px', marginBottom: '15px', textAlign: 'center' }}>
-              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '800', color: '#0f172a' }}>Energy & Consumption Report</h1>
-              <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569', fontWeight: 600 }}>
+
+             {/* Title Header Card */}
+            <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '6px', marginBottom: '8px', textAlign: 'center' }}>
+              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>Energy & Consumption Report</h1>
+              <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569', fontWeight: 600 }}>
                 Group: {activeGroup.name} | Period: {period.toUpperCase()} | Range: {new Date(startMs).toLocaleDateString()} to {new Date(endMs - 1).toLocaleDateString()}
               </p>
             </div>
@@ -980,7 +1097,7 @@ export default function ConsumptionReport() {
               {pages.map((p, idx) => (
                 <div key={p.label} className="chart-card" style={{ pageBreakInside: 'avoid', padding: '16px' }}>
                   <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#0f172a', fontWeight: '800' }}>
-                    Consumption Profile Chart - {p.label}
+                    Consumption Profile Chart - {p.label} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({formatDateRange(p.startMs, p.endMs)})</span>
                   </h3>
                   <ConsumptionChart
                     page={p}
@@ -990,7 +1107,8 @@ export default function ConsumptionReport() {
                     costPerUnit={costPerUnit}
                     currency={currency}
                     reportUnit={reportUnit}
-                    height={380} // Beautiful full size chart in the PDF!
+                    height={420} // Compacted beautifully to fit alongside print title on page 1!
+                    isPrint={true}
                   />
                 </div>
               ))}
@@ -1003,72 +1121,133 @@ export default function ConsumptionReport() {
                 <table className="report-table" style={{ width: '100%', tableLayout: 'auto' }}>
                   <thead>
                     <tr>
-                      <th>Interval</th>
-                      {fullReportData.columns.map(col => (
-                        <th key={col.key}>
-                          {col.label} {col.unit ? `(${col.unit})` : ''}
-                        </th>
-                      ))}
+                      <th rowSpan={2} className="split-col" style={{ verticalAlign: 'middle' }}>
+                        Interval
+                      </th>
+                      {(() => {
+                        const subCols = fullReportData.columns.filter(c => !c.isMain);
+                        const mainCols = fullReportData.columns.filter(c => c.isMain);
+                        return (
+                          <>
+                            {subCols.length > 0 && (
+                              <th
+                                colSpan={subCols.length}
+                                className="group-header-cell split-col"
+                                style={{ textAlign: 'center' }}
+                              >
+                                Sub-branches ({activeGroup ? activeGroup.name : ''})
+                              </th>
+                            )}
+                            {mainCols.length > 0 && (
+                              <th
+                                colSpan={mainCols.length}
+                                className="group-header-cell"
+                                style={{ textAlign: 'center' }}
+                              >
+                                Main Channel
+                              </th>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </tr>
+                    <tr>
+                      {(() => {
+                        const subCols = fullReportData.columns.filter(c => !c.isMain);
+                        const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                        return fullReportData.columns.map(col => {
+                          const isSplit = col.key === lastSubKey;
+                          return (
+                            <th
+                              key={col.key}
+                              className={isSplit ? 'split-col' : ''}
+                              style={{ fontWeight: 600 }}
+                            >
+                              {col.label} {col.unit ? `(${col.unit})` : ''}
+                            </th>
+                          );
+                        });
+                      })()}
                     </tr>
                   </thead>
                   <tbody>
-                    {fullReportData.rows.map((row, rIdx) => (
-                      <tr key={rIdx}>
-                        <td><strong>{row.label}</strong></td>
-                        {fullReportData.columns.map(col => {
-                          const val = row.values[col.key];
-                          return (
-                            <td key={col.key}>
-                              {val !== null && val !== undefined
-                                ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })
-                                : '-'}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                    {fullReportData.rows.map((row, rIdx) => {
+                      const subCols = fullReportData.columns.filter(c => !c.isMain);
+                      const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                      return (
+                        <tr key={rIdx}>
+                          <td className="split-col"><strong>{row.label}</strong></td>
+                          {fullReportData.columns.map(col => {
+                            const val = row.values[col.key];
+                            const isSplit = col.key === lastSubKey;
+                            return (
+                              <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                                {val !== null && val !== undefined
+                                  ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })
+                                  : '-'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
 
                     {/* Footer Total */}
                     <tr className="footer-total-row">
-                      <td>Total Sum</td>
-                      {fullReportData.columns.map(col => {
-                        const val = fullReportData.totals[col.key];
-                        return (
-                          <td key={col.key}>
-                            {val !== null && val !== undefined
-                              ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })
-                              : '-'}
-                          </td>
-                        );
-                      })}
+                      <td className="split-col">Total Sum</td>
+                      {(() => {
+                        const subCols = fullReportData.columns.filter(c => !c.isMain);
+                        const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                        return fullReportData.columns.map(col => {
+                          const val = fullReportData.totals[col.key];
+                          const isSplit = col.key === lastSubKey;
+                          return (
+                            <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                              {val !== null && val !== undefined
+                                ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+                                : '-'}
+                            </td>
+                          );
+                        });
+                      })()}
                     </tr>
 
                     <tr className="footer-avg-row">
-                      <td>Avg. Rate / Hour</td>
-                      {fullReportData.columns.map(col => {
-                        const val = fullReportData.averages[col.key];
-                        return (
-                          <td key={col.key}>
-                            {val !== null && val !== undefined
-                              ? `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${col.unit ? `${col.unit}/h` : ''}`
-                              : '-'}
-                          </td>
-                        );
-                      })}
+                      <td className="split-col">Avg. Rate / Hour</td>
+                      {(() => {
+                        const subCols = fullReportData.columns.filter(c => !c.isMain);
+                        const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                        return fullReportData.columns.map(col => {
+                          const val = fullReportData.averages[col.key];
+                          const isSplit = col.key === lastSubKey;
+                          return (
+                            <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                              {val !== null && val !== undefined
+                                ? `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${col.unit ? `${col.unit}/h` : ''}`
+                                : '-'}
+                            </td>
+                          );
+                        });
+                      })()}
                     </tr>
 
                     <tr className="footer-cost-row">
-                      <td>Est. Cost ({currency})</td>
-                      {fullReportData.columns.map(col => {
-                        const val = fullReportData.costs[col.key];
-                        return (
-                          <td key={col.key}>
-                            {val !== null && val !== undefined
-                              ? `${currency} ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : '-'}
-                          </td>
-                        );
-                      })}
+                      <td className="split-col">Est. Cost ({currency})</td>
+                      {(() => {
+                        const subCols = fullReportData.columns.filter(c => !c.isMain);
+                        const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
+                        return fullReportData.columns.map(col => {
+                          const val = fullReportData.costs[col.key];
+                          const isSplit = col.key === lastSubKey;
+                          return (
+                            <td key={col.key} className={isSplit ? 'split-col' : ''}>
+                              {val !== null && val !== undefined
+                                ? `${currency} ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : '-'}
+                            </td>
+                          );
+                        });
+                      })()}
                     </tr>
                   </tbody>
                 </table>

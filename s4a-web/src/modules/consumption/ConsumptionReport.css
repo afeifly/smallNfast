@@ -7,48 +7,7 @@
   overflow: hidden;
 }
 
-/* Print CSS */
-@media print {
-  /* Prevent parent overflow:hidden from clipping multi-page PDF flows */
-  html, body, .App, .app-main-content, .view-content-wrapper {
-    height: auto !important;
-    overflow: visible !important;
-    display: block !important;
-    position: static !important;
-  }
-
-  body * {
-    visibility: hidden;
-  }
-  .consumption-report-container,
-  .consumption-report-container * {
-    visibility: visible;
-  }
-  .consumption-sidebar {
-    display: none !important;
-  }
-  .consumption-main-content {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100% !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-  .export-pdf-btn, .group-actions-header {
-    display: none !important;
-  }
-  .chart-card {
-    page-break-inside: avoid;
-    box-shadow: none !important;
-    border: 1px solid #e2e8f0 !important;
-  }
-  .table-card {
-    page-break-inside: avoid;
-    box-shadow: none !important;
-    border: 1px solid #e2e8f0 !important;
-  }
-}
+/* Print CSS - Consolidated at the end of the file */
 
 /* Sidebar Column Selector */
 .consumption-sidebar {
@@ -429,7 +388,6 @@
   width: 100%;
   min-height: 320px;
   position: relative;
-  overflow: hidden;
 }
 
 .d3-chart-svg {
@@ -481,18 +439,18 @@
 }
 
 .report-table th {
-  background: #f8fafc;
-  color: #475569;
+  background: #ffffff;
+  color: #334155;
   font-weight: 700;
   padding: 10px 12px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
   white-space: nowrap;
 }
 
 .report-table td {
   padding: 10px 12px;
-  border-bottom: 1px solid #e2e8f0;
-  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
   white-space: nowrap;
 }
 
@@ -500,26 +458,27 @@
   background: #f8fafc;
 }
 
-/* Footer rows (Total, Average, Cost) */
+/* Footer rows (Total, Average, Cost) - flat spreadsheet design */
 .report-table tr.footer-total-row td {
   font-weight: bold;
-  background: #f1f5f9;
-  border-top: 2px solid #cbd5e1;
-  border-bottom: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-top: 1.5px solid #cbd5e1;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
 }
 
 .report-table tr.footer-avg-row td {
   font-weight: 600;
-  background: #f8fafc;
-  color: #475569;
+  background: #ffffff;
+  color: #64748b;
   border-bottom: 1px solid #cbd5e1;
 }
 
 .report-table tr.footer-cost-row td {
   font-weight: bold;
-  background: rgba(0, 172, 134, 0.04);
-  color: #00ac86;
-  border-bottom: 2px solid #00ac86;
+  background: #f8fafc;
+  color: #0f172a;
+  border-bottom: 2.5px double #94a3b8;
 }
 
 /* Empty State */
@@ -602,24 +561,44 @@
 }
 
 @media print {
+  @page {
+    size: landscape;
+    margin: 12mm;
+  }
+
   /* Prevent parent overflow:hidden from clipping multi-page PDF flows */
   html, body, .App, .app-main-content, .view-content-wrapper {
     height: auto !important;
     overflow: visible !important;
     display: block !important;
     position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   body * {
     visibility: hidden;
   }
+  
   .consumption-report-container,
   .consumption-report-container * {
     visibility: visible;
   }
-  .consumption-sidebar {
+
+  /* Completely remove UI elements from print space to prevent empty page breaks */
+  .app-header,
+  .consumption-sidebar,
+  .export-pdf-btn,
+  .group-actions-header {
     display: none !important;
   }
+
+  /* Print backgrounds and exact colors */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .consumption-main-content {
     position: absolute;
     left: 0;
@@ -630,12 +609,16 @@
     padding: 0 !important;
     margin: 0 !important;
   }
+
   .screen-only {
     display: none !important;
   }
+
   .print-only {
     display: block !important;
+    width: 100% !important;
   }
+
   .print-page-break {
     page-break-after: always;
     page-break-inside: avoid;
@@ -643,15 +626,80 @@
     box-sizing: border-box;
     padding: 20px 0;
   }
+
   .chart-card {
     page-break-inside: avoid;
     box-shadow: none !important;
     border: 1px solid #cbd5e1 !important;
     margin-bottom: 20px;
+    width: 100% !important;
+    box-sizing: border-box;
   }
+
+  .chart-container-div {
+    width: 100% !important;
+    min-height: 460px !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .d3-chart-svg {
+    width: 100% !important;
+    height: 420px !important;
+  }
+
+  .chart-legend-container {
+    display: flex !important;
+    visibility: visible !important;
+  }
+
+  .chart-legend-container * {
+    visibility: visible !important;
+  }
+
   .table-card {
     page-break-inside: avoid;
     box-shadow: none !important;
     border: 1px solid #cbd5e1 !important;
+    width: 100% !important;
+    box-sizing: border-box;
   }
 }
+
+/* Premium double-header table vertical split borders */
+.report-table th.split-col,
+.report-table td.split-col {
+  border-right: 1.5px solid #cbd5e1 !important;
+}
+
+/* Custom group header cells styling - flat report layout */
+.report-table .group-header-cell {
+  background-color: #ffffff !important;
+  font-weight: 800;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 8px 12px;
+}
+
+/* Maintain hover background sync */
+.report-table tbody tr:hover td.split-col {
+  background: #f8fafc;
+}
+
+/* Adjust colors for footers to match the dark/light premium rows */
+.report-table tr.footer-total-row td.split-col {
+  border-right-color: #cbd5e1 !important;
+}
+
+.report-table tr.footer-avg-row td.split-col {
+  border-right-color: #cbd5e1 !important;
+}
+
+.report-table tr.footer-cost-row td.split-col {
+  border-right-color: #cbd5e1 !important;
+}
+

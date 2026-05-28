@@ -12,17 +12,28 @@ class Loading extends Component {
   render() {
     const { defaultVisible } = this.props;
 
-    return(
+    return (
       <div className="loading-box" ref={this.rootRef} 
         data-status={ defaultVisible === true ? 'active' : ''}>
-        <svg className="loading-svg" width="64" height="100">
-          <g className="loading-back" transform="translate(32, 32)"/>
-          <g transform="translate(32, 32)">
-            <circle r="4" fill="#00ac86"/>
-            <path id="loading-pointer" d="M-4 0 L0 -16 L4 0z" fill="#00ac86"/>
-          </g>
-          <text className="loading-label" x="4" y="88">Loading...</text>
-        </svg>
+        
+        <div className="loading-content-card">
+          <svg className="loading-svg" width="64" height="64">
+            <g className="loading-back" transform="translate(32, 32)"/>
+            <g transform="translate(32, 32)">
+              <circle r="4" fill="#00ac86"/>
+              <path id="loading-pointer" d="M-4 0 L0 -16 L4 0z" fill="#00ac86"/>
+            </g>
+          </svg>
+          
+          <div className="loading-text-container">
+            <span className="loading-main-message">Loading...</span>
+            <span className="loading-percentage-text"></span>
+          </div>
+
+          <div className="loading-progress-bar-container">
+            <div className="loading-progress-bar-filler indeterminate" style={{ width: '100%' }}></div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -63,22 +74,59 @@ class Loading extends Component {
 
   show() {
     this.draw();
-    d3.select(this.rootRef.current).attr('data-status', 'active');
+    const container = d3.select(this.rootRef.current);
+    container.attr('data-status', 'active');
+    
+    container.select('.loading-progress-bar-filler')
+      .classed('determinate', false)
+      .classed('indeterminate', true)
+      .style('width', null);
+    container.select('.loading-percentage-text').text('');
+    container.select('.loading-main-message').text('Loading...');
   } 
 
   showWithMessage(message) {
     this.draw();
-    if (this.rootRef.current) {
-      d3.select(this.rootRef.current).select('.loading-label').text(message);
+    const container = d3.select(this.rootRef.current);
+    container.attr('data-status', 'active');
+
+    const percentMatch = message.match(/(\d+)\s*%/);
+    const percent = percentMatch ? parseInt(percentMatch[1], 10) : null;
+    const cleanMessage = message.replace(/\s*\d+\s*%/, '');
+
+    container.select('.loading-main-message').text(cleanMessage);
+
+    const filler = container.select('.loading-progress-bar-filler');
+    const pctText = container.select('.loading-percentage-text');
+
+    if (percent !== null) {
+      filler
+        .classed('indeterminate', false)
+        .classed('determinate', true)
+        .style('width', `${percent}%`);
+      pctText.text(`${percent}%`);
+    } else {
+      filler
+        .classed('determinate', false)
+        .classed('indeterminate', true)
+        .style('width', null);
+      pctText.text('');
     }
-    d3.select(this.rootRef.current).attr('data-status', 'active');
   }
 
   hide() {
     d3.select(this.rootRef.current).attr('data-status', '');
     setTimeout(() => {
       if (this.rootRef.current) {
-        d3.select(this.rootRef.current).select('.loading-label').text('Loading...');
+        const container = d3.select(this.rootRef.current);
+        if (container.attr('data-status') !== 'active') {
+          container.select('.loading-main-message').text('Loading...');
+          container.select('.loading-percentage-text').text('');
+          container.select('.loading-progress-bar-filler')
+            .classed('determinate', false)
+            .classed('indeterminate', true)
+            .style('width', null);
+        }
       }
     }, 300);
   } 

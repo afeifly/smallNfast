@@ -198,6 +198,18 @@ let TestAPI = {
 
   async getConsumptionData(onProgress) {
     return [];
+  },
+
+  getRecentFiles() {
+    return [];
+  },
+
+  removeRecentFile(name) {
+    return [];
+  },
+
+  isCsvMode() {
+    return false;
   }
 }
 

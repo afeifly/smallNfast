@@ -236,7 +236,7 @@ const TableView = () => {
                             checked={isChecked}
                             onChange={() => handleChannelCheckboxChange(ch.channel_id)}
                             sx={{
-                              padding: '2px',
+                              padding: '4px',
                               color: '#cbd5e1',
                               '&.Mui-checked': { color: '#00ac86' }
                             }}

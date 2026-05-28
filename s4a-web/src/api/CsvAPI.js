@@ -12,12 +12,20 @@ let _startTimeMs = 0;
 let _stopTimeMs = 0;
 let _sampleIntervalSec = 1;
 let _sampleRate = 1;
+let _detectedIntervalMs = 1000; // computed from actual row deltas
 let _numChannels = 0;
 let _numSamples = 0;
 let _channels = [];
 let _dataRows = [];
 
 const MAX_DISPLAY_SAMPLES = 3000;
+
+/**
+ * A gap is any interval between consecutive rows that exceeds this multiple
+ * of the detected sample interval. 2× means any pause longer than two normal
+ * sample periods is treated as a power-loss gap.
+ */
+const GAP_THRESHOLD_FACTOR = 2.0;
 
 // ── Parser Helpers ────────────────────────────────────────────────────────────
 
@@ -76,6 +84,27 @@ function parseDateTimeString(str) {
   const sec = parseInt(tParts[2], 10) || 0;
   
   return new Date(year, month, day, hour, min, sec).getTime();
+}
+
+/**
+ * Computes the median of all consecutive row-to-row time deltas.
+ * Using the median makes the estimate robust against large gap outliers.
+ * Returns the result in seconds.
+ */
+function computeMedianIntervalSec(dataRows) {
+  if (dataRows.length < 2) return 1;
+  const deltas = [];
+  for (let i = 1; i < dataRows.length; i++) {
+    const d = dataRows[i].timestampMs - dataRows[i - 1].timestampMs;
+    if (d > 0) deltas.push(d);
+  }
+  if (deltas.length === 0) return 1;
+  deltas.sort((a, b) => a - b);
+  const mid = Math.floor(deltas.length / 2);
+  const medianMs = deltas.length % 2 === 0
+    ? (deltas[mid - 1] + deltas[mid]) / 2
+    : deltas[mid];
+  return medianMs / 1000;
 }
 
 /** Parses the CSV text. */
@@ -229,11 +258,14 @@ function parseCsvText(text) {
     ch._max = isFinite(max) ? max : 100;
   });
   
+  const detectedIntervalSec = computeMedianIntervalSec(dataRows);
+
   return {
     deviceName,
     startTimeMs,
     stopTimeMs: stopTimeMs || startTimeMs + dataRows.length * sampleIntervalSec * 1000,
     sampleIntervalSec,
+    detectedIntervalSec,
     numChannels: channels.length,
     numSamples: dataRows.length,
     channels,
@@ -259,11 +291,37 @@ const CsvAPI = {
       _stopTimeMs = parsed.stopTimeMs;
       _sampleIntervalSec = parsed.sampleIntervalSec;
       _sampleRate = 1 / _sampleIntervalSec;
+      _detectedIntervalMs = parsed.detectedIntervalSec * 1000;
       _numChannels = parsed.numChannels;
       _numSamples = parsed.numSamples;
       _channels = parsed.channels;
       _dataRows = parsed.dataRows;
-      
+
+      // ── Gap report ─────────────────────────────────────────────────────────
+      const gapThresholdMs = GAP_THRESHOLD_FACTOR * _detectedIntervalMs;
+      const gaps = [];
+      for (let i = 1; i < _dataRows.length; i++) {
+        const delta = _dataRows[i].timestampMs - _dataRows[i - 1].timestampMs;
+        if (delta > gapThresholdMs) {
+          gaps.push({
+            from: _dataRows[i - 1].timestampMs,
+            to: _dataRows[i].timestampMs,
+            missingSec: Math.round((delta - _detectedIntervalMs) / 1000),
+          });
+        }
+      }
+      if (gaps.length === 0) {
+        console.log(`[CsvAPI] Gap report: no gaps detected. Detected interval: ${parsed.detectedIntervalSec.toFixed(2)} sec`);
+      } else {
+        console.warn(`[CsvAPI] Gap report: ${gaps.length} gap(s) in "${file.name}" (detected interval: ${parsed.detectedIntervalSec.toFixed(2)} sec)`);
+        gaps.forEach((g, idx) => {
+          const from = new Date(g.from).toISOString();
+          const to = new Date(g.to).toISOString();
+          console.warn(`  Gap ${idx + 1}: ${from} → ${to}  (~${g.missingSec} sec missing)`);
+        });
+      }
+      // ───────────────────────────────────────────────────────────────────────
+
       _fileLoaded = true;
       console.log(`[CsvAPI] Parsed ${_numChannels} channels, ${_numSamples} samples from CSV file "${file.name}"`);
       return true;
@@ -341,39 +399,80 @@ const CsvAPI = {
       setTimeout(() => callback([]), 50);
       return;
     }
-    
+
     const chIdx = parseInt(channelId, 10);
     if (isNaN(chIdx) || chIdx < 0 || chIdx >= _channels.length) {
       setTimeout(() => callback([]), 50);
       return;
     }
-    
+
     const ch = _channels[chIdx];
-    
+
     // Adjust for the +8 h the UI adds before calling us
     const qStart = startTime - 3600000 * 8;
-    const qStop = stopTime - 3600000 * 8;
-    
+    const qStop  = stopTime  - 3600000 * 8;
+
     // Filter rows in time range
     const filteredRows = _dataRows.filter(r => r.timestampMs >= qStart && r.timestampMs <= qStop);
-    
-    // Downsample
-    const range = filteredRows.length;
-    const step = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
-    
-    const values = [];
-    for (let i = 0; i < range; i += step) {
-      values.push(filteredRows[i].values[chIdx]);
+
+    if (filteredRows.length === 0) {
+      setTimeout(() => callback([{
+        channel_id: channelId,
+        measurementData: [],
+        realStartTime: [],
+        pointInterval: [],
+        min: ch._min,
+        max: ch._max,
+      }]), 50);
+      return;
     }
-    
-    const actualStartMs = range > 0 ? filteredRows[0].timestampMs : qStart;
-    const pointIntervalMs = (step / _sampleRate) * 1000;
-    
+
+    // Uniform downsample step across all filtered rows
+    const step = Math.max(1, Math.floor(filteredRows.length / MAX_DISPLAY_SAMPLES));
+    // Each downsampled point represents `step` real samples spaced _detectedIntervalMs apart
+    const pointIntervalMs = step * _detectedIntervalMs;
+    const gapThresholdMs  = GAP_THRESHOLD_FACTOR * _detectedIntervalMs;
+
+    // ── Split filteredRows into contiguous (gap-free) segments ────────────────
+    // We scan the raw (un-downsampled) rows so we don't miss gaps that fall
+    // between two downsampled indices.
+    const rawSegments = [];
+    let currentSeg = [filteredRows[0]];
+    for (let i = 1; i < filteredRows.length; i++) {
+      const delta = filteredRows[i].timestampMs - filteredRows[i - 1].timestampMs;
+      if (delta > gapThresholdMs) {
+        rawSegments.push(currentSeg);
+        currentSeg = [];
+      }
+      currentSeg.push(filteredRows[i]);
+    }
+    rawSegments.push(currentSeg);
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Downsample each segment independently and build result arrays.
+    // DataUtil.handleMeasurementData already appends a null sentinel after
+    // each segment, which causes D3 to draw a visible line break at each gap.
+    const measurementData = [];
+    const realStartTime   = [];
+    const pointInterval   = [];
+
+    for (const seg of rawSegments) {
+      const segValues = [];
+      for (let i = 0; i < seg.length; i += step) {
+        segValues.push(seg[i].values[chIdx]);
+      }
+      if (segValues.length > 0) {
+        measurementData.push(segValues);
+        realStartTime.push(seg[0].timestampMs + 3600000 * 8);
+        pointInterval.push(pointIntervalMs);
+      }
+    }
+
     setTimeout(() => callback([{
       channel_id: channelId,
-      measurementData: [values],
-      realStartTime: [actualStartMs + 3600000 * 8],
-      pointInterval: [pointIntervalMs],
+      measurementData,
+      realStartTime,
+      pointInterval,
       min: ch._min,
       max: ch._max,
     }]), 50);
@@ -515,21 +614,21 @@ const CsvAPI = {
     csvContentRows.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
     _channels.forEach((ch, idx) => {
       const resStr = (1 / Math.pow(10, ch.resolution)).toFixed(ch.resolution);
-      csvContentRows.push(`${idx + 1},"${ch.logic_channel_description}","${ch.sensor_description}","${ch.unit_in_ascii}",${resStr},"Location ${ch.location_id}/${ch.logic_channel_description}"`);
+      csvContentRows.push(`${idx + 1},${ch.logic_channel_description},${ch.sensor_description},${ch.unit_in_ascii},${resStr},Location ${ch.location_id}/${ch.logic_channel_description}`);
     });
     csvContentRows.push('');
     
-    const dataHeaders = ['No.', 'Date Time'];
+    const dataHeaders = ['Date Time'];
     _channels.forEach(ch => {
       const u = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
-      dataHeaders.push(`"${ch.logic_channel_description}${u}"`);
+      dataHeaders.push(`${ch.logic_channel_description}${u}`);
     });
     csvContentRows.push(dataHeaders.join(','));
 
     for (let i = 0; i < _numSamples; i++) {
       const row = _dataRows[i];
       const dateStr = new Date(row.timestampMs).toISOString();
-      const rowValues = [row.recordId, dateStr];
+      const rowValues = [dateStr];
       for (let c = 0; c < _numChannels; c++) {
         const v = row.values[c];
         rowValues.push(v === null || v === undefined ? '' : v);

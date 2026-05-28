@@ -14,19 +14,16 @@ class ChannelGroup extends Component {
 
   constructor() {
     super();
-    this.triangleBtnRef = React.createRef();
     this.channelListRef = React.createRef();
     this.state = {
       data: {},
-      checked: false,
-      expand: true,
-      listHeight: 0
+      checked: false
     }
   }
 
   render() {
     const { data } = this.props;
-    const { expand, checked } = this.state;
+    const { checked } = this.state;
     let hasOneSelected = this.hasOneSelected();
 
     const channelItems = data.channels.map(d => {
@@ -34,10 +31,8 @@ class ChannelGroup extends Component {
     });
 
     return (
-      <div className="channel-group" onDoubleClick={ this.switchGroup }>
+      <div className="channel-group">
         <div className="channel-group-header">
-          <a className="triangle-btn" ref={this.triangleBtnRef} data-expend={ expand } 
-            onClick={ this.switchGroup }/>
           <Checkbox 
             checked={ checked }
             onChange={this.handleChange(data)}
@@ -61,14 +56,7 @@ class ChannelGroup extends Component {
           { channelItems }
         </div>
       </div>
-      
     );
-  }
-
-  componentDidMount() {
-    const channelList = $(this.channelListRef.current);
-    const h = channelList.height();
-    channelList.css('height', h + 'px');
   }
 
   subItemChange = (d) => {
@@ -114,23 +102,6 @@ class ChannelGroup extends Component {
     });
 
     return result;
-  }
-
-  switchGroup = () => {
-    let { data } = this.props;
-    let { expand } = this.state;
-
-    expand = !expand;
-    this.setState({
-      expand: expand
-    });
-
-    if(expand) {
-      const h = data.channels.length * 32;
-      d3.select(this.channelListRef.current).style('height', h + 'px');
-    }else  {
-      d3.select(this.channelListRef.current).style('height', 0);
-    }
   }
 
   handleChange = data => event => {

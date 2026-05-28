@@ -89,12 +89,11 @@
   align-items: center;
   height: 30px;
   gap: 4px;
-  padding: 2px 12px;
+  padding: 2px 6px;
   border-bottom: 1px solid #f1f5f9;
 }
 
 .sensor-group-title {
-  font-size: 13px;
   font-weight: 800;
   color: #334155;
   white-space: nowrap;
@@ -103,16 +102,7 @@
 }
 
 .triangle-btn {
-  position: relative;
-  width         : 0;
-  height        : 0;
-  margin-left: 16px;
-  border-top    : 8px solid #888888;
-  border-right  : 5px solid transparent;
-  border-left   : 5px solid transparent;
-  border-bottom : 0;
-  cursor        : pointer;
-  transition    : transform 150ms;
+  display: none;
 }
 
 .triangle-btn:hover {
@@ -155,7 +145,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 12px 2px 36px;
+  padding: 2px 6px;
   box-sizing: border-box;
   width: 100%;
   cursor: pointer;
@@ -165,16 +155,6 @@
 
 .CL-channel-item:hover {
   background-color: #f1f5f9;
-}
-
-.CL-channel-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 18px;
-  width: 1px;
-  height: 100%;
-  border-left: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 .CL-channel-item-left {

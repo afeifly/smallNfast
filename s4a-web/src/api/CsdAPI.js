@@ -908,11 +908,11 @@ const CsdAPI = {
       
       const row = [
         idx + 1,
-        `"${chName.replace(/"/g, '""')}"`,
-        `"${sensor.replace(/"/g, '""')}"`,
-        `"${unit.replace(/"/g, '""')}"`,
+        chName,
+        sensor,
+        unit,
         resVal,
-        `"${locPoint.replace(/"/g, '""')}"`
+        locPoint
       ];
       csvContentRows.push(row.join(','));
     });
@@ -920,11 +920,11 @@ const CsdAPI = {
     csvContentRows.push(''); // Empty line
 
     // 6. Data Header Row
-    const dataHeaders = ['No.', 'Date Time'];
+    const dataHeaders = ['Date Time'];
     _channels.forEach((ch, idx) => {
       const chName = ch.logic_channel_description || `CH${idx + 1}`;
       const unit = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
-      dataHeaders.push(`"${(chName + unit).replace(/"/g, '""')}"`);
+      dataHeaders.push(`${chName}${unit}`);
     });
     csvContentRows.push(dataHeaders.join(','));
 
@@ -945,7 +945,7 @@ const CsdAPI = {
         const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
         const dateStr = formatDateTimeDataRow(timestampMs);
 
-        const rowValues = [recordIndex + 1, dateStr];
+        const rowValues = [dateStr];
 
         for (let c = 0; c < _numChannels; c++) {
           const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;

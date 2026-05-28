@@ -41,7 +41,7 @@ class ChannelItem extends Component {
             checkedIcon={<CheckBoxIcon fontSize="small" />}
             value={ data.name }
             sx={{
-              padding: '2px',
+              padding: '4px',
               color: '#cbd5e1',
               '&.Mui-checked': { color: '#00ac86' }
             }}

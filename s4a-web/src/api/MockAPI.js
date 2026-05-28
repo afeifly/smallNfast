@@ -189,8 +189,16 @@ let TestAPI = {
   createTask(json, callback) { },
   changeCommunication(json, callback) { },
   getCommunication(callback) { },
-  getLoggingChannels(callback) { },
-  saveSensorPosition(id, x, y, callback) { }
+  getLoggingChannels(callback) {
+    let url = "/LoggingChEditBean";
+    RequestUtil.requestURLByGet(url, callback);
+  },
+
+  saveSensorPosition(id, x, y, callback) { },
+
+  async getConsumptionData(onProgress) {
+    return [];
+  }
 }
 
 // MockAPI implementation

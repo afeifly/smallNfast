@@ -1,6 +1,7 @@
 import React from 'react';
 import GraphicView from './modules/graphicview';
 import TableView from './modules/tableview/TableView';
+import ConsumptionReport from './modules/consumption/ConsumptionReport';
 import TestAPI from './api/TestAPI';
 import './App.css';
 
@@ -160,6 +161,12 @@ function App() {
             >
               Table View
             </button>
+            <button
+              className={`tab-btn ${activeTab === 'consumption' ? 'active' : ''}`}
+              onClick={() => setActiveTab('consumption')}
+            >
+              Consumption
+            </button>
           </div>
         )}
 
@@ -263,8 +270,10 @@ function App() {
           <div className="view-content-wrapper">
             {activeTab === 'graphic' ? (
               <GraphicView />
-            ) : (
+            ) : activeTab === 'table' ? (
               <TableView />
+            ) : (
+              <ConsumptionReport />
             )}
           </div>
         )}

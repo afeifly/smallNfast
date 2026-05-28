@@ -646,6 +646,10 @@ const CsvAPI = {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  },
+
+  getConsumptionData() {
+    return _dataRows;
   }
 };
 

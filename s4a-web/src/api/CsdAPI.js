@@ -1069,6 +1069,48 @@ const CsdAPI = {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  },
+
+  async getConsumptionData(onProgress) {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getConsumptionData();
+    }
+    if (!_fileLoaded || !_file) {
+      throw new Error("No CSD file loaded");
+    }
+    const allRows = [];
+    const chunkSize = 10000;
+    for (let start = 0; start < _numSamples; start += chunkSize) {
+      const end = Math.min(start + chunkSize, _numSamples);
+      const count = end - start;
+      const offset = _dataStart + start * _recordLen;
+      const byteLength = count * _recordLen;
+
+      const dv = await _readSlice(_file, offset, byteLength);
+
+      for (let i = 0; i < count; i++) {
+        const recordIndex = start + i;
+        const recordOffset = i * _recordLen;
+        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
+
+        const values = {};
+        for (let c = 0; c < _numChannels; c++) {
+          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
+          const v = dv.getFloat64(valOffset, false);
+          values[c] = (v <= DATA_OVERRANGE) ? null : v;
+        }
+
+        allRows.push({
+          timestampMs,
+          values
+        });
+      }
+      if (onProgress) {
+        onProgress(end / _numSamples);
+      }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return allRows;
   }
 };
 

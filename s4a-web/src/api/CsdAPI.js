@@ -915,7 +915,154 @@ const CsdAPI = {
       throw new Error("No CSD file loaded");
     }
 
-    // Helper to format date for header (e.g., "14.May 2026 10:14")
+    const LIMIT_800MB = 800 * 1024 * 1024; // 800 MB
+    const supportsStreaming = 'showSaveFilePicker' in window;
+
+    if (_file.size >= LIMIT_800MB && supportsStreaming) {
+      return this._exportAllChannelsToCsvStreaming(onProgress);
+    }
+
+    if (_file.size >= LIMIT_800MB && !supportsStreaming) {
+      const proceed = window.confirm(
+        `Warning: The loaded CSD file is extremely large (approx. ${(_file.size / 1024 / 1024).toFixed(1)} MB).\n` +
+        `Your browser does not support streaming direct-to-disk exports, which may cause your browser tab to run out of memory or crash.\n\n` +
+        `Do you want to attempt exporting anyway?`
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
+    return this._exportAllChannelsToCsvInMemory(onProgress);
+  },
+
+  async _exportAllChannelsToCsvStreaming(onProgress) {
+    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: `${baseName}_all_channels.csv`,
+        types: [{
+          description: 'CSV Files',
+          accept: { 'text/csv': ['.csv'] },
+        }],
+      });
+    } catch (err) {
+      console.log("[CsdAPI] Streaming export cancelled by user:", err);
+      return;
+    }
+
+    const writable = await handle.createWritable();
+    const writer = writable.getWriter();
+
+    try {
+      const encoder = new TextEncoder();
+
+      const formatDateTimeHeader = (ms) => {
+        const date = new Date(ms);
+        const day = date.getDate();
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[date.getMonth()];
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const mins = String(date.getMinutes()).padStart(2, '0');
+        const secs = String(date.getSeconds()).padStart(2, '0');
+        return `${day}.${month} ${year} ${hours}:${mins}:${secs}`;
+      };
+
+      const formatDateTimeDataRow = (ms) => {
+        const date = new Date(ms);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const mins = String(date.getMinutes()).padStart(2, '0');
+        const secs = String(date.getSeconds()).padStart(2, '0');
+        return `${day}-${month}-${year} ${hours}:${mins}:${secs}`;
+      };
+
+      const getResolutionString = (res) => {
+        const r = Math.max(0, Math.min(20, res || 0));
+        if (r === 0) return '1';
+        return (1 / Math.pow(10, r)).toFixed(r);
+      };
+
+      let initialText = `${_deviceName} Raw Data\n\n`;
+      initialText += `Start Date Time,${formatDateTimeHeader(_startTimeMs)}\n`;
+      initialText += `End Date Time,${formatDateTimeHeader(_stopTimeMs)}\n`;
+      initialText += `Sample Rate(sec),${_sampleIntervalSec}\n`;
+      initialText += `NO.Of Channels,${_numChannels}\n`;
+      initialText += `NO.Of Records,${_numSamples}\n\n`;
+      initialText += 'No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point\n';
+      
+      _channels.forEach((ch, idx) => {
+        const chName = ch.logic_channel_description || `CH${idx + 1}`;
+        const sensor = ch.sensor_description || `Sensor ${idx + 1}`;
+        const unit = ch.unit_in_ascii || '';
+        const resVal = getResolutionString(ch.resolution);
+        const locPoint = `Location ${ch.location_id || 1}/${ch.logic_channel_description || 'MP001'}`;
+        initialText += `${idx + 1},${chName},${sensor},${unit},${resVal},${locPoint}\n`;
+      });
+      initialText += '\n';
+
+      const dataHeaders = ['Date Time'];
+      _channels.forEach((ch, idx) => {
+        const chName = ch.logic_channel_description || `CH${idx + 1}`;
+        const unit = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
+        dataHeaders.push(`${chName}${unit}`);
+      });
+      initialText += dataHeaders.join(',') + '\n';
+
+      await writer.write(encoder.encode(initialText));
+
+      const chunkSize = 5000;
+      let dataBuffer = [];
+
+      for (let start = 0; start < _numSamples; start += chunkSize) {
+        const end = Math.min(start + chunkSize, _numSamples);
+        const count = end - start;
+        const offset = _dataStart + start * _recordLen;
+        const byteLength = count * _recordLen;
+
+        const dv = await _readSlice(_file, offset, byteLength);
+
+        for (let i = 0; i < count; i++) {
+          const recordIndex = start + i;
+          const recordOffset = i * _recordLen;
+
+          const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
+          const dateStr = formatDateTimeDataRow(timestampMs);
+
+          const rowValues = [dateStr];
+
+          for (let c = 0; c < _numChannels; c++) {
+            const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
+            const v = dv.getFloat64(valOffset, false);
+            if (v <= DATA_OVERRANGE) {
+              rowValues.push('');
+            } else {
+              rowValues.push(v);
+            }
+          }
+          dataBuffer.push(rowValues.join(','));
+        }
+
+        const chunkText = dataBuffer.join('\n') + '\n';
+        await writer.write(encoder.encode(chunkText));
+        dataBuffer = [];
+
+        if (onProgress) {
+          onProgress(end / _numSamples);
+        }
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+    } finally {
+      await writer.close();
+    }
+  },
+
+  async _exportAllChannelsToCsvInMemory(onProgress) {
     const formatDateTimeHeader = (ms) => {
       const date = new Date(ms);
       const day = date.getDate();
@@ -928,7 +1075,6 @@ const CsdAPI = {
       return `${day}.${month} ${year} ${hours}:${mins}:${secs}`;
     };
 
-    // Helper to format date for data row (e.g., "14-05-2026 10:14:35")
     const formatDateTimeDataRow = (ms) => {
       const date = new Date(ms);
       const day = String(date.getDate()).padStart(2, '0');
@@ -940,33 +1086,25 @@ const CsdAPI = {
       return `${day}-${month}-${year} ${hours}:${mins}:${secs}`;
     };
 
-    // Helper to format resolution
     const getResolutionString = (res) => {
       const r = Math.max(0, Math.min(20, res || 0));
       if (r === 0) return '1';
       return (1 / Math.pow(10, r)).toFixed(r);
     };
 
-    const csvContentRows = [];
+    const csvChunks = [];
 
-    // 1. Device title (e.g. "S332 Raw Data")
-    csvContentRows.push(`${_deviceName} Raw Data`);
-    csvContentRows.push(''); // Empty line
+    csvChunks.push(`${_deviceName} Raw Data\n\n`);
 
-    // 2. Start / End Date Time
-    csvContentRows.push(`Start Date Time,${formatDateTimeHeader(_startTimeMs)}`);
-    csvContentRows.push(`End Date Time,${formatDateTimeHeader(_stopTimeMs)}`);
+    csvChunks.push(`Start Date Time,${formatDateTimeHeader(_startTimeMs)}\n`);
+    csvChunks.push(`End Date Time,${formatDateTimeHeader(_stopTimeMs)}\n`);
 
-    // 3. Sample Rate (sec)
-    csvContentRows.push(`Sample Rate(sec),${_sampleIntervalSec}`);
+    csvChunks.push(`Sample Rate(sec),${_sampleIntervalSec}\n`);
 
-    // 4. No. of Channels
-    csvContentRows.push(`NO.Of Channels,${_numChannels}`);
-    csvContentRows.push(`NO.Of Records,${_numSamples}`);
-    csvContentRows.push(''); // Empty line
+    csvChunks.push(`NO.Of Channels,${_numChannels}\n`);
+    csvChunks.push(`NO.Of Records,${_numSamples}\n\n`);
 
-    // 5. Channel Metadata Table
-    csvContentRows.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
+    csvChunks.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point\n');
     _channels.forEach((ch, idx) => {
       const chName = ch.logic_channel_description || `CH${idx + 1}`;
       const sensor = ch.sensor_description || `Sensor ${idx + 1}`;
@@ -982,22 +1120,22 @@ const CsdAPI = {
         resVal,
         locPoint
       ];
-      csvContentRows.push(row.join(','));
+      csvChunks.push(row.join(',') + '\n');
     });
 
-    csvContentRows.push(''); // Empty line
+    csvChunks.push('\n');
 
-    // 6. Data Header Row
     const dataHeaders = ['Date Time'];
     _channels.forEach((ch, idx) => {
       const chName = ch.logic_channel_description || `CH${idx + 1}`;
       const unit = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
       dataHeaders.push(`${chName}${unit}`);
     });
-    csvContentRows.push(dataHeaders.join(','));
+    csvChunks.push(dataHeaders.join(',') + '\n');
 
-    // 7. Data Rows
     const chunkSize = 5000;
+    let dataBuffer = [];
+
     for (let start = 0; start < _numSamples; start += chunkSize) {
       const end = Math.min(start + chunkSize, _numSamples);
       const count = end - start;
@@ -1024,7 +1162,12 @@ const CsdAPI = {
             rowValues.push(v);
           }
         }
-        csvContentRows.push(rowValues.join(','));
+        dataBuffer.push(rowValues.join(','));
+      }
+
+      if (dataBuffer.length >= 10000) {
+        csvChunks.push(dataBuffer.join('\n') + '\n');
+        dataBuffer = [];
       }
 
       if (onProgress) {
@@ -1033,8 +1176,11 @@ const CsdAPI = {
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    const csvString = csvContentRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    if (dataBuffer.length > 0) {
+      csvChunks.push(dataBuffer.join('\n') + '\n');
+    }
+
+    const blob = new Blob(csvChunks, { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1053,6 +1199,16 @@ const CsdAPI = {
     }
     if (!_fileLoaded || !_file) {
       throw new Error("No CSD file loaded");
+    }
+
+    const LIMIT_800MB = 800 * 1024 * 1024; // 800 MB
+    if (_numSamples > 1048576 || _file.size >= LIMIT_800MB) {
+      alert(
+        `Export Aborted: This dataset contains ${_numSamples.toLocaleString()} records, ` +
+        `which exceeds Excel's maximum worksheet row limit (1,048,576 rows) or memory safe limits.\n\n` +
+        `Please export this dataset to CSV format instead.`
+      );
+      return;
     }
 
     const xmlHeader = `<?xml version="1.0"?>

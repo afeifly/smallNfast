@@ -169,6 +169,9 @@ class AxisSeries extends Component {
         chartEndX = 0;
 
     const dataset = chartController.yAxisDataset;
+    if (!dataset || dataset.length === 0) {
+      return;
+    }
     
     //Position first y-axis
     d = dataset[0];

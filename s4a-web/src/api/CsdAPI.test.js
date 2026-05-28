@@ -352,4 +352,72 @@ describe('CsdAPI Parser', () => {
     expect(page2Result.rows[0].values[1]).toBe(24.0);
     expect(page2Result.rows[0].values[2]).toBe(34.0);
   });
+
+  it('correctly parses CSV file headers, metadata and data rows', async () => {
+    const csvContent = `S332 Raw Data
+
+Start Date Time,14.May 2026 10:14:00
+End Date Time,15.May 2026 10:14:00
+Sample Rate(sec),10
+NO.Of Channels,2
+
+No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point
+1,CH1,Sensor 1,mV,0.01,Location 1/MP001
+2,CH2,Sensor 2,mV,0.001,Location 2/MP001
+
+No.,Date Time,CH1 - mV,CH2 - mV
+1,14-05-2026 10:14:35,13.84,-88.11
+2,14-05-2026 10:14:45,-32.92,-17.88
+`;
+
+    const mockFile = {
+      name: 'test.csv',
+      size: csvContent.length,
+      async text() {
+        return csvContent;
+      }
+    };
+
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    // Load via CsdAPI (which delegates to CsvAPI)
+    const success = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(success).toBe(true);
+    expect(CsdAPI.isFileLoaded()).toBe(true);
+
+    const timeRange = CsdAPI.getFileTimeRange();
+    // 14.May 2026 10:14:00 local time
+    expect(timeRange.start).toBe(new Date(2026, 4, 14, 10, 14, 0).getTime());
+
+    // Verify Channels
+    let channelsResult = null;
+    CsdAPI.getChannels(res => {
+      channelsResult = res.logging_chs;
+    });
+
+    await new Promise(r => setTimeout(r, 60));
+    expect(channelsResult).toHaveLength(2);
+    expect(channelsResult[0].logic_channel_description).toBe('CH1');
+    expect(channelsResult[0].resolution).toBe(2);
+    expect(channelsResult[1].resolution).toBe(3);
+
+    // Verify Measurement Data (first channel)
+    let dataResult = null;
+    const qStart = new Date(2026, 4, 14, 10, 14, 0).getTime() + 3600000 * 8;
+    const qStop = new Date(2026, 4, 15, 10, 14, 0).getTime() + 3600000 * 8;
+
+    CsdAPI.getMeasurementData('0', qStart, qStop, 10, 2, res => {
+      dataResult = res;
+    });
+
+    await new Promise(r => setTimeout(r, 60));
+    expect(dataResult).not.toBeNull();
+    expect(dataResult[0].measurementData[0]).toHaveLength(2);
+    expect(dataResult[0].measurementData[0][0]).toBe(13.84);
+    expect(dataResult[0].measurementData[0][1]).toBe(-32.92);
+  });
 });

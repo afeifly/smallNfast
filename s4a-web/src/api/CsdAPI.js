@@ -22,6 +22,8 @@
  * API surface is identical to MockAPI.js.
  */
 
+import CsvAPI from './CsvAPI';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const FILE_HEADER_LEN = 34;
@@ -48,6 +50,7 @@ const IDB_STORE = 'fileHandles';
 
 let _file = null;   // File | FileSystemFileHandle — kept open for lazy reads
 let _fileLoaded = false;
+let _isCsvMode = false;
 let _channels = [];
 let _startTimeMs = 0;
 let _stopTimeMs = 0;
@@ -345,6 +348,19 @@ async function _loadFromFile(file) {
     }
   }
   _fileLoaded = false;
+  _isCsvMode = false;
+
+  if (file && file.name && file.name.toLowerCase().endsWith('.csv')) {
+    const success = await CsvAPI.loadFromFile(file);
+    if (success) {
+      _file = file;
+      _fileLoaded = true;
+      _isCsvMode = true;
+      _onFileLoadedCallbacks.forEach(fn => fn());
+      return true;
+    }
+    return false;
+  }
 
   let fileToLoad = file;
   const LIMIT = 800 * 1024 * 1024; // 800 MB
@@ -402,7 +418,7 @@ async function _openWithFSA() {
   let handles;
   try {
     handles = await window.showOpenFilePicker({
-      types: [{ description: 'CSD Files', accept: { 'application/octet-stream': ['.csd'] } }],
+      types: [{ description: 'CSD/CSV Files', accept: { 'application/octet-stream': ['.csd', '.csv'] } }],
       multiple: false,
     });
   } catch (e) {
@@ -425,15 +441,15 @@ function _ensureFileInput() {
   if (_fileInput) return;
   _fileInput = document.createElement('input');
   _fileInput.type = 'file';
-  _fileInput.accept = '.csd';
+  _fileInput.accept = '.csd,.csv';
   _fileInput.style.display = 'none';
   document.body.appendChild(_fileInput);
 
   _fileInput.addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.csd')) {
-      alert('Only .csd files are supported!');
+    if (!file.name.toLowerCase().endsWith('.csd') && !file.name.toLowerCase().endsWith('.csv')) {
+      alert('Only .csd and .csv files are supported!');
       _fileInput.value = '';
       return;
     }
@@ -559,9 +575,18 @@ const CsdAPI = {
 
   isFileLoaded() { return _fileLoaded; },
 
-  getFileTimeRange() { return { start: _startTimeMs, stop: _stopTimeMs }; },
+  getFileTimeRange() {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getFileTimeRange();
+    }
+    return { start: _startTimeMs, stop: _stopTimeMs };
+  },
 
   getTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
+    if (_fileLoaded && _isCsvMode) {
+      CsvAPI.getTablePage(pageIndex, pageSize, selectedChannelIds, callback);
+      return;
+    }
     if (!_fileLoaded || !_file) {
       setTimeout(() => callback({ total: 0, rows: [] }), 50);
       return;
@@ -621,6 +646,10 @@ const CsdAPI = {
   // ── Standard MockAPI-compatible methods ─────────────────────────────────────
 
   getUserSettings(username, callback) {
+    if (_fileLoaded && _isCsvMode) {
+      CsvAPI.getUserSettings(username, callback);
+      return;
+    }
     if (!_fileLoaded) {
       setTimeout(() => callback([]), 50);
       return;
@@ -658,6 +687,10 @@ const CsdAPI = {
   },
 
   getChannels(callback) {
+    if (_fileLoaded && _isCsvMode) {
+      CsvAPI.getChannels(callback);
+      return;
+    }
     if (!_fileLoaded) {
       setTimeout(() => callback({ logging_chs: [] }), 50);
       return;
@@ -677,6 +710,10 @@ const CsdAPI = {
   },
 
   getMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback) {
+    if (_fileLoaded && _isCsvMode) {
+      CsvAPI.getMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback);
+      return;
+    }
     if (!_fileLoaded || !_file) {
       setTimeout(() => callback([]), 50);
       return;
@@ -729,6 +766,10 @@ const CsdAPI = {
   },
 
   getMutilMeasurementData(channelIds, startTime, tableInterval, getDataWay, callback) {
+    if (_fileLoaded && _isCsvMode) {
+      CsvAPI.getMutilMeasurementData(channelIds, startTime, tableInterval, getDataWay, callback);
+      return;
+    }
     if (!channelIds || channelIds.length === 0) { callback([]); return; }
     const stopTime = _stopTimeMs > _startTimeMs
       ? (_stopTimeMs + 3600000 * 8)
@@ -799,6 +840,9 @@ const CsdAPI = {
   saveSensorPosition(id, x, y, callback) { if (callback) callback({}); },
 
   async exportAllChannelsToCsv(onProgress) {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.exportAllChannelsToCsv(onProgress);
+    }
     if (!_fileLoaded || !_file) {
       throw new Error("No CSD file loaded");
     }
@@ -936,6 +980,9 @@ const CsdAPI = {
   },
 
   async exportAllChannelsToExcel(onProgress) {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.exportAllChannelsToExcel(onProgress);
+    }
     if (!_fileLoaded || !_file) {
       throw new Error("No CSD file loaded");
     }

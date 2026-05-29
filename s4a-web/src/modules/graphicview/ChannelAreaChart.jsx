@@ -134,26 +134,26 @@ class ChannelAreaChart extends Component {
     const { chartController } = this.props;
     const result = responseData[0];
     DataUtil.handleMeasurementData(this.channel, result);
-    this.draw();
 
     if (chartController.datasourceMode === 'History') {
       this.channel.dataLoading = false;
       chartController.handleDataLoadingStatus();
       this.realtimeMark = 0;
-    }else {
+    } else {
+      this.draw();
       if(this.realtimeMark === 0) {
         this.channel.dataLoading = false;
         chartController.handleDataLoadingStatus();
         this.realtimeMark = 1;
       }
-    }
 
-    d3.select('#axis-container').dispatch(SystemEvent.UPDATE_YAXIS_VIEW, {
-      detail: {
-        type: 'channel',
-        id: this.channel.id
-      }
-    });
+      d3.select('#axis-container').dispatch(SystemEvent.UPDATE_YAXIS_VIEW, {
+        detail: {
+          type: 'channel',
+          id: this.channel.id
+        }
+      });
+    }
   }
 
   updateColor() {

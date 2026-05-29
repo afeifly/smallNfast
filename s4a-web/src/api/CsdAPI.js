@@ -61,6 +61,7 @@ let _dataStart = 0;      // byte offset where records begin
 let _recordLen = 0;      // bytes per record
 let _deviceName = 'CSD Device';
 let _sampleIntervalSec = 1;
+let _fileBuffer = null;   // Fully loaded file ArrayBuffer for zero-copy sync memory reads
 
 let _onFileLoadedCallbacks = [];
 
@@ -149,6 +150,9 @@ async function _idbGetAll() {
 
 /** Read exactly `length` bytes starting at `offset` from a File object. */
 async function _readSlice(file, offset, length) {
+  if (_fileBuffer) {
+    return new DataView(_fileBuffer, offset, length);
+  }
   const blob = file.slice(offset, offset + length);
   const buffer = await blob.arrayBuffer();
   return new DataView(buffer);
@@ -325,8 +329,22 @@ async function _readChannelData(file, chIdx, startSample, endSample, step) {
   const totalRecords = endSample - startSample + 1;
   const spanBytes = totalRecords * _recordLen;
 
-  // Optimization 1: If the byte span is small (< 5MB), read the entire block at once
-  if (spanBytes < 5 * 1024 * 1024) {
+  // In-memory synchronous fast path: zero copies, zero async overhead
+  if (_fileBuffer) {
+    const dv = new DataView(_fileBuffer);
+    const stepBytes = step * _recordLen;
+    let recordStart = _dataStart + startSample * _recordLen;
+    for (let s = startSample; s <= endSample; s += step) {
+      const v = dv.getFloat64(recordStart + chByteOffset, false);
+      values.push((v <= DATA_OVERRANGE) ? null : v);
+      recordStart += stepBytes;
+    }
+    return values;
+  }
+
+  // Fallback for native files (lazy loaded/not in memory)
+  // Optimization 1: If the byte span is small (< 50MB), read the entire block at once
+  if (spanBytes < 50 * 1024 * 1024) {
     const recordStart = _dataStart + startSample * _recordLen;
     const dv = await _readSlice(file, recordStart, spanBytes);
     for (let s = 0; s < totalRecords; s += step) {
@@ -337,16 +355,20 @@ async function _readChannelData(file, chIdx, startSample, endSample, step) {
     return values;
   }
 
-  // Optimization 2: For massive ranges, read sampled points in parallel
-  const promises = [];
-  for (let s = startSample; s <= endSample; s += step) {
-    const recordStart = _dataStart + s * _recordLen;
-    promises.push(_readSlice(file, recordStart + chByteOffset, CHANNEL_VALUE_LEN));
-  }
-  const slices = await Promise.all(promises);
-  for (const dv of slices) {
-    const v = dv.getFloat64(0, false);
-    values.push((v <= DATA_OVERRANGE) ? null : v);
+  // Optimization 2: For massive ranges, read sampled points in batches of 100 to prevent locking up browser I/O
+  const batchSize = 100;
+  for (let s = startSample; s <= endSample; s += step * batchSize) {
+    const promises = [];
+    const batchEnd = Math.min(endSample, s + step * (batchSize - 1));
+    for (let curr = s; curr <= batchEnd; curr += step) {
+      const recordStart = _dataStart + curr * _recordLen;
+      promises.push(_readSlice(file, recordStart + chByteOffset, CHANNEL_VALUE_LEN));
+    }
+    const slices = await Promise.all(promises);
+    for (const dv of slices) {
+      const v = dv.getFloat64(0, false);
+      values.push((v <= DATA_OVERRANGE) ? null : v);
+    }
   }
   return values;
 }
@@ -390,6 +412,7 @@ async function _loadFromFile(file) {
   }
   _fileLoaded = false;
   _isCsvMode = false;
+  _fileBuffer = null; // Clear previous buffer reference
 
   window.dispatchEvent(new CustomEvent('fileLoadStart', { detail: { filename: file.name } }));
 
@@ -424,6 +447,7 @@ async function _loadFromFile(file) {
         const overallProgress = 0.1 + p * 0.75; // Map chunk reading to 10% - 85%
         window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: overallProgress, filename: file.name } }));
       });
+      _fileBuffer = fullBuffer; // Save reference for zero-copy sync memory reads
       fileToLoad = {
         name: file.name,
         size: file.size,
@@ -436,6 +460,7 @@ async function _loadFromFile(file) {
       };
     } catch (e) {
       console.warn('[CsdAPI] Failed to load entire file into memory, falling back to lazy load:', e);
+      _fileBuffer = null;
       fileToLoad = file;
     }
   }

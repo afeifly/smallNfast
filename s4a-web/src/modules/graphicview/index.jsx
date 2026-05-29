@@ -285,6 +285,9 @@ class GraphicView extends Component {
       .on(SystemEvent.LOADING_DATA_COMPLETED, () => {
         this.loadingRef.current.hide();
         this.lineChartRef.current.updateYAxis();
+        if (this.lineChartRef.current && this.lineChartRef.current.SplineGroupRef.current) {
+          this.lineChartRef.current.SplineGroupRef.current.drawAll();
+        }
       })
       .on(SystemEvent.NO_SELECTED_CHANNELS, () => {
         d3.select('.chart-placeholder').attr('data-status', 'active');

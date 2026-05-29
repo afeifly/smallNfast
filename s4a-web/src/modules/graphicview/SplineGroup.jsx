@@ -648,6 +648,20 @@ class SplineGroup extends Component {
     this.dragEnabled = false;
   }
 
+  drawAll = () => {
+    let lineItem;
+    dataset.forEach(d => {
+      lineItem = this.splineRefs.get(d.id);
+      if (lineItem) {
+        lineItem.draw();
+      }
+    });
+    lines = document.getElementsByClassName('sub-line');
+    if (self.lastMousePosition) {
+      self.mouseMove(self.lastMousePosition);
+    }
+  }
+
 }
 
 export default SplineGroup;

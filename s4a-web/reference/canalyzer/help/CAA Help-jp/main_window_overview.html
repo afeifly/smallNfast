@@ -1,0 +1,137 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=GBK">
+    <link type="text/css" href="style.css" rel="stylesheet">
+    <meta name="generator" content="Helen">
+    <title>Main window overview</title>
+  </head>
+  <body class="doc">
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="configure_database.html">データベースの配置と記録ファイルのビュー</a> | <a href=
+      "generating_statistics.html">統計データの生成</a> &gt;</nobr>
+    </p>
+    <h1>
+       メインウィンドウの概述
+    </h1>
+    <p>
+       下の図には典型的なCAA メインウィンドウを表示します。
+    </p>
+    <p>
+      <br>
+    </p>
+    <p align="center">
+       <img width="700" height="533" src="pics/main window-c.jpg"><br>
+       <em>A typical CAA main window</em>
+    </p>
+    <p>
+      <br>
+    </p>
+    <ul>
+      <li>
+        <p>
+           <b>メニューバー</b>は五つのメニューを含んで、異なっている操作を行うことができます。これらのメニューの詳しい説明は「<a href=
+          "menus.html">メニュー</a>」を参照して下さい。
+        </p>
+      </li>
+      <li>
+        <p>
+           <b>ツールバー</b>の大多数の機能はメニューの機能と同じですが、これらのボタンはアクセスプログラムの基本的な特性のショートカットを提供しました。あるボタンの機能を調べようとする場合、マウスをその上に置いてください。しばらくすると、当該ボタンの機能を説明する簡潔なヘルプ情報が表示されます。これらのツールバーのボタンの詳しい説明は「<a
+           href="toolbar.html">ツールバー</a>」を参照してください。
+        </p>
+      </li>
+      <li>
+        <p>
+           <b>グラフエリアは現在開けられた記録ファイルのグラフを表示します。グラフエリアは次の通りの特性を持っています。</b>
+        </p>
+        <ul>
+          <li>
+            <p>
+               グラフエリアは一本の横軸（時間軸）と多とも4本の縦軸を備えています。目盛り単位は各縦軸の側に表示されています。
+            </p>
+          </li>
+          <li>
+            <p>
+               グラフにある各曲線はある特定のチャンネルの測量値を代表して、その色がチャンネル名の色と同じです。<b><i>グラフには多とも 6
+              本のチャンネルの測量値を表示することができますが、これらのチャンネルの異なる単位の数量が四つを上回ってはいけません 。</i></b>「<a href=
+              "select_channel_dialog.html">Select Channel ダイアログボックス</a>」の中でツールバーにあるチャンネル選択ボタン（<img
+              alt="icon_selectchannel-s.jpg" src=
+              "pics/icon_selectchannel-s.jpg">&nbsp;&nbsp;）をクリックしてグラフの中のチャンネル表示を変更することができます。
+            </p>
+          </li>
+          <li>
+            <p>
+               ツールバーにある文字変更ボタン（<img alt="icon_changetext-s.jpg" src=
+              "pics/icon_changetext-s.jpg">&nbsp;&nbsp;）をクリックしたり、メニューの「Setting -&gt; Change Text（設定
+              -&gt;
+              文字変更）」を選択したりして、タイトル、軸名称と凡例（即ちチャンネル名と単位）を含め、グラフの文字表示をカスタマイズします。凡例を除き、すべての入力文字が保存されて、そして次回のプログラムのスタート時にロードされます。
+            </p>
+            <br>
+             
+            <p align="center">
+               <img width="400" height="426" src="pics/change texts.jpg"><br>
+               <em>Change text</em> <i>ダイアログボックス</i>
+            </p>
+            <br>
+          </li>
+          <li>
+            <p>
+               記録ファイルの周期が長すぎると、右下の「---&gt;」や「&lt;---」のボタンをクリックしてグラフの異なる部分を調べることができます。
+            </p>
+          </li>
+          <li>
+            <p>
+               ツールバーにあるレポートタイプ選択ボタン（<img alt="icon_reporttype2-s.jpg" src=
+              "pics/icon_reporttype2-s.jpg">&nbsp;）をクリックしたり、メニューの「<i>View -&gt; Select Report
+              Type（ビュー -&gt; レポートタイプ選択）</i>」を選択して、「Select Report Type
+              ダイアログボックス」を開けたりして，一日間、一週間又は一ヶ月間のグラフを調べることができます。
+            </p>
+            <p>
+               デフォルトで、各可視チャンネルのすべての測量値がグラフエリアに表示されます。比較的に短い周期で多すぎる値を表示した場合、曲線ははっきりしなくなる恐れがあります。更にはっきりに曲線を調べようとする場合、このダイアログボックスで1分間、15分間又は1時間あたりの各チャンネルの平均測量値の計算を選択することができて、表示された値の数量を減らします。
+            </p>
+            <br>
+             
+            <p align="center">
+               <img width="300" height="326" src="pics/select report type.jpg"><br>
+               <em>Select report type</em> <i>ダイアログボックス</i>
+            </p>
+            <br>
+          </li>
+          <li>
+            <p>
+               ツール&#12539;バーにある時間周期選択ボタン（<a name="selecting_time_period"><img alt=
+              "icon_selectperiod-s.jpg" src="pics/icon_selectperiod-s.jpg"></a>
+              ）をクリックしたり、メニューの「View -&gt; Select Time Period（ビュー -&gt;
+              時間周期選択）」を選択したりして、グラフに表示される測量値の周期を指定します。Time（時間）軸の目盛りは指定された周期によって変化します。グラフを原状に回復する場合、メニューの「
+              <i>View -&gt; Reload（ビュー -&gt; リロード）</i>」を選択してください。
+            </p>
+            <br>
+             
+            <p align="center">
+               <img width="450" height="263" src="pics/time option-c.jpg"><br>
+               <em>Time option</em> <i>ダイアログボックス</i>
+            </p>
+            <br>
+          </li>
+          <li>
+            <p>
+               ツールバーにあるコメント追加ボタン（<a name="adding_comments_to_graph"><img alt=
+              "icon_addcomment-s.jpg" src="pics/icon_addcomment-s.jpg"></a> ）をクリックしたり、メニューの「Tool
+              -&gt; Add Comment To Graph（ツール -&gt;
+              グラフコメントの追加）」を選択したりして，グラフにコメントを追加します。コメントを追加した後に、それをグラフのいかなる位置にドラッグ&#12539;アンド&#12539;ドロップすることができます。また、コメントを編集したり削除したりすることもできます。コメントを右クリックして、相応のメニューを選択するとOKです。追加したコメントがグラフの印刷とエックスポート時にも表示されます。
+            </p>
+          </li>
+          <li>
+            <p>
+               グラフエリアを右クリックして、「<i>Reload</i>」を選択したり、メニューの「<i>View -&gt; Reload（ビュー -&gt;
+              リロード）</i>」を選択したりして、グラフにある測量値の周期を表示することできます。
+            </p>
+          </li>
+        </ul>
+      </li>
+    </ul>
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="configure_database.html">データベースの配置と記録ファイルのビュー</a> | <a href=
+      "generating_statistics.html">統計データの生成</a> &gt;</nobr>
+    </p>
+  </body>
+</html>

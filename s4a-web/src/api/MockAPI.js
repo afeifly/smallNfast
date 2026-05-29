@@ -210,6 +210,10 @@ let TestAPI = {
 
   isCsvMode() {
     return false;
+  },
+
+  getLoadedFileName() {
+    return 'mock_data.csd';
   }
 }
 

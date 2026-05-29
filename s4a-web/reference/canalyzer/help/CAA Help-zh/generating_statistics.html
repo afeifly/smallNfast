@@ -1,0 +1,325 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=GBK">
+    <link type="text/css" href="style.css" rel="stylesheet">
+    <meta name="generator" content="Helen">
+    <title>Generating statistics</title>
+  </head>
+  <body class="doc">
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="main_window_overview.html">主窗口概述</a> | <a href=
+      "previewing_and_printing_report.html">预览和打印报表</a> &gt;</nobr>
+    </p>
+    <h1>
+       生成统计数据
+    </h1>
+    <p>
+       CAA 可根据用户定义的设置为当前打开的记录文件生成有关压缩空气消耗、泄漏、能耗以及泄漏成本的统计数据。
+    </p>
+    <p>
+       能源成本有 3 种计算方式：
+    </p>
+    <p style=" margin-left: 20.0px;">
+       &bull;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>按功耗计算</b>
+    </p>
+    <p style=" margin-left: 40.0px;">
+       这一种方式要求记录了压缩机的电流消耗。如记录时只能选择单位“A”，则应使用这一种计算方式。请输入下列参数：
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Current at full load（满负荷电流）</b>：电机满负荷时测量的电流
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Current at no load（无负荷电流）</b>：电机无负荷时测量的电流
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>cos phi at full load（满负荷cos
+      phi）</b>：电机满负荷时计算的 cos phi 值。有关更多信息，请参见“<a href="generating_statistics.html#about_cos_phi">关于
+      cos phi</a>”。
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>cos phi at no load（无负荷cos phi）</b>：电机无负荷时计算的
+      cos phi 值。有关更多信息，请参见“<a href="generating_statistics.html#about_cos_phi">关于 cos phi</a>”关于 cos
+      phi。
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Threshold at full
+      load（满负荷阈值）</b>：此值用于确定负荷/无负荷循环。所有超过这一阈值的安培值均表明，压缩机处于满负荷状态。
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Threshold at no
+      load（无负荷阈值）</b>：此值用于确定负荷/无负荷循环。所有低于这一阈值的安培值均表明，压缩机处于无负荷状态。
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Supply voltage（电源电压）</b>：电机的电源电压，标准值为380
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Energy cost per kWh（每千瓦时能源成本）</b>：每千瓦时的电能成本。
+    </p>
+    <p style=" margin-left: 40.0px;">
+       o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Currency（货币）</b>：成本的货币名称
+    </p>
+    <p style=" margin-left: 40.0px;">
+       &bull;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Based on flow
+      consumption</b>
+    </p>
+    <p style=" margin-left: 20.0px;">
+       &bull;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>按流量消耗计算</b>
+    </p>
+    <p style=" margin-left: 40.0px;">
+       如记录了系统的容积流量（m<sup>3</sup>/h、m<sup>3</sup>/min 或
+      cfm），则可使用这一种计算方式。此时程序将使用每立方米的标准价格计算成本。根据经验，可使用每立方米0.008欧罗来计算。
+    </p>
+    <p style=" margin-left: 20.0px;">
+       &bull;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>按压缩机规格计算</b>
+    </p>
+    <p style=" margin-left: 40.0px;">
+       这一种方式使用压缩机的规格来计算成本。为此，需要输入压缩机在满负荷和无负荷时的功耗以及预计运行的时间百分比。此外，还需要输入每年的总运行小时数。
+    </p>
+    <p style=" margin-left: 40.0px;">
+       &nbsp;
+    </p>
+    <p>
+       可按下列步骤生成统计数据：
+    </p>
+    <ol>
+      <li>
+        单击工具栏上的定义泄漏按钮（<img alt="icon_defineleakage-s.jpg" src=
+        "pics/icon_defineleakage-s.jpg">）或选择菜单项“Tool -&gt; Define Leakage（工具 -&gt;
+        定义泄漏）”，在图表上显示泄漏线。这一条线定义了压缩空气系统的平均泄漏量，用于计算实际泄漏量。使用工具栏下方的按钮将泄漏线移至正确的水平。<b>注</b>：如不知道系统的平均泄漏量，可跳过这一步。
+      </li>
+      <li>
+        <p>
+           单击工具栏上的计算设置按钮（<a name="calculation_setting_dialog"><img alt="icon_calculatesetup-s.jpg"
+          src="pics/icon_calculatesetup-s.jpg"></a>）或选择菜单项“Setting -&gt; Calculation Setting（设置
+          -&gt; 计算设置）”，弹出“Calculation Setting 对话框”。选择按<b>Power Consumption</b>（功耗）、<b>Flow
+          Consumption</b>（流量消耗）或 <b>Compressor
+          Specification</b>（压缩机规格）计算能源成本，然后设置相应的栏目。单击“<b>OK</b>”按钮，所有设置将被保存，并在下次程序启动时加载。
+        </p>
+        <br>
+         
+        <p align="center">
+           <img width="600" height="411" src="pics/calculation setting.jpg"><br>
+           <em>Calculation setting</em> <i>对话框</i>
+        </p>
+        <br>
+      </li>
+      <li>
+        <p>
+           单击工具栏上的显示统计数据按钮（<img alt="icon_reporttype-s.jpg" src=
+          "pics/icon_reporttype-s.jpg">），根据上述指定的设置查看生成的统计数据。
+        </p>
+        <br>
+         
+        <p align="center">
+           <img width="700" height="766" src="pics/statistics.jpg"><br>
+           <em>Statistics Report</em> <i>对话框</i>
+        </p>
+        <br>
+         
+        <p>
+           取决于计算设置，某些数据可能由于无法计算而显示为空。
+        </p>
+        <p>
+           此对话框显示下列<b>Compressor statistics（压缩机统计数据）</b>：
+        </p>
+        <ul>
+          <li>
+            <p>
+               <b>Measured / calculated data（测量/计算数据）</b>
+            </p>
+            <ul>
+              <li>
+                <p>
+                   <b>Full load（满负荷）：</b>
+                </p>
+                <ul>
+                  <li>
+                    <p>
+                       <b>Time（时间）：</b>压缩机满负荷运行的小时数
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>% of measured interval（测量间隔百分比）</b>：按测量间隔百分比计算的满负荷时间
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Energy consumption</b>（能耗）：满负荷下的能耗
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Cost</b>（成本）：满负荷下的能源成本
+                    </p>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <p>
+                   <b>Non load（无负荷）：</b>
+                </p>
+                <ul>
+                  <li>
+                    <p>
+                       <b>Time（时间）：</b>压缩机无负荷运行的小时数
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>% of measured interval（测量间隔百分比）</b>：按测量间隔百分比计算的无负荷时间
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Energy consumption</b>（能耗）：无负荷下的能耗
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Cost</b>（成本）：无负荷下的能源成本
+                    </p>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <p>
+                   <b>Stop（停机）</b>：
+                </p>
+                <ul>
+                  <li>
+                    <p>
+                       <b>Time（时间）：</b>压缩机满负荷运行的小时数
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>% of measured interval（测量间隔百分比）</b>：按测量间隔百分比计算的满负荷时间
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Number of load changes（负荷变动次数）</b>：满负荷/无负荷之间的变动次数
+                    </p>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <p>
+                   <b>Total Energy consumption（总能耗）</b>：测量间隔期间的总能耗
+                </p>
+                <p>
+                   此值是根据压缩机的安培测量值计算的。如需计算此值，必须在Calculation settings对话框中输入某些设置。如测量数据中无安培测量值，则能耗应设为
+                  0。
+                </p>
+              </li>
+              <li>
+                <p>
+                   <b>Costs（成本）</b>：测量间隔期间的能源成本
+                </p>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <p>
+               <b>Cumulated data for one year（一年累计数据）</b>
+            </p>
+            <p>
+               假设测量间隔延长为一年，则这一部分会提供一年的统计数据。
+            </p>
+          </li>
+        </ul>
+        <p>
+           此对话框显示下列<b>System statistics（系统统计数据）</b>：
+        </p>
+        <ul>
+          <li>
+            <p>
+               <b>Total air consumption（总空气消耗）</b>：测量周期内的消耗量，单位为立方米或立方英尺
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Unit costs（单位成本）</b>：每立方米或立方英尺的成本
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Average flow（平均流量）</b>：总消耗量除以测量周期
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Max flow（最大流量）</b>：最大测量容积流量
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Total
+              leakage（总泄漏量）</b>：测量周期内的泄漏量，单位为立方米或立方英尺。此值由图表中定义的泄漏点确定。在机器不进行作业的周期内测量到的流量即为泄漏量。将泄漏点设置为此值，CAA
+              即可计算出总泄漏量。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Average leakage（平均泄漏量）</b>：总泄漏量除以测量周期
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Leakage rate（泄漏率）</b>：总泄漏量除以总消耗量，以百分比表示
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Costs of leakage（泄漏成本）</b>：总泄漏量乘以每立方米/立方英尺成本
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Max pressure（最大压力）</b>：最大测量压力
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Min pressure（最小压力）</b>：最小测量压力
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Max dew point（最高露点）</b>：最高测量露点
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Min dew point（最低露点）</b>：最低测量露点
+            </p>
+          </li>
+        </ul>
+      </li>
+    </ol>
+    <div class="note">
+      <p>
+         <b>关于 cos phi</b>
+      </p>
+      <ul>
+        <li>
+          <p>
+             CAA 使用公式：P = I * A * sqrt (3) * cos phi来计算电功率。cos phi
+            是一个效率因子，在电机中随负荷情况而改变，例如，效率因子在满负荷和无负荷的情况下是不同的。可根据电压和电流测量值计算 cos phi
+            值的测量仪表目前在市场上有售。将满负荷和无负荷电流以及 cos phi 值输入到“Calculation Setting 对话框”中，CAA 将考虑电机（压缩机）的效率变化。
+          </p>
+        </li>
+        <li>
+          <p>
+             如无法获得 cos phi 值，请留空这些栏目，程序将使用标准常量 0.85。
+          </p>
+        </li>
+      </ul>
+    </div>
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="main_window_overview.html">主窗口概述</a> | <a href=
+      "previewing_and_printing_report.html">预览和打印报表</a> &gt;</nobr>
+    </p>
+  </body>
+</html>

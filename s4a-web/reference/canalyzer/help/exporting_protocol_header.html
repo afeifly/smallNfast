@@ -1,0 +1,39 @@
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css"></link>
+<title>Exporting protocol header</title>
+</head>
+<body class="doc">
+<p align="center" class="framenavi"><nobr>&lt; <a href="recording_values.html">Recording current measurement values</a> | <a href="compacting_database.html">Compacting database</a> &gt;</nobr></p><h1>Exporting protocol header</h1>
+
+<p>You can choose to export a single protocol header to a Microsoft Excel file, or one or more protocol headers to a CS Data file in <a href="protocol_header_dialog.html">Protocol header dialog</a>.</p>
+<h2>Exporting to a Microsoft Excel file</h2>
+
+<p>Note that an Excel file can contain no more than 64,000 rows of data. If you choose to export a protocol header with more than 64,000 rows of data, the program will provide options to reduce the data size.</p>
+
+<p>To initiate the export, select a protocol header in the protocol header list, click "<b>Export</b>" button and select "<b>To Excel File</b>". If the protocol header contains more than 64,000 rows of data, you will see Export Option dialog shown below. Otherwise, you will see <a href="exporting_protocol_header.html#export_dialog">Export dialog</a> directly.  </p>
+<br><p align="center">
+(Missing picture [export option dialog.jpg])<br>
+<em>Export Option dialog</em></p><br>
+
+<p>In Export Option dialog you can choose to reduce the data size in either of these two ways:
+<ul><li>
+<p><b>Shrink the data</b>: select "<b>Shrink data to less than 64,000</b>". Data size will be reduced by merging adjacent rows. Measurement values in each merged row are calculated by averaging those in the original rows.</p>
+</li><li>
+<p><b>Shorten the period</b>: select "<b>Select a certain time period</b>". The start time and end time for the record file are displayed. You can select a different start time and/or end time to shorten the period. To select a different start time or end time, click "[null]" to open the calendar to select a new date and, optionally, click "[null]" to change the hour of the date. Only measurement values recorded within the selected period will be exported resulting in smaller data size. If the selected period isn't short enough, you will be prompted to select another start time or end time.</p>
+</li></ul>
+</p>
+
+<p>After clicking "<b>OK</b>" button you will see Export dialog. To terminate the export, click "<b>Cancel</b>" button.</p>
+<br><p align="center">
+(Missing picture [export dialog-c.jpg])<br>
+<em>Export dialog</em></p><br>
+
+<p><a name="export_dialog">The program will notify you of the result of the export. <b><i>Note that if you enter a filename that already exists in the selected location, this file will be overwritten. If the file is currently opened by another application, the export will fail.</i></b></p>
+<h2>Exporting to a CS Data file</h2>
+
+<p>Unlike an Excel file, a CS Data (.csd) file can contain unlimited number of rows of data.</p>
+
+<p>To initiate the export, select one or more protocol headers in the protocol header list, click "<b>Export</b>" button and select "<b>To CS Data File</b>". You will see the same <a href="exporting_protocol_header.html#export_dialog">Export dialog</a> as shown above, where you can complete the export in the same way.</p>
+<p align="center" class="framenavi"><nobr>&lt; <a href="recording_values.html">Recording current measurement values</a> | <a href="compacting_database.html">Compacting database</a> &gt;</nobr></p></body>
+</html>

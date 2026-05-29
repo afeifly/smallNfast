@@ -315,6 +315,10 @@ let RealAPI = {
       'position_y': y,
     }
     RequestUtil.requestURLByPost(url, JSON.stringify(param), callback);
+  },
+
+  getLoadedFileName() {
+    return '';
   }
 }
 

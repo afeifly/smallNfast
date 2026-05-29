@@ -24,7 +24,7 @@ import './css/style.css';
 import { Menu, MenuItem } from '@mui/material';
 import ChannelGroup from './ChannelGroup';
 
-let colors = ['#0052CC', '#FF5630', '#00B8D9', '#6554C0',
+let colors = ['#00ac86', '#FF5630', '#00B8D9', '#6554C0',
   '#FFAB00', '#36B37E', '#FFC400', '#FF7452', '#57D9A3', '#172B4D'];
 
 class ChannelList extends Component {

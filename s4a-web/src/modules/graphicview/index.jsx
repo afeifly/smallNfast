@@ -702,7 +702,7 @@ class GraphicView extends Component {
   handleExportCsvOption = async () => {
     this.handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      alert("No CSD file is currently loaded.");
+      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
       return;
     }
     this.loadingRef.current.showWithMessage("Exporting to CSV... 0%");
@@ -712,7 +712,7 @@ class GraphicView extends Component {
       });
     } catch (e) {
       console.error(e);
-      alert("Failed to export CSD to CSV: " + e.message);
+      window.showAppNotification("Export Failed", "Failed to export CSD to CSV: " + e.message, "error");
     } finally {
       this.loadingRef.current.hide();
     }
@@ -721,7 +721,7 @@ class GraphicView extends Component {
   handleExportExcelOption = async () => {
     this.handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      alert("No CSD file is currently loaded.");
+      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
       return;
     }
     this.loadingRef.current.showWithMessage("Exporting to Excel... 0%");
@@ -731,7 +731,7 @@ class GraphicView extends Component {
       });
     } catch (e) {
       console.error(e);
-      alert("Failed to export CSD to Excel: " + e.message);
+      window.showAppNotification("Export Failed", "Failed to export CSD to Excel: " + e.message, "error");
     } finally {
       this.loadingRef.current.hide();
     }

@@ -1,0 +1,347 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=GBK">
+    <link type="text/css" href="style.css" rel="stylesheet">
+    <meta name="generator" content="Helen">
+    <title>Generating statistics</title>
+  </head>
+  <body class="doc">
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="main_window_overview.html">メインウィンドウの概述</a> | <a href=
+      "previewing_and_printing_report.html">プレビューとレポートの印刷</a> &gt;</nobr>
+    </p>
+    <h1>
+       生産統計データ
+    </h1>
+    <p>
+       CAA はユーザーの定義した設定によって現在開けられた記録ファイルに圧縮空気の消耗、リーク、エネルギー消耗と漏れコストに関する統計データを生成することができます。
+    </p>
+    <p>
+       エネルギーのコストの計算は三種類があります。
+    </p>
+    <ul>
+      <li>
+        <p>
+           <b>パワー消耗で計算すること</b>
+        </p>
+        <p>
+           この方式はコンプレッサーの電流消耗を記録したことを求めています。記録の時に単位の「A」しか選択することができない場合、この計算方式を使うべきです。下記のパラメーターを入力してください。
+        </p>
+        <ul>
+          <li>
+            <p>
+               <b>Current at full load（フル負荷電流）</b>：電機のフル負荷の時に測量された電流
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Current at no load（無負荷電流）</b>：電機の無負荷の時に測量された電流
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>cos phi at full load（フル負荷cos phi）</b>：電機のフル負荷の時に計算された cos phi 値。更なる情報は、「<a href=
+              "generating_statistics.html#about_cos_phi">cos phiに関して</a>」を参照してください。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>cos phi at no load（無負荷cos phi）</b>：電機の無負荷の時に計算された cos phi 値。更なる情報は、「<a href=
+              "generating_statistics.html#about_cos_phi">cos phiに関して</a>」を参照してください。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Threshold at full
+              load（フル負荷閾値）</b>：この値が負荷/無負荷の循環の確定に用いられます。すべてのこの閾値を上回ったアンペア値は、コンプレッサーがフル負荷の状態にあることを示しています。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Threshold at no
+              load（無負荷閾値）</b>：この値が負荷/無負荷の循環の確定に用いられます。すべてのこの閾値より低いアンペア値は、コンプレッサーが無負荷の状態にあることを示しています。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Supply voltage（電源電圧）</b>：電機の電源電圧の標準値が380です。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Energy cost per kWh（キロワット時間あたりのエネルギーコスト）</b>：キロワット時間あたりの電気エネルギーのコスト。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Currency（貨幣）</b>：コストの貨幣名称
+            </p>
+          </li>
+        </ul>
+      </li>
+      <li>
+        <p>
+           <b>流量の消耗で計算すること</b>
+        </p>
+        <p>
+           システムの容積流量（m3/h、m3/min 又は
+          cfm）を記録した場合、この計算方式を使うことができます。この時にプログラムは立方メートルあたりの標準価格でコストを計算します。経験によって、立方メートルあたりに0.008ユーロで計算することができます。
+        </p>
+      </li>
+      <li>
+        <p>
+           <b>コンプレッサーの仕様で計算すること</b>
+        </p>
+        <p>
+           この方式はコンプレッサーの仕様でコストを計算するのです。このために、コンプレッサーのフル負荷と無負荷の時のパワー消耗と運行予定時間のパーセンテージを入力しなければならない。また、毎年の総運行時間数を入力しなければなりません。
+        </p>
+      </li>
+    </ul>
+    <p>
+       下記のステップで統計データを生成することができます。
+    </p>
+    <ol>
+      <li>
+        <p>
+           ツールバーにあるリーク定義ボタン（ <img alt="icon_defineleakage-s.jpg" src=
+          "pics/icon_defineleakage-s.jpg">&nbsp;）をクリックしたり、メニューの「Tool -&gt; Define Leakage（ツール -&gt;
+          リーク定義）」を選択すると、グラフでリーク線を表示します。この線は圧縮空気システムの平均的なリーク量を定義して、実際のリーク量の計算に用いられます。ツールバーの下のボタンを使ってリーク線を正しいレベルへ移動します。
+          <b>注</b>：システムの平均的なリーク量を知らない場合、このステップをスキップすることができます。
+        </p>
+      </li>
+      <li>
+        <p>
+           ツールバーにある計算設定ボタン（<a name="calculation_setting_dialog"><img alt=
+          "icon_calculatesetup-s.jpg" src="pics/icon_calculatesetup-s.jpg"></a>
+          ）をクリックしたり、メニューの「Setting -&gt; Calculation Setting（設定 -&gt; 計算設定）」を選択したりすると、「Calculation
+          Setting ダイアログボックス」が表示されます。Power Consumption（パワー消耗）、Flow Consumption（流量消耗）或は Compressor
+          Specification（コンプレッサーの仕様）でエネルギーのコストを計算することを選択して、それから相応の欄を設定します。「OK」ボタンをクリックすると、すべての設定が保存されて、そして次回にプログラムを起動する時にロードします。
+        </p>
+        <br>
+         
+        <p align="center">
+           <img width="600" height="411" src="pics/calculation setting.jpg"><br>
+           <em>Calculation setting</em> <i>ダイアログボックス</i>
+        </p>
+        <br>
+      </li>
+      <li>
+        <p>
+           ツールバーにある統計データ表示ボタン（<img alt="icon_reporttype-s.jpg" src=
+          "pics/icon_reporttype-s.jpg">&nbsp;&nbsp;）をクリックして、上記に指定された設定によって生成した統計データを調べます。
+        </p>
+        <br>
+         
+        <p align="center">
+           <img width="700" height="766" src="pics/statistics.jpg"><br>
+           <em>Statistics Report</em> <i>ダイアログボックス</i>
+        </p>
+        <br>
+         
+        <p>
+           計算設置によりますが、いくつかのデータが計算不能で、空白で表示される可能性があります。
+        </p>
+        <p>
+           このダイアログボックスは下記の<b>Compressor statistics（コンプレッサーの統計データ）</b>を表示するのです。
+        </p>
+        <ul>
+          <li>
+            <p>
+               <b>Measured / calculated data（データの測量/計算）</b>
+            </p>
+            <ul>
+              <li>
+                <p>
+                   <b>Full load（フル負荷）</b>
+                </p>
+                <ul>
+                  <li>
+                    <p>
+                       <b>Time（時間）</b>：コンプレッサーのフル負荷での運行時間数
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>% of measured interval（測量間隔のパーセンテージ）</b>：測量間隔のパーセンテージで計算されたフル負荷の時間
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Energy consumption</b>（エネルギー消耗）：フル負荷でのエネルギー消耗
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Cost</b>（コスト）：フル負荷でのエネルギーコスト
+                    </p>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <p>
+                   <b>Non load（無負荷）</b>
+                </p>
+                <ul>
+                  <li>
+                    <p>
+                       <b>Time（時間）</b>：コンプレッサーの無負荷での運行時間数
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>% of measured interval（測量間隔のパーセンテージ）</b>：測量間隔のパーセンテージで計算された無負荷の時間
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Energy consumption</b>（エネルギー消耗）：無負荷でのエネルギー消耗
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Cost</b>（コスト）：無負荷でのエネルギーコスト
+                    </p>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <p>
+                   <b>Stop（ストップ）</b>
+                </p>
+                <ul>
+                  <li>
+                    <p>
+                       <b>Time（時間）</b>：コンプレッサーのフル負荷での運行時間数
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>% of measured interval（測量間隔のパーセンテージ）</b>：測量間隔のパーセンテージで計算されたフル負荷の時間
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                       <b>Number of load changes（負荷変動回数）</b>：フル負荷/無負荷の間の変動回数
+                    </p>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <p>
+                   <b>Total Energy consumption（総エネルギー消耗）</b>：間隔期間の総エネルギー消耗を測量します
+                </p>
+                <p>
+                   この値はコンプレッサーのアンペア測量値によって計算されたものです。この値を計算する必要がある場合、Calculation settings
+                  ダイアログボックスでいくつかの設定を入力しなければなりません。測量データの中にアンペア測量値がない場合、エネルギー消耗を0に設定するべきです。
+                </p>
+              </li>
+              <li>
+                <p>
+                   <b>Costs（コスト）</b>：間隔期間のエネルギーのコストを測量します
+                </p>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <p>
+               <b>Cumulated data for one year（一年間の累計データ）</b>
+            </p>
+            <p>
+               測量間隔が一年間を延長すると、この部分は一年間の統計データを提供します。
+            </p>
+          </li>
+        </ul>
+        <p>
+           このダイアログボックスは下記の<b>System statistics（システムの統計データ）</b>を表示するのです。
+        </p>
+        <ul>
+          <li>
+            <p>
+               <b>Total air consumption（総空気消耗）</b>：周期内の消耗量を測量して、単位が立方メートル又は立方フィートとします
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Unit costs（単位コスト）</b>：立方メートル又は立方フィートあたりのコスト
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Average flow（平均流量）</b>：総消耗量を測量周期で割ります
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Max flow（最大流量）</b>：最大の測量容積流量
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Total
+              leakage（総リーク量）</b>：測量周期内のリーク量で、単位が立方メートル又は立方フィートとします。この値はグラフで定義されたリークポイントによって確定されます。機械が作業しない周期内に測量された流量がリーク量とします。リークポイントがこの値に設定されると、CAAは総リーク量を算出することができます。
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Average leakage（平均リーク量）</b>：総リーク量を測量周期で割ります
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Leakage rate（リーク率）</b>：総リーク量を総消耗量で割って、パーセンテージで表します
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Costs of leakage（リークコスト）</b>：総リーク量が立方メートル/立方フィートあたりのコストをかけます
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Max pressure（最大圧力）</b>：最大測量圧力
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Min pressure（最小圧力）</b>：最小測量圧力
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Max dew point（最高露点）</b>：最高の測量露点
+            </p>
+          </li>
+          <li>
+            <p>
+               <b>Min dew point（最低露点）</b>：最低の測量露点
+            </p>
+          </li>
+        </ul>
+      </li>
+    </ol>
+    <div class="note">
+      <p>
+         <b>cos phiに関して</b>
+      </p>
+      <ul>
+        <li>
+          <p>
+             CAA 使用公式：P = I * A * sqrt (3) * cos phiで電力パワーを計算します。cos phi
+            は効率の因子で、電機の中で負荷に応じて変えています。例えば、効率因子がフル負荷と無負荷の状況で異なっています。電圧と電流測量値によって計算することができます。 cos phi
+            値の測量メーターが市販されています。フル負荷と無負荷の電流及び cos phi 値を「Calculation Setting ダイアログボックス」に入力すると、CAA
+            は電機（コンプレッサー）の効率の変化を考慮します。
+          </p>
+        </li>
+        <li>
+          <p>
+             &nbsp;cos phi 値を入手不能の場合、これらの欄を空白にして、プログラムは標準的な定数の 0.85を使います。
+          </p>
+        </li>
+      </ul>
+    </div>
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="main_window_overview.html">メインウィンドウの概述</a> | <a href=
+      "previewing_and_printing_report.html">プレビューとレポートの印刷</a> &gt;</nobr>
+    </p>
+  </body>
+</html>

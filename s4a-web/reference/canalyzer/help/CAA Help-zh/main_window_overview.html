@@ -1,0 +1,151 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=GBK">
+    <link type="text/css" href="style.css" rel="stylesheet">
+    <meta name="generator" content="Helen">
+    <title>Main window overview</title>
+  </head>
+  <body class="doc">
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="configure_database.html">配置数据库和查看记录文件</a> | <a href=
+      "generating_statistics.html">生成统计数据</a> &gt;</nobr>
+    </p>
+    <h1>
+       主窗口概述
+    </h1>
+    <p>
+       下图显示了一个典型的 CAA 主窗口。
+    </p>
+    <p>
+      <br>
+    </p>
+    <p align="center">
+       <img width="700" height="533" src="pics/main window-c.jpg"><br>
+       <i>一个典型的 CAA 主窗口</i>
+    </p>
+    <p>
+      <br>
+    </p>
+    <p>
+       &nbsp;
+    </p>
+    <ul type="disc">
+      <li style=" list-style-image: none; list-style-type: none;">
+        <ul type="disc">
+          <li>
+            <b>菜单栏</b>包含五个菜单，可进行不同的操作。有关这些菜单的详细描述，请参见“<a href="menus.html">菜单</a>”。
+          </li>
+          <li>
+            <b>工具栏</b>的大多数功能与菜单功能相同，但这些按钮提供了一种访问程序基本特性的快捷方式。如需查看某个按钮的功能，请将鼠标置于其上，停留一会儿后将显示简要的帮助信息解释这一按钮的功能。有关这些工具栏按钮的详细描述，请参见“<a
+             href="toolbar.html">工具栏</a>”<u>菜单</u>。
+          </li>
+          <li>
+            <b>图表区显示当前打开的记录文件的图表。图表区具有如下特性：</b> 
+            <ul type="circle">
+              <li>
+                图表具有一条横轴（时间轴）和最多 4 条纵轴。刻度单位显示在每条纵轴的旁边。
+              </li>
+              <li>
+                <p>
+                   图表上的每条曲线代表某个特定通道的测量值，其颜色与通道名称的颜色相同。<b>图表最多可显示</b> <b>6 条通道的测量值，但这些通道的不同单位的数量不得超过
+                  4 个。</b>可在“<a href="select_channel_dialog.html">Select Channel
+                  对话框</a>”中单击工具栏上的选择通道按钮（<img alt="icon_selectchannel-s.jpg" src=
+                  "pics/icon_selectchannel-s.jpg">&nbsp;）更改图表中的显示通道。
+                </p>
+              </li>
+              <li>
+                <p>
+                   可单击工具栏上的更改文字按钮（<img alt="icon_changetext-s.jpg" src=
+                  "pics/icon_changetext-s.jpg">&nbsp;）或选择菜单项“Setting -&gt; Change Text（设置 -&gt;
+                  更改文字）”定制图表上显示的文字，包括标题、轴名称和图例（即通道名称和单位）。除图例外，所有输入的文字都会被保存，并在下次程序启动时加载。
+                </p>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+    <p>
+       &nbsp;<br>
+    </p>
+    <p align="center">
+       <img width="400" height="426" src="pics/change texts.jpg"><br>
+       <i>Change Text对话框</i>
+    </p>
+    <p>
+      <br>
+    </p>
+    <div type="disc">
+      <ul type="circle">
+        <li style=" list-style-image: none; list-style-type: none;">
+          <ul type="circle">
+            <li style=" list-style-image: none; list-style-type: none;">
+              <ul type="circle">
+                <li>
+                  如记录文件的周期太长，可单击右下角的“---&gt;”或“&lt;---”按钮查看图表的不同部分。
+                </li>
+                <li>
+                  可单击工具栏上的选择报表类型按钮（<img alt="icon_reporttype2-s.jpg" src=
+                  "pics/icon_reporttype2-s.jpg"> ）或选择菜单项“View -&gt; Select Report Type（视图 -&gt;
+                  选择报表类型）”打开“Select Report Type 对话框”，然后选择查看一天、一周或一个月的图表。
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+    <p style=" margin-left: 60.0px;">
+       默认情况下，每条可见通道的所有测量值均显示在图表区。如在一个较短的周期内显示了过多的值，曲线可能会变得模糊。如需更清晰地查看曲线，可在该对话框中选择计算每1分钟、15分钟或1小时各通道的平均测量值，从而减少所显示的值的数量。
+    </p>
+    <p>
+      <br>
+    </p>
+    <p align="center">
+       <img width="300" height="326" src="pics/select report type.jpg"><br>
+       <em>Select report type</em> <i>对话框</i>
+    </p>
+    <p>
+      <br>
+      <br>
+    </p>
+    <ul>
+      <li style=" list-style-image: none; list-style-type: none;">
+        <ul>
+          <li>
+            <p>
+               可单击工具栏上的选择时间周期按钮（<a name="selecting_time_period"><img alt="icon_selectperiod-s.jpg"
+              src="pics/icon_selectperiod-s.jpg"></a> ）或选择菜单项“View -&gt; Select Time Period（视图
+              -&gt; 选择时间周期）”指定显示在图表上的测量值的周期。Time（时间）轴上的刻度根据指定的周期而变化。如需还原图表，请选择菜单项“View -&gt;
+              Reload（查看 -&gt; 重新加载）”。
+            </p>
+            <br>
+             
+            <p align="center">
+               <img width="450" height="263" src="pics/time option-c.jpg"><br>
+               <em>Time option</em> <i>对话框</i>
+            </p>
+            <br>
+          </li>
+          <li>
+            <p>
+               可单击工具栏上的添加注释按钮（<a name="adding_comments_to_graph"><img alt="icon_addcomment-s.jpg"
+              src="pics/icon_addcomment-s.jpg"></a> ）或选择菜单项“Tool -&gt; Add Comment To Graph（工具
+              -&gt;
+              添加图表注释）”，在图表上添加注释。添加了注释后，可将其拖放在图表的任意位置。此外，也可编辑和删除注释。右击注释并选择相应的菜单项即可。请注意，所添加的注释在打印或导出图表时也会出现。
+            </p>
+          </li>
+          <li>
+            <p>
+               可右击图表区然后选择“<b>Reload</b>”，或选择菜单项“View -&gt; Reload（视图 -&gt; 重新加载）指定显示在图表上的测量值的周期。
+            </p>
+          </li>
+        </ul>
+      </li>
+    </ul>
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="configure_database.html">配置数据库和查看记录文件</a> | <a href=
+      "generating_statistics.html">生成统计数据</a> &gt;</nobr>
+    </p>
+  </body>
+</html>

@@ -1,0 +1,101 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=GBK">
+    <link type="text/css" href="style.css" rel="stylesheet">
+    <meta name="generator" content="Helen">
+    <title>Select database dialog</title>
+  </head>
+  <body class="doc">
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="important_dialogs.html">重要なダイアログボックス</a> | <a href=
+      "select_record_file_dialog.html">Select Record File ダイアログボックス</a> &gt;</nobr>
+    </p>
+    <h1>
+       Select Database ダイアログボックス
+    </h1>
+    <p>
+      <br>
+    </p>
+    <p align="center">
+       <img width="600" height="600" src="pics/select database.jpg"><br>
+       <em>Select database</em> <i>ダイアログボックス</i>
+    </p>
+    <p>
+      <br>
+    </p>
+    <p>
+       メニューの「File -&gt; Select Database（ファイル -&gt;
+      データベースの選択）」を選択して、このダイアログボックスを開けることができます。このダイアログボックスはすべての使用可能のデータベースのリストを表示して、これらのデータベースに対して管理を行うことができます。これらのデータベースは異なったバージョン又はコピーの
+      CSSoftや
+      CS-Busで生成されることができます。一部のデータベースはプログラムが初めてスタートする時にすでにリストに追加された可能性があります。このダイアログボックスの中で、下記の操作を行うことができます。
+    </p>
+    <ul>
+      <li>
+        <p>
+           <b>Select a database for
+          opening（一つのデータベースを選択して開ける）</b>：リストから一つのデータベースを選択して、「<b>Select</b>」ボタンをクリックします。プログラムは開けの操作が成功したのか、提示します。一つのデータベースを開けると、「<a
+           href="select_record_file_dialog.html">Select Record File
+          ダイアログボックス</a>」でその中に記憶されたすべての記録ファイルを調べることができます。下記の状況で、開けの操作が失敗します。&nbsp;
+        </p>
+        <ul>
+          <li>
+            <p>
+               データベースのファイルのパスが無効です。例えば、パスの中のファイルが有効なデータベースファイルではない、或は削除されたのです。この状況で、データベースのファイルのパスを確認するべきです。
+            </p>
+          </li>
+          <li>
+            <p>
+               データベースは別のプログラムに使われています（CSSoft や CS-Bus）。この状況で、このデータベースを使うプログラムを閉じて、再度やってみます。
+            </p>
+          </li>
+        </ul>
+      </li>
+      <li>
+        <p>
+           <b>Add a new database to the
+          list（一つの新しいデータベースをリストに追加する）</b>：「<b>New</b>」ボタンをクリックします。「Add Database Connection
+          ダイアログボックス」が表示されます。この時にデータベースの名称と説明を入力することができます。
+        </p>
+        <br>
+         
+        <p align="center">
+           <img width="400" height="333" src="pics/create database.jpg"><br>
+           <em>Add database connection</em> <i>ダイアログボックス</i>
+        </p>
+        <br>
+         
+        <p>
+           データベースファイルのパスを指定する必要がある場合、「Select」ボタンをクリックしてください。この時に「Open ダイアログボックス」が表示されます。CSSoft や
+          CS-Bus インストールディレクトリ（例えば「C:\Program Files\cssoft」）の中のファイル「csmain.data」を選択します。
+        </p>
+        <br>
+         
+        <p align="center">
+           <img width="400" height="291" src="pics/open database-c.jpg"><br>
+           <em>Open</em> <i>ダイアログボックス</i>
+        </p>
+        <br>
+         
+        <p>
+           「Add Database Connection ダイアログボックス」に戻る時に、「<b>OK</b>」ボタンをクリックするだけでデータベースをリストに追加することができます。
+        </p>
+      </li>
+      <li>
+        <p>
+           <b>Edit a database（データベースの編集）</b>：リストから一つのデータベースを選択して、「<b>Edit</b>」ボタンをクリックします。この時に「Edit
+          Database Connection ダイアログボックス」が表示されて、その中にデータベースの名称、説明とファイルのパスを編集することができます。
+        </p>
+      </li>
+      <li>
+        <p>
+           <b>Remove a
+          database（データベースの削除）</b>：リストから一つのデータベースを選択して、「<b>Remove</b>」ボタンをクリックします。選定したデータベースが開けられたものではない場合、すぐ削除されます。開けられた場合、プログラムは確認してくださいと提示して、「Yes」だけ答えた後にデータベースを削除します。
+        </p>
+      </li>
+    </ul>
+    <p align="center" class="framenavi">
+       <nobr>&lt; <a href="important_dialogs.html">重要なダイアログボックス</a> | <a href=
+      "select_record_file_dialog.html">Select Record File ダイアログボックス</a> &gt;</nobr>
+    </p>
+  </body>
+</html>

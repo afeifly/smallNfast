@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='ISO-8859-1'?>
+<!DOCTYPE map PUBLIC "-//Sun Microsystems Inc.//DTD JavaHelp Map Version 2.0//EN"
+                     "http://java.sun.com/products/javahelp/map_2_0.dtd">
+
+<map version="1.0">
+	<mapID target="window_icon" url="pics/logo.gif"/>
+	<mapID target="backIcon" url="pics/Back32.gif"/>
+	<mapID target="forwardIcon" url="pics/Forward32.gif"/>
+	<mapID target="homeIcon" url="pics/Home32.gif"/>
+	<mapID target="favoritesIcon" url="pics/Favorite32.gif"/>
+	<mapID target="printIcon" url="pics/Print32.gif"/>
+	<mapID target="pageSetupIcon" url="pics/Print-properties32.gif"/>
+	<mapID target="searchIcon" url="pics/Search16.gif"/>
+	<mapID target="favoritesIcon-s" url="pics/Favorite16.gif"/>
+	<mapID target="folderOpenIcon" url="pics/menu_folder_open.gif"/>
+	<mapID target="folderClosedIcon" url="pics/menu_folder_closed.gif"/>
+	<mapID target="topicIcon" url="pics/help_topic.gif"/>
+	<mapID target="caa" url="caa.html"/>
+	<mapID target="using_caa" url="using_caa.html"/>
+	<mapID target="startup" url="startup.html"/>
+	<mapID target="configure_database" url="configure_database.html"/>
+	<mapID target="main_window_overview" url="main_window_overview.html"/>
+	<mapID target="main_window_overview._graph_area" url="main_window_overview.html#graph_area"/>
+	<mapID target="main_window_overview._selecting_time_period" url="main_window_overview.html#selecting_time_period"/>
+	<mapID target="main_window_overview._adding_comments_to_graph" url="main_window_overview.html#adding_comments_to_graph"/>
+	<mapID target="generating_statistics" url="generating_statistics.html"/>
+	<mapID target="generating_statistics._calculation_setting_dialog" url="generating_statistics.html#calculation_setting_dialog"/>
+	<mapID target="generating_statistics._about_cos_phi" url="generating_statistics.html#about_cos_phi"/>
+	<mapID target="previewing_and_printing_report" url="previewing_and_printing_report.html"/>
+	<mapID target="previewing_and_printing_report._entering_basic_info" url="previewing_and_printing_report.html#entering_basic_info"/>
+	<mapID target="previewing_and_printing_report._selecting_page_printing_options" url="previewing_and_printing_report.html#selecting_page_printing_options"/>
+	<mapID target="previewing_and_printing_report._previewing_and_printing_report" url="previewing_and_printing_report.html#previewing_and_printing_report"/>
+	<mapID target="menus" url="menus.html"/>
+	<mapID target="toolbar" url="toolbar.html"/>
+	<mapID target="important_dialogs" url="important_dialogs.html"/>
+	<mapID target="select_database_dialog" url="select_database_dialog.html"/>
+	<mapID target="select_record_file_dialog" url="select_record_file_dialog.html"/>
+	<mapID target="select_channel_dialog" url="select_channel_dialog.html"/>
+	<mapID target="important_functions" url="important_functions.html"/>
+	<mapID target="export_report" url="export_report.html"/>
+	<mapID target="import_record_file" url="import_record_file.html"/>
+	<mapID target="save_and_load_report" url="save_and_load_report.html"/>
+	<mapID target="view_different_days" url="view_different_days.html"/>
+</map>

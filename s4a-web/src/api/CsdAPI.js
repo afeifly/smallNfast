@@ -395,15 +395,20 @@ async function _loadFromFile(file) {
 
   if (file && file.name && file.name.toLowerCase().endsWith('.csv')) {
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.1, filename: file.name } }));
-    const success = await CsvAPI.loadFromFile(file);
-    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.8, filename: file.name } }));
-    if (success) {
-      _file = file;
-      _fileLoaded = true;
-      _isCsvMode = true;
-      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
-      _onFileLoadedCallbacks.forEach(fn => fn());
-      return true;
+    try {
+      const success = await CsvAPI.loadFromFile(file);
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.8, filename: file.name } }));
+      if (success) {
+        _file = file;
+        _fileLoaded = true;
+        _isCsvMode = true;
+        window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
+        _onFileLoadedCallbacks.forEach(fn => fn());
+        return true;
+      }
+    } catch (e) {
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0, filename: file.name, error: true, errorMessage: e.message } }));
+      return false;
     }
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0, filename: file.name, error: true } }));
     return false;
@@ -441,7 +446,7 @@ async function _loadFromFile(file) {
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
   } catch (err) {
     console.error('[CsdAPI] Header parse failed:', err);
-    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0, filename: file.name, error: true } }));
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0, filename: file.name, error: true, errorMessage: err.message } }));
     return false;
   }
 
@@ -503,7 +508,11 @@ function _ensureFileInput() {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.csd') && !file.name.toLowerCase().endsWith('.csv')) {
-      alert('Only .csd and .csv files are supported!');
+      if (window.showAppNotification) {
+        window.showAppNotification("Unsupported File Format", "Only .csd and .csv files are supported!", "error");
+      } else {
+        alert('Only .csd and .csv files are supported!');
+      }
       _fileInput.value = '';
       return;
     }
@@ -650,6 +659,13 @@ const CsdAPI = {
     return { start: _startTimeMs, stop: _stopTimeMs };
   },
 
+  getLoadedFileName() {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getLoadedFileName();
+    }
+    return _file ? _file.name : '';
+  },
+
   getTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
     if (_fileLoaded && _isCsvMode) {
       CsvAPI.getTablePage(pageIndex, pageSize, selectedChannelIds, callback);
@@ -732,7 +748,7 @@ const CsdAPI = {
     const sorted = [...flowPriority, ..._channels.filter(ch => !flowPriority.includes(ch))];
     const defaults = sorted.slice(0, 2);
 
-    const COLORS = ['#00B8D9', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
+    const COLORS = ['#00ac86', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
       '#0052CC', '#00875A', '#FF4081', '#FFC107', '#7B1FA2'];
 
     const displayChannelOption = defaults.map((ch, idx) => ({
@@ -1203,11 +1219,14 @@ const CsdAPI = {
 
     const LIMIT_800MB = 800 * 1024 * 1024; // 800 MB
     if (_numSamples > 1048576 || _file.size >= LIMIT_800MB) {
-      alert(
-        `Export Aborted: This dataset contains ${_numSamples.toLocaleString()} records, ` +
+      const msg = `This dataset contains ${_numSamples.toLocaleString()} records, ` +
         `which exceeds Excel's maximum worksheet row limit (1,048,576 rows) or memory safe limits.\n\n` +
-        `Please export this dataset to CSV format instead.`
-      );
+        `Please export this dataset to CSV format instead.`;
+      if (window.showAppNotification) {
+        window.showAppNotification("Export Aborted", msg, "warning");
+      } else {
+        alert("Export Aborted:\n\n" + msg);
+      }
       return;
     }
 

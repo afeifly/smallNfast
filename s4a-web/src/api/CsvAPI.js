@@ -132,6 +132,81 @@ function parseDateTimeString(str) {
   return new Date(year, month, day, hour, min, sec).getTime();
 }
 
+function validateCsvHeader(lines) {
+  let hasStartDateTime = false;
+  let hasEndDateTime = false;
+  let hasSampleRate = false;
+  let hasMetadataTable = false;
+  let hasDataHeader = false;
+  let channelCount = 0;
+  
+  let startVal = null;
+  let endVal = null;
+  let sampleRateVal = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    if (line.startsWith('Start Date Time,')) {
+      hasStartDateTime = true;
+      startVal = line.slice('Start Date Time,'.length).trim();
+    } else if (line.startsWith('End Date Time,')) {
+      hasEndDateTime = true;
+      endVal = line.slice('End Date Time,'.length).trim();
+    } else if (line.startsWith('Sample Rate(sec),')) {
+      hasSampleRate = true;
+      sampleRateVal = line.slice('Sample Rate(sec),'.length).trim();
+    } else if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
+      hasMetadataTable = true;
+      // Count channels right after the header
+      let idx = i + 1;
+      while (idx < lines.length) {
+        const chanLine = lines[idx].trim();
+        if (!chanLine) break; // empty line terminates channels section
+        const parts = parseCsvLine(chanLine);
+        if (parts.length >= 5) {
+          channelCount++;
+        }
+        idx++;
+      }
+    } else if (line.startsWith('Date Time,') || line.startsWith('No.,Date Time,')) {
+      hasDataHeader = true;
+    }
+  }
+
+  if (!hasStartDateTime) throw new Error("Missing required metadata 'Start Date Time'");
+  if (!hasEndDateTime) throw new Error("Missing required metadata 'End Date Time'");
+  if (!hasSampleRate) throw new Error("Missing required metadata 'Sample Rate(sec)'");
+  if (!hasMetadataTable) throw new Error("Missing channel metadata table header ('No.,Channel,Sensor,Unit,Resolution')");
+  if (!hasDataHeader) throw new Error("Missing data header line (starting with 'Date Time,' or 'No.,Date Time,')");
+  
+  if (channelCount === 0) {
+    throw new Error("No channels found in the metadata table");
+  }
+
+  const startMs = parseDateTimeString(startVal);
+  if (isNaN(startMs) || startMs <= 0) {
+    throw new Error(`Invalid 'Start Date Time' value: "${startVal}"`);
+  }
+
+  const endMs = parseDateTimeString(endVal);
+  if (isNaN(endMs) || endMs <= 0) {
+    throw new Error(`Invalid 'End Date Time' value: "${endVal}"`);
+  }
+
+  if (endMs < startMs) {
+    throw new Error(`'End Date Time' (${endVal}) cannot be earlier than 'Start Date Time' (${startVal})`);
+  }
+
+  const sampleRate = parseFloat(sampleRateVal);
+  if (isNaN(sampleRate) || sampleRate <= 0) {
+    throw new Error(`Invalid 'Sample Rate(sec)' value: "${sampleRateVal}". Must be a positive number.`);
+  }
+
+  return true;
+}
+
 // ── CsvAPI Interface Implementation ───────────────────────────────────────────
 
 const CsvAPI = {
@@ -148,6 +223,9 @@ const CsvAPI = {
       const slice = file.slice(0, 150 * 1024);
       const text = await slice.text();
       const lines = text.split(/\r?\n/);
+
+      // Verify header format and metadata
+      validateCsvHeader(lines);
       
       let deviceName = 'CSV Device';
       let startTimeMs = 0;
@@ -418,12 +496,16 @@ const CsvAPI = {
       return true;
     } catch (e) {
       console.error('[CsvAPI] Load file failed:', e);
-      return false;
+      throw e;
     }
   },
 
   getFileTimeRange() {
     return { start: _startTimeMs, stop: _stopTimeMs };
+  },
+
+  getLoadedFileName() {
+    return _file ? _file.name : '';
   },
 
   getChannels(callback) {
@@ -667,7 +749,7 @@ const CsvAPI = {
     const sorted = [...flowPriority, ..._channels.filter(ch => !flowPriority.includes(ch))];
     const defaults = sorted.slice(0, 2);
 
-    const COLORS = ['#00B8D9', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
+    const COLORS = ['#00ac86', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
       '#0052CC', '#00875A', '#FF4081', '#FFC107', '#7B1FA2'];
 
     const displayChannelOption = defaults.map((ch, idx) => ({

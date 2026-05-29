@@ -1,0 +1,48 @@
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css"></link>
+<title>Main window overview</title>
+</head>
+<body class="doc">
+<p align="center" class="framenavi"><nobr>&lt; <a href="configure_database.html">Configuring databases and viewing record files</a> | <a href="generating_statistics.html">Generating statistics</a> &gt;</nobr></p><h1>Main window overview</h1>
+
+<p>The figure below shows what a typical CAA main window looks like.</p>
+<br><p align="center">
+<img src="pics/main window-c.jpg" width="800" height="610"><br>
+<em>A typical CAA main window</em></p><br>
+
+<ul><li>
+<p><b>Menu bar</b> contains five menus, which allows different operations. See <a href="menus.html">Menus</a> for detailed descriptions of these menus.</p>
+</li><li>
+<p><b>Toolbar</b> replicates most menu functions, but the buttons provide quick access to the basic features of the program. To see what a button does, hold the mouse over it for a moment and brief help will appear, explaining that button's function. See <a href="toolbar.html">Toolbar</a> for detailed descriptions of the toolbar buttons.</p>
+</li><li>
+<p><b><a name="graph_area">Graph area</b> displays the graph for the selected record file. The following features are provided for the graph area:
+<ul><li>
+<p>The graph has one horizontal axis (Time axis) and two vertical axes (Left Y axis and Right Y axis). The unit for the scale is shown beside each vertical axis.</p>
+</li><li>
+<p>Each curve on the graph represents the measurement values for a particular channel, and is in the same color as the channel's name. <i><b>The graph can show measurement values for up to 6 channels as long as the number of different units for these channels doesn't exceed two.</b></i> You can click the Select channel toolbar button (<img src="pics/icon_selectchannel-s.jpg" alt="icon_selectchannel-s.jpg">) to change the channels visible on the graph in  <a href="select_channel_dialog.html">Select channel dialog</a>.</p>
+</li><li>
+<p>You can click the Change text toolbar button (<img src="pics/icon_changetext-s.jpg" alt="icon_changetext-s.jpg">) or select the menu item "<i>Setting -&gt; Change Text</i>" to customize the text that appears on the graph including title, axis names and legends (i.e. channel names and units).</p>
+<br><p align="center">
+<img src="pics/change texts.jpg" width="400" height="426"><br>
+<em>Change text dialog</em></p><br>
+</li><li>
+<p>If record file's period is too long, you can click "<b>Next -&gt;</b>" or "<b>&lt;- Previous</b>" in bottom right corner to view different sections of the graph.</p>
+</li><li>
+<p>You can select the menu item "<i>View -&gt; Select Report Type</i>" to open Select Report Type dialog and choose to view the graph over a period of one day, one week or one month.</p>
+
+<p>By default all measurement values of every visible channel are displayed in the graph area. When too many values are displayed over a relatively short peroid of time, the curve may become fuzzy. To view the curve more clearly, you can reduce the number of displayed values by choosing to average every channel' the measurement values every 1 minute, 15 minutes or 1 hour in this dialog.</p>
+</li><li>
+<p><a name="selecting_time_period">You can click the Select time period toolbar button (<img src="pics/icon_selectperiod-s.jpg" alt="icon_selectperiod-s.jpg">) or select the menu item "<i>View -&gt; Select Time Period</i>" to specify the period over which measurement values are shown on the graph. The scale on the Time axis will change according to the specified period. To restore the graph, select the menu item "<i>View -&gt; Reload</i>".</p>
+<br><p align="center">
+<img src="pics/time option-c.jpg" width="450" height="263"><br>
+<em>Time option dialog</em></p><br>
+</li><li>
+<p><a name="adding_comments_to_graph">You can click the Add comment toolbar button (<img src="pics/icon_addcomment-s.jpg" alt="icon_addcomment-s.jpg">) to add a comment to the graph. After the comment is added, you can drag it anywhere on the graph. A comment can be edited and removed. Just right-click it and select the corresponding menu item. Note that the added comments will also appear when you print or export the graph.</p>
+</li><li>
+<p>You can select the menu item "<i>View -&gt; Reload</i>" to reload the current record file and restore the graph to its initial state.</p>
+</li></ul>
+</p>
+</li></ul>
+<p align="center" class="framenavi"><nobr>&lt; <a href="configure_database.html">Configuring databases and viewing record files</a> | <a href="generating_statistics.html">Generating statistics</a> &gt;</nobr></p></body>
+</html>

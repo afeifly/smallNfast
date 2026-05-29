@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE toc PUBLIC "-//Sun Microsystems Inc.//DTD JavaHelp TOC Version 2.0//EN"
+                     "http://java.sun.com/products/javahelp/toc_2_0.dtd">
+
+<toc version="2.0" categoryclosedimage="folderClosedIcon" categoryopenimage="folderOpenIcon" topicimage="topicIcon">
+	<tocitem text="空压系统分析软件 (CAA)" target="caa">
+		<tocitem text="使用 CAA" target="using_caa" expand="true">
+			<tocitem text="启动和结束" target="startup" />
+			<tocitem text="配置数据库和查看记录文件" target="configure_database" />
+			<tocitem text="主窗口概述" target="main_window_overview" />
+			<tocitem text="生成统计数据" target="generating_statistics" />
+			<tocitem text="预览和打印报表" target="previewing_and_printing_report" />
+			<tocitem text="菜单" target="menus" />
+			<tocitem text="工具栏" target="toolbar" />
+			<tocitem text="重要对话框" target="important_dialogs" expand="true">
+				<tocitem text="Select database 对话框" target="select_database_dialog" />
+				<tocitem text="Select record file 对话框" target="select_record_file_dialog" />
+				<tocitem text="Select channel 对话框" target="select_channel_dialog" />
+			</tocitem>
+			<tocitem text="重要功能" target="important_functions" expand="true">
+				<tocitem text="将报表导出到 JPEG 或 PDF 文件中" target="export_report" />
+				<tocitem text="导入记录文件" target="import_record_file" />
+				<tocitem text="保存和加载报表" target="save_and_load_report" />
+				<tocitem text="在同一个图表内查看不同天数和周数的测量值" target="view_different_days" />
+			</tocitem>
+		</tocitem>
+	</tocitem>
+</toc>

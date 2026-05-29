@@ -1,0 +1,155 @@
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css"></link>
+<title>Generating statistics</title>
+</head>
+<body class="doc">
+<p align="center" class="framenavi"><nobr>&lt; <a href="main_window_overview.html">Main window overview</a> | <a href="previewing_and_printing_report.html">Previewing and printing report</a> &gt;</nobr></p><h1>Generating statistics</h1>
+
+<p>CAA can generate statistics on compressed air consumption, leakage, power consumption and cost of leakage based on user-defined settings. </p>
+
+<p>The energy cost calculation can be done in 3 ways:
+<ul><li>
+<p><b>Based on power consumption</b></p>
+
+<p>If this way is chosen, it requires that the current consumption of the compressor has been recorded. Please use this method when ?A? unit is available in the recording only. Please enter following parameters:</p>
+
+<ul><li>
+<p><b>Current at full load</b>: measured current when the motor is at full load</p>
+</li><li>
+<p><b>Current at no load</b>: measured current when the motor is at no load</p>
+</li><li>
+<p><b>cos phi at full load</b>: calculated cos phi when the motor is at full load. See <a href="generating_statistics.html#about_cos_phi">About cos phi</a> for more information.</p>
+</li><li>
+<p><b>cos phi at no load</b>: calculated cos phi when the motor is at no load. See <a href="generating_statistics.html#about_cos_phi">About cos phi</a> for more information.</p>
+</li><li>
+<p><b>Threshold at full load</b>: This value is used to determine the Load / No load cycles. All amp values above this threshold are considered that the compressor is in full load.</p>
+</li><li>
+<p><b>Threshold at no load</b>: This value is used to determine the Load / No load cycles. All amp values below this threshold are considered that the compressor is in no load.</p>
+</li><li>
+<p><b>Supply voltage</b>: the motor's supply voltage, standard value is 380.</p>
+</li><li>
+<p><b>Energy cost per kWh</b>: cost of one kWh of electricity</p>
+</li><li>
+<p><b>Currency</b>: name of the currency for the costs</p>
+</li></ul>
+</li><li>
+<p><b>Based on flow consumption</b></p>
+
+<p>This way can be chosen, if the volumetric flow of  the system has been recorded (m3/h, m3/min or cfm). The calculation will then use a standard price per m3 to calculate the costs. As a rule of thump we can use 0.8 Euro cents per m3.</p>
+</li><li>
+<p><b>Based on compressor specification</b></p>
+
+<p>This method will use the compressor specification to calculate the costs. For this purpose the power consumption of the compressor at ?Full load? and at ?No load? has to be entered as well as the estimated operation time in percentage. Additionally the total operation hours per year are required.</p>
+</li></ul>
+</p>
+
+<p>You can follow these steps to have the statistics generated:
+<ol><li>
+<p>Click the Define leakage toolbar button (<img src="pics/icon_defineleakage-s.jpg" alt="icon_defineleakage-s.jpg">) or select the menu item "<i>Tool -&gt; Define Leakage</i>" to bring out a red leakage line on the graph. This line defines a leakage point, which is used to calculate the leakage. Use the buttons below the toolbar to move the leakage line to the right level. </p>
+</li><li>
+<p><a name="calculation_setting_dialog">Click the Calculation setting toolbar button (<img src="pics/icon_calculatesetup-s.jpg" alt="icon_calculatesetup-s.jpg">) or select the menu item "<i>Setting -&gt; Calculation Setting</i>" to bring up the Calculation setting dialog and specify the settings for calculating power consumption and cost of leakage:</p>
+<br><p align="center">
+<img src="pics/calculation setting.jpg" width="600" height="411"><br>
+<em>Calculation setting dialog</em></p><br>
+</li><li>
+<p>Click the Show statistics toolbar button (<img src="pics/icon_reporttype-s.jpg" alt="icon_reporttype-s.jpg">) to view the Statistics generated based on the settings you specified above. </p>
+<br><p align="center">
+<img src="pics/statistics.jpg" width="700" height="766"><br>
+<em>Statistics dialog</em></p><br>
+
+<p>Depending on the calculation settings some data may be blank as it can not be calculated. </p>
+
+<p>This dialog shows following <b>Compressor statistics</b>:</p>
+
+<ul><li>
+<p><b>Measured / calculated data</b>:
+<ul><li>
+<p><b>Full load</b>:
+<ul><li>
+<p><b>Time</b>: number of hours the compressor was at full load</p>
+</li><li>
+<p><b>% of measured interval</b>: the full load time in percentage of the measured interval</p>
+</li><li>
+<p><b>Energy consumption</b>: Energy consumption at full load</p>
+</li><li>
+<p><b>Cost</b>: Energy costs at full load</p>
+</li></ul>
+</p>
+</li><li>
+<p><b>Non load</b>:
+<ul><li>
+<p><b>Time</b>: number of hours the compressor was at no load</p>
+</li><li>
+<p><b>% of measured interval</b>: the no load time in percentage of the measured interval</p>
+</li><li>
+<p><b>Energy consumption</b>: Energy consumption at no load</p>
+</li><li>
+<p><b>Cost</b>: Energy costs at no load</p>
+</li></ul>
+</p>
+</li><li>
+<p><b>Stop</b>:
+<ul><li>
+<p><b>Time</b>: number of hours the compressor was at full load</p>
+</li><li>
+<p><b>% of measured interval</b>: the full load time in percentage of the measured interval</p>
+</li><li>
+<p><b>Number of load changes</b>: The number of changes between full load/no load and vice versa</p>
+</li></ul>
+</p>
+</li><li>
+<p><b>Total Energy consumption</b>: The total Energy consumption during the measured interval</p>
+
+<p>This is calculated based on an Amp measurement of the compressor. To have it calculated, you must enter certain settings in Calculation settings dialog. If there is no amp measurement included in the measurement data, the power consumption is set to 0.</p>
+</li><li>
+<p><b>Costs</b>: Costs of energy during the measured interval</p>
+</li></ul>
+</p>
+</li><li>
+<p><b>Cumulated data for one year</b></p>
+
+<p>This chapter provides the statistics for one year, assuming that the measured interval is extended to one year.</p>
+</li></ul>
+
+<p>This dialog shows following <b>System statistics</b>:
+<ul><li>
+<p><b>Total air consumption</b>: consumption in m3 or ft3 over the period  of measurement</p>
+</li><li>
+<p><b>Unit costs</b>: costs per m3 or ft3</p>
+</li><li>
+<p><b>Average flow</b>: total consumption divided by the period  of measurement</p>
+</li><li>
+<p><b>Max flow</b>: maximum measured volumetric flow rate</p>
+</li><li>
+<p><b>Total leakage</b>: leakage in m3 or ft3 over the period of measurement. This is determined by the leakage point defined on the graph. In periods when there is no production, the measured flow rate can be considered as leakage. By setting the leakage point to that value, CAA can calculate the total leakage.</p>
+</li><li>
+<p><b>Average leakage</b>: total leakage divided by the period of measurement</p>
+</li><li>
+<p><b>Leakage rate</b>: total leakage divided by total consumptionm, expressed as a percentage</p>
+</li><li>
+<p><b>Costs of leakage</b>: total leakage multiplied by costs per m3/ft3</p>
+</li><li>
+<p><b>Max pressure</b>: maximum measured pressure</p>
+</li><li>
+<p><b>Min pressure</b>: minimum measured pressure</p>
+</li><li>
+<p><b>Max dew point</b>: maximum measured dew point</p>
+</li><li>
+<p><a name="about_cos_phi"><b>Min dew point</b>: minimum measured dew point  </p>
+</li></ul>
+</p>
+</li></ol>
+</p>
+
+<div class="note">
+<p><b>About cos phi</b></p>
+
+<ul><li>
+<p>In order to calculate the electrical power the CAA is using the  formula: P = V * A * sqrt (3) * cos phi. The cos phi is a kind of efficiency factor which can vary in motors depending on the load situation, say its different at full load compared to no load. There are measurement instruments on the market which can calculate based on voltage and current measurement the cos phi. By entering the current and cos phi into Calculation setting dialog at full and no load, CAA will consider the efficiency changes of the motor (compressor). </p>
+</li><li>
+<p>If the cos phi is not available, please leave all this fields blank and the software will use a standard constant value of 0.85.</p>
+</li></ul>
+</div>
+<p align="center" class="framenavi"><nobr>&lt; <a href="main_window_overview.html">Main window overview</a> | <a href="previewing_and_printing_report.html">Previewing and printing report</a> &gt;</nobr></p></body>
+</html>

@@ -200,10 +200,9 @@ describe('CsdAPI Parser', () => {
     expect(csvLines[5]).toBe('NO.Of Channels,2');
     expect(csvLines[6]).toBe('NO.Of Records,5');
     expect(csvLines[8]).toBe('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
-    expect(csvLines[9]).toBe('1,"Ch_0","Ch_0","",0.01,"Location 1/Ch_0"');
-    expect(csvLines[10]).toBe('2,"Ch_1","Ch_1","",0.001,"Location 1/Ch_1"');
-    expect(csvLines[12]).toBe('No.,Date Time,"Ch_0","Ch_1"');
-    expect(csvLines[13]).toContain('1,');
+    expect(csvLines[9]).toBe('1,Ch_0,Ch_0,,0.01,Location 1/Ch_0');
+    expect(csvLines[10]).toBe('2,Ch_1,Ch_1,,0.001,Location 1/Ch_1');
+    expect(csvLines[12]).toBe('Date Time,Ch_0,Ch_1');
     expect(csvLines[13]).toContain('2024');
 
     // Trigger Excel export
@@ -373,6 +372,17 @@ No.,Date Time,CH1 - mV,CH2 - mV
     const mockFile = {
       name: 'test.csv',
       size: csvContent.length,
+      slice(start, end) {
+        const slicedContent = csvContent.slice(start, end);
+        return {
+          async text() {
+            return slicedContent;
+          },
+          async arrayBuffer() {
+            return new TextEncoder().encode(slicedContent).buffer;
+          }
+        };
+      },
       async text() {
         return csvContent;
       }
@@ -419,5 +429,33 @@ No.,Date Time,CH1 - mV,CH2 - mV
     expect(dataResult[0].measurementData[0]).toHaveLength(2);
     expect(dataResult[0].measurementData[0][0]).toBe(13.84);
     expect(dataResult[0].measurementData[0][1]).toBe(-32.92);
+  });
+
+  it('correctly catches invalid CSV file headers during load', async () => {
+    const invalidCsvContent = `S332 Raw Data
+Start Date Time,14.May 2026 10:14:00
+Sample Rate(sec),10
+No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point
+No.,Date Time,CH1 - mV,CH2 - mV
+`;
+    const mockFile = {
+      name: 'invalid.csv',
+      size: invalidCsvContent.length,
+      slice(start, end) {
+        const slicedContent = invalidCsvContent.slice(start, end);
+        return {
+          async text() { return slicedContent; },
+          async arrayBuffer() { return new TextEncoder().encode(slicedContent).buffer; }
+        };
+      },
+      async text() { return invalidCsvContent; }
+    };
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+    const success = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(success).toBe(false);
   });
 });

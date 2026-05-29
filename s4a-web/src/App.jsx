@@ -2,6 +2,8 @@ import React from 'react';
 import GraphicView from './modules/graphicview';
 import TableView from './modules/tableview/TableView';
 import ConsumptionReport from './modules/consumption/ConsumptionReport';
+import FileInfoView from './modules/fileinfo/FileInfoView';
+import CompressorAnalyze from './modules/analyze/CompressorAnalyze';
 import TestAPI from './api/TestAPI';
 import Loading from './components/loading/Loading';
 import './App.css';
@@ -28,6 +30,74 @@ import DeleteIcon from '@mui/icons-material/Delete';
 
 const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
 
+const renderNotiIcon = (type) => {
+  switch (type) {
+    case 'error':
+      return (
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ef4444" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      );
+    case 'warning':
+      return (
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      );
+    case 'success':
+      return (
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#10b981" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+    case 'info':
+    default:
+      return (
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#00ac86" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+  }
+};
+
+const getNotiColors = (type) => {
+  switch (type) {
+    case 'error':
+      return {
+        titleColor: '#ef4444',
+        bgColor: '#fef2f2',
+        borderColor: '#fca5a5',
+        btnColor: 'error',
+        textColor: '#991b1b'
+      };
+    case 'warning':
+      return {
+        titleColor: '#d97706',
+        bgColor: '#fffbeb',
+        borderColor: '#fde68a',
+        btnColor: 'warning',
+        textColor: '#92400e'
+      };
+    case 'success':
+      return {
+        titleColor: '#059669',
+        bgColor: '#ecfdf5',
+        borderColor: '#a7f3d0',
+        btnColor: 'success',
+        textColor: '#065f46'
+      };
+    case 'info':
+    default:
+      return {
+        titleColor: '#0f766e',
+        bgColor: '#f0fdf4',
+        borderColor: '#bbf7d0',
+        btnColor: 'primary',
+        textColor: '#166534'
+      };
+  }
+};
+
 function App() {
   const [initDone, setInitDone] = React.useState(false);
   const [fileLoaded, setFileLoaded] = React.useState(false);
@@ -43,6 +113,13 @@ function App() {
   const [fileLoading, setFileLoading] = React.useState(false);
   const [fileLoadingProgress, setFileLoadingProgress] = React.useState(0);
   const [loadingFilename, setLoadingFilename] = React.useState('');
+  const [loadedFilename, setLoadedFilename] = React.useState('');
+
+  // Global premium notification states
+  const [notiOpen, setNotiOpen] = React.useState(false);
+  const [notiTitle, setNotiTitle] = React.useState('');
+  const [notiMsg, setNotiMsg] = React.useState('');
+  const [notiType, setNotiType] = React.useState('info'); // 'info', 'warning', 'error', 'success'
 
   React.useEffect(() => {
     if (!localStorage.getItem('username')) {
@@ -64,11 +141,17 @@ function App() {
 
     if (TestAPI.isFileLoaded && TestAPI.isFileLoaded()) {
       setFileLoaded(true);
+      if (TestAPI.getLoadedFileName) {
+        setLoadedFilename(TestAPI.getLoadedFileName());
+      }
     }
 
     if (TestAPI.onFileLoaded) {
       TestAPI.onFileLoaded(() => {
         setFileLoaded(true);
+        if (TestAPI.getLoadedFileName) {
+          setLoadedFilename(TestAPI.getLoadedFileName());
+        }
         if (TestAPI.getRecentFiles) {
           setRecentFiles(TestAPI.getRecentFiles());
         }
@@ -97,16 +180,31 @@ function App() {
       }
       if (e.detail.error) {
         setFileLoading(false);
-        alert('Failed to load file!');
+        const errMsg = e.detail.errorMessage ? e.detail.errorMessage : 'An unknown error occurred while loading the file.';
+        window.showAppNotification(
+          "File Load Failed",
+          `There was a problem loading your file. The file header format verification failed:\n\n${errMsg}`,
+          "error"
+        );
       }
+    };
+
+    const handleNotification = (e) => {
+      const { title, message, type } = e.detail;
+      setNotiTitle(title || 'Notification');
+      setNotiMsg(message || '');
+      setNotiType(type || 'info');
+      setNotiOpen(true);
     };
 
     window.addEventListener('fileLoadStart', handleStart);
     window.addEventListener('fileLoadProgress', handleProgress);
+    window.addEventListener('appNotification', handleNotification);
 
     return () => {
       window.removeEventListener('fileLoadStart', handleStart);
       window.removeEventListener('fileLoadProgress', handleProgress);
+      window.removeEventListener('appNotification', handleNotification);
     };
   }, []);
 
@@ -158,7 +256,7 @@ function App() {
   const handleExportCsvOption = async () => {
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      alert("No CSD file is currently loaded.");
+      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
       return;
     }
     if (globalLoadingRef.current) {
@@ -172,7 +270,7 @@ function App() {
       });
     } catch (e) {
       console.error(e);
-      alert("Failed to export CSD to CSV: " + e.message);
+      window.showAppNotification("Export Failed", "Failed to export CSD to CSV: " + e.message, "error");
     } finally {
       if (globalLoadingRef.current) {
         globalLoadingRef.current.hide();
@@ -183,7 +281,7 @@ function App() {
   const handleExportExcelOption = async () => {
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      alert("No CSD file is currently loaded.");
+      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
       return;
     }
     if (globalLoadingRef.current) {
@@ -197,7 +295,7 @@ function App() {
       });
     } catch (e) {
       console.error(e);
-      alert("Failed to export CSD to Excel: " + e.message);
+      window.showAppNotification("Export Failed", "Failed to export CSD to Excel: " + e.message, "error");
     } finally {
       if (globalLoadingRef.current) {
         globalLoadingRef.current.hide();
@@ -238,6 +336,12 @@ function App() {
         {(!isCsdMode || fileLoaded) && (
           <div className="header-tabs">
             <button
+              className={`tab-btn ${activeTab === 'fileinfo' ? 'active' : ''}`}
+              onClick={() => setActiveTab('fileinfo')}
+            >
+              File Info
+            </button>
+            <button
               className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
               onClick={() => setActiveTab('graphic')}
             >
@@ -250,10 +354,16 @@ function App() {
               Table View
             </button>
             <button
-              className={`tab-btn ${activeTab === 'consumption' ? 'active' : ''}`}
-              onClick={() => setActiveTab('consumption')}
+              className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
+              onClick={() => setActiveTab('report')}
             >
-              Consumption
+              Report
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
+              onClick={() => setActiveTab('analyze')}
+            >
+              Compressor Analyze <span className="beta-tag">Beta</span>
             </button>
           </div>
         )}
@@ -370,10 +480,14 @@ function App() {
         ) : (
           /* Main content display */
           <div className="view-content-wrapper">
-            {activeTab === 'graphic' ? (
+            {activeTab === 'fileinfo' ? (
+              <FileInfoView />
+            ) : activeTab === 'graphic' ? (
               <GraphicView />
             ) : activeTab === 'table' ? (
               <TableView />
+            ) : activeTab === 'analyze' ? (
+              <CompressorAnalyze />
             ) : (
               <ConsumptionReport />
             )}
@@ -430,7 +544,79 @@ function App() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Global Notification Dialog */}
+      <Dialog 
+        maxWidth='sm' 
+        onClose={() => setNotiOpen(false)} 
+        open={notiOpen}
+        PaperProps={{
+          style: {
+            borderRadius: '16px',
+            padding: '12px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }
+        }}
+      >
+        <DialogTitle className="dialog-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: notiOpen ? getNotiColors(notiType).titleColor : '#0f172a', fontWeight: '800' }}>
+          {notiOpen && renderNotiIcon(notiType)}
+          {notiTitle}
+        </DialogTitle>
+        <DialogContent style={{ paddingTop: '8px' }}>
+          <div style={{
+            padding: '16px 20px',
+            backgroundColor: notiOpen ? getNotiColors(notiType).bgColor : '#f8fafc',
+            borderLeft: `4px solid ${notiOpen ? getNotiColors(notiType).titleColor : '#cbd5e1'}`,
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: '600',
+            color: notiOpen ? getNotiColors(notiType).textColor : '#0f172a',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-line',
+            lineHeight: '1.6'
+          }}>
+            {notiMsg}
+          </div>
+        </DialogContent>
+        <DialogActions style={{ padding: '8px 24px 16px 24px' }}>
+          <Button onClick={() => setNotiOpen(false)} color={notiOpen ? getNotiColors(notiType).btnColor : 'primary'} variant="contained" style={{ borderRadius: '8px', fontWeight: '700' }}>
+            Dismiss
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Loading ref={globalLoadingRef} />
+
+      {/* Status Bar */}
+      <footer className="app-status-bar">
+        <div className="status-bar-left">
+          <div className="status-indicator">
+            <span className={`status-dot ${fileLoaded ? 'active' : ''}`}></span>
+            <span className="status-text">{fileLoaded ? 'Data Loaded' : 'No File Open'}</span>
+          </div>
+          {fileLoaded && loadedFilename && (
+            <>
+              <span className="status-separator">|</span>
+              <div className="current-file-display" title="Current Opened File">
+                <svg className="file-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="filename-text">{loadedFilename}</span>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="status-bar-right">
+          {fileLoaded && TestAPI.isCsvMode && (
+            <span className="status-badge">
+              {TestAPI.isCsvMode() ? 'CSV Mode' : 'CSD Mode'}
+            </span>
+          )}
+          <span className="status-timestamp">
+            {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        </div>
+      </footer>
 
       {/* Global File Loading Overlay */}
       {fileLoading && (

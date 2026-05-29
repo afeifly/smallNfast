@@ -95,6 +95,27 @@
   transform: scaleX(1);
 }
 
+.beta-tag {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  background-color: #fee2e2; /* Soft red bg */
+  color: #ef4444; /* Vivid red text */
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.05em;
+  display: inline-block;
+  line-height: 1;
+  transition: all 0.3s ease;
+}
+
+.tab-btn.active .beta-tag {
+  background-color: #e0f2fe; /* Light blue when active to match the cool vibe, or emerald */
+  color: #0284c7;
+}
+
 /* Header Buttons */
 .header-right {
   display: flex;
@@ -417,4 +438,100 @@
 .header-icon-btn:hover {
   background-color: rgba(15, 23, 42, 0.08) !important;
   transform: scale(1.05);
+}
+
+/* Status Bar Styling */
+.app-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 16px;
+  background-color: #0f172a; /* Premium dark slate */
+  color: #94a3b8; /* Cool slate text */
+  font-size: 11px;
+  border-top: 1px solid #1e293b;
+  z-index: 100;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #64748b;
+  box-shadow: 0 0 6px #64748b;
+  transition: all 0.3s ease;
+}
+
+.status-dot.active {
+  background-color: #00ac86; /* Glowing Teal */
+  box-shadow: 0 0 8px #00ac86;
+}
+
+.status-text {
+  font-weight: 500;
+}
+
+.status-separator {
+  color: #334155;
+  user-select: none;
+}
+
+.current-file-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e2e8f0;
+  background-color: #1e293b;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-icon {
+  flex-shrink: 0;
+  color: #00ac86;
+}
+
+.filename-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.status-badge {
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border: 1px solid #334155;
+  color: #38bdf8; /* Light blue accent */
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-timestamp {
+  font-size: 10px;
+  color: #64748b;
 }

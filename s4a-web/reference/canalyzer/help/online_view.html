@@ -1,0 +1,44 @@
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css"></link>
+<title>Online view</title>
+</head>
+<body class="doc">
+<p align="center" class="framenavi"><nobr>&lt; <a href="toolbar.html">Toolbar</a> | <a href="graphic_view.html">Graphic view</a> &gt;</nobr></p><h1>Online view</h1>
+<br><p align="center">
+(Missing picture [online view-c.jpg])<br>
+<em>Online view</em></p><br>
+
+<p>You can switch the program to online view by selecting the menu item "<i>View -&gt; Online View</i>" or clicking the toolbar button ([null]). </p>
+
+<p>The program shows a panel meter representing the actual device in online view. To use most functions in this view, you need to set the device online by clicking the Go online toolbar button ([null]) or selecting "<i>Device -&gt; Go Online</i>" menu item. Once the device is online, the program will periodically acquire current measurement values from the device and display them on the panel meter. The following features are provided in online view:</p>
+
+<ul><li>
+<p>The panel meter displays two channels' measurement values at a time. If the device has more than two channels configured, you need to click the icon ([null]) or ([null]) to view other channels' measurement values.</p>
+</li><li>
+<p><a name="reading_recorded_data_from_device">You can click the icon ([null]) or select the menu item "<i>Configuration -&gt; Device</i>" to view the device details and edit some of them if needed. </p>
+</li><li>
+<p>You can click the icon ([null]), the toolbar button ([null]) or select the menu item "<i>Device -&gt; Read Recorded Data From Device</i>" to retrieve recorded measurement values stored in a CS device with logging function including DS 300 and CS 2390. </p>
+
+<ul><li>
+<p>When the connected device is CS 2390, the program will start reading all measurement values stored in the device immediately.</p>
+</li><li>
+<p>When the connected device is DS 300, the program will display all protocol headers stored in the device and let you select one or more for reading. Refer to <a href="logger_memory_dialog.html">Logger memory header list dialog</a> for more information.</p>
+</li></ul>
+</li><li>
+<p>You can click the toolbar button ([null]) or select the menu item "<i>Tool -&gt; Start Recording</i>" to start recording current measurement values. To stop the recording, click the toolbar button ([null]) or select the menu item "<i>Tool -&gt; Stop Recording</i>". See <a href="recording_values.html">Recording current measurement values</a> for details.</p>
+</li><li>
+<p>You can click the Go offline toolbar button ([null]) or select the menu item "<i>Device -&gt; Go Offline</i>" to set the device offline.</p>
+</li></ul>
+
+<div class="note">
+<p><b>Notes:</b></p>
+
+<ul><li>
+<p>You can retrieve recorded measurement values stored in DS 300 when the device is either online or offline. But it is recommended that you do this when the device is offline to speed up the reading.</p>
+</li><li>
+<p>For CS 2390, retrieval of recorded measurement values can be done only when the device is offline. If there is recording going on, it will be stopped before reading starts.</p>
+</li></ul>
+</div>
+<p align="center" class="framenavi"><nobr>&lt; <a href="toolbar.html">Toolbar</a> | <a href="graphic_view.html">Graphic view</a> &gt;</nobr></p></body>
+</html>

@@ -1355,7 +1355,7 @@ const CsdAPI = {
 
   async getConsumptionData(onProgress) {
     if (_fileLoaded && _isCsvMode) {
-      return CsvAPI.getConsumptionData();
+      return CsvAPI.getConsumptionData(onProgress);
     }
     if (!_fileLoaded || !_file) {
       throw new Error("No CSD file loaded");

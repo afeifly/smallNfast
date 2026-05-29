@@ -80,6 +80,7 @@ export default function CompressorAnalyze() {
   const [compressors, setCompressors] = useState([]);
   const [systemResult, setSystemResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
 
   // Settings
@@ -146,6 +147,7 @@ export default function CompressorAnalyze() {
 
   const runAnalysis = async (customComps = null) => {
     setLoading(true);
+    setProgress(0);
     setError(null);
 
     try {
@@ -153,6 +155,7 @@ export default function CompressorAnalyze() {
       const channels = await new Promise((resolve) => {
         TestAPI.getChannels((res) => resolve(res ? res.logging_chs || [] : []));
       });
+      setProgress(0.05);
 
       if (!channels || channels.length === 0) {
         setError('No channels found in the loaded file.');
@@ -176,6 +179,7 @@ export default function CompressorAnalyze() {
         });
         const rows = res.rows || [];
         if (rows && rows.length) allRows = allRows.concat(rows);
+        setProgress(0.05 + 0.95 * ((page + 1) / numPages));
       }
 
       // Classify channels
@@ -505,8 +509,14 @@ export default function CompressorAnalyze() {
       {/* Main Content */}
       <main className="analyze-main-content">
         {loading ? (
-          <div className="empty-state-container">
-            <p>Analyzing compressor data...</p>
+          <div className="empty-state-container" style={{ height: '80vh' }}>
+            <div className="empty-state-title">Analyzing & Compiling Compressor Data...</div>
+            <div className="empty-state-desc" style={{ width: '300px' }}>
+              <div style={{ width: '100%', height: '8px', background: '#cbd5e1', borderRadius: '4px', overflow: 'hidden', marginTop: '12px' }}>
+                <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: '#00ac86', transition: 'width 0.1s ease' }}></div>
+              </div>
+              <div style={{ fontSize: '11px', marginTop: '6px', color: '#64748b' }}>{(progress * 100).toFixed(0)}% loaded</div>
+            </div>
           </div>
         ) : systemResult ? (
           <>

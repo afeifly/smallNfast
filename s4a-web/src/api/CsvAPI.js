@@ -508,6 +508,14 @@ const CsvAPI = {
     return _file ? _file.name : '';
   },
 
+  getNumOfSamples() {
+    return _numSamples;
+  },
+
+  getSampleRate() {
+    return _sampleRate;
+  },
+
   getChannels(callback) {
     if (!_fileLoaded) {
       setTimeout(() => callback({ logging_chs: [] }), 50);

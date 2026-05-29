@@ -159,7 +159,7 @@ export function indexOfSystemPressure(pressure) {
  * @returns {number} flow value (m³/min)
  */
 export function calculateFlowBasedOnCurrent(amValue, comp) {
-  if (comp.Type === 'VF') {
+  if (comp.Type === 'VF' || comp.Type === 1) {
     if (amValue < comp.VFAmpMin * 0.75) return 0;
     if (amValue <= comp.VFAmpMin) return comp.VFAirDeliveryMin;
     if (amValue <= comp.VFAmpP2)
@@ -183,7 +183,7 @@ export function calculateFlowBasedOnCurrent(amValue, comp) {
  * @returns {number} flow value (m³/min)
  */
 export function calculateFlowBasedOnPower(powerValue, comp) {
-  if (comp.Type === 'VF') {
+  if (comp.Type === 'VF' || comp.Type === 1) {
     if (powerValue < comp.VFPowerMin * 0.75) return 0;
     if (powerValue <= comp.VFPowerMin) return comp.VFAirDeliveryMin;
     if (powerValue <= comp.VFPowerP2)

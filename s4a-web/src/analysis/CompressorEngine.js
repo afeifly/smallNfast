@@ -154,6 +154,7 @@ export class Compressor {
 
     // Power channel
     this.hasPowerChannel = false;
+    this.isFlowChannel = false;
     this.yearRatio = 0;
 
     // Initialize VF defaults
@@ -256,7 +257,11 @@ export class Compressor {
     this.VFAmpP3 = (this.VFPowerP3 * 1000) / (sqrt3 * U * cosPhi);
     this.VFAmpMax = (this.VFPowerMax * 1000) / (sqrt3 * U * cosPhi);
 
-    this._calculateLinearCoefficiency(this.VFAmpMin, this.VFAmpP2, this.VFAmpP3, this.VFAmpMax);
+    if (this.hasPowerChannel) {
+      this.calculateVFLinearCoefficiency();
+    } else {
+      this._calculateLinearCoefficiency(this.VFAmpMin, this.VFAmpP2, this.VFAmpP3, this.VFAmpMax);
+    }
   }
 
   /** Calculate linear coefficiency for power-based flow calculation */

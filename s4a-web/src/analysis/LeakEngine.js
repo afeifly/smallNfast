@@ -10,6 +10,7 @@
 
 import { Compressor, COMPRESSOR_TYPE_VARIABLE_FREQUENCY, COMPRESSOR_TYPE_LOAD_UNLOAD, DEFAULTS } from './CompressorEngine.js';
 import { ratioToM3PerHour, ratioToM3BasedOnFlowUnit, flowUnitRatioToOneHour, getConsumptionUnit, isFlowRateUnit } from './MeasurementUnit.js';
+import { calculateFlowBasedOnCurrent, calculateFlowBasedOnPower } from './VFConst.js';
 
 // ── Analyze type constants ───────────────────────────────────────────────────
 
@@ -22,6 +23,27 @@ export const ANALYZE_TYPE_SYSTEM = 2;
 export const WORKING_HOUR_PER_YEAR = 8760;  // 365 × 24
 
 const SQRT3 = Math.sqrt(3);
+
+/**
+ * Linearly interpolate the power consumption (kW) of a Variable Frequency compressor
+ * based on its measured flow rate (m³/min).
+ */
+export function calculatePowerBasedOnFlow(flowRate, comp) {
+  if (flowRate <= comp.VFAirDeliveryMin) return comp.VFPowerMin;
+  if (flowRate <= comp.VFAirDeliveryP2) {
+    const ratio = (flowRate - comp.VFAirDeliveryMin) / (comp.VFAirDeliveryP2 - comp.VFAirDeliveryMin || 1);
+    return comp.VFPowerMin + ratio * (comp.VFPowerP2 - comp.VFPowerMin);
+  }
+  if (flowRate <= comp.VFAirDeliveryP3) {
+    const ratio = (flowRate - comp.VFAirDeliveryP2) / (comp.VFAirDeliveryP3 - comp.VFAirDeliveryP2 || 1);
+    return comp.VFPowerP2 + ratio * (comp.VFPowerP3 - comp.VFPowerP2);
+  }
+  if (flowRate <= comp.VFAirDeliveryMax) {
+    const ratio = (flowRate - comp.VFAirDeliveryP3) / (comp.VFAirDeliveryMax - comp.VFAirDeliveryP3 || 1);
+    return comp.VFPowerP3 + ratio * (comp.VFPowerMax - comp.VFPowerP3);
+  }
+  return comp.VFPowerMax;
+}
 
 // ── Per-compressor analysis result ───────────────────────────────────────────
 
@@ -72,12 +94,14 @@ export function analyzeCompressorChannel(
   let numLoadUnloadCycles = 0;
   let previousIsFullLoad = false;
   let previousIsUnLoad = false;
+  let previousIsNoLoad = true;
   let numStarts = 0;
 
   // Compute CosP ratio if full-load and unload cosP are specified
   let calCosP = false;
   let theCosP = 0.85;
   if (
+    !compressor.hasPowerChannel &&
     compressor.FullLoadCurrent > 0 &&
     compressor.UnLoadCurrent > 0 &&
     compressor.FullLoadCosP > 0 &&
@@ -92,13 +116,20 @@ export function analyzeCompressorChannel(
     const a0 = compressor.FullLoadCosP - compressor.FullLoadCurrent * ratio;
     compressor.CosPRatio = ratio;
     compressor.CosPA0 = a0;
+  } else {
+    calCosP = false;
   }
 
   let fullLoadThreshold, noLoadThreshold;
 
   if (compressor.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY) {
-    fullLoadThreshold = compressor.VFAmpMin * 0.75;
-    noLoadThreshold = compressor.VFAmpMin * 0.2;
+    if (compressor.hasPowerChannel) {
+      fullLoadThreshold = compressor.VFPowerMin * 0.75;
+      noLoadThreshold = compressor.VFPowerMin * 0.2;
+    } else {
+      fullLoadThreshold = compressor.VFAmpMin * 0.75;
+      noLoadThreshold = compressor.VFAmpMin * 0.2;
+    }
     theCosP = compressor.VFCosPhi;
     calCosP = false;
   } else {
@@ -115,9 +146,15 @@ export function analyzeCompressorChannel(
     // Clamp negative values (compensate sensor artifacts)
     if (value < 0) value = 0;
 
-    // Calculate CosP for this record
+    // Calculate CosP for this record (clamped)
     if (calCosP) {
-      theCosP = value * compressor.CosPRatio + compressor.CosPA0;
+      if (value <= compressor.UnLoadCurrent) {
+        theCosP = compressor.UnLoadCosP;
+      } else if (value >= compressor.FullLoadCurrent) {
+        theCosP = compressor.FullLoadCosP;
+      } else {
+        theCosP = compressor.CosPA0 + value * compressor.CosPRatio;
+      }
     }
 
     // Classify load state
@@ -141,20 +178,26 @@ export function analyzeCompressorChannel(
       }
     }
 
-    // Energy: P = √3 × V × I × cosφ × hours / 1000
-    let energyKwh;
-    if (compressor.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY) {
-      // For VF compressors, energy is based on power table
-      energyKwh = value * voltSqrt3HourDiv1000;
-    } else {
-      // For fixed-speed: use full-load/unload power when in those states
-      if (state === 'full') {
-        energyKwh = value * voltSqrt3HourDiv1000;
-      } else if (state === 'unload') {
-        energyKwh = value * voltSqrt3HourDiv1000; // or use UnLoadCurrent-based power
+    // Energy calculation: kWh per record
+    let energyKwh = 0;
+    if (compressor.isFlowChannel) {
+      if (compressor.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY) {
+        const flowRateInM3PerMin = (value * ratioToM3PerHour(compressor.AirDeliveryUnit)) / 60;
+        const powerKw = calculatePowerBasedOnFlow(flowRateInM3PerMin, compressor);
+        energyKwh = powerKw * srateHour;
       } else {
-        energyKwh = 0;
+        if (state === 'full') {
+          energyKwh = compressor.FullLoadCurrent * voltSqrt3HourDiv1000 * compressor.FullLoadCosP;
+        } else if (state === 'unload') {
+          energyKwh = compressor.UnLoadCurrent * voltSqrt3HourDiv1000 * compressor.UnLoadCosP;
+        } else {
+          energyKwh = 0;
+        }
       }
+    } else if (compressor.hasPowerChannel) {
+      energyKwh = value * srateHour;
+    } else {
+      energyKwh = value * voltSqrt3HourDiv1000 * theCosP;
     }
 
     // Accumulate
@@ -176,13 +219,13 @@ export function analyzeCompressorChannel(
 
     // Flow calculation
     let flowRate = 0;
-    if (compressor.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY) {
-      if (value >= fullLoadThreshold) {
-        flowRate = compressor.VFAirDeliveryMax;
-      } else if (value >= noLoadThreshold) {
-        // Linear interpolation between min and max delivery
-        const ratio = (value - noLoadThreshold) / (fullLoadThreshold - noLoadThreshold);
-        flowRate = compressor.VFAirDeliveryMin + ratio * (compressor.VFAirDeliveryMax - compressor.VFAirDeliveryMin);
+    if (compressor.isFlowChannel) {
+      flowRate = value;
+    } else if (compressor.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY) {
+      if (compressor.hasPowerChannel) {
+        flowRate = calculateFlowBasedOnPower(value, compressor);
+      } else {
+        flowRate = calculateFlowBasedOnCurrent(value, compressor);
       }
     } else {
       if (state === 'full') {
@@ -197,9 +240,10 @@ export function analyzeCompressorChannel(
       if (flowRate < minFlowVal) minFlowVal = flowRate;
     }
 
-    // Count load/unload transitions
+    // Count load/unload transitions and starts
     const isFullLoad = state === 'full';
     const isUnLoad = state === 'unload';
+    const isNoLoad = state === 'noload';
 
     if (i > 0) {
       if (isFullLoad && !previousIsFullLoad) {
@@ -208,14 +252,14 @@ export function analyzeCompressorChannel(
       if (isFullLoad !== previousIsFullLoad && isUnLoad !== previousIsUnLoad) {
         numLoadUnloadCycles++;
       }
-      // Count starts: transition from not-full to full
-      if (isFullLoad && !previousIsFullLoad) {
+      if (previousIsNoLoad && !isNoLoad) {
         numStarts++;
       }
     }
 
     previousIsFullLoad = isFullLoad;
     previousIsUnLoad = isUnLoad;
+    previousIsNoLoad = isNoLoad;
   }
 
   // ── Populate compressor statistics ──

@@ -666,6 +666,20 @@ const CsdAPI = {
     return _file ? _file.name : '';
   },
 
+  getNumOfSamples() {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getNumOfSamples();
+    }
+    return _numSamples;
+  },
+
+  getSampleRate() {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getSampleRate();
+    }
+    return _sampleRate;
+  },
+
   getTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
     if (_fileLoaded && _isCsvMode) {
       CsvAPI.getTablePage(pageIndex, pageSize, selectedChannelIds, callback);

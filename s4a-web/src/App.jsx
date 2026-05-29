@@ -165,6 +165,7 @@ function App() {
 
   React.useEffect(() => {
     const handleStart = (e) => {
+      localStorage.removeItem('selectedChannels');
       setLoadingFilename(e.detail.filename);
       setFileLoading(true);
       setFileLoadingProgress(0);
@@ -235,6 +236,7 @@ function App() {
   };
 
   const handleLoadRecentFile = async (file) => {
+    localStorage.removeItem('selectedChannels');
     if (file.path && TestAPI.loadFileFromPath) {
       await TestAPI.loadFileFromPath(file.path);
     } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
@@ -256,7 +258,7 @@ function App() {
   const handleExportCsvOption = async () => {
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
+      window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
       return;
     }
     if (globalLoadingRef.current) {
@@ -270,7 +272,7 @@ function App() {
       });
     } catch (e) {
       console.error(e);
-      window.showAppNotification("Export Failed", "Failed to export CSD to CSV: " + e.message, "error");
+      window.showAppNotification("Export Failed", "Failed to export data to CSV: " + e.message, "error");
     } finally {
       if (globalLoadingRef.current) {
         globalLoadingRef.current.hide();
@@ -281,7 +283,7 @@ function App() {
   const handleExportExcelOption = async () => {
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
+      window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
       return;
     }
     if (globalLoadingRef.current) {
@@ -295,7 +297,7 @@ function App() {
       });
     } catch (e) {
       console.error(e);
-      window.showAppNotification("Export Failed", "Failed to export CSD to Excel: " + e.message, "error");
+      window.showAppNotification("Export Failed", "Failed to export data to Excel: " + e.message, "error");
     } finally {
       if (globalLoadingRef.current) {
         globalLoadingRef.current.hide();
@@ -357,7 +359,7 @@ function App() {
               className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
               onClick={() => setActiveTab('report')}
             >
-              Report
+              Consumption Report
             </button>
             <button
               className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
@@ -370,7 +372,7 @@ function App() {
 
         <div className="header-right" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {isCsdMode && fileLoaded && (
-            <Tooltip title="Open CSD File">
+            <Tooltip title="Open File">
               <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
                 <FolderOpenIcon />
               </IconButton>
@@ -379,7 +381,7 @@ function App() {
 
           {isCsdMode && fileLoaded && (
             <>
-              <Tooltip title="Export CSD Data">
+              <Tooltip title="Export Data">
                 <IconButton className="header-icon-btn" onClick={handleShareClick} style={{ color: '#0f172a' }}>
                   <ShareIcon />
                 </IconButton>
@@ -393,10 +395,10 @@ function App() {
                   onClick={handleExportCsvOption}
                   disabled={Boolean(TestAPI.isCsvMode && TestAPI.isCsvMode())}
                 >
-                  Export all CSD to CSV
+                  Export all to CSV
                 </MenuItem>
                 <MenuItem onClick={handleExportExcelOption}>
-                  Export all CSD to Excel
+                  Export all to Excel
                 </MenuItem>
               </Menu>
             </>
@@ -407,7 +409,7 @@ function App() {
       {/* Main Content Area */}
       <main className="app-main-content">
         {isCsdMode && !fileLoaded ? (
-          /* Landing page when no CSD file is loaded */
+          /* Landing page when no file is loaded */
           <div className="landing-container">
             <div className="landing-card">
               <div className="landing-logo-container">
@@ -430,19 +432,19 @@ function App() {
               </div>
               <h1 className="landing-title">Welcome to S4A-web</h1>
               <p className="landing-subtitle">
-                Open a CSD file to show data and start analyzing sensor measurements.
+                Open a file to show data and start analyzing sensor measurements.
               </p>
 
               <button className="landing-cta-btn" onClick={handleOpenFile}>
                 <svg className="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
-                Open CSD File
+                Open File
               </button>
 
               {recentFiles.length > 0 && (
                 <div className="recent-files-section">
-                  <h3 className="recent-files-title">Recent CSD Files</h3>
+                  <h3 className="recent-files-title">Recent Files</h3>
                   <div className="recent-files-list">
                     {recentFiles.map((file, idx) => (
                       <div
@@ -498,7 +500,7 @@ function App() {
       {/* Global Recent Files Dialog */}
       <Dialog maxWidth='md' onClose={() => setRecentDialogOpen(false)} open={recentDialogOpen}>
         <DialogTitle className="dialog-title" onClose={() => setRecentDialogOpen(false)}>
-          Recent CSD Files
+          Recent Files
         </DialogTitle>
         <DialogContent>
           <List style={{ width: '400px', maxHeight: '300px', overflow: 'auto' }}>
@@ -537,7 +539,7 @@ function App() {
             setRecentDialogOpen(false);
             handleOpenFile();
           }} color="primary" variant="contained">
-            Open New CSD File...
+            Open New File...
           </Button>
           <Button onClick={() => setRecentDialogOpen(false)}>
             Cancel
@@ -647,7 +649,7 @@ function App() {
               </svg>
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: '800', marginTop: '20px', color: '#0f172a' }}>
-              Loading CSD File...
+              Loading File...
             </h2>
             <p style={{ fontSize: '12px', color: '#64748b', margin: '6px 0 20px 0' }}>
               Reading binary slices for <strong>{loadingFilename}</strong>

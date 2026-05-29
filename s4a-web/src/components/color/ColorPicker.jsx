@@ -11,25 +11,44 @@ class ColorPicker extends Component {
 
     this.state = {
       colors: [
-        ['#d32f2f', '#f44336'],
-        ['#c2185b', '#e91e63'],
-        ['#7B1FA2', '#9c27b0'],
-        ['#512da8', '#673ab7'],
-        ['#303f9f', '#3f51b5'],
-        ['#1976d2', '#2196f3'],
-        ['#0288d1', '#03a9f4'],
-        ['#0097a7', '#00BCD4'],
-        ['#00796b', '#009688'],
-        ['#388E3C', '#4CAF50'],
-        
-        ['#33691E', '#689F38'],
-        ['#827717', '#AFB42B'],
-        ['#F57F17', '#FBC02D'],
-        ['#FF6F00', '#FFA000'],
-        ['#E65100', '#F57C00'],
-        ['#E64A19', '#FF5722'],
-        ['#5D4037', '#795548'],
-        ['#455A64', '#607D8B']
+        // Column 1 (Reds/Pinks) - Row 1
+        ['#b71c1c', '#FF5630'],
+        // Column 2 (Oranges/Yellows) - Row 1
+        ['#e64a19', '#ff9800'],
+        // Column 3 (Greens/Teals) - Row 1
+        ['#1b5e20', '#00ac86'],
+        // Column 4 (Blues) - Row 1
+        ['#1565c0', '#1e88e5'],
+        // Column 5 (Purples) - Row 1
+        ['#6554C0', '#3f51b5'],
+        // Column 6 (Browns/Greys/Blacks) - Row 1
+        ['#172B4D', '#212121'],
+
+        // Column 1 (Reds/Pinks) - Row 2
+        ['#FF7452', '#e91e63'],
+        // Column 2 (Oranges/Yellows) - Row 2
+        ['#FFAB00', '#FFC400'],
+        // Column 3 (Greens/Teals) - Row 2
+        ['#36B37E', '#57D9A3'],
+        // Column 4 (Blues) - Row 2
+        ['#2196f3', '#90caf9'],
+        // Column 5 (Purples) - Row 2
+        ['#9c27b0', '#4a148c'],
+        // Column 6 (Browns/Greys/Blacks) - Row 2
+        ['#5d4037', '#8d6e63'],
+
+        // Column 1 (Reds/Pinks) - Row 3
+        ['#d81b60', '#f8bbd0'],
+        // Column 2 (Oranges/Yellows) - Row 3
+        ['#fbc02d', '#fff59d'],
+        // Column 3 (Greens/Teals) - Row 3
+        ['#00B8D9', '#c8e6c9'],
+        // Column 4 (Blues) - Row 3
+        ['#e3f2fd', '#455a64'],
+        // Column 5 (Purples) - Row 3
+        ['#b39ddb', '#e1bee7'],
+        // Column 6 (Browns/Greys/Blacks) - Row 3
+        ['#616161', '#e0e0e0']
       ]
     };
   }
@@ -42,7 +61,7 @@ class ColorPicker extends Component {
           d.map(color => {
             let status;
 
-            if (value === color) {
+            if (value && color && value.toLowerCase() === color.toLowerCase()) {
               status = 'selected';
             }else {
               status = '';

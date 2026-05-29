@@ -212,9 +212,62 @@ class ChannelList extends Component {
     let color;
     let arr = [];
 
+    // Auto-selection logic if there is no selection in localStorage
+    const localChannelsStr = localStorage.getItem("selectedChannels");
+    const hasLocalSelection = localChannelsStr && JSON.parse(localChannelsStr).length > 0;
+    
+    let autoSelectedIds = [];
+    if (!hasLocalSelection && channels && channels.length > 0) {
+      const getUnitRank = (unit) => {
+        if (!unit) return 999;
+        const u = unit.trim().toLowerCase();
+        const priority = ['m³/min', 'm/s', 'm³', 'm3', 'm³/h', 'l/min', 'l/s', 'l'];
+        const idx = priority.findIndex(p => p.toLowerCase() === u);
+        return idx !== -1 ? idx : 999;
+      };
+
+      // Group channels by normalized unit
+      const unitToChannels = new Map();
+      channels.forEach(ch => {
+        const unitNorm = (ch.unit_in_ascii || '').trim().toLowerCase();
+        if (!unitToChannels.has(unitNorm)) {
+          unitToChannels.set(unitNorm, []);
+        }
+        unitToChannels.get(unitNorm).push(ch);
+      });
+
+      // Unique units sorted by priority rank
+      const uniqueUnits = Array.from(unitToChannels.keys()).sort((a, b) => {
+        const rankA = getUnitRank(a);
+        const rankB = getUnitRank(b);
+        return rankA - rankB;
+      });
+
+      // Pick top 3 units
+      const selectedUnits = uniqueUnits.slice(0, 3);
+
+      // Collect channels up to 10
+      for (const unit of selectedUnits) {
+        const chList = unitToChannels.get(unit);
+        for (const ch of chList) {
+          if (autoSelectedIds.length >= 10) break;
+          autoSelectedIds.push(ch.channel_id);
+        }
+        if (autoSelectedIds.length >= 10) break;
+      }
+    }
+
+    const autoSelectedToSave = [];
+
     for (let i = 0; i < channels.length; i++) {
       channelObj = channels[i];
-      selected = this.checkChannelSelected(channelObj.channel_id);
+
+      if (!hasLocalSelection) {
+        selected = autoSelectedIds.includes(channelObj.channel_id);
+      } else {
+        selected = this.checkChannelSelected(channelObj.channel_id);
+      }
+
       color = this.getcolorFromLocal(channelObj.channel_id);
 
       channel = {
@@ -239,12 +292,22 @@ class ChannelList extends Component {
       };
 
       if (selected) {
-
         if (!channel.color) {
           chartController.setColorFromSetting(channel);
-          // channel.color = colors[chartController.selectedChannels.length];
+        }
+        if (!channel.color) {
+          channel.color = colors[chartController.selectedChannels.length % colors.length];
         }
         chartController.addSelectedChannel(channel);
+
+        if (!hasLocalSelection) {
+          autoSelectedToSave.push({
+            id: channel.id,
+            color: channel.color,
+            locationId: channel.locationId,
+            sensorId: channel.sensorId
+          });
+        }
       }
 
       sensor = this.getSensorById(channel.sensorId);
@@ -265,8 +328,12 @@ class ChannelList extends Component {
       arr.push(channel);
     }
 
+    if (!hasLocalSelection && autoSelectedToSave.length > 0) {
+      localStorage.setItem('selectedChannels', JSON.stringify(autoSelectedToSave));
+    }
+
     this.handleData();
-  }
+  };
 
   handleData() {
     const { chartController } = this.props;

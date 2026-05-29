@@ -23,6 +23,7 @@ class SplineGroup extends Component {
     this.dragStartY = 0;
     this.dragEnabled = false;   //Can select time period by dragging
     this.dataTipPanel = null;
+    this.lastMousePosition = null;
   }
 
   setData(data) {
@@ -113,13 +114,16 @@ class SplineGroup extends Component {
     d3.select('#line-container')
       .on('mouseover', function (event) {
         const mouse = d3.pointer(event);
+        self.lastMousePosition = mouse;
         self.mouseOver(mouse);
       })
       .on('mousemove', function (event) {
         const mouse = d3.pointer(event);
+        self.lastMousePosition = mouse;
         self.mouseMove(mouse);
       })
       .on('mouseout', () => {
+        self.lastMousePosition = null;
         d3.select('.mouse-line').style('opacity', 0);
         d3.selectAll('.mouse-per-line').style('opacity', 0);
         this.hideDataTipPanel();
@@ -187,6 +191,10 @@ class SplineGroup extends Component {
       d3.select('.mouse-line')
         .style('stroke', 'rgba(0, 0, 0, 1)')
         .style('stroke-width', 1);
+
+      if (self.lastMousePosition) {
+        self.mouseMove(self.lastMousePosition);
+      }
     }, 1000);
 
   }
@@ -202,6 +210,9 @@ class SplineGroup extends Component {
   }
 
   initMousePerLine() {
+    const isHovering = d3.select('.current-date-tip').attr('data-status') === 'active';
+    const initialOpacity = isHovering ? 1 : 0;
+
     let mousePerLine = d3.select('#line-container')
       .selectAll('.mouse-per-line')
       .data(dataset)
@@ -209,7 +220,8 @@ class SplineGroup extends Component {
       .append('g')
       .attr('class', 'mouse-per-line')
       .attr('data-id', d => d.id)
-      .style('pointer-events', 'none');
+      .style('pointer-events', 'none')
+      .style('opacity', initialOpacity);
 
     mousePerLine.append('circle')
       .attr('r', 5)
@@ -217,7 +229,7 @@ class SplineGroup extends Component {
       .style('stroke', d => d.color)
       .style('fill', '#fff')
       .style('stroke-width', 5)
-      .style('opacity', 0);
+      .style('opacity', initialOpacity);
   }
 
 

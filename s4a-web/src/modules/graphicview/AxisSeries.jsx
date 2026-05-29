@@ -176,6 +176,9 @@ class AxisSeries extends Component {
     //Position first y-axis
     d = dataset[0];
     y_axis = this.getYAxisById(d.id);
+    if (!y_axis) {
+      return; // Skip layout pass if refs are not registered yet
+    }
 
     d.x = yAxisStyle.marginLeft;
     y_axis.moveTo(d.x, withAnimation);
@@ -185,8 +188,10 @@ class AxisSeries extends Component {
     for (let i = dataset.length-1; i > 0;  i--) {
       d = dataset[i];
       y_axis = this.getYAxisById(d.id);
+      if (!y_axis) {
+        continue;
+      }
 
-      //todo
       this.computeYAxisTX(i);
       y_axis.moveTo(d.x, withAnimation);
     }
@@ -195,11 +200,15 @@ class AxisSeries extends Component {
     if(dataset.length > 1) {
       d = dataset[1];
       y_axis = this.getYAxisById(d.id);
-      chartEndX = y_axis.getX() - 1;
+      if (y_axis) {
+        chartEndX = y_axis.getX() - 1;
+      } else {
+        chartEndX = $('#line-chart').width() - 80;
+      }
     }else {
       chartEndX = $('#line-chart').width() - 80;
     }
-    chartWidth = chartEndX - chartStartX;
+    chartWidth = Math.max(0, chartEndX - chartStartX);
 
     d3.select('#grid-container')
       .attr('transform', `translate(${chartStartX}, 0)`);
@@ -208,14 +217,12 @@ class AxisSeries extends Component {
     chartController.setChartX(chartStartX);
     chartController.setChartWidth(chartWidth);
     
-    //todo
     if(!withAnimation) {
       d3.select('#grid-back').attr('width', chartWidth);
     }
   };
 
 
-  //todo
   computeYAxisTX = (index) => {
     const width = $('#line-chart').width();
     let rightSpace = yAxisStyle.marginRight;
@@ -226,7 +233,11 @@ class AxisSeries extends Component {
       d = this.yDataset[i];
       if(d) {
         y_axis = this.getYAxisById(d.id);
-        rightSpace +=  y_axis.getWidth() + yAxisStyle.hspace;
+        if (y_axis) {
+          rightSpace +=  y_axis.getWidth() + yAxisStyle.hspace;
+        } else {
+          rightSpace += 40 + yAxisStyle.hspace; // fallback standard width
+        }
       }
     }
 
@@ -380,9 +391,14 @@ class AxisSeries extends Component {
     const firstData = this.yDataset[0];
     const lastData = this.yDataset[this.yDataset.length - 1];
     
-    //todo
-    chartStartX = this.getYAxisById(firstData.id).getX() + 1;
-    chartEndX = this.getYAxisById(lastData.id).getX() - 1;
+    const firstAxis = this.getYAxisById(firstData.id);
+    const lastAxis = this.getYAxisById(lastData.id);
+    if (!firstAxis || !lastAxis) {
+      return 0;
+    }
+
+    chartStartX = firstAxis.getX() + 1;
+    chartEndX = lastAxis.getX() - 1;
     chartWidth = chartEndX - chartStartX;
     return chartWidth;
   };
@@ -395,7 +411,10 @@ class AxisSeries extends Component {
 
     let x = 0;
     const firstData = this.yDataset[0];  
-    x = this.getYAxisById(firstData.id).getX() + 1;
+    const firstAxis = this.getYAxisById(firstData.id);
+    if (firstAxis) {
+      x = firstAxis.getX() + 1;
+    }
     
     return x;  
   };

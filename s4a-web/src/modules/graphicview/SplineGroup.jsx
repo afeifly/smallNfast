@@ -147,7 +147,7 @@ class SplineGroup extends Component {
 
     // Keep the container transform in sync
     d3.select('#line-container').attr('transform', `translate(${x}, 70)`);
-    d3.select('.line-background').attr('width', width).attr('height', height);
+    d3.select('.line-background').attr('width', Math.max(0, width)).attr('height', Math.max(0, height));
 
     // Re-draw each channel's spline with now-valid refs
     dataset.forEach(d => {
@@ -172,8 +172,8 @@ class SplineGroup extends Component {
 
     //Update line background size
     d3.select('.line-background')
-      .attr('width', width)
-      .attr('height', height);
+      .attr('width', Math.max(0, width))
+      .attr('height', Math.max(0, height));
 
     //Redraw the lines
     let lineItem;

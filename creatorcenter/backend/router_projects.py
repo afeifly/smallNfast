@@ -173,8 +173,8 @@ def update_markdown_content(project_id: int, req: UpdateContentRequest, db=Depen
         _create_segments_and_keys(project_id, parsed, db)
 
     db.execute(
-        "UPDATE projects SET placeholder_md = ?, status = 'parsed', updated_at = datetime('now') WHERE id = ?",
-        (placeholder_md, project_id),
+        "UPDATE projects SET markdown_content = ?, placeholder_md = ?, status = 'parsed', updated_at = datetime('now') WHERE id = ?",
+        (req.markdown_content, placeholder_md, project_id),
     )
     db.commit()
 

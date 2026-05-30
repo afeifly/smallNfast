@@ -61,16 +61,14 @@ export default function GlobalKeysPage() {
                       {langs.length === 0 ? (
                         <span className="text-gray-300 italic text-xs">not translated</span>
                       ) : (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="space-y-1.5">
                           {langs.map(([lang, text]) => (
-                            <span
-                              key={lang}
-                              title={text}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium rounded cursor-default
-                                bg-blue-50 text-blue-700 border border-blue-200"
-                            >
-                              {lang}
-                            </span>
+                            <div key={lang} className="flex items-start gap-2 text-xs">
+                              <span className="inline-block shrink-0 px-1.5 py-0.5 font-bold rounded bg-blue-50 text-blue-700 border border-blue-200 min-w-[32px] text-center">
+                                {lang}
+                              </span>
+                              <span className="text-gray-600 break-words pt-0.5">{text}</span>
+                            </div>
                           ))}
                         </div>
                       )}

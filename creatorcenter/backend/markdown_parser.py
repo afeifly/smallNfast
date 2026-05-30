@@ -49,11 +49,18 @@ def parse_markdown(md_text: str) -> Tuple[List[dict], str]:
             i += 1
             continue
 
-        # Skip image-only lines
+        # Skip image-only lines — markdown ![]() syntax
         if re.match(r"^!\[.*\]\(.*\)\s*$", line.strip()):
             placeholder_md.append(line)
             i += 1
             continue
+
+        # Skip image-only lines — HTML <img ...> tags
+        if re.match(r"^<img\b[^>]*/?>\s*$", line.strip(), re.IGNORECASE):
+            placeholder_md.append(line)
+            i += 1
+            continue
+
 
         # Table rows — extract cell text
         if "|" in line and line.strip().startswith("|"):
@@ -135,8 +142,9 @@ def _extract_inline(text: str, start_idx: int) -> Tuple[List[dict], str]:
         r"|(\*([^*]+)\*)"             # italic
         r"|(`([^`]+)`)"              # inline code — skip
         r"|(\[([^\]]+)\]\([^)]+\))"  # link [text](url)
-        r"|(!\[[^\]]*\]\([^)]+\))"   # image — skip
+        r"|(!\[[^\]]*\]\([^)]+\))"   # markdown image — skip
         r"|(\$\$?[^$]+\$\$?)"        # math — skip
+        r"|(<img\b[^>]*/?>)"          # HTML <img> tag — skip
     )
 
     while pos < len(text):
@@ -248,10 +256,13 @@ def _extract_inline(text: str, start_idx: int) -> Tuple[List[dict], str]:
             }
             segments.append(seg)
             idx += 1
-        elif m.group(9):  # image — preserve entirely
+        elif m.group(9):  # markdown image — preserve entirely
             result_parts.append(m.group(9))
         elif m.group(10):  # math — preserve entirely
             result_parts.append(m.group(10))
+        elif m.group(11):  # HTML <img> tag — preserve entirely, never segment
+            result_parts.append(m.group(11))
+
 
         pos = m.end()
 

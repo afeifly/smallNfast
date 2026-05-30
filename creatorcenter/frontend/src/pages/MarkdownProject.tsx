@@ -83,6 +83,7 @@ export default function MarkdownProject() {
       await api.updateMarkdownContent(projectId, text);
       setSaved(true);
       qc.invalidateQueries({ queryKey: ["project", projectId] });
+      qc.invalidateQueries({ queryKey: ["segments", projectId] });
     } catch { /* silent */ }
   }, [projectId, qc]);
 
@@ -93,6 +94,17 @@ export default function MarkdownProject() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => doSave(text), 2000);
   }, [doSave]);
+
+  const handleModeChange = (newMode: Mode) => {
+    if (mode === "edit" && !saved) {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = undefined;
+      }
+      doSave(content);
+    }
+    setMode(newMode);
+  };
 
   useEffect(() => {
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
@@ -109,8 +121,10 @@ export default function MarkdownProject() {
       try {
         const res = await axios.post("/api/images/upload", form);
         const sizeAttr = width && /^\d/.test(width) ? `width="${width}"` : `width="400"`;
-        setContent((prev) => prev + `\n<img src="${res.data.url}" ${sizeAttr} alt="${file.name}" />\n`);
+        const next = content + `\n<img src="${res.data.url}" ${sizeAttr} alt="${file.name}" />\n`;
+        setContent(next);
         setSaved(false);
+        doSave(next);
       } catch { /* silent */ }
     };
     input.click();
@@ -189,7 +203,7 @@ export default function MarkdownProject() {
           {modes.map((m) => (
             <button
               key={m.key}
-              onClick={() => setMode(m.key)}
+              onClick={() => handleModeChange(m.key)}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 mode === m.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
@@ -210,7 +224,12 @@ export default function MarkdownProject() {
             <button onClick={handleImageUpload} className="p-1.5 border rounded hover:bg-gray-50" title="Upload image">
               <ImageIcon className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => setContent((p) => p + "\n---newpage---\n")} className="p-1.5 border rounded hover:bg-gray-50" title="Page break">
+            <button onClick={() => {
+              const next = content + "\n---newpage---\n";
+              setContent(next);
+              setSaved(false);
+              doSave(next);
+            }} className="p-1.5 border rounded hover:bg-gray-50" title="Page break">
               <Scissors className="w-3.5 h-3.5" />
             </button>
           </>

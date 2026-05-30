@@ -97,12 +97,6 @@ export default function CompressorAnalyze() {
   const pieRef = useRef(null);
   const barRef = useRef(null);
 
-  // Run analysis when data or settings change
-  useEffect(() => {
-    if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) return;
-    runAnalysis();
-  }, [energyCost, voltage, leakThreshold]);
-
   // Draw charts when results change
   useEffect(() => {
     if (systemResult && compressors.length > 0) {
@@ -111,8 +105,45 @@ export default function CompressorAnalyze() {
     }
   }, [systemResult, compressors]);
 
-  const handleOpenSettings = () => {
-    setEditingCompressors(compressors.map(c => c.clone()));
+  const handleOpenSettings = async () => {
+    // If we don't have compressors yet, discover channels first
+    if (compressors.length === 0) {
+      try {
+        const channels = await new Promise((resolve) => {
+          TestAPI.getChannels((res) => resolve(res ? res.logging_chs || [] : []));
+        });
+        const currentChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'current');
+        const powerChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'power');
+        const inputChs = [...currentChs, ...powerChs];
+
+        const comps = inputChs.map((ch) => {
+          const isPower = classifyChannel(ch.unit_in_ascii) === 'power';
+          const comp = createDefaultCompressor(COMPRESSOR_TYPE_LOAD_UNLOAD);
+          comp.Description = ch.logic_channel_description || ch.sensor_description || `Compressor ${ch.channel_id}`;
+          comp.Unit = ch.channel_id;
+          comp.hasPowerChannel = isPower;
+          if (isPower) {
+            comp.FullLoadCurrentThreshold = 15;
+            comp.NoLoadCurrentThreshold = 2;
+          } else {
+            comp.FullLoadCurrentThreshold = 4;
+            comp.NoLoadCurrentThreshold = 0.5;
+          }
+          comp.FullLoadCurrent = 20;
+          comp.UnLoadCurrent = 10;
+          comp.FullLoadCosP = 0.86;
+          comp.UnLoadCosP = 0.5;
+          comp.FullLoadAirDelivery = 10;
+          comp.SupplyVoltage = voltage;
+          return comp;
+        });
+        setEditingCompressors(comps);
+      } catch (e) {
+        setEditingCompressors([]);
+      }
+    } else {
+      setEditingCompressors(compressors.map(c => c.clone()));
+    }
     setSelectedCompIdx(0);
     setSettingsOpen(true);
   };
@@ -598,6 +629,71 @@ export default function CompressorAnalyze() {
               </div>
             </div>
 
+            {/* Flow & System Summary Table — matching CAA StatisticsReportDialog */}
+            <div className="table-card">
+              <h4 className="card-title">Flow & System Summary</h4>
+              <div className="report-table-wrapper">
+                <table className="report-table">
+                  <tbody>
+                    <tr>
+                      <td><strong>Average Flow</strong></td>
+                      <td>{fmtFlow(systemResult.averageFlow)} {systemResult.flowUnit}</td>
+                      <td><strong>Max Flow</strong></td>
+                      <td>{fmtFlow(systemResult.maxFlow)} {systemResult.flowUnit}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Min Flow</strong></td>
+                      <td>{fmtFlow(systemResult.minFlow)} {systemResult.flowUnit}</td>
+                      <td><strong>Total Air Delivery</strong></td>
+                      <td>{fmt(systemResult.totalAirDelivery, 1)} m³</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Total Air Delivery (1 yr)</strong></td>
+                      <td>{fmt(systemResult.totalAirDeliveryOneYear, 0)} m³</td>
+                      <td><strong>Total Cost</strong></td>
+                      <td>{fmtCost(systemResult.totalCost)}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Total Cost (1 yr)</strong></td>
+                      <td>{fmtCost(systemResult.totalCostOneYear)}</td>
+                      <td><strong>Cost per m³</strong></td>
+                      <td>{fmtCost(systemResult.totalAirDelivery > 0 ? systemResult.totalCost / systemResult.totalAirDelivery : 0)}/m³</td>
+                    </tr>
+                    <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
+                      <td><strong>Average Leakage</strong></td>
+                      <td>{fmtFlow(leakThreshold)} {systemResult.flowUnit}</td>
+                      <td><strong>Total Leakage</strong></td>
+                      <td>{fmt(systemResult.totalLeakage, 1)} m³</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Leakage Rate</strong></td>
+                      <td>{fmtPct(systemResult.leakageRate)}</td>
+                      <td><strong>Leakage Cost</strong></td>
+                      <td>{fmtCost(systemResult.leakageCost)}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Leakage Cost (1 yr)</strong></td>
+                      <td>{fmtCost(systemResult.leakageCost * (systemResult.totalAirDeliveryOneYear / Math.max(1, systemResult.totalAirDelivery)))}</td>
+                      <td><strong>Total Leakage (1 yr)</strong></td>
+                      <td>{fmt(systemResult.totalLeakage * (systemResult.totalAirDeliveryOneYear / Math.max(1, systemResult.totalAirDelivery)), 1)} m³</td>
+                    </tr>
+                    <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
+                      <td><strong>Number of Compressors</strong></td>
+                      <td>{systemResult.numCompressorsSelected} / {systemResult.numCompressors}</td>
+                      <td><strong>Total CO₂</strong></td>
+                      <td>{fmt(systemResult.totalCO2Emmision, 2)} kg</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Total CO₂ (1 yr)</strong></td>
+                      <td>{fmt(systemResult.totalCO2EmmisionOneYear, 2)} kg</td>
+                      <td></td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* Charts */}
             <div className="charts-row">
               <div className="chart-card" style={{ flex: 1 }}>
@@ -610,7 +706,7 @@ export default function CompressorAnalyze() {
               </div>
             </div>
 
-            {/* Per-Compressor Table */}
+            {/* Per-Compressor Table — matching CAA JTableFields layout */}
             <div className="table-card">
               <h4 className="card-title">Compressor Details</h4>
               <div className="report-table-wrapper">
@@ -620,13 +716,18 @@ export default function CompressorAnalyze() {
                       <th>Compressor</th>
                       <th>Type</th>
                       <th>Full Load (h)</th>
+                      <th>Full (%)</th>
                       <th>Unload (h)</th>
+                      <th>Unload (%)</th>
                       <th>No Load (h)</th>
                       <th>Total (h)</th>
-                      <th>Full Load (%)</th>
+                      <th>Starts (#)</th>
+                      <th>Cycles (#)</th>
                       <th>Energy (kWh)</th>
                       <th>Cost (€)</th>
+                      <th>Max Flow</th>
                       <th>Avg Flow</th>
+                      <th>Spec. Power</th>
                       <th>CO₂ (kg)</th>
                     </tr>
                   </thead>
@@ -636,13 +737,18 @@ export default function CompressorAnalyze() {
                         <td><strong>{c.Description}</strong></td>
                         <td>{c.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY ? 'VF' : 'L/U'}</td>
                         <td>{fmtHrs(c.FullLoadHours)}</td>
+                        <td>{fmtPct(c.FullLoadPercentageMeasurementInterval)}</td>
                         <td>{fmtHrs(c.UnLoadHours)}</td>
+                        <td>{fmtPct(c.UnLoadPercentageMeasurementInterval)}</td>
                         <td>{fmtHrs(c.NoLoadHours)}</td>
                         <td>{fmtHrs(c.TotalHours)}</td>
-                        <td>{fmtPct(c.FullLoadPercentageMeasurementInterval)}</td>
+                        <td>{fmt(c.NumStarts, 0)}</td>
+                        <td>{fmt(c.NumOfLoad_UnloadChanges, 0)}</td>
                         <td>{fmtKwh(c.TotalEnergyConsumption)}</td>
                         <td>{fmtCost(c.TotalCost)}</td>
+                        <td>{fmtFlow(c.MaxFlow)}</td>
                         <td>{fmtFlow(c.AverageFlow)}</td>
+                        <td>{fmt(c.SpecificPower, 4)}</td>
                         <td>{fmt(c.CO2Emmision, 2)}</td>
                       </tr>
                     ))}
@@ -652,12 +758,17 @@ export default function CompressorAnalyze() {
                       <td><strong>Total</strong></td>
                       <td></td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.FullLoadHours, 0))}</td>
+                      <td></td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.UnLoadHours, 0))}</td>
+                      <td></td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.NoLoadHours, 0))}</td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.TotalHours, 0))}</td>
-                      <td></td>
+                      <td>{fmt(compressors.reduce((s, c) => s + c.NumStarts, 0), 0)}</td>
+                      <td>{fmt(compressors.reduce((s, c) => s + c.NumOfLoad_UnloadChanges, 0), 0)}</td>
                       <td>{fmtKwh(compressors.reduce((s, c) => s + c.TotalEnergyConsumption, 0))}</td>
                       <td>{fmtCost(compressors.reduce((s, c) => s + c.TotalCost, 0))}</td>
+                      <td></td>
+                      <td></td>
                       <td></td>
                       <td>{fmt(compressors.reduce((s, c) => s + c.CO2Emmision, 0), 2)}</td>
                     </tr>

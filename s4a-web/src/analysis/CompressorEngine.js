@@ -322,12 +322,119 @@ export class Compressor {
     return true;
   }
 
-  /** Clone this compressor */
+  /** Clone this compressor — preserves all fields and VF methods */
   clone() {
     const c = new Compressor();
-    Object.assign(c, JSON.parse(JSON.stringify(this)));
-    c.resetStatisticsValues();
-    Object.assign(c, JSON.parse(JSON.stringify(this)));
+
+    // Copy config fields
+    c.Type = this.Type;
+    c.Status = this.Status;
+    c.Selected = this.Selected;
+    c.Description = this.Description;
+    c.Unit = this.Unit;
+
+    // Copy statistics
+    c.FullLoadHours = this.FullLoadHours;
+    c.FullLoadPercentageMeasurementInterval = this.FullLoadPercentageMeasurementInterval;
+    c.FullLoadEnergyConsumption = this.FullLoadEnergyConsumption;
+    c.FullLoadEnergyCost = this.FullLoadEnergyCost;
+    c.UnLoadHours = this.UnLoadHours;
+    c.UnLoadPercentageMeasurementInterval = this.UnLoadPercentageMeasurementInterval;
+    c.UnLoadEnergyConsumption = this.UnLoadEnergyConsumption;
+    c.UnLoadEnergyCost = this.UnLoadEnergyCost;
+    c.NoLoadHours = this.NoLoadHours;
+    c.NoLoadPercentageMeasurementInterval = this.NoLoadPercentageMeasurementInterval;
+    c.NoLoadEnergyConsumption = this.NoLoadEnergyConsumption;
+    c.NoLoadEnergyCost = this.NoLoadEnergyCost;
+    c.NumOfLoadChanges = this.NumOfLoadChanges;
+    c.NumOfLoad_UnloadChanges = this.NumOfLoad_UnloadChanges;
+    c.NumOfLoad_UnloadChangesOneYear = this.NumOfLoad_UnloadChangesOneYear;
+    c.TotalHours = this.TotalHours;
+    c.TotalEnergyConsumption = this.TotalEnergyConsumption;
+    c.TotalCost = this.TotalCost;
+    c.TotalAirDeliveryAmount = this.TotalAirDeliveryAmount;
+    c.MaxFlow = this.MaxFlow;
+    c.MinFlow = this.MinFlow;
+    c.AverageFlow = this.AverageFlow;
+    c.AirUnitCost = this.AirUnitCost;
+    c.TotalLeakage = this.TotalLeakage;
+    c.LeakageRate = this.LeakageRate;
+    c.LeakageCost = this.LeakageCost;
+    c.AverageLeakage = this.AverageLeakage;
+
+    // One-year projections
+    c.FullLoadHoursOneYear = this.FullLoadHoursOneYear;
+    c.NoLoadHoursOneYear = this.NoLoadHoursOneYear;
+    c.UnLoadHoursOneYear = this.UnLoadHoursOneYear;
+    c.NumOfLoadChangesOneYear = this.NumOfLoadChangesOneYear;
+    c.FullLoadEnergyConsumptionOneYear = this.FullLoadEnergyConsumptionOneYear;
+    c.UnLoadEnergyConsumptionOneYear = this.UnLoadEnergyConsumptionOneYear;
+    c.NoLoadEnergyConsumptionOneYear = this.NoLoadEnergyConsumptionOneYear;
+    c.TotalEnergyConsumptionOneYear = this.TotalEnergyConsumptionOneYear;
+    c.TotalCostOneYear = this.TotalCostOneYear;
+    c.FullLoadEnergyCostOneYear = this.FullLoadEnergyCostOneYear;
+    c.UnLoadEnergyCostOneYear = this.UnLoadEnergyCostOneYear;
+    c.NoLoadEnergyCostOneYear = this.NoLoadEnergyCostOneYear;
+    c.LeakageCostOneYear = this.LeakageCostOneYear;
+    c.TotalLeakageOneYear = this.TotalLeakageOneYear;
+    c.TotalAirDeliveryAmountOneYear = this.TotalAirDeliveryAmountOneYear;
+    c.CO2Emmision = this.CO2Emmision;
+    c.CO2EmmisionOneYear = this.CO2EmmisionOneYear;
+    c.NumStarts = this.NumStarts;
+    c.NumStartsOneYear = this.NumStartsOneYear;
+    c.SpecificPower = this.SpecificPower;
+
+    // Configuration
+    c.CosP = this.CosP;
+    c.FullLoadCurrent = this.FullLoadCurrent;
+    c.UnLoadCurrent = this.UnLoadCurrent;
+    c.NoLoadCurrent = this.NoLoadCurrent;
+    c.FullLoadCosP = this.FullLoadCosP;
+    c.UnLoadCosP = this.UnLoadCosP;
+    c.NoLoadCosP = this.NoLoadCosP;
+    c.FullLoadCurrentThreshold = this.FullLoadCurrentThreshold;
+    c.UnLoadCurrentThreshold = this.UnLoadCurrentThreshold;
+    c.NoLoadCurrentThreshold = this.NoLoadCurrentThreshold;
+    c.FullLoadAirDelivery = this.FullLoadAirDelivery;
+    c.UnLoadAirDelivery = this.UnLoadAirDelivery;
+    c.NoLoadAirDelivery = this.NoLoadAirDelivery;
+    c.AirDeliveryUnit = this.AirDeliveryUnit;
+    c.SupplyVoltage = this.SupplyVoltage;
+    c.CO2EmmisionPerKWh = this.CO2EmmisionPerKWh;
+    c.CosPRatio = this.CosPRatio;
+    c.CosPA0 = this.CosPA0;
+
+    // VF parameters
+    c.VFMotorPower = this.VFMotorPower;
+    c.VFSystemPressure = this.VFSystemPressure;
+    c.VFPowerMin = this.VFPowerMin;
+    c.VFPowerP2 = this.VFPowerP2;
+    c.VFPowerP3 = this.VFPowerP3;
+    c.VFPowerMax = this.VFPowerMax;
+    c.VFAirDeliveryMin = this.VFAirDeliveryMin;
+    c.VFAirDeliveryP2 = this.VFAirDeliveryP2;
+    c.VFAirDeliveryP3 = this.VFAirDeliveryP3;
+    c.VFAirDeliveryMax = this.VFAirDeliveryMax;
+    c.VFAmpMin = this.VFAmpMin;
+    c.VFAmpP2 = this.VFAmpP2;
+    c.VFAmpP3 = this.VFAmpP3;
+    c.VFAmpMax = this.VFAmpMax;
+    c.VFLinearCoefficientP2Min = this.VFLinearCoefficientP2Min;
+    c.VFLinearCoefficientP3P2 = this.VFLinearCoefficientP3P2;
+    c.VFLinearCoefficientMaxP3 = this.VFLinearCoefficientMaxP3;
+    c.VFLinearCoefficientP2MinA0 = this.VFLinearCoefficientP2MinA0;
+    c.VFLinearCoefficientP3P2A0 = this.VFLinearCoefficientP3P2A0;
+    c.VFLinearCoefficientMaxP3A0 = this.VFLinearCoefficientMaxP3A0;
+    c.VFAirDeliveryUnit = this.VFAirDeliveryUnit;
+    c.VFCosPhi = this.VFCosPhi;
+    c.VFParameterSet = this.VFParameterSet;
+    c.hasPowerChannel = this.hasPowerChannel;
+    c.isFlowChannel = this.isFlowChannel;
+
+    // Recompute derived VF values to keep methods valid
+    c._calculateVFAmpAndLinearCoefficiency();
+    if (c.hasPowerChannel) c.calculateVFLinearCoefficiency();
+
     return c;
   }
 }

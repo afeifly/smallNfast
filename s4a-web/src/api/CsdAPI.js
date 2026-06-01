@@ -65,6 +65,10 @@ let _fileBuffer = null;   // Fully loaded file ArrayBuffer for zero-copy sync me
 
 let _onFileLoadedCallbacks = [];
 
+// Large-CSV pre-load prompt
+let _largeCsvResolve = null;     // Promise resolver, set while dialog is open
+let _pendingCsdConvert = false;  // true after user chose "Convert to CSD"
+
 // Classic <input> fallback
 let _fileInput = null;
 
@@ -402,6 +406,20 @@ async function _readArrayBufferWithProgress(file, onProgress) {
 
 // ── File-load entry point ─────────────────────────────────────────────────────
 
+/** Shows the large-CSV dialog and waits for the user's choice: 'open' | 'convert' | 'cancel' */
+function _promptLargeCsvChoice(file) {
+  return new Promise((resolve) => {
+    _largeCsvResolve = resolve;
+    window.dispatchEvent(new CustomEvent('largeCsvDetected', {
+      detail: {
+        filename: file.name,
+        sizeMB: (file.size / 1024 / 1024).toFixed(1),
+        sizeGB: (file.size / 1024 / 1024 / 1024).toFixed(2),
+      }
+    }));
+  });
+}
+
 async function _loadFromFile(file) {
   if (typeof localStorage !== 'undefined' && localStorage) {
     try {
@@ -413,6 +431,15 @@ async function _loadFromFile(file) {
   _fileLoaded = false;
   _isCsvMode = false;
   _fileBuffer = null; // Clear previous buffer reference
+
+  // ── Large CSV check (before showing loading overlay) ───────────────────────
+  const LARGE_CSV_THRESHOLD = 800 * 1024 * 1024; // 800 MB
+  if (file && file.name && file.name.toLowerCase().endsWith('.csv') && file.size >= LARGE_CSV_THRESHOLD) {
+    const choice = await _promptLargeCsvChoice(file);
+    if (choice === 'cancel') return false;
+    if (choice === 'convert') _pendingCsdConvert = true;
+    // 'open' or 'convert' → both proceed with normal CSV loading below
+  }
 
   window.dispatchEvent(new CustomEvent('fileLoadStart', { detail: { filename: file.name } }));
 
@@ -427,6 +454,11 @@ async function _loadFromFile(file) {
         _isCsvMode = true;
         window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
         _onFileLoadedCallbacks.forEach(fn => fn());
+        // If user chose to convert, fire the pending-convert event after load callbacks
+        if (_pendingCsdConvert) {
+          _pendingCsdConvert = false;
+          setTimeout(() => window.dispatchEvent(new CustomEvent('csvLoadedPendingConvert')), 200);
+        }
         return true;
       }
     } catch (e) {
@@ -962,7 +994,16 @@ const CsdAPI = {
   getLoggingChannels(callback) { if (callback) callback([]); },
   saveSensorPosition(id, x, y, callback) { if (callback) callback({}); },
 
+  /** Called by App.jsx to resolve the large-CSV dialog: choice is 'open' | 'convert' | 'cancel' */
+  resolveLargeCsvChoice(choice) {
+    if (_largeCsvResolve) {
+      _largeCsvResolve(choice);
+      _largeCsvResolve = null;
+    }
+  },
+
   getGapSummary() {
+
     if (_fileLoaded && _isCsvMode) {
       return CsvAPI.getGapSummary();
     }

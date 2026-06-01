@@ -458,4 +458,144 @@ No.,Date Time,CH1 - mV,CH2 - mV
     const success = await CsdAPI.loadFileFromHandle(mockHandle);
     expect(success).toBe(false);
   });
+
+  it('correctly analyzes gaps and exports to single/split CSD files with correct min/max', async () => {
+    const csvContent = `S332 Raw Data
+
+Start Date Time,14.May 2026 10:14:00
+End Date Time,14.May 2026 10:15:20
+Sample Rate(sec),10
+NO.Of Channels,2
+
+No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point
+1,CH1,Sensor 1,mV,0.01,Location 1/MP001
+2,CH2,Sensor 2,mV,0.001,Location 2/MP001
+
+No.,Date Time,CH1 - mV,CH2 - mV
+1,14-05-2026 10:14:00,10.0,20.0
+2,14-05-2026 10:14:10,12.0,18.0
+3,14-05-2026 10:14:20,13.0,19.0
+4,14-05-2026 10:14:30,11.0,21.0
+5,14-05-2026 10:15:20,15.0,25.0
+`;
+
+    const mockFile = {
+      name: 'gap_test.csv',
+      size: csvContent.length,
+      slice(start, end) {
+        const sliced = csvContent.slice(start, end);
+        return {
+          async text() { return sliced; },
+          async arrayBuffer() { return new TextEncoder().encode(sliced).buffer; }
+        };
+      },
+      async text() { return csvContent; }
+    };
+
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    // Load CSV
+    const loadSuccess = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(loadSuccess).toBe(true);
+
+    // Verify Gap Summary
+    const summary = CsdAPI.getGapSummary();
+    expect(summary.gapCount).toBe(1);
+    expect(summary.segments).toHaveLength(2);
+    expect(summary.totalRealSamples).toBe(5);
+    expect(summary.totalMissingSamples).toBe(4); // 10:14:40, 10:14:50, 10:15:00, 10:15:10
+    expect(summary.totalCsdSamples).toBe(9);
+
+    // Setup Blob and download capturing
+    const createdBlobs = [];
+    const downloadedFiles = [];
+
+    const originalCreateURL = global.URL.createObjectURL;
+    const originalRevokeURL = global.URL.revokeObjectURL;
+    global.URL.createObjectURL = (blob) => {
+      createdBlobs.push(blob);
+      return 'mock-url';
+    };
+    global.URL.revokeObjectURL = () => {};
+
+    const originalAppend = document.body.appendChild;
+    const originalRemove = document.body.removeChild;
+
+    document.body.appendChild = (el) => {
+      if (el.tagName === 'A') {
+        downloadedFiles.push({
+          href: el.href,
+          download: el.getAttribute('download')
+        });
+      }
+      return originalAppend.call(document.body, el);
+    };
+
+    document.body.removeChild = (el) => {
+      try { return originalRemove.call(document.body, el); } catch { return el; }
+    };
+
+    // 1. Export as Single CSD
+    await CsdAPI.exportToCsd();
+    expect(createdBlobs).toHaveLength(1);
+    expect(downloadedFiles).toHaveLength(1);
+    expect(downloadedFiles[0].download).toBe('gap_test.csd');
+
+    // Parse Single CSD Buffer
+    const singleBuffer = await createdBlobs[0].arrayBuffer();
+    const singleDv = new DataView(singleBuffer);
+    
+    // Check single CSD sample count (9 samples)
+    expect(singleDv.getInt32(34 + 3020, false)).toBe(9);
+    // Check channel min/max (global min/max: CH1 has min 10 max 15, CH2 has min 18 max 25)
+    // First channel min/max at 34 + 3552 + 848 + 4 / 12
+    expect(singleDv.getFloat64(34 + 3552 + 848 + 4, false)).toBe(10.0);
+    expect(singleDv.getFloat64(34 + 3552 + 848 + 12, false)).toBe(15.0);
+    // Second channel min/max
+    expect(singleDv.getFloat64(34 + 3552 + 918 + 848 + 4, false)).toBe(18.0);
+    expect(singleDv.getFloat64(34 + 3552 + 918 + 848 + 12, false)).toBe(25.0);
+
+    // 2. Export as Split CSD
+    await CsdAPI.exportToCsdSplit();
+    expect(createdBlobs).toHaveLength(3); // 1 single + 2 split
+    expect(downloadedFiles).toHaveLength(3);
+    expect(downloadedFiles[1].download).toBe('gap_test_part1.csd');
+    expect(downloadedFiles[2].download).toBe('gap_test_part2.csd');
+
+    // Parse Part 1 Buffer (should contain samples 10:14:00, 10:14:10, 10:14:20, 10:14:30)
+    // CH1 has values: 10.0, 12.0, 13.0, 11.0 (min=10.0, max=13.0)
+    // CH2 has values: 20.0, 18.0, 19.0, 21.0 (min=18.0, max=21.0)
+    const part1Buffer = await createdBlobs[1].arrayBuffer();
+    const part1Dv = new DataView(part1Buffer);
+    expect(part1Dv.getInt32(34 + 3020, false)).toBe(4); // 4 samples
+    // CH1 min/max in Part 1
+    expect(part1Dv.getFloat64(34 + 3552 + 848 + 4, false)).toBe(10.0);
+    expect(part1Dv.getFloat64(34 + 3552 + 848 + 12, false)).toBe(13.0);
+    // CH2 min/max in Part 1
+    expect(part1Dv.getFloat64(34 + 3552 + 918 + 848 + 4, false)).toBe(18.0);
+    expect(part1Dv.getFloat64(34 + 3552 + 918 + 848 + 12, false)).toBe(21.0);
+
+    // Parse Part 2 Buffer (should contain sample 10:15:20)
+    // CH1 has value: 15.0 (min=15.0, max=15.0)
+    // CH2 has value: 25.0 (min=25.0, max=25.0)
+    const part2Buffer = await createdBlobs[2].arrayBuffer();
+    const part2Dv = new DataView(part2Buffer);
+    expect(part2Dv.getInt32(34 + 3020, false)).toBe(1); // 1 sample
+    // CH1 min/max in Part 2
+    expect(part2Dv.getFloat64(34 + 3552 + 848 + 4, false)).toBe(15.0);
+    expect(part2Dv.getFloat64(34 + 3552 + 848 + 12, false)).toBe(15.0);
+    // CH2 min/max in Part 2
+    expect(part2Dv.getFloat64(34 + 3552 + 918 + 848 + 4, false)).toBe(25.0);
+    expect(part2Dv.getFloat64(34 + 3552 + 918 + 848 + 12, false)).toBe(25.0);
+
+    // Cleanup mocks
+    global.URL.createObjectURL = originalCreateURL;
+    global.URL.revokeObjectURL = originalRevokeURL;
+    document.body.appendChild = originalAppend;
+    document.body.removeChild = originalRemove;
+  });
 });

@@ -125,6 +125,10 @@ function App() {
   const [csdGapDialogOpen, setCsdGapDialogOpen] = React.useState(false);
   const [csdGapSummary, setCsdGapSummary] = React.useState(null);
 
+  // Large-CSV size-warning dialog
+  const [largeCsvDialogOpen, setLargeCsvDialogOpen] = React.useState(false);
+  const [largeCsvInfo, setLargeCsvInfo] = React.useState(null); // { filename, sizeMB, sizeGB }
+
   React.useEffect(() => {
     if (!localStorage.getItem('username')) {
       localStorage.setItem('username', 'admin');
@@ -167,6 +171,22 @@ function App() {
     }
   }, [initDone]);
 
+  const handleCsdExportConfirmed = async () => {
+    setCsdGapDialogOpen(false);
+    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage('Exporting to CSD... 0%');
+    try {
+      await TestAPI.exportToCsd((p) => {
+        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting to CSD... ${Math.round(p * 100)}%`);
+      });
+      window.showAppNotification('Export Complete', 'CSD file exported successfully.', 'success');
+    } catch (e) {
+      console.error(e);
+      window.showAppNotification('Export Failed', 'Failed to export data to CSD: ' + e.message, 'error');
+    } finally {
+      if (globalLoadingRef.current) globalLoadingRef.current.hide();
+    }
+  };
+
   React.useEffect(() => {
     const handleStart = (e) => {
       localStorage.removeItem('selectedChannels');
@@ -202,14 +222,36 @@ function App() {
       setNotiOpen(true);
     };
 
+    // Large CSV detected — pause loading and show size-warning dialog
+    const handleLargeCsvDetected = (e) => {
+      setLargeCsvInfo(e.detail);
+      setLargeCsvDialogOpen(true);
+    };
+
+    // CSV finished loading and user had chosen "Convert to CSD"
+    const handleCsvLoadedPendingConvert = () => {
+      const summary = TestAPI.getGapSummary ? TestAPI.getGapSummary() : { gapCount: 0, gaps: [], segments: [] };
+      // No gaps — export directly, no dialog needed
+      if (!summary.gapCount) {
+        handleCsdExportConfirmed();
+        return;
+      }
+      setCsdGapSummary(summary);
+      setCsdGapDialogOpen(true);
+    };
+
     window.addEventListener('fileLoadStart', handleStart);
     window.addEventListener('fileLoadProgress', handleProgress);
     window.addEventListener('appNotification', handleNotification);
+    window.addEventListener('largeCsvDetected', handleLargeCsvDetected);
+    window.addEventListener('csvLoadedPendingConvert', handleCsvLoadedPendingConvert);
 
     return () => {
       window.removeEventListener('fileLoadStart', handleStart);
       window.removeEventListener('fileLoadProgress', handleProgress);
       window.removeEventListener('appNotification', handleNotification);
+      window.removeEventListener('largeCsvDetected', handleLargeCsvDetected);
+      window.removeEventListener('csvLoadedPendingConvert', handleCsvLoadedPendingConvert);
     };
   }, []);
 
@@ -287,33 +329,20 @@ function App() {
   const handleExportCsdOption = async () => {
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
+      window.showAppNotification('Export Aborted', 'No file is currently loaded.', 'warning');
       return;
     }
     if (!TestAPI.isCsvMode || !TestAPI.isCsvMode()) {
-      window.showAppNotification("Export Aborted", "Export to CSD is only available when a CSV file is loaded.", "warning");
+      window.showAppNotification('Export Aborted', 'Export to CSD is only available when a CSV file is loaded.', 'warning');
       return;
     }
-    // Compute gap summary and show confirmation dialog
     const summary = TestAPI.getGapSummary ? TestAPI.getGapSummary() : { gapCount: 0, gaps: [] };
+    // No gaps — skip dialog and export directly
+    if (!summary.gapCount) {
+      return handleCsdExportConfirmed();
+    }
     setCsdGapSummary(summary);
     setCsdGapDialogOpen(true);
-  };
-
-  const handleCsdExportConfirmed = async () => {
-    setCsdGapDialogOpen(false);
-    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage('Exporting to CSD... 0%');
-    try {
-      await TestAPI.exportToCsd((p) => {
-        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting to CSD... ${Math.round(p * 100)}%`);
-      });
-      window.showAppNotification('Export Complete', 'CSD file exported successfully.', 'success');
-    } catch (e) {
-      console.error(e);
-      window.showAppNotification('Export Failed', 'Failed to export data to CSD: ' + e.message, 'error');
-    } finally {
-      if (globalLoadingRef.current) globalLoadingRef.current.hide();
-    }
   };
 
   const handleCsdExportSplit = async () => {
@@ -645,7 +674,140 @@ function App() {
         </DialogActions>
       </Dialog>
 
+      {/* ═══ Large CSV Size Warning Dialog ═══ */}
+      <Dialog
+        maxWidth="sm"
+        fullWidth
+        open={largeCsvDialogOpen}
+        onClose={() => {
+          setLargeCsvDialogOpen(false);
+          TestAPI.resolveLargeCsvChoice && TestAPI.resolveLargeCsvChoice('cancel');
+        }}
+        PaperProps={{ style: { borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)' } }}
+      >
+        {/* Header */}
+        <DialogTitle style={{
+          background: 'linear-gradient(135deg, #78350f 0%, #92400e 100%)',
+          color: '#fef3c7',
+          padding: '20px 24px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+          fontWeight: '800', fontSize: '16px',
+        }}>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fcd34d" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          Large CSV File Detected
+        </DialogTitle>
+
+        <DialogContent style={{ padding: '0', background: '#fff' }}>
+          {largeCsvInfo && (
+            <div>
+              {/* File size badge */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '16px',
+                padding: '20px 24px 16px',
+                borderBottom: '1px solid #fde68a',
+                background: '#fffbeb',
+              }}>
+                <div style={{
+                  width: '52px', height: '52px', borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '26px', flexShrink: 0,
+                }}>📄</div>
+                <div>
+                  <div style={{ fontWeight: '800', fontSize: '14px', color: '#0f172a', wordBreak: 'break-all' }}>
+                    {largeCsvInfo.filename}
+                  </div>
+                  <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      background: '#fef3c7', border: '1px solid #fcd34d',
+                      borderRadius: '999px', padding: '2px 10px',
+                      fontSize: '12px', fontWeight: '800', color: '#92400e',
+                    }}>
+                      {parseFloat(largeCsvInfo.sizeMB) >= 1024
+                        ? `${largeCsvInfo.sizeGB} GB`
+                        : `${largeCsvInfo.sizeMB} MB`}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#92400e', fontWeight: '600' }}>≥ 800 MB</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Message */}
+              <div style={{ padding: '20px 24px', fontSize: '13.5px', color: '#334155', lineHeight: '1.7' }}>
+                <p style={{ margin: '0 0 14px', fontWeight: '500' }}>
+                  The csv file size is too huge, convert to CSD file will have more effective analyze data.
+                </p>
+                <div style={{
+                  background: '#ecfdf5', border: '1px solid #a7f3d0',
+                  borderRadius: '10px', padding: '14px 16px',
+                  fontSize: '12.5px', color: '#065f46',
+                }}>
+                  <div style={{ fontWeight: '800', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>✨</span> Converting to CSD format offers:
+                  </div>
+                  <ul style={{ margin: '0', paddingLeft: '18px', lineHeight: '1.9' }}>
+                    <li>Fast binary access — <strong>no re-parsing on every load</strong></li>
+                    <li>Native slider, zoom, and channel rendering</li>
+                    <li>Much smaller memory footprint</li>
+                    <li>Support for min/max range per channel</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+
+        <DialogActions style={{
+          padding: '16px 24px', background: '#fafafa',
+          borderTop: '1px solid #e2e8f0',
+          display: 'flex', gap: '8px', justifyContent: 'flex-end',
+        }}>
+          {/* Cancel */}
+          <Button
+            onClick={() => {
+              setLargeCsvDialogOpen(false);
+              TestAPI.resolveLargeCsvChoice && TestAPI.resolveLargeCsvChoice('cancel');
+            }}
+            variant="outlined"
+            style={{ borderRadius: '8px', fontWeight: '700', color: '#64748b', borderColor: '#cbd5e1', textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+
+          {/* Open as CSV anyway */}
+          <Button
+            onClick={() => {
+              setLargeCsvDialogOpen(false);
+              TestAPI.resolveLargeCsvChoice && TestAPI.resolveLargeCsvChoice('open');
+            }}
+            variant="outlined"
+            style={{ borderRadius: '8px', fontWeight: '700', color: '#92400e', borderColor: '#f59e0b', textTransform: 'none' }}
+          >
+            Open as CSV Anyway
+          </Button>
+
+          {/* Convert to CSD — primary action */}
+          <Button
+            onClick={() => {
+              setLargeCsvDialogOpen(false);
+              TestAPI.resolveLargeCsvChoice && TestAPI.resolveLargeCsvChoice('convert');
+            }}
+            variant="contained"
+            style={{
+              borderRadius: '8px', fontWeight: '800', textTransform: 'none',
+              background: 'linear-gradient(135deg, #00ac86, #007d61)',
+              color: '#fff', padding: '8px 20px',
+            }}
+          >
+            ✨ Convert to CSD
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* ═══ CSD Export — Gap Analysis & Choice Dialog ═══ */}
+
       <Dialog
         maxWidth="md"
         fullWidth
@@ -662,7 +824,7 @@ function App() {
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#f59e0b" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          CSV → CSD Export: Gap Analysis
+          Export Data Analysis
         </DialogTitle>
 
         <DialogContent style={{ padding: '0', background: '#f8fafc' }}>

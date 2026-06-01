@@ -1341,7 +1341,7 @@ const CsvAPI = {
       return buf;
     }
 
-    function buildChannelHeaders() {
+    function buildChannelHeaders(segMin, segMax) {
       const buf = new ArrayBuffer(CHANNEL_HEADER_LEN * _numChannels);
       const dv  = new DataView(buf);
       _channels.forEach((ch, idx) => {
@@ -1367,14 +1367,12 @@ const CsvAPI = {
         const statsBase  = FP + 60;
         const resolution = ch.resolution !== undefined ? ch.resolution : 2;
         dv.setInt32(base + statsBase,      resolution, false);
-        dv.setFloat64(base + statsBase + 4,  ch._min,  false);
-        dv.setFloat64(base + statsBase + 12, ch._max,  false);
+        dv.setFloat64(base + statsBase + 4,  segMin[idx],  false);
+        dv.setFloat64(base + statsBase + 12, segMax[idx],  false);
         dv.setInt32(base + statsBase + 28, ch.sensor_id || idx, false);
       });
       return buf;
     }
-
-    const chHeadersBuf = buildChannelHeaders(); // same for every segment
 
     // ── Per-segment export ────────────────────────────────────────────────────
     for (let si = 0; si < segments.length; si++) {
@@ -1382,6 +1380,9 @@ const CsvAPI = {
       const segStartMs   = seg.startTimeMs;
       const segStopMs    = seg.stopTimeMs;
       const totalSamples = Math.max(1, Math.round((segStopMs - segStartMs) / intervalMs) + 1);
+
+      const segMin = Array(_numChannels).fill(Infinity);
+      const segMax = Array(_numChannels).fill(-Infinity);
 
       // Build slot → row map for this segment
       const slotToRow = new Map();
@@ -1438,12 +1439,23 @@ const CsvAPI = {
           for (let c = 0; c < _numChannels; c++) {
             const v = (vals && vals[c] !== undefined) ? vals[c] : DATA_INVALID;
             dataDv.setFloat64(off + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN, v, false);
+            if (v !== DATA_INVALID && !isNaN(v)) {
+              if (v < segMin[c]) segMin[c] = v;
+              if (v > segMax[c]) segMax[c] = v;
+            }
           }
         }
 
         if (onProgress) onProgress((si + (chunkEnd / totalSamples)) / segments.length);
         await new Promise(resolve => setTimeout(resolve, 0));
       }
+
+      // Sanitize segment-specific min/max values
+      for (let c = 0; c < _numChannels; c++) {
+        if (segMin[c] === Infinity) segMin[c] = 0;
+        if (segMax[c] === -Infinity) segMax[c] = 100;
+      }
+      const chHeadersBuf = buildChannelHeaders(segMin, segMax);
 
       // Download this segment's CSD file
       const blob = new Blob(

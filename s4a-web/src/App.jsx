@@ -121,6 +121,10 @@ function App() {
   const [notiMsg, setNotiMsg] = React.useState('');
   const [notiType, setNotiType] = React.useState('info'); // 'info', 'warning', 'error', 'success'
 
+  // CSD Export gap-confirmation dialog
+  const [csdGapDialogOpen, setCsdGapDialogOpen] = React.useState(false);
+  const [csdGapSummary, setCsdGapSummary] = React.useState(null);
+
   React.useEffect(() => {
     if (!localStorage.getItem('username')) {
       localStorage.setItem('username', 'admin');
@@ -280,6 +284,55 @@ function App() {
     }
   };
 
+  const handleExportCsdOption = async () => {
+    handleShareClose();
+    if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
+      window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
+      return;
+    }
+    if (!TestAPI.isCsvMode || !TestAPI.isCsvMode()) {
+      window.showAppNotification("Export Aborted", "Export to CSD is only available when a CSV file is loaded.", "warning");
+      return;
+    }
+    // Compute gap summary and show confirmation dialog
+    const summary = TestAPI.getGapSummary ? TestAPI.getGapSummary() : { gapCount: 0, gaps: [] };
+    setCsdGapSummary(summary);
+    setCsdGapDialogOpen(true);
+  };
+
+  const handleCsdExportConfirmed = async () => {
+    setCsdGapDialogOpen(false);
+    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage('Exporting to CSD... 0%');
+    try {
+      await TestAPI.exportToCsd((p) => {
+        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting to CSD... ${Math.round(p * 100)}%`);
+      });
+      window.showAppNotification('Export Complete', 'CSD file exported successfully.', 'success');
+    } catch (e) {
+      console.error(e);
+      window.showAppNotification('Export Failed', 'Failed to export data to CSD: ' + e.message, 'error');
+    } finally {
+      if (globalLoadingRef.current) globalLoadingRef.current.hide();
+    }
+  };
+
+  const handleCsdExportSplit = async () => {
+    setCsdGapDialogOpen(false);
+    const segCount = csdGapSummary?.segments?.length ?? 1;
+    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting ${segCount} CSD files... 0%`);
+    try {
+      await TestAPI.exportToCsdSplit((p) => {
+        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting ${segCount} CSD files... ${Math.round(p * 100)}%`);
+      });
+      window.showAppNotification('Export Complete', `${segCount} CSD file(s) exported successfully.`, 'success');
+    } catch (e) {
+      console.error(e);
+      window.showAppNotification('Export Failed', 'Failed to split-export CSD files: ' + e.message, 'error');
+    } finally {
+      if (globalLoadingRef.current) globalLoadingRef.current.hide();
+    }
+  };
+
   const handleExportExcelOption = async () => {
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
@@ -391,6 +444,11 @@ function App() {
                 open={Boolean(shareMenuAnchorEl)}
                 onClose={handleShareClose}
               >
+                {TestAPI.isCsvMode && TestAPI.isCsvMode() && (
+                  <MenuItem onClick={handleExportCsdOption}>
+                    Export CSV to CSD
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={handleExportCsvOption}
                   disabled={Boolean(TestAPI.isCsvMode && TestAPI.isCsvMode())}
@@ -587,7 +645,182 @@ function App() {
         </DialogActions>
       </Dialog>
 
+      {/* ═══ CSD Export — Gap Analysis & Choice Dialog ═══ */}
+      <Dialog
+        maxWidth="md"
+        fullWidth
+        onClose={() => setCsdGapDialogOpen(false)}
+        open={csdGapDialogOpen}
+        PaperProps={{ style: { borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' } }}
+      >
+        <DialogTitle style={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          color: '#f8fafc', padding: '20px 24px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+          fontWeight: '800', fontSize: '17px',
+        }}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#f59e0b" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          CSV → CSD Export: Gap Analysis
+        </DialogTitle>
+
+        <DialogContent style={{ padding: '0', background: '#f8fafc' }}>
+          {csdGapSummary && (() => {
+            const fmt = (ms) => {
+              const d = new Date(ms), p = n => String(n).padStart(2,'0');
+              return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+            };
+            const fmtDur = (ms) => {
+              const s = Math.round(ms / 1000);
+              if (s < 60) return `${s}s`;
+              if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+              return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+            };
+            const naPercent  = csdGapSummary.naPercent ?? 0;
+            const gapCount   = csdGapSummary.gapCount ?? 0;
+            const segCount   = (csdGapSummary.segments ?? []).length;
+
+            return (
+              <div>
+                {/* ── Stats strip ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: '#e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                  {[
+                    { label: 'Gaps Found',     value: gapCount,                                              color: gapCount > 0 ? '#f59e0b' : '#10b981' },
+                    { label: 'Real Samples',   value: (csdGapSummary.totalRealSamples ?? 0).toLocaleString(), color: '#00ac86' },
+                    { label: 'N/A Slots',      value: (csdGapSummary.totalMissingSamples ?? 0).toLocaleString(), color: gapCount > 0 ? '#ef4444' : '#10b981' },
+                    { label: 'N/A Ratio',      value: `${naPercent.toFixed(1)}%`,                            color: naPercent > 20 ? '#ef4444' : naPercent > 5 ? '#f59e0b' : '#10b981' },
+                  ].map((s, i) => (
+                    <div key={i} style={{ background: '#fff', padding: '14px 16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', fontWeight: '800', color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Meta row ── */}
+                <div style={{ padding: '9px 20px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '11.5px', color: '#475569', fontWeight: '600' }}>
+                  <span>⏱ Interval: <strong style={{color:'#0f172a'}}>{csdGapSummary.detectedIntervalSec}s</strong></span>
+                  <span>🕐 Start: <strong style={{color:'#0f172a'}}>{csdGapSummary.startTimeMs ? fmt(csdGapSummary.startTimeMs) : '—'}</strong></span>
+                  <span>🔚 End: <strong style={{color:'#0f172a'}}>{csdGapSummary.stopTimeMs ? fmt(csdGapSummary.stopTimeMs) : '—'}</strong></span>
+                  <span>📂 Continuous segments: <strong style={{color:'#0f172a'}}>{segCount}</strong></span>
+                </div>
+
+                {/* ── Two-choice cards ── */}
+                {gapCount > 0 ? (
+                  <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {/* Option A — Single file */}
+                    <div style={{
+                      border: '2px solid #f59e0b', borderRadius: '12px', background: '#fffbeb',
+                      padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '24px' }}>📦</span>
+                        <div>
+                          <div style={{ fontWeight: '800', fontSize: '14px', color: '#92400e' }}>Single CSD File</div>
+                          <div style={{ fontSize: '11px', color: '#b45309' }}>Full timeline preserved</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#78350f', lineHeight: '1.6', background: '#fef3c7', borderRadius: '6px', padding: '10px 12px' }}>
+                        The CSV has <strong>{gapCount} timestamp gap{gapCount > 1 ? 's' : ''}</strong>. CSD requires a uniform grid, so <strong>{(csdGapSummary.totalMissingSamples ?? 0).toLocaleString()} missing slots</strong> will be filled with <code style={{background:'#fed7aa',padding:'1px 4px',borderRadius:'3px'}}>−9999 (N/A)</code>.
+                        <br /><br />
+                        The resulting file will contain <strong style={{color: naPercent > 20 ? '#dc2626' : '#b45309'}}>{naPercent.toFixed(1)}% N/A data</strong> out of {(csdGapSummary.totalCsdSamples ?? 0).toLocaleString()} total slots.
+                      </div>
+                      <Button
+                        onClick={handleCsdExportConfirmed}
+                        variant="contained"
+                        fullWidth
+                        style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color:'#fff', borderRadius:'8px', fontWeight:'800', fontSize:'13px', textTransform:'none', padding:'10px' }}
+                      >
+                        Save as 1 CSD File ({naPercent.toFixed(1)}% N/A)
+                      </Button>
+                    </div>
+
+                    {/* Option B — Split files */}
+                    <div style={{
+                      border: '2px solid #00ac86', borderRadius: '12px', background: '#ecfdf5',
+                      padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '24px' }}>🗂</span>
+                        <div>
+                          <div style={{ fontWeight: '800', fontSize: '14px', color: '#065f46' }}>Split into {segCount} CSD Files</div>
+                          <div style={{ fontSize: '11px', color: '#047857' }}>Zero N/A — pure real data</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#064e3b', lineHeight: '1.6', background: '#d1fae5', borderRadius: '6px', padding: '10px 12px' }}>
+                        Each continuous period becomes its own independent CSD file — <strong>no N/A padding</strong>. Files are named <code style={{background:'#a7f3d0',padding:'1px 4px',borderRadius:'3px'}}>name_part01.csd</code>, <code style={{background:'#a7f3d0',padding:'1px 4px',borderRadius:'3px'}}>name_part02.csd</code> …
+                        <br /><br />
+                        You will receive <strong style={{color:'#065f46'}}>{segCount} file{segCount > 1 ? 's' : ''}</strong>, each containing 100% real data.
+                      </div>
+                      <Button
+                        onClick={handleCsdExportSplit}
+                        variant="contained"
+                        fullWidth
+                        style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color:'#fff', borderRadius:'8px', fontWeight:'800', fontSize:'13px', textTransform:'none', padding:'10px' }}
+                      >
+                        Split into {segCount} CSD File{segCount > 1 ? 's' : ''} (0% N/A)
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* No gaps — single clean export */
+                  <div style={{ padding: '16px' }}>
+                    <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '14px 16px', fontSize: '13px', color: '#065f46', marginBottom: '12px' }}>
+                      ✅ No timestamp gaps detected. This CSV is fully continuous — the CSD output will be an exact 1-to-1 conversion with <strong>0% N/A data</strong>.
+                    </div>
+                    <Button onClick={handleCsdExportConfirmed} variant="contained" fullWidth
+                      style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color:'#fff', borderRadius:'8px', fontWeight:'800', fontSize:'14px', textTransform:'none', padding:'12px' }}>
+                      Export to CSD
+                    </Button>
+                  </div>
+                )}
+
+                {/* ── Gap detail table ── */}
+                {gapCount > 0 && (
+                  <div style={{ padding: '0 16px 16px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Gap details ({gapCount} gaps)
+                    </div>
+                    <div style={{ maxHeight: '170px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+                        <thead>
+                          <tr style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
+                            {['#', 'Gap Start', 'Resume At', 'Duration', 'Missing Samples'].map((h, i) => (
+                              <th key={i} style={{ padding: '7px 10px', textAlign: i === 0 ? 'center' : i === 4 ? 'right' : 'left', fontWeight: '700', color: '#334155', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csdGapSummary.gaps.map((gap, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 ? '#fafafa' : '#fff' }}>
+                              <td style={{ padding: '6px 10px', textAlign: 'center', color: '#94a3b8', fontWeight: '700' }}>{i + 1}</td>
+                              <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#0f172a' }}>{fmt(gap.from)}</td>
+                              <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#0f172a' }}>{fmt(gap.to)}</td>
+                              <td style={{ padding: '6px 10px', color: '#f59e0b', fontWeight: '700' }}>{fmtDur(gap.deltaMs)}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: '800', color: '#ef4444' }}>{gap.missingSamples.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+
+        <DialogActions style={{ padding: '12px 20px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0' }}>
+          <Button onClick={() => setCsdGapDialogOpen(false)} variant="outlined"
+            style={{ borderRadius: '8px', fontWeight: '700', color: '#475569', borderColor: '#cbd5e1', textTransform: 'none' }}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Loading ref={globalLoadingRef} />
+
 
       {/* Status Bar */}
       <footer className="app-status-bar">

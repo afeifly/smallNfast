@@ -962,6 +962,28 @@ const CsdAPI = {
   getLoggingChannels(callback) { if (callback) callback([]); },
   saveSensorPosition(id, x, y, callback) { if (callback) callback({}); },
 
+  getGapSummary() {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getGapSummary();
+    }
+    // CSD files have continuous samples — no gaps
+    return { gapCount: 0, gaps: [], totalMissingSamples: 0, totalRealSamples: _numSamples, totalCsdSamples: _numSamples, detectedIntervalSec: _sampleIntervalSec, startTimeMs: _startTimeMs, stopTimeMs: _stopTimeMs };
+  },
+
+  async exportToCsd(onProgress) {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.exportToCsd(onProgress);
+    }
+    throw new Error('Export to CSD is only available when a CSV file is loaded.');
+  },
+
+  async exportToCsdSplit(onProgress) {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.exportToCsdSplit(onProgress);
+    }
+    throw new Error('Split export is only available when a CSV file is loaded.');
+  },
+
   async exportAllChannelsToCsv(onProgress) {
     if (_fileLoaded && _isCsvMode) {
       return CsvAPI.exportAllChannelsToCsv(onProgress);

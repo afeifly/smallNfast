@@ -897,7 +897,578 @@ const CsvAPI = {
     }
   },
 
+  /**
+   * Returns a summary of timestamp gaps and continuous segments in the loaded CSV.
+   * Used for the pre-export confirmation dialog.
+   */
+  getGapSummary() {
+    if (!_fileLoaded || _numSamples === 0) {
+      return {
+        gapCount: 0, gaps: [], segments: [],
+        totalMissingSamples: 0, totalRealSamples: 0,
+        totalCsdSamples: 0, naPercent: 0,
+        detectedIntervalSec: 0, startTimeMs: 0, stopTimeMs: 0,
+      };
+    }
+
+    const intervalMs     = _detectedIntervalMs > 0 ? _detectedIntervalMs : (_sampleIntervalSec * 1000);
+    const gapThresholdMs = GAP_THRESHOLD_FACTOR * intervalMs;
+    const gaps    = [];
+    const segments = [];
+
+    // Walk timestamps once, collecting gaps + segment boundaries simultaneously
+    let segStartRow = 0;
+    for (let i = 1; i < _numSamples; i++) {
+      const delta = _rowTimestamps[i] - _rowTimestamps[i - 1];
+      if (delta > gapThresholdMs) {
+        const missingSamples = Math.round((delta - intervalMs) / intervalMs);
+
+        // Close the current segment
+        segments.push({
+          startRow:    segStartRow,
+          endRow:      i - 1,
+          startTimeMs: _rowTimestamps[segStartRow],
+          stopTimeMs:  _rowTimestamps[i - 1],
+          rowCount:    i - segStartRow,
+        });
+
+        gaps.push({
+          from:          _rowTimestamps[i - 1],
+          to:            _rowTimestamps[i],
+          deltaMs:       delta,
+          missingSamples,
+          missingMs:     delta - intervalMs,
+          beforeRow:     i - 1,
+          afterRow:      i,
+        });
+
+        segStartRow = i;
+      }
+    }
+    // Final segment
+    segments.push({
+      startRow:    segStartRow,
+      endRow:      _numSamples - 1,
+      startTimeMs: _rowTimestamps[segStartRow],
+      stopTimeMs:  _rowTimestamps[_numSamples - 1],
+      rowCount:    _numSamples - segStartRow,
+    });
+
+    const totalMissingSamples = gaps.reduce((acc, g) => acc + g.missingSamples, 0);
+    const totalCsdSamples     = Math.max(1, Math.round((_stopTimeMs - _startTimeMs) / intervalMs) + 1);
+    const naPercent           = totalCsdSamples > 0 ? (totalMissingSamples / totalCsdSamples) * 100 : 0;
+
+    return {
+      gapCount:           gaps.length,
+      gaps,
+      segments,
+      totalRealSamples:   _numSamples,
+      totalMissingSamples,
+      totalCsdSamples,
+      naPercent,
+      detectedIntervalSec: intervalMs / 1000,
+      startTimeMs:         _startTimeMs,
+      stopTimeMs:          _stopTimeMs,
+    };
+  },
+
+
+  /**
+   * Export the currently loaded CSV as a binary CSD file.
+   * 
+   * Gap handling: CSV files may have non-continuous timestamps (power-loss gaps).
+   * We fill all missing sample slots between startTime and stopTime with DATA_INVALID
+   * (-9999.0) so the output CSD file has a perfectly uniform sample grid.
+   * 
+   * Min/Max: Already computed during loadFromFile() scan and stored in ch._min / ch._max.
+   */
+  async exportToCsd(onProgress) {
+    if (!_fileLoaded || !_file) {
+      throw new Error('No CSV file loaded');
+    }
+
+    // ── CSD format constants ──────────────────────────────────────────────────
+    const FILE_HEADER_LEN    = 34;
+    const PROTOCOL_HEADER_LEN = 3552;
+    const CHANNEL_HEADER_LEN  = 918;
+    const RECORD_ID_LEN       = 4;
+    const CHANNEL_VALUE_LEN   = 8;   // float64
+    const DATA_INVALID        = -9999.0;
+
+    const intervalMs  = _detectedIntervalMs > 0 ? _detectedIntervalMs : (_sampleIntervalSec * 1000);
+    const intervalSec = intervalMs / 1000;
+
+    // Total CSD records = every slot from startTime to stopTime at the detected interval
+    const totalSamples = Math.max(1, Math.round((_stopTimeMs - _startTimeMs) / intervalMs) + 1);
+
+    // ── Helper: write null-padded UTF-8 string into a DataView ───────────────
+    function writeStr(dv, offset, str, maxLen) {
+      const enc = new TextEncoder().encode(str || '');
+      const len = Math.min(enc.length, maxLen - 1);
+      for (let i = 0; i < len; i++) dv.setUint8(offset + i, enc[i]);
+      for (let i = len; i < maxLen; i++) dv.setUint8(offset + i, 0);
+    }
+
+    // ── 1. File Info Header (34 bytes) ────────────────────────────────────────
+    const fileHeader = new ArrayBuffer(FILE_HEADER_LEN);
+    const fhDv = new DataView(fileHeader);
+    fhDv.setInt32(0, 1, false);                    // version = 1
+    writeStr(fhDv, 4, 'SUTO CSD', 10);            // identifier (10 bytes)
+    // remaining bytes default to 0
+
+    // ── 2. Protocol Header (3552 bytes) ───────────────────────────────────────
+    const protoHeader = new ArrayBuffer(PROTOCOL_HEADER_LEN);
+    const phDv = new DataView(protoHeader);
+    writeStr(phDv, 506, _deviceName || 'CSV Device', 32);  // device name
+    phDv.setInt32(3016, _numChannels, false);               // channel count
+    phDv.setInt32(3020, totalSamples,  false);              // sample count
+    phDv.setInt32(3024, Math.round(intervalSec), false);    // sample interval (sec)
+    phDv.setBigInt64(3032, BigInt(_startTimeMs), false);    // start time ms
+    phDv.setBigInt64(3040, BigInt(_stopTimeMs),  false);    // stop time ms
+
+    // ── 3. Channel Headers (918 bytes × numChannels) ──────────────────────────
+    const chHeadersBuf = new ArrayBuffer(CHANNEL_HEADER_LEN * _numChannels);
+    const chDv = new DataView(chHeadersBuf);
+
+    _channels.forEach((ch, idx) => {
+      const base = idx * CHANNEL_HEADER_LEN;
+
+      // pref (int64) at offset 0 — use 0
+      chDv.setBigInt64(base + 0, BigInt(0), false);
+
+      // Channel desc: int16 length + chars at +10
+      const desc = ch.logic_channel_description || `CH${idx + 1}`;
+      const descEnc = new TextEncoder().encode(desc);
+      const descLen = Math.min(descEnc.length, 126);
+      chDv.setInt16(base + 8, descLen, false);
+      for (let i = 0; i < descLen; i++) chDv.setUint8(base + 10 + i, descEnc[i]);
+
+      // Sub-device desc length at +138 (empty)
+      chDv.setInt16(base + 138, 0, false);
+
+      // Device desc length at +268 (empty)
+      chDv.setInt16(base + 268, 0, false);
+
+      // Sensor desc length at +289, text at +291
+      const senDesc = ch.sensor_description || desc;
+      const senEnc = new TextEncoder().encode(senDesc);
+      const senLen = Math.min(senEnc.length, 17);
+      chDv.setInt16(base + 289, senLen, false);
+      for (let i = 0; i < senLen; i++) chDv.setUint8(base + 291 + i, senEnc[i]);
+
+      // Unit text at field position FP = 780+4+4 = 788
+      const FP = 788;
+      const unitEnc = new TextEncoder().encode(ch.unit_in_ascii || '');
+      const unitLen = Math.min(unitEnc.length, 56);
+      chDv.setInt16(base + FP, unitLen, false);
+      for (let i = 0; i < unitLen; i++) chDv.setUint8(base + FP + 2 + i, unitEnc[i]);
+
+      // Stats at statsBase = FP + 60 = 848
+      // resolution(int32, 4) + min(float64, 8) + max(float64, 8)
+      const statsBase = FP + 60; // = 848
+      const resolution = ch.resolution !== undefined ? ch.resolution : 2;
+      chDv.setInt32(base + statsBase,      resolution, false);     // resolution
+      chDv.setFloat64(base + statsBase + 4,  ch._min,  false);     // min
+      chDv.setFloat64(base + statsBase + 12, ch._max,  false);     // max
+
+      // sensor_id at statsBase+28
+      chDv.setInt32(base + statsBase + 28, ch.sensor_id || idx, false);
+    });
+
+    // ── 4. Build a timestamp → row-index lookup map ───────────────────────────
+    // Key = rounded timestamp slot index = Math.round((ts - startTime) / intervalMs)
+    // For each CSD slot, look up the CSV row closest to that slot time.
+    const slotToRow = new Map();
+    for (let r = 0; r < _numSamples; r++) {
+      const ts = _rowTimestamps[r];
+      const slotIdx = Math.round((ts - _startTimeMs) / intervalMs);
+      if (!slotToRow.has(slotIdx)) {
+        slotToRow.set(slotIdx, r);
+      }
+    }
+
+    // ── 5. Write data records ─────────────────────────────────────────────────
+    const recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
+    const dataSize  = totalSamples * recordLen;
+
+    // Use streaming save if File System Access API is available (for large exports)
+    const useStreaming = 'showSaveFilePicker' in window;
+    const baseName = (_file.name || 'export').replace(/\.[^/.]+$/, '');
+
+    if (useStreaming) {
+      let fileHandle;
+      try {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: `${baseName}.csd`,
+          types: [{ description: 'CSD Files', accept: { 'application/octet-stream': ['.csd'] } }],
+        });
+      } catch (err) {
+        // User cancelled
+        console.log('[CsvAPI] CSD export cancelled:', err);
+        return;
+      }
+
+      const writable = await fileHandle.createWritable();
+      const writer   = writable.getWriter();
+
+      try {
+        // Write headers
+        await writer.write(fileHeader);
+        await writer.write(protoHeader);
+        await writer.write(chHeadersBuf);
+
+        // Write data in chunks of 5000 records
+        const CHUNK = 5000;
+        const chunkBuf = new ArrayBuffer(CHUNK * recordLen);
+        const chunkDv  = new DataView(chunkBuf);
+
+        for (let slotBase = 0; slotBase < totalSamples; slotBase += CHUNK) {
+          const chunkEnd = Math.min(slotBase + CHUNK, totalSamples);
+          const count    = chunkEnd - slotBase;
+
+          // Collect which CSV rows we need for this chunk
+          const neededRows = [];
+          for (let s = 0; s < count; s++) {
+            const slotIdx = slotBase + s;
+            const rowIdx  = slotToRow.has(slotIdx) ? slotToRow.get(slotIdx) : -1;
+            neededRows.push(rowIdx);
+          }
+
+          // Batch-read unique CSV rows for this chunk
+          const rowData = new Map(); // rowIdx → Float64Array of channel values
+          const uniqueRows = [...new Set(neededRows.filter(r => r >= 0))].sort((a, b) => a - b);
+
+          if (uniqueRows.length > 0) {
+            // Read file slices in contiguous batches
+            const csvBatchSize = 2000;
+            for (let bi = 0; bi < uniqueRows.length; bi += csvBatchSize) {
+              const batchRows = uniqueRows.slice(bi, bi + csvBatchSize);
+              const startByte = _rowOffsets[batchRows[0]];
+              const lastRow   = batchRows[batchRows.length - 1];
+              const endByte   = (lastRow + 1 < _numSamples) ? _rowOffsets[lastRow + 1] : _file.size;
+
+              const slice = _file.slice(startByte, endByte);
+              const text  = await slice.text();
+              const lines = text.split(/\r?\n/);
+
+              let lineIdx = 0;
+              let batchRowIdx = 0;
+
+              for (let li = 0; li < lines.length && batchRowIdx < batchRows.length; li++) {
+                const line = lines[li].trim();
+                if (!line) continue;
+
+                const csvRowIdx = batchRows[batchRowIdx];
+                // Verify this is the right row by checking offset alignment
+                // We walk linearly through rows in the slice
+                const parts = parseCsvLine(line);
+                if (parts.length > 0) {
+                  let valStart = 1;
+                  if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
+                    valStart = 2;
+                  }
+                  const vals = new Float64Array(_numChannels);
+                  for (let c = 0; c < _numChannels; c++) {
+                    const vs = parts[valStart + c];
+                    const v  = (!vs || vs === '') ? DATA_INVALID : parseFloat(vs);
+                    vals[c]  = isNaN(v) ? DATA_INVALID : v;
+                  }
+                  rowData.set(csvRowIdx, vals);
+                  batchRowIdx++;
+                }
+                lineIdx++;
+              }
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+          }
+
+          // Fill chunk buffer
+          for (let s = 0; s < count; s++) {
+            const offset  = s * recordLen;
+            const slotIdx = slotBase + s;
+            chunkDv.setInt32(offset, slotIdx + 1, false);  // record ID
+
+            const rowIdx = neededRows[s];
+            const vals   = rowIdx >= 0 ? rowData.get(rowIdx) : null;
+
+            for (let c = 0; c < _numChannels; c++) {
+              const v = (vals && vals[c] !== undefined) ? vals[c] : DATA_INVALID;
+              chunkDv.setFloat64(offset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN, v, false);
+            }
+          }
+
+          await writer.write(chunkBuf.slice(0, count * recordLen));
+
+          if (onProgress) onProgress(chunkEnd / totalSamples);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      } finally {
+        await writer.close();
+      }
+
+    } else {
+      // In-memory fallback (for browsers without File System Access API)
+      const parts = [fileHeader, protoHeader, chHeadersBuf];
+      const dataBuf = new ArrayBuffer(dataSize);
+      const dataDv  = new DataView(dataBuf);
+
+      const CHUNK = 5000;
+
+      for (let slotBase = 0; slotBase < totalSamples; slotBase += CHUNK) {
+        const chunkEnd = Math.min(slotBase + CHUNK, totalSamples);
+
+        // Collect needed CSV rows
+        const neededRows = [];
+        for (let s = slotBase; s < chunkEnd; s++) {
+          neededRows.push(slotToRow.has(s) ? slotToRow.get(s) : -1);
+        }
+        const uniqueRows = [...new Set(neededRows.filter(r => r >= 0))].sort((a, b) => a - b);
+
+        const rowData = new Map();
+        if (uniqueRows.length > 0) {
+          const startByte = _rowOffsets[uniqueRows[0]];
+          const lastRow   = uniqueRows[uniqueRows.length - 1];
+          const endByte   = (lastRow + 1 < _numSamples) ? _rowOffsets[lastRow + 1] : _file.size;
+
+          const slice = _file.slice(startByte, endByte);
+          const text  = await slice.text();
+          const lines = text.split(/\r?\n/);
+
+          let batchRowIdx = 0;
+          for (let li = 0; li < lines.length && batchRowIdx < uniqueRows.length; li++) {
+            const line = lines[li].trim();
+            if (!line) continue;
+            const csvRowIdx = uniqueRows[batchRowIdx];
+            const csvParts  = parseCsvLine(line);
+            if (csvParts.length > 0) {
+              let valStart = 1;
+              if (!isNaN(parseInt(csvParts[0], 10)) && !csvParts[0].includes('-') && !csvParts[0].includes('/') && !csvParts[0].includes('.')) {
+                valStart = 2;
+              }
+              const vals = new Float64Array(_numChannels);
+              for (let c = 0; c < _numChannels; c++) {
+                const vs = csvParts[valStart + c];
+                const v  = (!vs || vs === '') ? DATA_INVALID : parseFloat(vs);
+                vals[c]  = isNaN(v) ? DATA_INVALID : v;
+              }
+              rowData.set(csvRowIdx, vals);
+              batchRowIdx++;
+            }
+          }
+        }
+
+        for (let s = slotBase; s < chunkEnd; s++) {
+          const offset  = s * recordLen;
+          dataDv.setInt32(offset, s + 1, false);
+          const rowIdx = neededRows[s - slotBase];
+          const vals   = rowIdx >= 0 ? rowData.get(rowIdx) : null;
+          for (let c = 0; c < _numChannels; c++) {
+            const v = (vals && vals[c] !== undefined) ? vals[c] : DATA_INVALID;
+            dataDv.setFloat64(offset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN, v, false);
+          }
+        }
+
+        if (onProgress) onProgress(chunkEnd / totalSamples);
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      parts.push(dataBuf);
+      const blob = new Blob(parts, { type: 'application/octet-stream' });
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href  = url;
+      link.setAttribute('download', `${baseName}.csd`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  },
+
+  /**
+   * Export each continuous time segment as its own independent CSD file.
+   * No N/A padding — each file contains only real data for its period.
+   * Files are named: baseName_part01.csd, baseName_part02.csd, …
+   */
+  async exportToCsdSplit(onProgress) {
+    if (!_fileLoaded || !_file) {
+      throw new Error('No CSV file loaded');
+    }
+
+    const summary  = this.getGapSummary();
+    const segments = summary.segments;
+    if (!segments || segments.length === 0) {
+      throw new Error('No segments found for split export');
+    }
+
+    const FILE_HEADER_LEN     = 34;
+    const PROTOCOL_HEADER_LEN = 3552;
+    const CHANNEL_HEADER_LEN  = 918;
+    const RECORD_ID_LEN       = 4;
+    const CHANNEL_VALUE_LEN   = 8;
+    const DATA_INVALID        = -9999.0;
+
+    const intervalMs  = _detectedIntervalMs > 0 ? _detectedIntervalMs : (_sampleIntervalSec * 1000);
+    const intervalSec = intervalMs / 1000;
+    const baseName    = (_file.name || 'export').replace(/\.[^/.]+$/, '');
+    const padLen      = String(segments.length).length;
+
+    // ── Shared header builders ────────────────────────────────────────────────
+    function writeStr(dv, offset, str, maxLen) {
+      const enc = new TextEncoder().encode(str || '');
+      const len = Math.min(enc.length, maxLen - 1);
+      for (let i = 0; i < len; i++) dv.setUint8(offset + i, enc[i]);
+      for (let i = len; i < maxLen; i++) dv.setUint8(offset + i, 0);
+    }
+
+    function buildFileHeader() {
+      const buf = new ArrayBuffer(FILE_HEADER_LEN);
+      const dv  = new DataView(buf);
+      dv.setInt32(0, 1, false);
+      writeStr(dv, 4, 'SUTO CSD', 10);
+      return buf;
+    }
+
+    function buildProtoHeader(segStartMs, segStopMs, segSamples) {
+      const buf = new ArrayBuffer(PROTOCOL_HEADER_LEN);
+      const dv  = new DataView(buf);
+      writeStr(dv, 506, _deviceName || 'CSV Device', 32);
+      dv.setInt32(3016, _numChannels, false);
+      dv.setInt32(3020, segSamples,   false);
+      dv.setInt32(3024, Math.round(intervalSec), false);
+      dv.setBigInt64(3032, BigInt(segStartMs), false);
+      dv.setBigInt64(3040, BigInt(segStopMs),  false);
+      return buf;
+    }
+
+    function buildChannelHeaders() {
+      const buf = new ArrayBuffer(CHANNEL_HEADER_LEN * _numChannels);
+      const dv  = new DataView(buf);
+      _channels.forEach((ch, idx) => {
+        const base = idx * CHANNEL_HEADER_LEN;
+        dv.setBigInt64(base, BigInt(0), false);
+        const desc    = ch.logic_channel_description || `CH${idx + 1}`;
+        const descEnc = new TextEncoder().encode(desc);
+        const descLen = Math.min(descEnc.length, 126);
+        dv.setInt16(base + 8, descLen, false);
+        for (let i = 0; i < descLen; i++) dv.setUint8(base + 10 + i, descEnc[i]);
+        dv.setInt16(base + 138, 0, false);
+        dv.setInt16(base + 268, 0, false);
+        const senDesc = ch.sensor_description || desc;
+        const senEnc  = new TextEncoder().encode(senDesc);
+        const senLen  = Math.min(senEnc.length, 17);
+        dv.setInt16(base + 289, senLen, false);
+        for (let i = 0; i < senLen; i++) dv.setUint8(base + 291 + i, senEnc[i]);
+        const FP      = 788;
+        const unitEnc = new TextEncoder().encode(ch.unit_in_ascii || '');
+        const unitLen = Math.min(unitEnc.length, 56);
+        dv.setInt16(base + FP, unitLen, false);
+        for (let i = 0; i < unitLen; i++) dv.setUint8(base + FP + 2 + i, unitEnc[i]);
+        const statsBase  = FP + 60;
+        const resolution = ch.resolution !== undefined ? ch.resolution : 2;
+        dv.setInt32(base + statsBase,      resolution, false);
+        dv.setFloat64(base + statsBase + 4,  ch._min,  false);
+        dv.setFloat64(base + statsBase + 12, ch._max,  false);
+        dv.setInt32(base + statsBase + 28, ch.sensor_id || idx, false);
+      });
+      return buf;
+    }
+
+    const chHeadersBuf = buildChannelHeaders(); // same for every segment
+
+    // ── Per-segment export ────────────────────────────────────────────────────
+    for (let si = 0; si < segments.length; si++) {
+      const seg          = segments[si];
+      const segStartMs   = seg.startTimeMs;
+      const segStopMs    = seg.stopTimeMs;
+      const totalSamples = Math.max(1, Math.round((segStopMs - segStartMs) / intervalMs) + 1);
+
+      // Build slot → row map for this segment
+      const slotToRow = new Map();
+      for (let r = seg.startRow; r <= seg.endRow; r++) {
+        const slotIdx = Math.round((_rowTimestamps[r] - segStartMs) / intervalMs);
+        if (!slotToRow.has(slotIdx)) slotToRow.set(slotIdx, r);
+      }
+
+      const recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
+      const dataBuf   = new ArrayBuffer(totalSamples * recordLen);
+      const dataDv    = new DataView(dataBuf);
+      const CHUNK     = 5000;
+
+      for (let slotBase = 0; slotBase < totalSamples; slotBase += CHUNK) {
+        const chunkEnd   = Math.min(slotBase + CHUNK, totalSamples);
+        const neededRows = [];
+        for (let s = slotBase; s < chunkEnd; s++) {
+          neededRows.push(slotToRow.has(s) ? slotToRow.get(s) : -1);
+        }
+
+        // Batch-read CSV rows needed by this chunk
+        const uniqueRows = [...new Set(neededRows.filter(r => r >= 0))].sort((a, b) => a - b);
+        const rowData    = new Map();
+        if (uniqueRows.length > 0) {
+          const startByte = _rowOffsets[uniqueRows[0]];
+          const lastRow   = uniqueRows[uniqueRows.length - 1];
+          const endByte   = (lastRow + 1 < _numSamples) ? _rowOffsets[lastRow + 1] : _file.size;
+          const text      = await _file.slice(startByte, endByte).text();
+          const lines     = text.split(/\r?\n/);
+          let   bri       = 0;
+          for (let li = 0; li < lines.length && bri < uniqueRows.length; li++) {
+            const line = lines[li].trim();
+            if (!line) continue;
+            const csvParts = parseCsvLine(line);
+            if (csvParts.length > 0) {
+              let vs = 1;
+              if (!isNaN(parseInt(csvParts[0], 10)) && !csvParts[0].includes('-') && !csvParts[0].includes('/') && !csvParts[0].includes('.')) vs = 2;
+              const vals = new Float64Array(_numChannels);
+              for (let c = 0; c < _numChannels; c++) {
+                const v = (!csvParts[vs + c] || csvParts[vs + c] === '') ? DATA_INVALID : parseFloat(csvParts[vs + c]);
+                vals[c] = isNaN(v) ? DATA_INVALID : v;
+              }
+              rowData.set(uniqueRows[bri], vals);
+              bri++;
+            }
+          }
+        }
+
+        // Write records into dataBuf
+        for (let s = slotBase; s < chunkEnd; s++) {
+          const off    = s * recordLen;
+          dataDv.setInt32(off, s + 1, false);
+          const vals   = (() => { const r = neededRows[s - slotBase]; return r >= 0 ? rowData.get(r) : null; })();
+          for (let c = 0; c < _numChannels; c++) {
+            const v = (vals && vals[c] !== undefined) ? vals[c] : DATA_INVALID;
+            dataDv.setFloat64(off + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN, v, false);
+          }
+        }
+
+        if (onProgress) onProgress((si + (chunkEnd / totalSamples)) / segments.length);
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      // Download this segment's CSD file
+      const blob = new Blob(
+        [buildFileHeader(), buildProtoHeader(segStartMs, segStopMs, totalSamples), chHeadersBuf, dataBuf],
+        { type: 'application/octet-stream' }
+      );
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href  = url;
+      const num  = String(si + 1).padStart(padLen, '0');
+      link.setAttribute('download', `${baseName}_part${num}.csd`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Brief pause between downloads so browsers don't block them
+      if (si < segments.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 600));
+      }
+    }
+  },
+
   async getConsumptionData(onProgress) {
+
     if (!_fileLoaded) {
       return [];
     }

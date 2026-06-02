@@ -149,11 +149,14 @@ export async function updateMarkdownContent(projectId: number, markdown_content:
 }
 
 // Export
-export async function exportPdf(projectId: number, targetLang: string): Promise<Blob> {
+export async function startExport(projectId: number, targetLang: string): Promise<{job_id: string}> {
   const res = await api.post(
     `/projects/${projectId}/export`,
-    { target_lang: targetLang },
-    { responseType: "blob" }
+    { target_lang: targetLang }
   );
   return res.data;
+}
+
+export function getExportDownloadUrl(projectId: number, jobId: string): string {
+  return `/api/projects/${projectId}/export/download/${jobId}`;
 }

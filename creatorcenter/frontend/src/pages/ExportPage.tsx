@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useProject } from "../hooks/useProject";
-import { exportPdf } from "../api/client";
+import { startExport } from "../api/client";
 import LanguageSelector from "../components/LanguageSelector";
+import ExportProgressDialog from "../components/ExportProgressDialog";
 import { Download, FileText } from "lucide-react";
 
 export default function ExportPage() {
@@ -13,6 +14,7 @@ export default function ExportPage() {
   const [lang, setLang] = useState(project?.target_lang || "");
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
 
   if (!project) {
     return <div className="max-w-2xl mx-auto px-4 py-10 text-gray-400">Loading...</div>;
@@ -23,16 +25,8 @@ export default function ExportPage() {
     setExporting(true);
     setError("");
     try {
-      const blob = await exportPdf(projectId, lang);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const baseName = project.name.replace(/\.(docx|md)$/i, "");
-      a.download = `${baseName}_${lang}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const res = await startExport(projectId, lang);
+      setExportJobId(res.job_id);
     } catch (err: any) {
       const msg = err?.response?.data?.detail || "Export failed";
       setError(msg);
@@ -79,6 +73,14 @@ export default function ExportPage() {
           <li>List numbering and styles</li>
         </ul>
       </div>
+
+      {exportJobId && (
+        <ExportProgressDialog 
+          projectId={projectId} 
+          jobId={exportJobId} 
+          onClose={() => setExportJobId(null)} 
+        />
+      )}
     </div>
   );
 }

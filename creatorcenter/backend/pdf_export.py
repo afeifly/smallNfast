@@ -12,8 +12,10 @@ import os
 import re
 import json
 import markdown
+import logging
 from weasyprint import HTML, CSS
 from backend.config import UPLOADS_DIR
+from backend.job_manager import update_job_progress
 
 IMAGES_DIR = UPLOADS_DIR / "images"
 
@@ -109,7 +111,7 @@ def _find_font(*paths: str) -> str:
     return ""
 
 
-def _get_font_css() -> str:
+def _get_font_css(target_lang: str = "en") -> str:
     """
     Build @font-face CSS blocks for regular, bold, italic, bold-italic, and CJK fonts.
     Falls back gracefully when individual weights are missing.
@@ -186,7 +188,9 @@ def _get_font_css() -> str:
     css += face("DocSans", "bold",   "italic", bold_italic)
     css += face("DocMono", "normal", "normal", mono_regular)
     css += face("DocMono", "bold",   "normal", mono_bold)
-    if cjk:
+    
+    needs_cjk = target_lang.lower().startswith(("zh", "ja", "ko"))
+    if cjk and needs_cjk:
         css += face("DocCJK", "normal", "normal", cjk)
 
     return css
@@ -196,8 +200,8 @@ def _get_font_css() -> str:
 # Master stylesheet
 # ---------------------------------------------------------------------------
 
-def _build_css(extra_font_css: str = "") -> str:
-    font_stack = "'DocSans', 'DocCJK', sans-serif"
+def _build_css(extra_font_css: str = "", include_cjk: bool = True) -> str:
+    font_stack = "'DocSans', 'DocCJK', sans-serif" if include_cjk else "'DocSans', sans-serif"
     mono_stack = "'DocMono', 'Courier New', monospace"
 
     return f"""
@@ -383,8 +387,8 @@ td {{
 # HTML wrapper
 # ---------------------------------------------------------------------------
 
-def _wrap_html(body_html: str, font_css: str) -> str:
-    css = _build_css(font_css)
+def _wrap_html(body_html: str, font_css: str, include_cjk: bool = True) -> str:
+    css = _build_css(font_css, include_cjk)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -403,9 +407,38 @@ def _wrap_html(body_html: str, font_css: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def markdown_to_pdf(md_text: str, output_path: str) -> str:
+class JobProgressHandler(logging.Handler):
+    def __init__(self, job_id: str):
+        super().__init__()
+        self.job_id = job_id
+        # WeasyPrint typically logs steps 1 through 7
+        self.step = 0
+
+    def emit(self, record):
+        msg = record.getMessage()
+        if msg.startswith("Step"):
+            self.step += 1
+            progress = min(95, int((self.step / 7.0) * 100))
+            update_job_progress(self.job_id, progress)
+
+def _generate_pdf(html_string: str, output_path: str, job_id: str = None):
+    handler = None
+    logger = logging.getLogger('weasyprint.progress')
+    if job_id:
+        handler = JobProgressHandler(job_id)
+        logger.setLevel(logging.DEBUG)
+        logger.addHandler(handler)
+
+    try:
+        HTML(string=html_string).write_pdf(output_path, stylesheets=[CSS(string="")])
+    finally:
+        if handler:
+            logger.removeHandler(handler)
+
+def markdown_to_pdf(md_text: str, output_path: str, target_lang: str = "en", job_id: str = None) -> str:
     """Convert a Markdown string to a PDF file at output_path."""
-    font_css = _get_font_css()
+    font_css = _get_font_css(target_lang)
+    needs_cjk = target_lang.lower().startswith(("zh", "ja", "ko"))
 
     # Split on custom page-break markers
     parts = re.split(r"\n*---\s*newpage\s*---\n*", md_text)
@@ -423,14 +456,15 @@ def markdown_to_pdf(md_text: str, output_path: str) -> str:
         html_parts.append(converted)
 
     body_html = _resolve_images("\n".join(html_parts))
-    full_html = _wrap_html(body_html, font_css)
-    HTML(string=full_html).write_pdf(output_path, stylesheets=[CSS(string="")])
+    full_html = _wrap_html(body_html, font_css, needs_cjk)
+    _generate_pdf(full_html, output_path, job_id)
     return output_path
 
 
-def segments_to_pdf(segments, output_path: str) -> str:
+def segments_to_pdf(segments, output_path: str, target_lang: str = "en", job_id: str = None) -> str:
     """Build a PDF from DOCX segments, including proper table cell rendering."""
-    font_css = _get_font_css()
+    font_css = _get_font_css(target_lang)
+    needs_cjk = target_lang.lower().startswith(("zh", "ja", "ko"))
 
     # ── Group segments into structural blocks ──────────────────────────────
     blocks = []
@@ -598,7 +632,7 @@ def segments_to_pdf(segments, output_path: str) -> str:
             html_parts.append("</table>")
 
     body_html = _resolve_images("\n".join(html_parts))
-    full_html = _wrap_html(body_html, font_css)
-    HTML(string=full_html).write_pdf(output_path, stylesheets=[CSS(string="")])
+    full_html = _wrap_html(body_html, font_css, needs_cjk)
+    _generate_pdf(full_html, output_path, job_id)
     return output_path
 

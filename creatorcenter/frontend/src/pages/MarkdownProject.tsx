@@ -12,6 +12,7 @@ import * as api from "../api/client";
 import LanguageSelector from "../components/LanguageSelector";
 import TranslationProgress from "../components/TranslationProgress";
 import SegmentTable from "../components/SegmentTable";
+import ExportProgressDialog from "../components/ExportProgressDialog";
 import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, X } from "lucide-react";
 import * as React from "react";
 import axios from "axios";
@@ -41,6 +42,7 @@ export default function MarkdownProject() {
   const [msg, setMsg] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
 
@@ -149,13 +151,8 @@ export default function MarkdownProject() {
   const handleExport = async (exportLang: string) => {
     setExportOpen(false);
     try {
-      const blob = await api.exportPdf(projectId, exportLang);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${project?.name || "document"}_${exportLang}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const res = await api.startExport(projectId, exportLang);
+      setExportJobId(res.job_id);
     } catch (err: any) {
       alert("Export failed: " + (err?.response?.data?.detail || err.message));
     }
@@ -337,6 +334,14 @@ export default function MarkdownProject() {
             )}
           </div>
         </div>
+      )}
+
+      {exportJobId && (
+        <ExportProgressDialog 
+          projectId={projectId} 
+          jobId={exportJobId} 
+          onClose={() => setExportJobId(null)} 
+        />
       )}
     </div>
   );

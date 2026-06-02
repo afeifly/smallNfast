@@ -18,6 +18,16 @@ module.exports = {
       env: {
         NODE_ENV: 'development'
       }
+    },
+    {
+      name: 'acbarcode',
+      cwd: './acbarcode',
+      script: 'npx',
+      args: 'serve -s dist',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 9016
+      }
     }
 
   ]

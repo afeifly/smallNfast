@@ -618,6 +618,18 @@ const CsdAPI = {
       return await _loadFromFile(file);
     } catch (err) {
       console.error('[CsdAPI] loadFileFromHandle error:', err);
+      if (err.name === 'NotFoundError') {
+        const fileName = handle.name || 'Unknown file';
+        if (window.showAppNotification) {
+          window.showAppNotification(
+            "File Not Found",
+            `The requested file "${fileName}" could not be found.\n\nIt may have been moved, renamed, or deleted from your computer.`,
+            "error"
+          );
+        } else {
+          alert(`File Not Found: The file "${fileName}" could not be found. It may have been moved, renamed, or deleted.`);
+        }
+      }
       return false;
     }
   },

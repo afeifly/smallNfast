@@ -414,6 +414,11 @@ const CsvAPI = {
       }
       
       // Finalize Float64/Int32 arrays
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+        detail: { progress: 0.82, filename: file.name } 
+      }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       _rowOffsets = new Float64Array(tempOffsets);
       _rowTimestamps = new Float64Array(tempTimestamps);
       _rowRecordIds = new Int32Array(tempRecordIds);
@@ -448,25 +453,39 @@ const CsvAPI = {
         });
       }
       
-      // 3. Compute detected interval and gap report
+      // 3. Compute detected interval using sampled median (avoids O(n log n) sort on large files)
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+        detail: { progress: 0.88, filename: file.name } 
+      }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       let detectedIntervalSec = _sampleIntervalSec;
       if (_rowTimestamps.length >= 2) {
-        const deltas = [];
-        for (let i = 1; i < _rowTimestamps.length; i++) {
+        // Sample up to 2000 evenly-spaced deltas instead of computing all N-1 deltas
+        const SAMPLE_COUNT = 2000;
+        const step = Math.max(1, Math.floor((_rowTimestamps.length - 1) / SAMPLE_COUNT));
+        const sampledDeltas = [];
+        for (let i = step; i < _rowTimestamps.length; i += step) {
           const d = _rowTimestamps[i] - _rowTimestamps[i - 1];
-          if (d > 0) deltas.push(d);
+          if (d > 0) sampledDeltas.push(d);
         }
-        if (deltas.length > 0) {
-          deltas.sort((a, b) => a - b);
-          const mid = Math.floor(deltas.length / 2);
-          const medianMs = deltas.length % 2 === 0
-            ? (deltas[mid - 1] + deltas[mid]) / 2
-            : deltas[mid];
+        if (sampledDeltas.length > 0) {
+          // Sort only the small sample array
+          sampledDeltas.sort((a, b) => a - b);
+          const mid = Math.floor(sampledDeltas.length / 2);
+          const medianMs = sampledDeltas.length % 2 === 0
+            ? (sampledDeltas[mid - 1] + sampledDeltas[mid]) / 2
+            : sampledDeltas[mid];
           detectedIntervalSec = medianMs / 1000;
         }
       }
       _detectedIntervalMs = detectedIntervalSec * 1000;
       
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+        detail: { progress: 0.93, filename: file.name } 
+      }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       const gapThresholdMs = GAP_THRESHOLD_FACTOR * _detectedIntervalMs;
       const gaps = [];
       for (let i = 1; i < _rowTimestamps.length; i++) {

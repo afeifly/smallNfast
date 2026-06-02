@@ -309,6 +309,7 @@ const products = [
   { item: '1830178088', name: 'PDP SENS. T20' },
   { item: '1830178089', name: 'PDP SENS. T20 P' },
   { item: '1830178090', name: 'PDP SENS. T60' },
+  { item: '1830203005', name: 'EM A05' },
 ];
 
 const selectedItemNumber = ref(products[0].item);

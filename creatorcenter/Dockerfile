@@ -10,7 +10,7 @@ WORKDIR /app
 
 # System libraries for WeasyPrint (Pango, Cairo) + CJK fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf2.0-0 \
+    libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 \
     libffi-dev shared-mime-info \
     fonts-noto fonts-noto-cjk fonts-noto-cjk-extra \
     && rm -rf /var/lib/apt/lists/*

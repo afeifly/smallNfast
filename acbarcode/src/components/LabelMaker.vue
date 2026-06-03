@@ -309,7 +309,13 @@ const products = [
   { item: '1830178088', name: 'PDP SENS. T20' },
   { item: '1830178089', name: 'PDP SENS. T20 P' },
   { item: '1830178090', name: 'PDP SENS. T60' },
+
   { item: '1830203005', name: 'EM A05' },
+  { item: '1830203006', name: 'Rogowski 3PH 100A RJ12' },
+  { item: '1830203007', name: 'Rogowski 3PH 1000A RJ12' },
+  { item: '1830203008', name: 'Rogowski 3PH 3000A RJ12' },
+  { item: '1830203009', name: 'Rogowski 1PH 100A RJ12' },
+  { item: '1830203010', name: 'Rogowski 1PH 1000A RJ12' },
 ];
 
 const selectedItemNumber = ref(products[0].item);

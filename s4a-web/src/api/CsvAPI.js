@@ -803,6 +803,13 @@ const CsvAPI = {
       throw new Error("No CSV file loaded");
     }
 
+    const escXml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const formatDateTime = (ms) => {
+      const d = new Date(ms);
+      return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    };
+
     const xmlHeader = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -810,6 +817,12 @@ const CsvAPI = {
  xmlns:x="urn:schemas-microsoft-com:office:excel"
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal"><Font ss:Size="11"/></Style>
+  <Style ss:ID="sTitle"><Font ss:Size="14" ss:Bold="1"/></Style>
+  <Style ss:ID="sLabel"><Font ss:Size="11" ss:Bold="1"/></Style>
+  <Style ss:ID="sHeader"><Font ss:Size="11" ss:Bold="1"/><Interior ss:Color="#D9E1F2" ss:Pattern="Solid"/></Style>
+ </Styles>
  <Worksheet ss:Name="CSD Export">
   <Table>`;
 
@@ -817,18 +830,59 @@ const CsvAPI = {
  </Worksheet>
 </Workbook>`;
 
-    let headerRow = '   <Row>\n';
-    headerRow += '    <Cell><Data ss:Type="String">Timestamp</Data></Cell>\n';
-    headerRow += '    <Cell><Data ss:Type="String">Record ID</Data></Cell>\n';
+    // ── Metadata header rows ──────────────────────────────────────────────────
+    let metaXml = '';
+
+    // Row 1: Title "S4A-Web V2"
+    metaXml += '   <Row>\n';
+    metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">S4A-Web</Data></Cell>\n';
+    metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">V2</Data></Cell>\n';
+    metaXml += '   </Row>\n';
+
+    // Row 2: empty
+    metaXml += '   <Row></Row>\n';
+
+    // Row 3: Description / Record File
+    metaXml += '   <Row>\n';
+    metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">Description</Data></Cell>\n';
+    metaXml += `    <Cell><Data ss:Type="String">Record File</Data></Cell>\n`;
+    metaXml += '   </Row>\n';
+
+    // Row 4: Start Time
+    metaXml += '   <Row>\n';
+    metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">Start Time</Data></Cell>\n';
+    metaXml += `    <Cell><Data ss:Type="String">${formatDateTime(_startTimeMs)}</Data></Cell>\n`;
+    metaXml += '   </Row>\n';
+
+    // Row 5: End Time
+    metaXml += '   <Row>\n';
+    metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">End Time</Data></Cell>\n';
+    metaXml += `    <Cell><Data ss:Type="String">${formatDateTime(_stopTimeMs)}</Data></Cell>\n`;
+    metaXml += '   </Row>\n';
+
+    // Row 6: Sample Rate (sec)
+    metaXml += '   <Row>\n';
+    metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">Sample Rate (sec)</Data></Cell>\n';
+    metaXml += `    <Cell><Data ss:Type="Number">${_sampleIntervalSec}</Data></Cell>\n`;
+    metaXml += '   </Row>\n';
+
+    // Row 7: empty
+    metaXml += '   <Row></Row>\n';
+
+    // Row 8: empty
+    metaXml += '   <Row></Row>\n';
+
+    // Row 9: Column headers — TIME + channel descriptions with unit
+    metaXml += '   <Row>\n';
+    metaXml += '    <Cell ss:StyleID="sHeader"><Data ss:Type="String">TIME</Data></Cell>\n';
     _channels.forEach(ch => {
       const desc = ch.logic_channel_description || `Channel ${ch.channel_id}`;
       const unit = ch.unit_in_ascii ? ` (${ch.unit_in_ascii})` : '';
-      const escaped = `${desc}${unit}`.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      headerRow += `    <Cell><Data ss:Type="String">${escaped}</Data></Cell>\n`;
+      metaXml += `    <Cell ss:StyleID="sHeader"><Data ss:Type="String">${escXml(desc + unit)}</Data></Cell>\n`;
     });
-    headerRow += '   </Row>\n';
+    metaXml += '   </Row>\n';
 
-    const xmlChunks = [xmlHeader, headerRow];
+    const xmlChunks = [xmlHeader, metaXml];
 
     const chunkSize = 5000;
     for (let start = 0; start < _numSamples; start += chunkSize) {
@@ -856,18 +910,16 @@ const CsvAPI = {
             valuesStartIndex = 2;
           }
           
-          const dateStr = new Date(_rowTimestamps[rowIdx]).toISOString();
+          const dateStr = formatDateTime(_rowTimestamps[rowIdx]);
           chunkXml += '   <Row>\n';
           chunkXml += `    <Cell><Data ss:Type="String">${dateStr}</Data></Cell>\n`;
-          chunkXml += `    <Cell><Data ss:Type="Number">${_rowRecordIds[rowIdx]}</Data></Cell>\n`;
           
           for (let c = 0; c < _numChannels; c++) {
             const valStr = parts[valuesStartIndex + c];
-            const v = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
-            if (v === null || isNaN(v)) {
+            if (valStr === undefined || valStr === '') {
               chunkXml += '    <Cell><Data ss:Type="String"></Data></Cell>\n';
             } else {
-              chunkXml += `    <Cell><Data ss:Type="Number">${v}</Data></Cell>\n`;
+              chunkXml += `    <Cell><Data ss:Type="Number">${parseFloat(valStr)}</Data></Cell>\n`;
             }
           }
           chunkXml += '   </Row>\n';
@@ -889,7 +941,8 @@ const CsvAPI = {
     const link = document.createElement('a');
     link.href = url;
 
-    link.setAttribute('download', `export_all_channels.xls`);
+    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    link.setAttribute('download', `${baseName}_all_channels.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

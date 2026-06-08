@@ -217,8 +217,13 @@ describe('CsdAPI Parser', () => {
     const excelText = await createdBlobs[1].text();
     expect(excelText).toContain('<?xml version="1.0"?>');
     expect(excelText).toContain('ss:Name="CSD Export"');
-    expect(excelText).toContain('<Cell><Data ss:Type="String">Timestamp</Data></Cell>');
-    expect(excelText).toContain('<Cell><Data ss:Type="Number">10</Data></Cell>');
+    expect(excelText).toContain('<Data ss:Type="String">S4A-Web</Data>');
+    expect(excelText).toContain('<Data ss:Type="String">Start Time</Data>');
+    expect(excelText).toContain('<Data ss:Type="String">End Time</Data>');
+    expect(excelText).toContain('<Data ss:Type="String">Sample Rate (sec)</Data>');
+    expect(excelText).toContain('ss:StyleID="sHeader"');
+    expect(excelText).toContain('<Data ss:Type="String">TIME</Data>');
+    expect(excelText).toContain('<Data ss:Type="Number">10</Data>');
 
     // Cleanup
     document.body.appendChild = originalAppend;

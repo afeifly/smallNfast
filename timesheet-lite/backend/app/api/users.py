@@ -10,6 +10,7 @@ from sqlalchemy import func
 from app.models import Timesheet
 from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import List
 
 router = APIRouter()
 
@@ -17,7 +18,7 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(min_length=6, max_length=16)
 
-@router.get("/", response_model=list[User])
+@router.get("/", response_model=List[User])
 def read_users(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -310,7 +311,7 @@ def unassign_project(
         
     return {"ok": True}
 
-@router.get("/{user_id}/projects", response_model=list[Project])
+@router.get("/{user_id}/projects", response_model=List[Project])
 def get_user_projects(
     user_id: int,
     session: Session = Depends(get_session),

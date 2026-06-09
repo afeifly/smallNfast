@@ -42,7 +42,7 @@ module.exports = {
       name: 'timesheet-lite-frontend',
       cwd: './timesheet-lite/frontend',
       script: 'npm',
-      args: 'run dev -- --port 9020 --host',
+      args: 'run dev -- --port 9021 --host',
       env: {
         NODE_ENV: 'development'
       }

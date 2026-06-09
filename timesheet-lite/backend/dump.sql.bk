@@ -1,0 +1,333 @@
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE smtpsettings (
+	id INTEGER NOT NULL, 
+	smtp_server VARCHAR NOT NULL, 
+	smtp_port INTEGER NOT NULL, 
+	smtp_username VARCHAR NOT NULL, 
+	smtp_password VARCHAR NOT NULL, 
+	sender_email VARCHAR NOT NULL, checking_service_enabled BOOLEAN DEFAULT 0, 
+	PRIMARY KEY (id)
+);
+INSERT INTO smtpsettings VALUES(1,'smtp.office365.com',587,'noreply@suto-itec.com','ZTPYST8#zbdrhz','noreply@suto-itec.com',1);
+CREATE TABLE user (
+	id INTEGER NOT NULL, 
+	username VARCHAR NOT NULL, 
+	email VARCHAR, 
+	full_name VARCHAR, 
+	cost_center VARCHAR, 
+	remark VARCHAR, 
+	start_date DATE, 
+	end_date DATE, 
+	password_hash VARCHAR NOT NULL, 
+	role VARCHAR(11) NOT NULL, 
+	is_deleted BOOLEAN NOT NULL, 
+	team_leader_id INTEGER, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(team_leader_id) REFERENCES user (id)
+);
+INSERT INTO user VALUES(1,'admin',NULL,'Administrotor',NULL,NULL,NULL,NULL,'$argon2id$v=19$m=65536,t=3,p=4$lt6xCnLOoZswZ7gI8RUpfQ$NhSjMqlvOZHnPxliDRNUUKPfI8vCmiAccYNb+sCQ5Mw','ADMIN',0,NULL);
+INSERT INTO user VALUES(2,'ethanxu','ethan.xu@suto-itec.com','Ethan Xu','R&D-XA','','2010-10-10',NULL,'$argon2id$v=19$m=65536,t=3,p=4$0+CXM6ccWmxgvR01xcJzJA$y88VmP9TtrTTpDX/6A282AnwnhzUR4BaYXVpm76ZJ/4','TEAM_LEADER',0,6);
+INSERT INTO user VALUES(3,'stevewu','steve.wu@suto-itec.com','Steve Wu','R&D-XA','',NULL,NULL,'$2b$12$OTvyuKv7sY3zbQt9jbxr.eLXNRyUKmxM23D6YrePy5gcQkebrYLs.','EMPLOYEE',0,2);
+INSERT INTO user VALUES(4,'vincent.liu','vincent.liu@suto-itec.com','Vincent Liu','R&D-XA','',NULL,NULL,'$2b$12$HqONg0q/76rBIw.xFymMeeTHfnaUDdREFoMFF4bZsPavPxQ/ayJq.','TEAM_LEADER',0,NULL);
+INSERT INTO user VALUES(5,'xa1','vincent.liu@suto-itec.com','test xa1','R&D-XA','',NULL,NULL,'$2b$12$YeARIv/01faw1uVfz3vmgu4yIlr8Mvg.lDS8WSHcJpS.VpfwdFkX.','EMPLOYEE',0,4);
+INSERT INTO user VALUES(6,'Terry','Terry.li@suto-itec.com','Terry Li','R&D-XA','',NULL,NULL,'$2b$12$X4XzXGoFOncwo4821JJmTew9cCg8/ieLv4kcECfPV6FGPtnQBoIAy','TEAM_LEADER',0,NULL);
+INSERT INTO user VALUES(7,'sz1','vincent.liu@suto-itec.com','sz1 test','R&D-SZ','',NULL,NULL,'$2b$12$zA4ijHECD1r.g3LqDUvbFOWXOA6oceg8scSBvC3n4iGucXBgTlqoq','EMPLOYEE',0,4);
+INSERT INTO user VALUES(8,'tl1','vincent.liu@suto-itec.com','tl1 test','R&D-XA','',NULL,NULL,'$2b$12$q11OOfyzE9c8ZxjSsYeEkufLz.ZT/N2MDGLmEa8.w5v/FfKebjQN2','TEAM_LEADER',0,NULL);
+INSERT INTO user VALUES(9,'kratosgao','kratos.gao@suto-itec.com','kratos gao','R&D-XA','',NULL,NULL,'$2b$12$DfanUu27JVz4mSrvabfSXeFvqPIgB6MhT6u3JzF.krGDWUeUgWqiO','EMPLOYEE',0,4);
+INSERT INTO user VALUES(10,'michaelzhang','michael.zhang@suto-itec.com','michael zhang','R&D-XA','',NULL,NULL,'$2b$12$Ls4dM/MJIZWBIC/NHCuxH.ikAkDAX/BbXENoWblxTMVBSrfIJPlda','EMPLOYEE',0,4);
+INSERT INTO user VALUES(11,'shawnmi','shawn.mi@suto-itec.com','shawn mi','R&D-XA','',NULL,NULL,'$2b$12$FWrq9xafrXW3T1FF6ZY.A.uzYeuWEgNuuQt/O0lqz6lSyHL3i1phi','EMPLOYEE',0,4);
+INSERT INTO user VALUES(12,'siacui','sia.cui@suto-itec.com','sia cui','R&D-XA','',NULL,NULL,'$2b$12$KWgDdkaqQqctySukRG8GgOIBq3eFhGwAoNIUNIUFIFdNzOIPNt1iy','EMPLOYEE',0,4);
+INSERT INTO user VALUES(13,'quentinxu','quentin.xu@suto-itec.com','quentin xu','R&D-XA','',NULL,NULL,'$2b$12$pg.aCpvpNl6w8D3bzBGmOObzXojPzSYK83.QLZ9RnIJ9c6KMyUk8O','EMPLOYEE',0,4);
+CREATE TABLE project (
+	id INTEGER NOT NULL, 
+	name VARCHAR NOT NULL, 
+	full_name VARCHAR, 
+	chinese_name VARCHAR, 
+	custom_id VARCHAR, 
+	status VARCHAR(9) NOT NULL, 
+	start_date DATE, 
+	plan_closed_date DATE, 
+	actual_closed_date DATE, 
+	others VARCHAR, 
+	remark VARCHAR, 
+	description VARCHAR, 
+	is_default BOOLEAN NOT NULL, 
+	is_deleted BOOLEAN NOT NULL, 
+	PRIMARY KEY (id)
+);
+/****** CORRUPTION ERROR *******/
+CREATE TABLE userprojectlink (
+	user_id INTEGER NOT NULL, 
+	project_id INTEGER NOT NULL, 
+	PRIMARY KEY (user_id, project_id), 
+	FOREIGN KEY(user_id) REFERENCES user (id), 
+	FOREIGN KEY(project_id) REFERENCES project (id)
+);
+INSERT INTO userprojectlink VALUES(2,9);
+INSERT INTO userprojectlink VALUES(2,8);
+INSERT INTO userprojectlink VALUES(3,8);
+INSERT INTO userprojectlink VALUES(3,7);
+INSERT INTO userprojectlink VALUES(3,4);
+CREATE TABLE timesheet (
+	id INTEGER NOT NULL, 
+	user_id INTEGER NOT NULL, 
+	project_id INTEGER NOT NULL, 
+	date DATE NOT NULL, 
+	hours FLOAT NOT NULL, 
+	verify BOOLEAN NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	updated_at DATETIME NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES user (id), 
+	FOREIGN KEY(project_id) REFERENCES project (id)
+);
+INSERT INTO timesheet VALUES(1,3,4,'2025-12-22',8.0,1,'2025-12-30 01:00:23.039815','2025-12-30 01:02:18.769051');
+INSERT INTO timesheet VALUES(2,3,4,'2025-12-24',2.0,1,'2025-12-30 01:00:23.039904','2025-12-30 01:02:18.769088');
+INSERT INTO timesheet VALUES(3,3,4,'2025-12-25',8.0,1,'2025-12-30 01:00:23.039956','2025-12-30 01:02:18.769101');
+INSERT INTO timesheet VALUES(4,3,7,'2025-12-23',5.0,1,'2025-12-30 01:00:23.040002','2025-12-30 01:02:18.769112');
+INSERT INTO timesheet VALUES(5,3,8,'2025-12-26',8.0,1,'2025-12-30 01:00:23.040048','2025-12-30 01:02:18.769123');
+INSERT INTO timesheet VALUES(6,3,2,'2025-12-23',3.0,1,'2025-12-30 01:00:23.040102','2025-12-30 01:02:18.769133');
+INSERT INTO timesheet VALUES(7,3,2,'2025-12-24',6.0,1,'2025-12-30 01:00:23.040147','2025-12-30 01:02:18.769143');
+INSERT INTO timesheet VALUES(8,3,4,'2025-12-29',8.0,1,'2025-12-30 01:00:40.542316','2025-12-30 01:22:45.171048');
+INSERT INTO timesheet VALUES(9,3,4,'2025-12-31',8.0,1,'2025-12-30 01:00:40.542410','2025-12-30 01:22:45.171102');
+INSERT INTO timesheet VALUES(10,3,7,'2025-12-30',8.0,1,'2025-12-30 01:00:40.542462','2025-12-30 01:22:45.171192');
+INSERT INTO timesheet VALUES(11,3,2,'2026-01-04',8.0,1,'2025-12-30 01:00:40.542509','2025-12-30 01:22:45.171213');
+INSERT INTO timesheet VALUES(12,2,8,'2025-12-22',6.0,1,'2025-12-30 01:01:13.132395','2025-12-30 01:03:31.854903');
+INSERT INTO timesheet VALUES(13,2,8,'2025-12-24',3.0,1,'2025-12-30 01:01:13.132458','2025-12-30 01:03:31.854970');
+INSERT INTO timesheet VALUES(14,2,9,'2025-12-22',2.0,1,'2025-12-30 01:01:13.132497','2025-12-30 01:03:31.854993');
+INSERT INTO timesheet VALUES(15,2,9,'2025-12-25',8.0,1,'2025-12-30 01:01:13.132531','2025-12-30 01:03:31.855012');
+INSERT INTO timesheet VALUES(16,2,1,'2025-12-23',8.0,1,'2025-12-30 01:01:13.132573','2025-12-30 01:03:31.855034');
+INSERT INTO timesheet VALUES(17,2,2,'2025-12-24',5.0,1,'2025-12-30 01:01:13.132606','2025-12-30 01:03:31.855053');
+INSERT INTO timesheet VALUES(18,2,3,'2025-12-26',8.0,1,'2025-12-30 01:01:13.132639','2025-12-30 01:03:31.855074');
+INSERT INTO timesheet VALUES(19,2,8,'2025-12-29',8.0,1,'2025-12-30 01:01:39.863952','2025-12-30 01:28:44.301982');
+INSERT INTO timesheet VALUES(20,2,8,'2025-12-30',8.0,1,'2025-12-30 01:01:39.864061','2025-12-30 01:28:44.302052');
+INSERT INTO timesheet VALUES(21,2,8,'2025-12-31',8.0,1,'2025-12-30 01:01:39.864126','2025-12-30 01:28:44.302079');
+INSERT INTO timesheet VALUES(22,2,8,'2026-01-04',3.0,1,'2025-12-30 01:01:39.864187','2025-12-30 01:28:44.302123');
+INSERT INTO timesheet VALUES(23,2,2,'2026-01-04',5.0,1,'2025-12-30 01:01:39.864248','2025-12-30 01:28:44.302165');
+INSERT INTO timesheet VALUES(24,3,4,'2026-01-02',8.0,1,'2025-12-30 01:22:07.168452','2025-12-30 01:22:45.171159');
+INSERT INTO timesheet VALUES(25,2,8,'2026-01-02',3.0,1,'2025-12-30 01:28:01.845670','2025-12-30 01:28:44.302101');
+INSERT INTO timesheet VALUES(26,2,2,'2026-01-02',5.0,1,'2025-12-30 01:28:01.845952','2025-12-30 01:28:44.302144');
+INSERT INTO timesheet VALUES(27,3,4,'2025-12-16',8.0,1,'2026-01-06 02:12:42.803712','2026-01-06 02:12:42.803724');
+INSERT INTO timesheet VALUES(28,3,4,'2025-12-19',8.0,1,'2026-01-06 02:12:42.803856','2026-01-06 02:12:42.803863');
+INSERT INTO timesheet VALUES(29,3,1,'2025-12-15',8.0,1,'2026-01-06 02:12:42.803914','2026-01-06 02:12:42.803920');
+INSERT INTO timesheet VALUES(30,3,1,'2025-12-17',8.0,1,'2026-01-06 02:12:42.803959','2026-01-06 02:12:42.803965');
+INSERT INTO timesheet VALUES(31,3,1,'2025-12-18',8.0,1,'2026-01-06 02:12:42.804003','2026-01-06 02:12:42.804010');
+INSERT INTO timesheet VALUES(32,3,4,'2026-01-05',8.0,1,'2026-01-06 02:13:16.064065','2026-01-06 02:13:16.064075');
+INSERT INTO timesheet VALUES(33,3,1,'2026-01-06',8.0,1,'2026-01-06 02:13:16.064146','2026-01-06 02:13:16.064153');
+INSERT INTO timesheet VALUES(34,3,1,'2026-01-07',8.0,1,'2026-01-06 02:13:16.064196','2026-01-06 02:13:16.064202');
+INSERT INTO timesheet VALUES(35,3,1,'2026-01-08',8.0,1,'2026-01-06 02:13:16.064238','2026-01-06 02:13:16.064244');
+INSERT INTO timesheet VALUES(36,3,1,'2026-01-09',8.0,1,'2026-01-06 02:13:16.064279','2026-01-06 02:13:16.064284');
+CREATE TABLE activitylog (
+	id INTEGER NOT NULL, 
+	user_id INTEGER NOT NULL, 
+	action VARCHAR NOT NULL, 
+	details VARCHAR, 
+	timestamp DATETIME NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES user (id)
+);
+INSERT INTO activitylog VALUES(1,1,'UPDATE_PROJECT','Updated project Research','2025-12-01 04:05:56.598176');
+INSERT INTO activitylog VALUES(2,1,'UPDATE_PROJECT','Updated project Maintenance','2025-12-01 04:06:01.526692');
+INSERT INTO activitylog VALUES(3,1,'UPDATE_PROJECT','Updated project Others','2025-12-01 04:06:07.074968');
+INSERT INTO activitylog VALUES(4,1,'CREATE_USER','Created user ethanxu','2025-12-01 04:11:16.310900');
+INSERT INTO activitylog VALUES(5,1,'CREATE_PROJECT','Created project S4M SaaS','2025-12-01 08:32:58.515740');
+INSERT INTO activitylog VALUES(6,1,'CREATE_PROJECT','Created project S335 IoT-Box','2025-12-01 08:33:55.825786');
+INSERT INTO activitylog VALUES(7,1,'CREATE_PROJECT','Created project New particle counter >0.1 um','2025-12-01 08:35:27.754695');
+INSERT INTO activitylog VALUES(8,1,'CREATE_PROJECT','Created project S332 Display project','2025-12-01 08:36:16.250779');
+INSERT INTO activitylog VALUES(9,1,'CREATE_PROJECT','Created project S403/423','2025-12-01 08:37:17.170511');
+INSERT INTO activitylog VALUES(10,1,'CREATE_PROJECT','Created project Wireless Transfer Unit','2025-12-01 08:38:19.867832');
+INSERT INTO activitylog VALUES(11,1,'CREATE_PROJECT','Created project S462 measurement upgrade, ','2025-12-01 08:39:17.108557');
+INSERT INTO activitylog VALUES(12,1,'CREATE_PROJECT','Created project S531 Sensor update','2025-12-01 08:40:16.152643');
+INSERT INTO activitylog VALUES(13,1,'CREATE_PROJECT','Created project S461 new','2025-12-01 08:41:12.840642');
+INSERT INTO activitylog VALUES(14,1,'CREATE_PROJECT','Created project S120 Auto Gain calibration in the run time','2025-12-01 08:41:54.567004');
+INSERT INTO activitylog VALUES(15,1,'CREATE_PROJECT','Created project Ultrasonic Spray coating for QCM sensor production to replace spinning coating，Spring bracket for QCM sensor','2025-12-01 08:42:37.376850');
+INSERT INTO activitylog VALUES(16,1,'UPDATE_USER','Updated user admin','2025-12-02 02:23:28.589081');
+INSERT INTO activitylog VALUES(17,1,'CREATE_USER','Created user stevewu','2025-12-11 07:58:55.415933');
+INSERT INTO activitylog VALUES(18,1,'UPDATE_USER','Updated user ethanxu','2025-12-11 07:59:31.528296');
+INSERT INTO activitylog VALUES(19,1,'UPDATE_USER','Updated user ethanxu','2025-12-11 08:00:34.435279');
+INSERT INTO activitylog VALUES(20,1,'UPDATE_USER','Updated user ethanxu','2025-12-11 08:01:55.953751');
+INSERT INTO activitylog VALUES(21,1,'UPDATE_USER','Updated user stevewu','2025-12-11 08:02:07.289422');
+INSERT INTO activitylog VALUES(22,3,'CREATE_TIMESHEET','Logged 4.5h for project ''Maintenance'' (ID: 2) on 2025-12-09','2025-12-11 08:06:24.750136');
+INSERT INTO activitylog VALUES(23,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-08','2025-12-11 08:06:24.773515');
+INSERT INTO activitylog VALUES(24,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-10','2025-12-11 08:06:24.794694');
+INSERT INTO activitylog VALUES(25,3,'CREATE_TIMESHEET','Logged 3.5h for project ''Research'' (ID: 1) on 2025-12-09','2025-12-11 08:06:24.751097');
+INSERT INTO activitylog VALUES(26,2,'UPDATE_TIMESHEET','Updated 4.5h for project ''Maintenance'' (ID: 2) on 2025-12-09','2025-12-11 08:07:54.972153');
+INSERT INTO activitylog VALUES(27,2,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-08','2025-12-11 08:07:55.002538');
+INSERT INTO activitylog VALUES(28,2,'UPDATE_TIMESHEET','Updated 3.5h for project ''Research'' (ID: 1) on 2025-12-09','2025-12-11 08:07:55.025649');
+INSERT INTO activitylog VALUES(29,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-10','2025-12-11 08:07:55.050584');
+INSERT INTO activitylog VALUES(30,2,'UPDATE_TIMESHEET','Updated 3.5h for project ''Research'' (ID: 1) on 2025-12-09','2025-12-11 08:09:00.152215');
+INSERT INTO activitylog VALUES(31,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-10','2025-12-11 08:09:00.182459');
+INSERT INTO activitylog VALUES(32,2,'UPDATE_TIMESHEET','Updated 6.5h for project ''Research'' (ID: 1) on 2025-12-08','2025-12-11 08:09:00.203155');
+INSERT INTO activitylog VALUES(33,2,'UPDATE_TIMESHEET','Updated 4.5h for project ''Maintenance'' (ID: 2) on 2025-12-09','2025-12-11 08:09:00.229590');
+INSERT INTO activitylog VALUES(34,2,'CREATE_TIMESHEET','Logged 1.5h for project ''Maintenance'' (ID: 2) on 2025-12-08','2025-12-11 08:09:00.254728');
+INSERT INTO activitylog VALUES(35,1,'UPDATE_USER','Updated user stevewu','2025-12-16 03:54:26.537478');
+INSERT INTO activitylog VALUES(36,1,'CREATE_USER','Created user vincent.liu','2025-12-16 03:54:35.495493');
+INSERT INTO activitylog VALUES(37,1,'UPDATE_USER','Updated user ethanxu','2025-12-16 03:54:37.862460');
+INSERT INTO activitylog VALUES(38,1,'UPDATE_USER','Updated user ethanxu','2025-12-16 03:54:50.346231');
+INSERT INTO activitylog VALUES(39,1,'UPDATE_USER','Updated user stevewu','2025-12-16 03:55:00.540311');
+INSERT INTO activitylog VALUES(40,1,'CREATE_USER','Created user xa1','2025-12-16 04:20:33.419817');
+INSERT INTO activitylog VALUES(41,1,'CREATE_USER','Created user Terry','2025-12-16 04:21:01.099662');
+INSERT INTO activitylog VALUES(42,1,'CREATE_USER','Created user sz1','2025-12-16 04:21:16.124469');
+INSERT INTO activitylog VALUES(43,1,'UPDATE_USER','Updated user xa1','2025-12-16 04:21:46.181890');
+INSERT INTO activitylog VALUES(44,1,'UPDATE_USER','Updated user sz1','2025-12-16 04:22:15.945168');
+INSERT INTO activitylog VALUES(45,1,'CREATE_USER','Created user tl1','2025-12-16 04:22:52.884601');
+INSERT INTO activitylog VALUES(46,1,'UPDATE_USER','Updated user vincent.liu','2025-12-16 04:23:32.666695');
+INSERT INTO activitylog VALUES(47,1,'CREATE_PROJECT','Created project P123456','2025-12-16 04:25:24.315983');
+INSERT INTO activitylog VALUES(48,1,'ASSIGN_PROJECT','Assigned project Wireless Transfer Unit to ethanxu','2025-12-16 08:35:15.448038');
+INSERT INTO activitylog VALUES(49,1,'ASSIGN_PROJECT','Assigned project S403/423 to ethanxu','2025-12-16 08:35:15.449146');
+INSERT INTO activitylog VALUES(50,2,'CREATE_TIMESHEET','Logged 4.0h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-16 08:36:08.524167');
+INSERT INTO activitylog VALUES(51,2,'CREATE_TIMESHEET','Logged 4.0h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-16 08:36:08.544470');
+INSERT INTO activitylog VALUES(52,2,'CREATE_TIMESHEET','Logged 6.0h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-16 08:36:08.565916');
+INSERT INTO activitylog VALUES(53,2,'CREATE_TIMESHEET','Logged 2.0h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-16 08:36:08.546453');
+INSERT INTO activitylog VALUES(54,2,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-16 08:36:08.619507');
+INSERT INTO activitylog VALUES(55,2,'UPDATE_TIMESHEET','Updated 4h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-16 14:47:34.795383');
+INSERT INTO activitylog VALUES(56,2,'CREATE_TIMESHEET','Logged 2.0h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-16 14:47:34.853565');
+INSERT INTO activitylog VALUES(57,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-16 14:47:34.888802');
+INSERT INTO activitylog VALUES(58,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-16 14:47:34.899766');
+INSERT INTO activitylog VALUES(59,2,'CREATE_TIMESHEET','Logged 2.0h for project ''S403/423'' (ID: 8) on 2025-12-16','2025-12-16 14:47:34.958812');
+INSERT INTO activitylog VALUES(60,2,'UPDATE_TIMESHEET','Updated 2h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-16 14:47:34.984481');
+INSERT INTO activitylog VALUES(61,2,'UPDATE_TIMESHEET','Updated 4h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-16 14:47:34.868927');
+INSERT INTO activitylog VALUES(62,2,'UPDATE_TIMESHEET','Updated 4h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-16 14:47:44.374498');
+INSERT INTO activitylog VALUES(63,2,'UPDATE_TIMESHEET','Updated 3h for project ''S403/423'' (ID: 8) on 2025-12-16','2025-12-16 14:47:44.412458');
+INSERT INTO activitylog VALUES(64,2,'UPDATE_TIMESHEET','Updated 2h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-16 14:47:44.447707');
+INSERT INTO activitylog VALUES(65,2,'UPDATE_TIMESHEET','Updated 2h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-16 14:47:44.492163');
+INSERT INTO activitylog VALUES(66,2,'UPDATE_TIMESHEET','Updated 4h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-16 14:47:44.493319');
+INSERT INTO activitylog VALUES(67,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-16 14:47:44.539803');
+INSERT INTO activitylog VALUES(68,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-16 14:47:44.542321');
+INSERT INTO activitylog VALUES(69,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-18 03:38:32.282010');
+INSERT INTO activitylog VALUES(70,2,'UPDATE_TIMESHEET','Updated 4h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-18 03:38:32.293720');
+INSERT INTO activitylog VALUES(71,2,'CREATE_TIMESHEET','Logged 4.0h for project ''Others'' (ID: 3) on 2025-12-18','2025-12-18 03:38:32.303493');
+INSERT INTO activitylog VALUES(72,2,'UPDATE_TIMESHEET','Updated 4h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-18 03:38:32.350070');
+INSERT INTO activitylog VALUES(73,2,'UPDATE_TIMESHEET','Updated 2h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-18 03:38:32.404054');
+INSERT INTO activitylog VALUES(74,2,'UPDATE_TIMESHEET','Updated 3h for project ''S403/423'' (ID: 8) on 2025-12-16','2025-12-18 03:38:32.407146');
+INSERT INTO activitylog VALUES(75,2,'CREATE_TIMESHEET','Logged 4.0h for project ''Maintenance'' (ID: 2) on 2025-12-18','2025-12-18 03:38:32.453997');
+INSERT INTO activitylog VALUES(76,2,'UPDATE_TIMESHEET','Updated 2h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-18 03:38:32.503926');
+INSERT INTO activitylog VALUES(77,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-18 03:38:32.609646');
+INSERT INTO activitylog VALUES(78,1,'CREATE_USER','Created user kratosgao','2025-12-19 00:56:38.364765');
+INSERT INTO activitylog VALUES(79,1,'CREATE_USER','Created user michaelzhang','2025-12-19 00:58:45.873736');
+INSERT INTO activitylog VALUES(80,1,'CREATE_USER','Created user shawnmi','2025-12-19 00:59:43.942411');
+INSERT INTO activitylog VALUES(81,1,'CREATE_USER','Created user siacui','2025-12-19 01:01:10.009062');
+INSERT INTO activitylog VALUES(82,1,'CREATE_USER','Created user quentinxu','2025-12-19 01:02:17.729809');
+INSERT INTO activitylog VALUES(83,2,'UPDATE_TIMESHEET','Updated 4h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-19 02:08:38.652742');
+INSERT INTO activitylog VALUES(84,2,'UPDATE_TIMESHEET','Updated 3h for project ''S403/423'' (ID: 8) on 2025-12-16','2025-12-19 02:08:38.686022');
+INSERT INTO activitylog VALUES(85,2,'UPDATE_TIMESHEET','Updated 4h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-19 02:08:38.724159');
+INSERT INTO activitylog VALUES(86,2,'CREATE_TIMESHEET','Logged 6.5h for project ''Maintenance'' (ID: 2) on 2025-12-19','2025-12-19 02:08:38.825868');
+INSERT INTO activitylog VALUES(87,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-18','2025-12-19 02:08:38.801640');
+INSERT INTO activitylog VALUES(88,2,'CREATE_TIMESHEET','Logged 1.5h for project ''Research'' (ID: 1) on 2025-12-19','2025-12-19 02:08:38.836889');
+INSERT INTO activitylog VALUES(89,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-19 02:08:38.804095');
+INSERT INTO activitylog VALUES(90,2,'UPDATE_TIMESHEET','Updated 4h for project ''Others'' (ID: 3) on 2025-12-18','2025-12-19 02:08:38.926832');
+INSERT INTO activitylog VALUES(91,2,'UPDATE_TIMESHEET','Updated 2h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-19 02:08:38.781250');
+INSERT INTO activitylog VALUES(92,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-19 02:08:39.025511');
+INSERT INTO activitylog VALUES(93,2,'UPDATE_TIMESHEET','Updated 2h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-19 02:08:39.125947');
+INSERT INTO activitylog VALUES(94,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-22','2025-12-26 05:11:34.928120');
+INSERT INTO activitylog VALUES(95,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-23','2025-12-26 05:11:34.928952');
+INSERT INTO activitylog VALUES(96,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-24','2025-12-26 05:11:34.930345');
+INSERT INTO activitylog VALUES(97,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-25','2025-12-26 05:11:34.930871');
+INSERT INTO activitylog VALUES(98,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-26','2025-12-26 05:11:34.933453');
+INSERT INTO activitylog VALUES(99,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-22','2025-12-26 05:12:06.144997');
+INSERT INTO activitylog VALUES(100,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-24','2025-12-26 05:12:06.156747');
+INSERT INTO activitylog VALUES(101,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-26','2025-12-26 05:12:06.158105');
+INSERT INTO activitylog VALUES(102,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-23','2025-12-26 05:12:06.153135');
+INSERT INTO activitylog VALUES(103,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-25','2025-12-26 05:12:06.163662');
+INSERT INTO activitylog VALUES(104,2,'UPDATE_TIMESHEET','Updated 4h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-26 05:51:43.333334');
+INSERT INTO activitylog VALUES(105,2,'UPDATE_TIMESHEET','Updated 2h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-26 05:51:43.336495');
+INSERT INTO activitylog VALUES(106,2,'UPDATE_TIMESHEET','Updated 3h for project ''S403/423'' (ID: 8) on 2025-12-16','2025-12-26 05:51:43.338713');
+INSERT INTO activitylog VALUES(107,2,'UPDATE_TIMESHEET','Updated 4h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-26 05:51:43.341921');
+INSERT INTO activitylog VALUES(108,2,'UPDATE_TIMESHEET','Updated 2h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-26 05:51:43.343843');
+INSERT INTO activitylog VALUES(109,2,'UPDATE_TIMESHEET','Updated 1.5h for project ''Research'' (ID: 1) on 2025-12-19','2025-12-26 05:51:43.346315');
+INSERT INTO activitylog VALUES(110,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-26 05:51:43.353451');
+INSERT INTO activitylog VALUES(111,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-26 05:51:43.356518');
+INSERT INTO activitylog VALUES(112,2,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-18','2025-12-26 05:51:43.365102');
+INSERT INTO activitylog VALUES(113,2,'UPDATE_TIMESHEET','Updated 4h for project ''Others'' (ID: 3) on 2025-12-18','2025-12-26 05:51:43.366314');
+INSERT INTO activitylog VALUES(114,2,'UPDATE_TIMESHEET','Updated 6.5h for project ''Maintenance'' (ID: 2) on 2025-12-19','2025-12-26 05:51:43.365597');
+INSERT INTO activitylog VALUES(115,2,'CREATE_TIMESHEET','Logged 7.5h for project ''S403/423'' (ID: 8) on 2025-12-08','2025-12-26 05:51:56.275263');
+INSERT INTO activitylog VALUES(116,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-09','2025-12-26 05:51:56.281394');
+INSERT INTO activitylog VALUES(117,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-11','2025-12-26 05:51:56.287016');
+INSERT INTO activitylog VALUES(118,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-12','2025-12-26 05:51:56.286071');
+INSERT INTO activitylog VALUES(119,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-10','2025-12-26 05:51:56.283605');
+INSERT INTO activitylog VALUES(120,2,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-08','2025-12-26 05:52:00.129707');
+INSERT INTO activitylog VALUES(121,2,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-10','2025-12-26 05:52:00.131815');
+INSERT INTO activitylog VALUES(122,2,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-09','2025-12-26 05:52:00.134367');
+INSERT INTO activitylog VALUES(123,2,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-12','2025-12-26 05:52:00.135956');
+INSERT INTO activitylog VALUES(124,2,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-11','2025-12-26 05:52:00.137252');
+INSERT INTO activitylog VALUES(125,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-23','2025-12-26 05:52:34.590187');
+INSERT INTO activitylog VALUES(126,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-22','2025-12-26 05:52:34.594855');
+INSERT INTO activitylog VALUES(127,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-25','2025-12-26 05:52:34.596776');
+INSERT INTO activitylog VALUES(128,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-26','2025-12-26 05:52:34.599319');
+INSERT INTO activitylog VALUES(129,4,'UPDATE_TIMESHEET','Updated 8h for project ''S403/423'' (ID: 8) on 2025-12-24','2025-12-26 05:52:34.598128');
+INSERT INTO activitylog VALUES(130,4,'UPDATE_TIMESHEET','Updated 4h for project ''S403/423'' (ID: 8) on 2025-12-15','2025-12-26 05:52:53.184961');
+INSERT INTO activitylog VALUES(131,4,'UPDATE_TIMESHEET','Updated 3h for project ''S403/423'' (ID: 8) on 2025-12-16','2025-12-26 05:52:53.188578');
+INSERT INTO activitylog VALUES(132,4,'UPDATE_TIMESHEET','Updated 2h for project ''S403/423'' (ID: 8) on 2025-12-17','2025-12-26 05:52:53.191365');
+INSERT INTO activitylog VALUES(133,4,'UPDATE_TIMESHEET','Updated 4h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-26 05:52:53.196616');
+INSERT INTO activitylog VALUES(134,4,'UPDATE_TIMESHEET','Updated 1.5h for project ''Research'' (ID: 1) on 2025-12-19','2025-12-26 05:52:53.199675');
+INSERT INTO activitylog VALUES(135,4,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-26 05:52:53.204852');
+INSERT INTO activitylog VALUES(136,4,'UPDATE_TIMESHEET','Updated 2h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-26 05:52:53.207654');
+INSERT INTO activitylog VALUES(137,4,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-26 05:52:53.209707');
+INSERT INTO activitylog VALUES(138,4,'UPDATE_TIMESHEET','Updated 4h for project ''Maintenance'' (ID: 2) on 2025-12-18','2025-12-26 05:52:53.213972');
+INSERT INTO activitylog VALUES(139,4,'UPDATE_TIMESHEET','Updated 6.5h for project ''Maintenance'' (ID: 2) on 2025-12-19','2025-12-26 05:52:53.219251');
+INSERT INTO activitylog VALUES(140,4,'UPDATE_TIMESHEET','Updated 4h for project ''Others'' (ID: 3) on 2025-12-18','2025-12-26 05:52:53.219027');
+INSERT INTO activitylog VALUES(141,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-15','2025-12-26 05:53:11.310244');
+INSERT INTO activitylog VALUES(142,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-17','2025-12-26 05:53:11.321814');
+INSERT INTO activitylog VALUES(143,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Others'' (ID: 3) on 2025-12-16','2025-12-26 05:53:11.323018');
+INSERT INTO activitylog VALUES(144,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-18','2025-12-26 05:53:11.323248');
+INSERT INTO activitylog VALUES(145,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-19','2025-12-26 05:53:11.320837');
+INSERT INTO activitylog VALUES(146,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-26 05:53:23.701695');
+INSERT INTO activitylog VALUES(147,4,'CREATE_TIMESHEET','Logged 4.5h for project ''Research'' (ID: 1) on 2025-12-16','2025-12-26 05:53:23.703410');
+INSERT INTO activitylog VALUES(148,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-26 05:53:23.708376');
+INSERT INTO activitylog VALUES(149,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-18','2025-12-26 05:53:23.709388');
+INSERT INTO activitylog VALUES(150,4,'CREATE_TIMESHEET','Logged 3.5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-26 05:53:23.713912');
+INSERT INTO activitylog VALUES(151,4,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-19','2025-12-26 05:53:23.717448');
+INSERT INTO activitylog VALUES(152,4,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-15','2025-12-26 05:53:54.191034');
+INSERT INTO activitylog VALUES(153,4,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-17','2025-12-26 05:53:54.195925');
+INSERT INTO activitylog VALUES(154,4,'UPDATE_TIMESHEET','Updated 4.5h for project ''Research'' (ID: 1) on 2025-12-16','2025-12-26 05:53:54.197109');
+INSERT INTO activitylog VALUES(155,4,'UPDATE_TIMESHEET','Updated 3.5h for project ''Maintenance'' (ID: 2) on 2025-12-16','2025-12-26 05:53:54.202073');
+INSERT INTO activitylog VALUES(156,4,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-18','2025-12-26 05:53:54.203980');
+INSERT INTO activitylog VALUES(157,4,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-19','2025-12-26 05:53:54.206960');
+INSERT INTO activitylog VALUES(158,1,'UPDATE_USER','Updated user ethanxu','2025-12-29 07:40:52.620146');
+INSERT INTO activitylog VALUES(159,1,'UPDATE_USER','Updated user stevewu','2025-12-29 07:41:01.976082');
+INSERT INTO activitylog VALUES(160,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-30','2025-12-29 07:50:01.350380');
+INSERT INTO activitylog VALUES(161,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-29','2025-12-29 07:50:01.351950');
+INSERT INTO activitylog VALUES(162,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2026-01-02','2025-12-29 07:50:01.349006');
+INSERT INTO activitylog VALUES(163,2,'CREATE_TIMESHEET','Logged 8.0h for project ''S403/423'' (ID: 8) on 2025-12-31','2025-12-29 07:50:01.354939');
+INSERT INTO activitylog VALUES(164,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-29','2025-12-29 07:50:55.036834');
+INSERT INTO activitylog VALUES(165,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2026-01-02','2025-12-29 07:50:55.042146');
+INSERT INTO activitylog VALUES(166,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-30','2025-12-29 07:50:55.041761');
+INSERT INTO activitylog VALUES(167,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-31','2025-12-29 07:50:55.042563');
+INSERT INTO activitylog VALUES(168,2,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-30','2025-12-29 07:51:10.664608');
+INSERT INTO activitylog VALUES(169,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-31','2025-12-29 07:51:10.670809');
+INSERT INTO activitylog VALUES(170,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-29','2025-12-29 07:51:10.671268');
+INSERT INTO activitylog VALUES(171,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2026-01-02','2025-12-29 07:51:10.675989');
+INSERT INTO activitylog VALUES(172,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-29','2025-12-29 07:51:16.623745');
+INSERT INTO activitylog VALUES(173,2,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-30','2025-12-29 07:51:16.623320');
+INSERT INTO activitylog VALUES(174,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2026-01-02','2025-12-29 07:51:16.624865');
+INSERT INTO activitylog VALUES(175,2,'UPDATE_TIMESHEET','Updated 8h for project ''Maintenance'' (ID: 2) on 2025-12-31','2025-12-29 07:51:16.627729');
+INSERT INTO activitylog VALUES(176,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2026-01-04','2025-12-29 09:17:57.885409');
+INSERT INTO activitylog VALUES(177,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-29','2025-12-29 09:17:57.884377');
+INSERT INTO activitylog VALUES(178,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-30','2025-12-29 09:17:57.883223');
+INSERT INTO activitylog VALUES(179,3,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-31','2025-12-29 09:17:57.895343');
+INSERT INTO activitylog VALUES(180,2,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-29','2025-12-29 09:25:04.425379');
+INSERT INTO activitylog VALUES(181,2,'CREATE_TIMESHEET','Logged 8.0h for project ''Maintenance'' (ID: 2) on 2025-12-31','2025-12-29 09:25:04.428970');
+INSERT INTO activitylog VALUES(182,2,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-29','2025-12-30 00:32:32.834115');
+INSERT INTO activitylog VALUES(183,2,'CREATE_TIMESHEET','Logged 8.0h for project ''Research'' (ID: 1) on 2025-12-30','2025-12-30 00:32:32.837061');
+INSERT INTO activitylog VALUES(184,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-31','2025-12-30 00:32:32.838157');
+INSERT INTO activitylog VALUES(185,2,'CREATE_TIMESHEET','Logged 3.0h for project ''Others'' (ID: 3) on 2025-12-31','2025-12-30 00:32:32.839685');
+INSERT INTO activitylog VALUES(186,2,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-29','2025-12-30 00:32:51.759688');
+INSERT INTO activitylog VALUES(187,2,'UPDATE_TIMESHEET','Updated 8h for project ''Research'' (ID: 1) on 2025-12-30','2025-12-30 00:32:51.761133');
+INSERT INTO activitylog VALUES(188,2,'CREATE_TIMESHEET','Logged 3.0h for project ''Research'' (ID: 1) on 2025-12-31','2025-12-30 00:32:51.763176');
+INSERT INTO activitylog VALUES(189,2,'UPDATE_TIMESHEET','Updated 5h for project ''Maintenance'' (ID: 2) on 2025-12-31','2025-12-30 00:32:51.764676');
+INSERT INTO activitylog VALUES(190,2,'UPDATE_TIMESHEET','Updated 0h for project ''Others'' (ID: 3) on 2025-12-31','2025-12-30 00:32:51.766348');
+INSERT INTO activitylog VALUES(191,2,'ASSIGN_PROJECT','Assigned project S332 Display project to stevewu','2025-12-30 00:59:16.815688');
+INSERT INTO activitylog VALUES(192,2,'ASSIGN_PROJECT','Assigned project S4M SaaS to stevewu','2025-12-30 00:59:16.817598');
+INSERT INTO activitylog VALUES(193,2,'ASSIGN_PROJECT','Assigned project S403/423 to stevewu','2025-12-30 00:59:16.813619');
+CREATE TABLE workday (
+	date DATE NOT NULL, 
+	day_type VARCHAR(8) NOT NULL, 
+	remark VARCHAR, 
+	PRIMARY KEY (date)
+);
+INSERT INTO workday VALUES('2026-01-01','OFF',NULL);
+INSERT INTO workday VALUES('2026-01-04','WORK',NULL);
+CREATE UNIQUE INDEX ix_user_username ON user (username);
+CREATE UNIQUE INDEX ix_project_name ON project (name);
+ROLLBACK; -- due to errors

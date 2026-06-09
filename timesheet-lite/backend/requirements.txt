@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+sqlmodel
+pydantic
+python-jose[cryptography]
+python-multipart
+pydantic-settings
+bcrypt
+apscheduler
+argon2-cffi

@@ -28,7 +28,24 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 9016
       }
+    },
+    {
+      name: 'timesheet-lite-backend',
+      cwd: './timesheet-lite/backend',
+      script: './.venv/bin/python',
+      args: 'run.py',
+      env: {
+        NODE_ENV: 'production'
+      }
+    },
+    {
+      name: 'timesheet-lite-frontend',
+      cwd: './timesheet-lite/frontend',
+      script: 'npm',
+      args: 'run dev -- --port 9020 --host',
+      env: {
+        NODE_ENV: 'development'
+      }
     }
-
   ]
 }

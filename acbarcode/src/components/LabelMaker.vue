@@ -316,6 +316,10 @@ const products = [
   { item: '1830203008', name: 'Rogowski 3PH 3000A RJ12' },
   { item: '1830203009', name: 'Rogowski 1PH 100A RJ12' },
   { item: '1830203010', name: 'Rogowski 1PH 1000A RJ12' },
+
+  { item: '1837085795', name: 'PDP SENSOR+CABLE' },
+  { item: '1830203741', name: 'PDP SENSOR' },
+  { item: '06653011', name: 'PDP SENSOR' },
 ];
 
 const selectedItemNumber = ref(products[0].item);

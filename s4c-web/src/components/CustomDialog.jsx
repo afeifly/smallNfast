@@ -15,7 +15,8 @@ const CustomDialog = ({
   cancelText = '取消',
   type = 'warn', // warn, info, succ, err
   showConfirm = true,
-  showCancel = true
+  showCancel = true,
+  style = {}
 }) => {
   if (!isOpen) return null;
 
@@ -34,6 +35,7 @@ const CustomDialog = ({
       <div 
         className="custom-dialog-container" 
         onClick={(e) => e.stopPropagation()}
+        style={style}
       >
         <div className="custom-dialog-content">
           <div className="custom-dialog-icon-wrapper">

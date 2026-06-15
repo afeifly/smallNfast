@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import CustomDialog from '../../components/CustomDialog';
 import ChannelSelectModal from '../../components/ChannelSelectModal';
@@ -46,6 +46,9 @@ const LayoutSetting = () => {
   });
   const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
+  // Pagination state
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
   // ── Derived data ─────────────────────────────────────────────────────────
   const locationPath = findLocationPath(configData?.configs);
   const locationsArray = configData?.configs?.[locationPath]?.Locations || [];
@@ -71,21 +74,8 @@ const LayoutSetting = () => {
     return result;
   }, [sensors]);
 
-  // Currently selected location & meapoints inside the editor modal
+  // Currently selected location inside the editor modal
   const selectedLocation = selectedLocationIdx !== null ? locationsArray[selectedLocationIdx] : null;
-  const meapoints = selectedLocation?.meapoints || [];
-
-  // Currently selected meapoint & its channels inside the editor modal
-  const selectedMeapoint = selectedMeapointIdx !== null ? meapoints[selectedMeapointIdx] : null;
-  const meapointChannelIds = selectedMeapoint?.channels || [];
-
-  // Resolve channel IDs to channel info
-  const resolvedChannels = useMemo(() => {
-    return meapointChannelIds.map(id => {
-      const ch = allChannels.find(c => c.CreateTime === String(id));
-      return ch || { CreateTime: String(id), sensorName: '---', channelName: `Unknown (${id})`, unit: '---' };
-    });
-  }, [meapointChannelIds, allChannels]);
 
   // Helper to find channel info by UID (matching CreateTime) across all sensors for the dashboard cards
   const findChannelInfo = useCallback((uid) => {
@@ -100,9 +90,81 @@ const LayoutSetting = () => {
     return null;
   }, [sensors]);
 
+  // Helper to get resolved layout info from layout config (the single source of truth for card display/layout)
+  const getMeapointLayoutInfo = useCallback((mp, locName) => {
+    const layoutPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLayout.json'));
+    const layoutList = configData?.configs?.[layoutPath]?.LayoutList || [];
+    const match = layoutList.find(item => {
+      const itemLoc = (item.location || '').trim().toLowerCase();
+      const mpLoc = (locName || '').trim().toLowerCase();
+      const itemMp = (item.meapoint || item.measurepoint || '').trim().toLowerCase();
+      const mpName = (mp.meapoint || '').trim().toLowerCase();
+      return itemLoc === mpLoc && itemMp === mpName;
+    });
+    return {
+      is2Height: match ? !!match.is2Height : false,
+      index: match && typeof match.index === 'number' ? match.index : null
+    };
+  }, [configData]);
+
+  // Helper to get resolved is2Height from layout config (the single source of truth for card display heights)
+  const getMeapointIs2Height = useCallback((mp, locName) => {
+    return getMeapointLayoutInfo(mp, locName).is2Height;
+  }, [getMeapointLayoutInfo]);
+
+  // Helper to get next available unique index for new meapoints
+  const getNextMeapointIndex = useCallback(() => {
+    let maxIdx = -1;
+    locationsArray.forEach(loc => {
+      (loc.meapoints || []).forEach(mp => {
+        if (typeof mp.index === 'number' && mp.index > maxIdx) {
+          maxIdx = mp.index;
+        }
+      });
+    });
+    const layoutPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLayout.json'));
+    const layoutList = configData?.configs?.[layoutPath]?.LayoutList || [];
+    layoutList.forEach(item => {
+      if (typeof item.index === 'number' && item.index > maxIdx) {
+        maxIdx = item.index;
+      }
+    });
+    return maxIdx + 1;
+  }, [locationsArray, configData]);
+
+  // Sort meapoints inside the editor modal by layout index while keeping original list index reference
+  const meapoints = useMemo(() => {
+    if (!selectedLocation) return [];
+    const rawMps = selectedLocation.meapoints || [];
+    const mapped = rawMps.map((mp, originalIdx) => ({
+      ...mp,
+      originalIdx
+    }));
+    return mapped.sort((a, b) => {
+      const infoA = getMeapointLayoutInfo(a, selectedLocation.location);
+      const infoB = getMeapointLayoutInfo(b, selectedLocation.location);
+      const idxA = infoA.index !== null ? infoA.index : (typeof a.index === 'number' ? a.index : 0);
+      const idxB = infoB.index !== null ? infoB.index : (typeof b.index === 'number' ? b.index : 0);
+      return idxA - idxB;
+    });
+  }, [selectedLocation, getMeapointLayoutInfo]);
+
+  // Currently selected meapoint & its channels inside the editor modal
+  const selectedMeapoint = selectedMeapointIdx !== null ? (selectedLocation?.meapoints || [])[selectedMeapointIdx] : null;
+  const meapointChannelIds = selectedMeapoint?.channels || [];
+
+  // Resolve channel IDs to channel info
+  const resolvedChannels = useMemo(() => {
+    return meapointChannelIds.map(id => {
+      const ch = allChannels.find(c => c.CreateTime === String(id));
+      return ch || { CreateTime: String(id), sensorName: '---', channelName: `Unknown (${id})`, unit: '---' };
+    });
+  }, [meapointChannelIds, allChannels]);
+
   // Derive dashboard cards list (Location / Point -> Channels)
   const cards = useMemo(() => {
     const list = [];
+    let fallbackIdx = 0;
     locationsArray.forEach(loc => {
       (loc.meapoints || []).forEach(mp => {
         const title = `${loc.location} / ${mp.meapoint}`;
@@ -114,36 +176,165 @@ const LayoutSetting = () => {
             unit: info ? info.unit : ''
           };
         });
-        list.push({ title, items });
+        const layoutInfo = getMeapointLayoutInfo(mp, loc.location);
+        let cardIdx = layoutInfo.index;
+        if (cardIdx === null || cardIdx === undefined) {
+          cardIdx = typeof mp.index === 'number' ? mp.index : fallbackIdx++;
+        }
+        list.push({
+          title,
+          items,
+          index: cardIdx,
+          is2Height: layoutInfo.is2Height
+        });
       });
     });
     return list;
-  }, [locationsArray, findChannelInfo]);
+  }, [locationsArray, findChannelInfo, getMeapointLayoutInfo]);
 
-  // ── Persist helper ───────────────────────────────────────────────────────
-  const persistLocations = useCallback((newLocations) => {
-    if (!locationPath) {
-      const path = 'config/cfgLocation.json';
-      setConfigData({
-        ...configData,
-        configs: {
-          ...configData.configs,
-          [path]: { Locations: newLocations }
+  // Sort and paginate cards preview
+  const paginatedPages = useMemo(() => {
+    // Sort cards by index ascending
+    const sortedCards = [...cards].sort((a, b) => a.index - b.index);
+
+    // Pagination algorithm preferring vertical (column-first) placement without backfilling
+    const pages = [];
+    let currentPageItems = [];
+    let col = 0;
+    let row = 0;
+
+    sortedCards.forEach(card => {
+      if (card.is2Height) {
+        if (row === 1) {
+          col += 1;
+          row = 0;
         }
-      });
-      return;
-    }
-    setConfigData({
-      ...configData,
-      configs: {
-        ...configData.configs,
-        [locationPath]: {
-          ...configData.configs[locationPath],
-          Locations: newLocations
+        if (col >= 3) {
+          pages.push(currentPageItems);
+          currentPageItems = [];
+          col = 0;
+          row = 0;
+        }
+        currentPageItems.push({ card, col, row, span: 2 });
+        col += 1;
+        row = 0;
+      } else {
+        if (col >= 3) {
+          pages.push(currentPageItems);
+          currentPageItems = [];
+          col = 0;
+          row = 0;
+        }
+        currentPageItems.push({ card, col, row, span: 1 });
+        if (row === 0) {
+          row = 1;
+        } else {
+          col += 1;
+          row = 0;
         }
       }
     });
-  }, [configData, setConfigData, locationPath]);
+
+    if (currentPageItems.length > 0) {
+      pages.push(currentPageItems);
+    }
+
+    // Fill empty slots with placeholders for all pages
+    return pages.map(pageItems => {
+      const grid = [
+        [false, false, false],
+        [false, false, false]
+      ];
+      pageItems.forEach(({ col, row, span }) => {
+        grid[row][col] = true;
+        if (span === 2) {
+          grid[row + 1][col] = true;
+        }
+      });
+
+      const finalItems = [...pageItems];
+      for (let c = 0; c < 3; c++) {
+        for (let r = 0; r < 2; r++) {
+          if (!grid[r][c]) {
+            finalItems.push({
+              card: { isPlaceholder: true },
+              col: c,
+              row: r,
+              span: 1
+            });
+            grid[r][c] = true;
+          }
+        }
+      }
+      return finalItems;
+    });
+  }, [cards]);
+
+  const totalPages = paginatedPages.length > 0 ? paginatedPages.length : 1;
+  const activePageIndex = Math.min(currentPageIndex, totalPages - 1);
+  const activePageItems = paginatedPages[activePageIndex] || [];
+
+  // ── Persist helper ───────────────────────────────────────────────────────
+  const persistLocations = useCallback((newLocations) => {
+    // Generate synchronized flat LayoutList for cfgLayout.json
+    const layoutList = [];
+    let fallbackIdx = 0;
+
+    const updatedLocations = newLocations.map(loc => {
+      const updatedMps = (loc.meapoints || []).map(mp => {
+        let is2Height = mp.is2Height;
+        if (is2Height === undefined) {
+          is2Height = getMeapointIs2Height(mp, loc.location);
+        } else {
+          is2Height = !!is2Height;
+        }
+
+        const layoutInfo = getMeapointLayoutInfo(mp, loc.location);
+        let savedIndex = layoutInfo.index;
+        if (savedIndex === null || savedIndex === undefined) {
+          savedIndex = typeof mp.index === 'number' ? mp.index : fallbackIdx++;
+        }
+
+        layoutList.push({
+          location: loc.location,
+          meapoint: mp.meapoint,
+          measurepoint: mp.meapoint,
+          index: savedIndex,
+          is2Height,
+          channels: mp.channels || []
+        });
+
+        return {
+          ...mp,
+          index: savedIndex,
+          is2Height
+        };
+      });
+
+      return {
+        ...loc,
+        meapoints: updatedMps
+      };
+    });
+
+    const locPath = locationPath || 'config/cfgLocation.json';
+    const layoutPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLayout.json')) || 'config/cfgLayout.json';
+
+    setConfigData({
+      ...configData,
+      configs: {
+        ...configData?.configs,
+        [locPath]: {
+          ...configData?.configs?.[locPath],
+          Locations: updatedLocations
+        },
+        [layoutPath]: {
+          ...configData?.configs?.[layoutPath],
+          LayoutList: layoutList
+        }
+      }
+    });
+  }, [configData, setConfigData, locationPath, getMeapointIs2Height, getMeapointLayoutInfo]);
 
   // ── Location CRUD ────────────────────────────────────────────────────────
   const handleAddLocation = () => {
@@ -219,7 +410,7 @@ const LayoutSetting = () => {
       name = `Point ${num}`;
     }
     const newMp = {
-      index: meapoints.length,
+      index: getNextMeapointIndex(),
       is2Height: false,
       location: selectedLocation.location,
       meapoint: name,
@@ -237,7 +428,8 @@ const LayoutSetting = () => {
   };
 
   const handleDeleteMeapoint = (mpIdx) => {
-    const mp = meapoints[mpIdx];
+    const mp = (selectedLocation?.meapoints || [])[mpIdx];
+    if (!mp) return;
     setDialogState({
       isOpen: true, title: 'Delete Measurement Point',
       body: `Delete measurement point "${mp.meapoint}" and unlink its channels?`, type: 'warn',
@@ -257,13 +449,14 @@ const LayoutSetting = () => {
 
   const startEditMeapoint = (mpIdx) => {
     setEditingMpIdx(mpIdx);
-    setEditingMpName(meapoints[mpIdx].meapoint);
+    const mp = (selectedLocation?.meapoints || [])[mpIdx];
+    setEditingMpName(mp ? mp.meapoint : '');
   };
 
   const confirmEditMeapoint = () => {
     const name = editingMpName.trim();
     if (!name) { setEditingMpIdx(null); return; }
-    const dup = meapoints.some((mp, i) => mp.meapoint === name && i !== editingMpIdx);
+    const dup = (selectedLocation?.meapoints || []).some((mp, i) => mp.meapoint === name && i !== editingMpIdx);
     if (dup) {
       setDialogState({
         isOpen: true, title: 'Duplicate Point',
@@ -317,6 +510,23 @@ const LayoutSetting = () => {
     setIsChannelModalOpen(false);
   };
 
+  const handleToggleMeapointHeight = (mpIdx) => {
+    if (selectedLocationIdx === null) return;
+    const loc = locationsArray[selectedLocationIdx];
+    const updatedLocs = locationsArray.map((l, i) => {
+      if (i !== selectedLocationIdx) return l;
+      return {
+        ...l,
+        meapoints: (l.meapoints || []).map((mp, mi) => {
+          if (mi !== mpIdx) return mp;
+          const currentVal = getMeapointIs2Height(mp, loc.location);
+          return { ...mp, is2Height: !currentVal };
+        })
+      };
+    });
+    persistLocations(updatedLocs);
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="content-card layout-setting-page">
@@ -352,23 +562,100 @@ const LayoutSetting = () => {
         </button>
       </header>
 
-      {/* Main Content: Card Grid (Like Home.jsx but no Empty placeholders) */}
-      <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: '#F8F9FA' }}>
+      {/* Main Content: Card Grid */}
+      <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', background: '#F8F9FA', overflowY: 'auto', boxSizing: 'border-box' }}>
         {cards.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 368px)', gap: '16px', justifyContent: 'flex-start' }}>
-            {cards.map((card, i) => (
-              <OnlineValueCard
-                key={i}
-                title={card.title}
-                items={card.items}
-              />
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', width: 'fit-content', flex: 1 }}>
+            {/* Grid Panel */}
+            <div style={{
+              flex: 1,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 368px)',
+              gridTemplateRows: 'repeat(2, minmax(184px, 1fr))',
+              gap: '16px',
+              padding: '16px 0',
+              justifyContent: 'flex-start',
+              alignContent: 'stretch'
+            }}>
+              {activePageItems.map((itemObj) => {
+                const { card, col, row, span } = itemObj;
+                const gridStyle = {
+                  gridColumn: col + 1,
+                  gridRow: `${row + 1} / span ${span}`
+                };
+                return card.isPlaceholder ? (
+                  <div key={`empty-${col}-${row}`} style={gridStyle}>
+                    <div style={{ width: 368, height: '100%', background: '#F8F9FA', border: '1px dashed #E5E6EB', borderRadius: 6 }} />
+                  </div>
+                ) : (
+                  <div key={`card-${col}-${row}`} style={{ ...gridStyle, height: '100%' }}>
+                    <OnlineValueCard
+                      title={card.title}
+                      items={card.items}
+                      style={{ height: '100%' }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer Navigation */}
+            <footer style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '16px',
+              padding: '16px 0',
+              marginTop: 'auto',
+              flexShrink: 0
+            }}>
+              <button
+                onClick={() => setCurrentPageIndex(prev => Math.max(0, prev - 1))}
+                disabled={activePageIndex === 0}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: activePageIndex === 0 ? 'not-allowed' : 'pointer',
+                  opacity: activePageIndex === 0 ? 0.3 : 0.8,
+                  color: '#1D2129',
+                  padding: '4px'
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                color: '#4E5969',
+                fontFamily: 'PingFang SC, sans-serif'
+              }}>
+                {activePageIndex + 1} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPageIndex(prev => Math.min(totalPages - 1, prev + 1))}
+                disabled={activePageIndex === totalPages - 1}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: activePageIndex === totalPages - 1 ? 'not-allowed' : 'pointer',
+                  opacity: activePageIndex === totalPages - 1 ? 0.3 : 0.8,
+                  color: '#1D2129',
+                  padding: '4px'
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </footer>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
             <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain' }} />
             <span style={{ fontSize: 16, fontWeight: '700', color: '#4E5969' }}>
-              No layouts configured yet. Click "Edit Layout" in the top right to start.
+              No layouts configured yet. Click &quot;Edit Layout&quot; in the top right to start.
             </span>
           </div>
         )}
@@ -446,7 +733,7 @@ const LayoutSetting = () => {
                       </div>
                     ))
                   ) : (
-                    <div className="layout-empty">No locations yet. Click '+' to add.</div>
+                    <div className="layout-empty">No locations yet. Click &apos;+&apos; to add.</div>
                   )}
                 </div>
               </div>
@@ -477,13 +764,13 @@ const LayoutSetting = () => {
 
                     <div className="layout-card-body">
                       {meapoints.length > 0 ? (
-                        meapoints.map((mp, mpIdx) => (
+                        meapoints.map((mp) => (
                           <div
-                            key={mpIdx}
-                            className={`layout-list-item ${selectedMeapointIdx === mpIdx ? 'active' : ''}`}
-                            onClick={() => { setSelectedMeapointIdx(mpIdx); setEditingMpIdx(null); }}
+                            key={mp.originalIdx}
+                            className={`layout-list-item ${selectedMeapointIdx === mp.originalIdx ? 'active' : ''}`}
+                            onClick={() => { setSelectedMeapointIdx(mp.originalIdx); setEditingMpIdx(null); }}
                           >
-                            {editingMpIdx === mpIdx ? (
+                            {editingMpIdx === mp.originalIdx ? (
                               <input
                                 className="layout-inline-input"
                                 style={{ flex: 1, marginRight: 8 }}
@@ -497,22 +784,22 @@ const LayoutSetting = () => {
                             ) : (
                               <>
                                 <span className="item-name">{mp.meapoint}</span>
-                                <span className="item-badge">{(mp.channels || []).length} ch</span>
+                                <span className="item-badge" style={{ marginRight: '8px' }}>{(mp.channels || []).length} ch</span>
                               </>
                             )}
 
                             <div className="item-actions">
-                              <button className="btn-layout-icon" title="Rename" onClick={e => { e.stopPropagation(); startEditMeapoint(mpIdx); }}>
+                              <button className="btn-layout-icon" title="Rename" onClick={e => { e.stopPropagation(); startEditMeapoint(mp.originalIdx); }}>
                                 <img src={iconBtnEdit} alt="Edit" style={{ width: 16, height: 16 }} />
                               </button>
-                              <button className="btn-layout-icon" title="Delete" onClick={e => { e.stopPropagation(); handleDeleteMeapoint(mpIdx); }}>
+                              <button className="btn-layout-icon" title="Delete" onClick={e => { e.stopPropagation(); handleDeleteMeapoint(mp.originalIdx); }}>
                                 <img src={iconBtnDelete} alt="Delete" style={{ width: 16, height: 16 }} />
                               </button>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div className="layout-empty">No measurement points. Click '+' to add.</div>
+                        <div className="layout-empty">No measurement points. Click &apos;+&apos; to add.</div>
                       )}
                     </div>
                   </>
@@ -539,12 +826,56 @@ const LayoutSetting = () => {
 
                 {selectedMeapoint ? (
                   <>
-                    <div className="layout-context-bar">
-                      <span>Location:</span>
-                      <span className="ctx-label">{selectedLocation?.location}</span>
-                      <span className="ctx-separator">›</span>
-                      <span>Point:</span>
-                      <span className="ctx-label">{selectedMeapoint.meapoint}</span>
+                    <div className="layout-context-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>Location:</span>
+                        <span className="ctx-label">{selectedLocation?.location}</span>
+                        <span className="ctx-separator">›</span>
+                        <span>Point:</span>
+                        <span className="ctx-label">{selectedMeapoint.meapoint}</span>
+                      </div>
+
+                      <label
+                        onClick={() => handleToggleMeapointHeight(selectedMeapointIdx)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          margin: 0,
+                          padding: 0
+                        }}
+                      >
+                        <span style={{
+                          position: 'relative',
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '3px',
+                          border: '1.5px solid ' + (getMeapointIs2Height(selectedMeapoint, selectedLocation.location) ? '#00AB84' : '#D9D9D9'),
+                          background: getMeapointIs2Height(selectedMeapoint, selectedLocation.location) ? '#00AB84' : '#FFF',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s',
+                          boxSizing: 'border-box',
+                          flexShrink: 0
+                        }}>
+                          {getMeapointIs2Height(selectedMeapoint, selectedLocation.location) && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, textAlign: 'left' }}>
+                          <span style={{ fontSize: '11px', fontWeight: '600', color: '#1D2129' }}>
+                            2x Height Card
+                          </span>
+                          <span style={{ fontSize: '9px', color: '#86909C' }}>
+                            Takes 2 rows in dashboard
+                          </span>
+                        </div>
+                      </label>
                     </div>
 
                     <div className="layout-card-body">
@@ -580,7 +911,7 @@ const LayoutSetting = () => {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="layout-empty">No channels assigned. Click "Select Channels" to add.</div>
+                        <div className="layout-empty">No channels assigned. Click &quot;Select Channels&quot; to add.</div>
                       )}
                     </div>
                   </>

@@ -32,7 +32,8 @@ const ConfigManager = () => {
     type: 'warn',
     onConfirm: null,
     showCancel: true,
-    confirmText: 'Confirm'
+    confirmText: 'Confirm',
+    style: {}
   });
 
   const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
@@ -172,6 +173,58 @@ const ConfigManager = () => {
       clearTimeout(pressTimer.current);
       pressTimer.current = null;
     }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pressTimer.current) clearTimeout(pressTimer.current);
+    };
+  }, []);
+
+  const handleShowJsonDialog = (cfg) => {
+    setDialogState({
+      isOpen: true,
+      title: `JSON Viewer - ${cfg.fileName}`,
+      type: 'info',
+      showCancel: false,
+      confirmText: 'Close',
+      onConfirm: closeDialog,
+      style: { maxWidth: '800px', width: '800px' },
+      body: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '50vh', overflowY: 'auto', textAlign: 'left' }}>
+          {Object.entries(cfg.configs).map(([path, data]) => (
+            <div key={path} style={{ border: '1px solid #E5E6EB', borderRadius: '6px', background: 'white' }}>
+              <div style={{ 
+                background: '#F2F3F5', 
+                padding: '6px 12px', 
+                fontSize: '13px', 
+                fontWeight: '600', 
+                color: '#1D2129',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span>{path}</span>
+                <CopyButton text={JSON.stringify(data, null, 2)} />
+              </div>
+              <pre style={{ margin: 0, padding: '12px', fontSize: '12px', maxHeight: '200px', overflowY: 'auto', background: '#FAFAFA', color: '#4E5969' }}>
+                {JSON.stringify(data, null, 2)}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )
+    });
+  };
+
+  const handleDownloadClick = (e, cfg) => {
+    if (e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleShowJsonDialog(cfg);
+      return;
+    }
+    handleExport(cfg);
   };
 
   if (view === 'details') {
@@ -328,8 +381,8 @@ const ConfigManager = () => {
                         )}
                         <button 
                           className="btn-icon-img" 
-                          onClick={() => handleExport(cfg)}
-                          title="Export"
+                          onClick={(e) => handleDownloadClick(e, cfg)}
+                          title="Export (Shift+Click to view JSON)"
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4E5969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -369,6 +422,7 @@ const ConfigManager = () => {
         type={dialogState.type}
         showCancel={dialogState.showCancel}
         confirmText={dialogState.confirmText}
+        style={dialogState.style}
       />
 
       <style dangerouslySetInnerHTML={{ __html: `
@@ -389,5 +443,56 @@ const PropertyRow = ({ label, value }) => (
     <span style={{ fontWeight: '600' }}>{value}</span>
   </div>
 );
+
+const CopyButton = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      style={{
+        background: copied ? '#E6F6F2' : '#FFFFFF',
+        color: copied ? '#00AB84' : '#4E5969',
+        border: `1px solid ${copied ? '#B2E5D9' : '#DCDCDC'}`,
+        borderRadius: '4px',
+        padding: '2px 8px',
+        fontSize: '11px',
+        cursor: 'pointer',
+        fontWeight: '600',
+        transition: 'all 0.2s ease',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+      }}
+    >
+      {copied ? (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Copied!</span>
+        </>
+      ) : (
+        <>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Copy</span>
+        </>
+      )}
+    </button>
+  );
+};
 
 export default ConfigManager;

@@ -10,7 +10,7 @@ const mockDb = {
 };
 
 const mockSQL = {
-  Database: vi.fn(() => mockDb),
+  Database: vi.fn(function() { return mockDb; }),
 };
 
 vi.mock('sql.js', () => ({
@@ -26,6 +26,7 @@ import {
   flushAlarmDb,
   ensureSensorExists,
   ensureChannelExists,
+  createEmptyAlarmDb,
 } from './alarmDbUtils';
 
 describe('readAlarmConfigs', () => {
@@ -166,5 +167,20 @@ describe('flushAlarmDb', () => {
 
     flushAlarmDb(mockDb, 'db/Alarm.db', fileMap);
     expect(fileMap.get('db/Alarm.db')).toBe(exportedData);
+  });
+});
+
+describe('createEmptyAlarmDb', () => {
+  it('initialises database and exports binary data', async () => {
+    const exportedData = new Uint8Array([4, 5, 6]);
+    mockDb.export.mockReturnValue(exportedData);
+    mockDb.run.mockClear();
+    mockDb.close.mockClear();
+
+    const result = await createEmptyAlarmDb();
+    expect(result).toBe(exportedData);
+    expect(mockDb.run).toHaveBeenCalledTimes(3);
+    expect(mockDb.export).toHaveBeenCalled();
+    expect(mockDb.close).toHaveBeenCalled();
   });
 });

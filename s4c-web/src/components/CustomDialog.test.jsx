@@ -26,11 +26,11 @@ describe('CustomDialog', () => {
     expect(screen.getByText('Test Body')).toBeInTheDocument();
   });
 
-  it('renders default Chinese title when no title provided', () => {
+  it('renders default English title when no title provided', () => {
     render(
       <CustomDialog isOpen={true} onClose={() => {}} onConfirm={() => {}} />
     );
-    expect(screen.getByText('提示')).toBeInTheDocument();
+    expect(screen.getByText('Note')).toBeInTheDocument();
   });
 
   it('calls onClose when cancel button is clicked', async () => {

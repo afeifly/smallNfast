@@ -19,6 +19,7 @@ function TestConsumer() {
       <span data-testid="activeConfigId">{ctx.activeConfigId || 'null'}</span>
       <span data-testid="configListLength">{ctx.configList.length}</span>
       <span data-testid="configData">{ctx.configData ? 'present' : 'null'}</span>
+      <span data-testid="fileMapStatus">{ctx.configData?.fileMap ? 'has-filemap' : 'no-filemap'}</span>
       <button
         data-testid="add-config"
         onClick={() =>
@@ -26,6 +27,14 @@ function TestConsumer() {
         }
       >
         Add Config
+      </button>
+      <button
+        data-testid="add-config-filemap"
+        onClick={() =>
+          ctx.addConfig({ name: 'test-config-fm', configs: { 'test.json': {} }, fileMap: new Map([['dummy.db', new Uint8Array([1,2,3])]]) })
+        }
+      >
+        Add Config Filemap
       </button>
       <button data-testid="set-active" onClick={() => ctx.setActiveConfigId('custom-id')}>
         Set Active
@@ -43,6 +52,12 @@ function TestConsumer() {
         onClick={() => ctx.setConfigData({ name: 'updated' })}
       >
         Set Config Data
+      </button>
+      <button
+        data-testid="set-config-data-fn"
+        onClick={() => ctx.setConfigData(prev => ({ ...prev, name: 'updated-fn' }))}
+      >
+        Set Config Data Fn
       </button>
       <button
         data-testid="set-config-list"
@@ -118,6 +133,19 @@ describe('ConfigContext', () => {
     expect(screen.getByTestId('configData').textContent).toBe('present');
   });
 
+  it('setConfigData supports functional updates', async () => {
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByTestId('add-config'));
+    await user.click(screen.getByTestId('set-config-data-fn'));
+
+    expect(screen.getByTestId('configData').textContent).toBe('present');
+    const saved = localStorage.getItem('s4c_config_manager_state');
+    const parsed = JSON.parse(saved);
+    expect(parsed.configList[0].name).toBe('updated-fn');
+  });
+
   it('setConfigData creates a new config when no active config exists', async () => {
     const user = userEvent.setup();
     renderWithProvider();
@@ -182,6 +210,17 @@ describe('ConfigContext', () => {
     expect(screen.getByTestId('configListLength').textContent).toBe('1');
     expect(screen.getByTestId('activeConfigId').textContent).toMatch(/^legacy-/);
     expect(screen.getByTestId('configData').textContent).toBe('present');
+  });
+
+  it('setConfigData preserves the existing fileMap', async () => {
+    const user = userEvent.setup();
+    renderWithProvider();
+
+    await user.click(screen.getByTestId('add-config-filemap'));
+    expect(screen.getByTestId('fileMapStatus').textContent).toBe('has-filemap');
+
+    await user.click(screen.getByTestId('set-config-data'));
+    expect(screen.getByTestId('fileMapStatus').textContent).toBe('has-filemap');
   });
 
   it('deleteConfig handles deleting the only config', async () => {

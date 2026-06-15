@@ -5,14 +5,14 @@ import smallInfoIcon from '../assets/images/small_info_icon.png';
 import smallSuccIcon from '../assets/images/small_succ_icon.png';
 import smallErrIcon from '../assets/images/small_err_icon.png';
 
-const CustomDialog = ({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
-  title = '提示', 
-  body = '', 
-  confirmText = '确定', 
-  cancelText = '取消',
+const CustomDialog = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  title = 'Note',
+  body = '',
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
   type = 'warn', // warn, info, succ, err
   showConfirm = true,
   showCancel = true,
@@ -32,8 +32,8 @@ const CustomDialog = ({
 
   return (
     <div className="custom-dialog-overlay" onClick={onClose}>
-      <div 
-        className="custom-dialog-container" 
+      <div
+        className="custom-dialog-container"
         onClick={(e) => e.stopPropagation()}
         style={style}
       >
@@ -48,7 +48,7 @@ const CustomDialog = ({
             <div className="custom-dialog-body">{body}</div>
           </div>
         </div>
-        
+
         <div className="custom-dialog-footer">
           {showCancel && (
             <div className="custom-dialog-btn cancel" onClick={onClose}>

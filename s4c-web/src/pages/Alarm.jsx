@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useConfig } from '../context/ConfigContext';
+import { saveOneFileMap } from '../util/fileMapStorage';
 import ChannelSelectModal from '../components/ChannelSelectModal';
+import CustomDialog from '../components/CustomDialog';
 import {
   openAlarmDb,
   readAlarmConfigs,
@@ -59,7 +61,7 @@ function logAlarmTable(db, label) {
 }
 
 const Alarm = () => {
-  const { configData, setConfigData } = useConfig();
+  const { configData, setConfigData, activeConfigId } = useConfig();
 
   /* ── DB handle (kept in a ref so it survives re-renders) ── */
   const dbRef = useRef(null);   // sql.js Database instance
@@ -69,6 +71,21 @@ const Alarm = () => {
   const [alarms, setAlarms] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dbStatus, setDbStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'no-db' | 'error'
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+  });
+
+  const showAlertDialog = (title, body, type = 'warn') => {
+    setDialogState({
+      isOpen: true,
+      title,
+      body,
+      type,
+    });
+  };
 
   /* ─────────────────────────────────────────────────────────────────────────
      Open / reload Alarm.db whenever configData changes (new cfgf loaded)
@@ -86,6 +103,7 @@ const Alarm = () => {
 
       const fileMap = configData?.fileMap;
       if (!fileMap) {
+        console.log('[Alarm.jsx] load: no fileMap present in configData');
         setDbStatus('idle');
         setAlarms([]);
         return;
@@ -93,10 +111,15 @@ const Alarm = () => {
 
       setDbStatus('loading');
       try {
+        console.log('[Alarm.jsx] load: opening Alarm.db, fileMap keys:', Array.from(fileMap.keys()));
         const result = await openAlarmDb(fileMap);
-        if (cancelled) return;
+        if (cancelled) {
+          console.log('[Alarm.jsx] load: cancelled');
+          return;
+        }
 
         if (!result) {
+          console.warn('[Alarm.jsx] load: openAlarmDb returned null (Alarm.db not found)');
           setDbStatus('no-db');
           setAlarms([]);
           return;
@@ -106,6 +129,7 @@ const Alarm = () => {
         dbKey.current = result.key;
 
         const rows = readAlarmConfigs(result.db);
+        console.log('[Alarm.jsx] load: Alarm.db ready, loaded alarms row count:', rows.length);
         setAlarms(rows.map(rowToAlarm));
         setDbStatus('ready');
         logAlarmTable(result.db, 'LOAD — Alarm.db opened');
@@ -127,9 +151,18 @@ const Alarm = () => {
   const persistDb = useCallback(() => {
     if (!dbRef.current || !dbKey.current || !configData?.fileMap) return;
     flushAlarmDb(dbRef.current, dbKey.current, configData.fileMap);
-    // Trigger ConfigContext update so export captures the changes
+    // Save updated Alarm.db bytes directly to IndexedDB (fire-and-forget).
+    // We do this here because flushAlarmDb mutates fileMap in-place — the Map
+    // reference stays the same so the persist useEffect won't detect the change.
+    if (activeConfigId) {
+      console.log('[Alarm.jsx] persistDb: Saving updated alarm fileMap to IndexedDB for ID:', activeConfigId);
+      saveOneFileMap(activeConfigId, configData.fileMap).catch(e =>
+        console.error('[Alarm.jsx] persistDb: Failed to save fileMap:', e)
+      );
+    }
+    // Also trigger ConfigContext update so export captures the changes
     setConfigData(prev => ({ ...prev }));
-  }, [configData, setConfigData]);
+  }, [configData, setConfigData, activeConfigId]);
 
   /* ─────────────────────────────────────────────────────────────────────────
      Build channel list for the selection modal from the sensor list JSON
@@ -151,8 +184,10 @@ const Alarm = () => {
         CreateTime: channelId,          // used by ChannelSelectModal as row key
         sensorName: sensor.Name || sensor.Description || sensorId,
         sensorId: sensorId,
+        sensorDbId: sensor.SensorID || 0,
         channelName: ch.ChannelDescription,
         channelId: channelId,
+        channelDbId: ch.ChannelId || 0,
         unit: ch.UnitInASCII || '---',
       });
     });
@@ -173,41 +208,47 @@ const Alarm = () => {
     );
 
     const newAlarms = [];
-    for (const ch of newChannels) {
-      // Ensure sensor + channel rows exist in DB so the JOIN in
-      // readAlarmConfigs always resolves human-readable names & units.
-      ensureSensorExists(dbRef.current, ch.sensorId, ch.sensorName);
-      ensureChannelExists(dbRef.current, ch.channelId, ch.sensorId, ch.channelName, ch.unit);
+    try {
+      for (const ch of newChannels) {
+        // Ensure sensor + channel rows exist in DB so the JOIN in
+        // readAlarmConfigs always resolves human-readable names & units.
+        ensureSensorExists(dbRef.current, ch.sensorId, ch.sensorName, ch.sensorDbId);
+        ensureChannelExists(dbRef.current, ch.channelId, ch.sensorId, ch.channelName, ch.unit);
 
-      const newId = insertAlarmConfig(dbRef.current, {
-        sensor_identify_id: ch.sensorId,
-        channel_identify_id: ch.channelId,
-        measurement_point: '',
-        location: '',
-        threshold: 0,
-        hysteresis: 0,
-        direction: 'up',
-        delay: 0,
-        relay_id: 0,
-        relay_flag: 0,
-      });
+        const newId = insertAlarmConfig(dbRef.current, {
+          sensor_identify_id: ch.sensorId,
+          channel_identify_id: ch.channelId,
+          measurement_point: '',
+          location: '',
+          threshold: 0,
+          hysteresis: 0,
+          direction: 'up',
+          delay: 0,
+          relay_id: 0,
+          relay_flag: 0,
+        });
 
-      newAlarms.push({
-        config_id: newId,
-        sensor_identify_id: ch.sensorId,
-        channel_identify_id: ch.channelId,
-        Sensor: ch.sensorName,
-        Channel: ch.channelName,
-        Unit: ch.unit,
-        MeasurementPoint: '',
-        Location: '',
-        Threshold: '0',
-        Hysteresis: '0',
-        Direction: 'UP',
-        Delay: '0',
-        RelayId: '0',
-        RelayFlag: 0,
-      });
+        newAlarms.push({
+          config_id: newId,
+          sensor_identify_id: ch.sensorId,
+          channel_identify_id: ch.channelId,
+          Sensor: ch.sensorName,
+          Channel: ch.channelName,
+          Unit: ch.unit,
+          MeasurementPoint: '',
+          Location: '',
+          Threshold: '0',
+          Hysteresis: '0',
+          Direction: 'UP',
+          Delay: '0',
+          RelayId: '0',
+          RelayFlag: 0,
+        });
+      }
+    } catch (err) {
+      console.error('[Alarm.jsx] Failed to insert new alarm(s):', err);
+      showAlertDialog('Create Alarm Failed', `Failed to create alarm: ${err.message || err}`, 'err');
+      return;
     }
 
     logAlarmTable(dbRef.current, `ADD ALARM — inserted ${newAlarms.length} row(s)`);
@@ -273,6 +314,15 @@ const Alarm = () => {
   const isDbReady = dbStatus === 'ready';
   const isDbLoading = dbStatus === 'loading';
 
+  console.log('[Alarm.jsx] Render state:', {
+    noConfig,
+    dbStatus,
+    isDbReady,
+    alarmsCount: alarms.length,
+    sensorsCount: sensors.length,
+    allChannelsCount: allChannelsForSelection.length
+  });
+
   /* ─────────────────────────────────────────────────────────────────────────
      Render
      ───────────────────────────────────────────────────────────────────────── */
@@ -285,8 +335,24 @@ const Alarm = () => {
         </h2>
         <button
           className="add-sensor-btn"
-          disabled={!isDbReady}
-          onClick={() => setIsModalOpen(true)}
+          style={{
+            background: isDbReady ? '#00AB84' : '#C2C9D1',
+            color: isDbReady ? 'white' : '#86909C',
+            cursor: 'pointer'
+          }}
+          onClick={() => {
+            console.log('[Alarm.jsx] Clicked Create Alarm button. dbStatus:', dbStatus);
+            if (!isDbReady) {
+              console.warn('[Alarm.jsx] Create Alarm clicked but database is not ready. Status:', dbStatus);
+              showAlertDialog(
+                'Database Not Ready',
+                `Cannot create alarm: The alarm database is not ready (Status: ${dbStatus}). Please make sure a valid configuration package containing Alarm.db is active.`,
+                'warn'
+              );
+              return;
+            }
+            setIsModalOpen(true);
+          }}
         >
           <svg viewBox="0 0 16 16" fill="none">
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -481,6 +547,18 @@ const Alarm = () => {
         selectionMessage="Select channels to create alarms."
         showOperate={false}
         title="Select channels for alarm"
+      />
+
+      <CustomDialog
+        isOpen={dialogState.isOpen}
+        title={dialogState.title}
+        body={dialogState.body}
+        type={dialogState.type}
+        showConfirm={true}
+        showCancel={false}
+        confirmText="OK"
+        onConfirm={() => setDialogState(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setDialogState(prev => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

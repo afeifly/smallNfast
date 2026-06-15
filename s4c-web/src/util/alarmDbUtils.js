@@ -194,17 +194,29 @@ export function deleteAlarmConfig(db, configId) {
  * @param {string}   sensorId    sensor_identify_id (CreateTime from JSON)
  * @param {string}   sensorDesc  Human-readable sensor name
  */
-export function ensureSensorExists(db, sensorId, sensorDesc) {
+export function ensureSensorExists(db, sensorId, sensorDesc, sensorDbId = 0) {
   const exists = db.exec(
     `SELECT 1 FROM sensor WHERE sensor_identify_id = '${sensorId}' LIMIT 1`
   );
   if (!exists.length || !exists[0].values.length) {
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.run(
-      `INSERT INTO sensor (sensor_desc, sensor_identify_id, create_time)
-       VALUES (:desc, :id, :time)`,
-      { ':desc': sensorDesc, ':id': sensorId, ':time': now }
-    );
+    try {
+      db.run(
+        `INSERT INTO sensor (sensor_desc, sensor_identify_id, create_time, sensor_id)
+         VALUES (:desc, :id, :time, :sensor_id)`,
+        { ':desc': sensorDesc, ':id': sensorId, ':time': now, ':sensor_id': sensorDbId }
+      );
+    } catch (e) {
+      try {
+        db.run(
+          `INSERT INTO sensor (sensor_desc, sensor_identify_id, create_time)
+           VALUES (:desc, :id, :time)`,
+          { ':desc': sensorDesc, ':id': sensorId, ':time': now }
+        );
+      } catch (err) {
+        console.error('[alarmDbUtils] ensureSensorExists failed:', err);
+      }
+    }
   }
 }
 
@@ -251,4 +263,60 @@ export function ensureChannelExists(db, channelId, sensorId, channelDesc, channe
 export function flushAlarmDb(db, key, fileMap) {
   const data = db.export();
   fileMap.set(key, data);
+}
+
+/**
+ * Create a new empty Alarm.db database in-memory and return its Uint8Array export.
+ * Contains empty tables: alarm_config, sensor, channel.
+ *
+ * @returns {Promise<Uint8Array>}
+ */
+export async function createEmptyAlarmDb() {
+  const SQL = await getSqlJs();
+  const db = new SQL.Database();
+  
+  db.run(`
+    CREATE TABLE IF NOT EXISTS alarm_config (
+      config_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      sensor_identify_id TEXT NOT NULL,
+      channel_identify_id TEXT NOT NULL,
+      measurement_point TEXT NOT NULL,
+      location TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      hysteresis REAL NOT NULL,
+      direction TEXT NOT NULL,
+      delay INTEGER DEFAULT 0 NULL,
+      relay_id INTEGER DEFAULT 0 NULL,
+      relay_flag INTEGER DEFAULT 1 NULL,
+      relay_address INTEGER DEFAULT 0 NULL,
+      relay_ch_id INTEGER DEFAULT 0 NULL,
+      is_relay_permanent_off INTEGER DEFAULT 0 NULL,
+      is_deleted INTEGER DEFAULT 0 NULL,
+      update_time TEXT NULL
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sensor (
+      sensor_id INTEGER NOT NULL,
+      sensor_desc TEXT NOT NULL,
+      sensor_identify_id TEXT PRIMARY KEY NOT NULL,
+      create_time TEXT NULL
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS channel (
+      "'channel_id'notnull" INTEGER NULL,
+      channel_identify_id TEXT PRIMARY KEY NOT NULL,
+      sensor_identify_id TEXT NOT NULL,
+      channel_desc TEXT NOT NULL,
+      channel_unit TEXT NOT NULL,
+      create_time TEXT NULL
+    );
+  `);
+
+  const binary = db.export();
+  db.close();
+  return binary;
 }

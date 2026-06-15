@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { unzipConfigFile, parseSummary, calculateConfigHash, exportConfigPackage, generateSummary } from '../util/configFileUtils';
 import { useConfig } from '../context/ConfigContext';
+import { createEmptyAlarmDb } from '../util/alarmDbUtils';
 import iconAlertBig from '../assets/images/icon_alert_big.png';
 import iconSmallPlusCircle from '../assets/images/icon-small-plus-circle.png';
 import iconBtnDelete from '../assets/images/icon_btn_delete.png';
@@ -80,37 +81,91 @@ const ConfigManager = () => {
     }
   };
 
-  const handleCreateEmpty = () => {
-    const now = new Date().toISOString();
-    const emptySummary = {
-      'Config-Version': '1.0.0',
-      'Config-Date': now,
-      'Device-Type': 'S4C',
-      'Description': 'Empty Configuration',
-      'hash': ''
-    };
+  const handleCreateNew = async () => {
+    setLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const newSummary = {
+        'Config-Version': '1.0.0',
+        'Config-Date': now,
+        'Device-Type': 'S4C',
+        'Description': 'New Configuration',
+        'hash': '',
+        'version': '1.0.0',
+        'createtime': now.replace('T', ' ').substring(0, 19),
+        'reflect': {
+          '/config/Alarm.db': '/data/Alarm.db',
+          '/config/SUTO-SensorList.sutolist': '/data/configs/sensorlist/SUTO-SensorList.sutolist',
+          '/config/cfgGraphic.json': '/data/configs/sensorlist/cfgGraphic.json',
+          '/config/cfgLayout.json': '/data/configs/sensorlist/cfgLayout.json',
+          '/config/cfgLocation.json': '/data/configs/sensorlist/cfgLocation.json',
+          '/config/cfgOptionBoard.json': '/data/configs/sensorlist/cfgOptionBoard.json',
+          '/config/cfglogger.json': '/data/configs/logger/cfglogger.json',
+          '/system/backlight.json': '/data/backlight.json',
+          '/system/cfgcommunicatport.json': '/data/configs/system/cfgcommunicatport.json',
+          '/system/system_info.json': 'parser.system_info'
+        },
+        'fileversions': {
+          '/config/Alarm.db': '1.0.0',
+          '/config/SUTO-SensorList.sutolist': '1.0.0',
+          '/config/cfgGraphic.json': '1.0.0',
+          '/config/cfgLayout.json': '1.0.0',
+          '/config/cfgLocation.json': '1.0.0',
+          '/config/cfgOptionBoard.json': '1.0.0',
+          '/config/cfglogger.json': '1.0.0',
+          '/system/backlight.json': '1.0.0',
+          '/system/cfgcommunicatport.json': '1.0.0',
+          '/system/system_info.json': '1.0.0'
+        }
+      };
 
-    const emptyConfigs = {
-      'config/cfgcommunicatport.json': {
-        rs485m0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10 },
-        rs485s0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10, address: 1 },
-        retcp: { protocol: 3 }
-      },
-      'config/SUTO-SensorList.sutolist': { cfgsensor: [] }
-    };
+      const newConfigs = {
+        'config/SUTO-SensorList.sutolist': { cfgsensor: [], logger: null, alarm: null },
+        'config/cfgLocation.json': { Locations: [] },
+        'config/cfgOptionBoard.json': { cfgOptionBoard: [] },
+        'config/cfgLayout.json': { LayoutList: [] },
+        'config/cfgGraphic.json': [],
+        'config/cfglogger.json': { logger: null },
+        'system/backlight.json': { backlight_max: 10, timeout: 60, min_brightness: 0 },
+        'system/cfgcommunicatport.json': {
+          rs485m0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10 },
+          rs485s0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10, address: 1 },
+          retcp: { protocol: 3 }
+        },
+        'system/system_info.json': {
+          language_config: { language: 'en', local_id: 9 },
+          user_info_config: {
+            service_company_name: '-',
+            address: '-',
+            telephone: '-',
+            email: '-',
+            website: '-'
+          }
+        }
+      };
 
-    const fileMap = new Map();
-    const encoder = new TextEncoder();
-    fileMap.set('summary.yml', encoder.encode('')); // Placeholder, will be hashed on export
+      const fileMap = new Map();
+      const encoder = new TextEncoder();
+      fileMap.set('summary.yml', encoder.encode('')); // Placeholder, will be hashed on export
 
-    addConfig({
-      summary: emptySummary,
-      configs: emptyConfigs,
-      fileMap: fileMap,
-      fileName: `empty_config_${new Date().getTime()}.cfgf`,
-      fileSize: '0.1 KB',
-      importTime: new Date().toLocaleString()
-    });
+      // Create empty SQLite Alarm.db binary database
+      const alarmDbBytes = await createEmptyAlarmDb();
+      fileMap.set('config/Alarm.db', alarmDbBytes);
+
+      addConfig({
+        summary: newSummary,
+        configs: newConfigs,
+        fileMap: fileMap,
+        fileName: `new_config_${new Date().getTime()}.cfgf`,
+        fileSize: '0.1 KB',
+        importTime: new Date().toLocaleString()
+      });
+    } catch (err) {
+      console.error(err);
+      setError('Failed to create new configuration.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExport = async (config) => {
@@ -294,10 +349,10 @@ const ConfigManager = () => {
         <div style={{ display: 'flex', gap: '12px' }}>
           <button 
             className="add-sensor-btn"
-            onClick={handleCreateEmpty}
+            onClick={handleCreateNew}
             style={{ background: '#F2F3F5', color: '#4E5969' }}
           >
-            <span>Create Empty</span>
+            <span>Create New</span>
           </button>
           <input 
             type="file" 

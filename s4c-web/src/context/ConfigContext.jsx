@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { saveFileMap, loadFileMap, clearFileMap } from '../util/fileMapStorage';
+import { saveFileMap, saveOneFileMap, loadFileMap, clearFileMap } from '../util/fileMapStorage';
 
 const ConfigContext = createContext();
 
@@ -35,25 +35,39 @@ export const ConfigProvider = ({ children }) => {
     return { activeConfigId: null, configList: [] };
   });
 
+  const [restored, setRestored] = useState(false);
+
   // Re-attach fileMaps from IndexedDB on startup
   useEffect(() => {
     let cancelled = false;
+    console.log('[ConfigContext] Startup: loadFileMap initiated...');
     loadFileMap()
       .then((allFileMaps) => {
-        if (cancelled || !allFileMaps) return;
+        if (cancelled) return;
+        if (!allFileMaps) {
+          console.warn('[ConfigContext] Startup: loadFileMap returned null/undefined');
+          setRestored(true);
+          return;
+        }
+        
+        console.log('[ConfigContext] Startup: loadFileMap resolved. Store keys:', Object.keys(allFileMaps));
         
         setState(prev => {
           const newList = prev.configList.map(item => {
             if (allFileMaps[item.id]) {
+              console.log(`[ConfigContext] Startup: Restored fileMap for config "${item.fileName}" (ID: ${item.id}). fileMap keys:`, Array.from(allFileMaps[item.id].keys()));
               return { ...item, fileMap: allFileMaps[item.id] };
             }
+            console.warn(`[ConfigContext] Startup: No fileMap found in IndexedDB for config "${item.fileName}" (ID: ${item.id})`);
             return item;
           });
           return { ...prev, configList: newList };
         });
+        setRestored(true);
       })
       .catch((err) => {
-        console.warn('[ConfigContext] Could not restore fileMaps from IndexedDB:', err);
+        console.error('[ConfigContext] Startup: Could not restore fileMaps from IndexedDB:', err);
+        setRestored(true);
       });
 
     return () => { cancelled = true; };
@@ -72,16 +86,29 @@ export const ConfigProvider = ({ children }) => {
       // Clear old legacy key if it exists
       localStorage.removeItem('s4c_config_data');
 
-      // 2. Save fileMaps to IndexedDB
+      // 2. Save fileMaps to IndexedDB ONLY if we have finished restoring them from IndexedDB!
+      if (!restored) {
+        console.log('[ConfigContext] Persist: Skipping IndexedDB save because startup restore is not finished yet.');
+        return;
+      }
+
       const fileMapCollection = {};
       state.configList.forEach(item => {
-        if (item.fileMap) fileMapCollection[item.id] = item.fileMap;
+        if (item.fileMap) {
+          fileMapCollection[item.id] = item.fileMap;
+        }
       });
-      saveFileMap(fileMapCollection).catch((err) =>
-        console.warn('[ConfigContext] Failed to save fileMaps to IndexedDB:', err)
-      );
+      
+      console.log('[ConfigContext] Persist: Saving fileMaps to IndexedDB for config IDs:', Object.keys(fileMapCollection));
+      saveFileMap(fileMapCollection)
+        .then(() => {
+          console.log('[ConfigContext] Persist: Successfully saved fileMaps.');
+        })
+        .catch((err) => {
+          console.error('[ConfigContext] Persist: Failed to save fileMaps to IndexedDB:', err);
+        });
     }
-  }, [state]);
+  }, [state, restored]);
 
   // Derived: Current active configData (for backward compatibility)
   const configData = useMemo(() => {
@@ -91,17 +118,31 @@ export const ConfigProvider = ({ children }) => {
   // Updates the ACTIVE config
   const setConfigData = (newData) => {
     setState(prev => {
+      const activeConfig = prev.configList.find(c => c.id === prev.activeConfigId) || null;
+      
       if (!prev.activeConfigId) {
         // If no active, and we are setting data, create a new one
+        const resolvedData = typeof newData === 'function' ? newData(null) : newData;
         const newId = `cfg-${Date.now()}`;
         return {
           activeConfigId: newId,
-          configList: [...prev.configList, { ...newData, id: newId }]
+          configList: [...prev.configList, { ...resolvedData, id: newId }]
         };
       }
-      // Update existing active config
+
+      // If we have an active config:
+      const resolvedData = typeof newData === 'function' ? newData(activeConfig) : newData;
+      
+      // Merge with the existing activeConfig in state to prevent losing fields like fileMap
+      const updatedConfig = {
+        ...activeConfig,
+        ...resolvedData,
+        fileMap: resolvedData.fileMap || activeConfig.fileMap,
+        id: activeConfig.id // ensure ID is preserved
+      };
+
       const newList = prev.configList.map(c => 
-        c.id === prev.activeConfigId ? { ...newData, id: c.id } : c
+        c.id === prev.activeConfigId ? updatedConfig : c
       );
       return { ...prev, configList: newList };
     });
@@ -119,6 +160,10 @@ export const ConfigProvider = ({ children }) => {
       }
       return { activeConfigId: nextActive, configList: newList };
     });
+    // Immediately remove this config's fileMap from IndexedDB
+    clearFileMap(id).catch(e =>
+      console.error(`[ConfigContext] deleteConfig: Failed to clear fileMap for "${id}":`, e)
+    );
   };
 
   const addConfig = (config) => {
@@ -128,6 +173,14 @@ export const ConfigProvider = ({ children }) => {
       activeConfigId: newId,
       configList: [...prev.configList, item]
     }));
+    // *** Critical: save fileMap to IndexedDB immediately, bypassing the restored guard ***
+    // The persist effect may be blocked by restored=false, so we save directly here.
+    if (item.fileMap) {
+      console.log(`[ConfigContext] addConfig: Immediately saving fileMap to IndexedDB for "${item.fileName}" (ID: ${newId})`);
+      saveOneFileMap(newId, item.fileMap).catch(e =>
+        console.error(`[ConfigContext] addConfig: Failed to save fileMap for "${newId}":`, e)
+      );
+    }
     return newId;
   };
 

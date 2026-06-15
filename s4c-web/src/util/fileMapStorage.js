@@ -26,6 +26,29 @@ function openDb() {
 }
 
 /**
+ * Save a SINGLE fileMap entry to IndexedDB immediately.
+ * This is the preferred method — call it directly in addConfig/deleteConfig/alarm flush.
+ * @param {string} id - The config ID (key).
+ * @param {Map<string, Uint8Array>} fileMap - The fileMap to persist.
+ */
+export async function saveOneFileMap(id, fileMap) {
+  if (!id || !fileMap) return;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const pairs = Array.from(fileMap.entries());
+    console.log(`[fileMapStorage] saveOneFileMap: Writing ${pairs.length} entries for ID "${id}"`);
+    store.put(pairs, id);
+    tx.oncomplete = () => {
+      console.log(`[fileMapStorage] saveOneFileMap: Committed to IndexedDB for ID "${id}"`);
+      resolve();
+    };
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
  * Save a collection of fileMaps to IndexedDB.
  * @param {Object} fileMapCollection { [configId: string]: Map<string, Uint8Array> }
  */
@@ -37,8 +60,6 @@ export async function saveFileMap(fileMapCollection) {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     
-    // Clear old ones first to avoid orphaned data? 
-    // Actually, let's just put the new ones.
     Object.entries(fileMapCollection).forEach(([id, fileMap]) => {
       const pairs = Array.from(fileMap.entries());
       store.put(pairs, id);
@@ -49,32 +70,30 @@ export async function saveFileMap(fileMapCollection) {
   });
 }
 
-/**
- * Load all fileMaps from IndexedDB.
- * @returns {Promise<Object>} { [configId: string]: Map<string, Uint8Array> }
- */
 export async function loadFileMap() {
   const db = await openDb();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.getAll();
-    const keysReq = store.getAllKeys();
+    const req = store.openCursor();
+    const results = {};
 
-    let results = {};
-    
-    keysReq.onsuccess = () => {
-      const keys = keysReq.result;
-      req.onsuccess = () => {
-        const allPairs = req.result;
-        keys.forEach((id, index) => {
-          results[id] = new Map(allPairs[index]);
-        });
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        if (cursor.value) {
+          results[cursor.key] = new Map(cursor.value);
+          console.log(`[fileMapStorage] loadFileMap: Loaded ${cursor.value.length} entries for ID "${cursor.key}"`);
+        }
+        cursor.continue();
+      } else {
+        console.log('[fileMapStorage] loadFileMap: Done. Total keys found:', Object.keys(results));
         resolve(results);
-      };
+      }
     };
-    
+
+    req.onerror = (e) => reject(e.target.error);
     tx.onerror = (e) => reject(e.target.error);
   });
 }

@@ -11,38 +11,83 @@ const HoldingRegister = () => {
   const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
   const locationsArray = configData?.configs?.[locationConfigPath]?.Locations || [];
 
-  // Extract all channels from all sensors
-  const allChannels = [];
-  (currentConfig?.cfgsensor || []).forEach(sensor => {
-    (sensor.cfgchannel || []).forEach((ch) => {
-      // Find location and meapoint for this channel
-      let locationText = '---';
-      const createTimeStr = String(ch.CreateTime);
-      
-      if (Array.isArray(locationsArray)) {
-        for (const locObj of locationsArray) {
-          const matchedPoint = (locObj.meapoints || []).find(pt => 
-            Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
-          );
-          if (matchedPoint) {
-            locationText = `${matchedPoint.location}/${matchedPoint.meapoint}`;
-            break;
-          }
+  // Extract option board (analog sensor) configuration
+  const optionBoardConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const optionBoardItems = configData?.configs?.[optionBoardConfigPath]?.cfgOptionBoard || [];
+
+  // Intermediate lists to collect channels by category
+  const sutoChannels = [];
+  const thirdPartyChannels = [];
+  const analogChannels = [];
+  const virtualChannels = [];
+
+  const getChannelLocation = (createTimeStr) => {
+    let locationText = '---';
+    if (Array.isArray(locationsArray)) {
+      for (const locObj of locationsArray) {
+        const matchedPoint = (locObj.meapoints || []).find(pt => 
+          Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
+        );
+        if (matchedPoint) {
+          locationText = `${matchedPoint.location}/${matchedPoint.meapoint}`;
+          break;
         }
       }
+    }
+    return locationText;
+  };
 
-      allChannels.push({
+  // Group sensors in SUTO-SensorList
+  (currentConfig?.cfgsensor || []).forEach(sensor => {
+    (sensor.cfgchannel || []).forEach((ch) => {
+      const locationText = getChannelLocation(String(ch.CreateTime));
+      const channelData = {
         location: locationText,
         sensorDescription: sensor.Description || sensor.Name || '---',
         channelDescription: ch.ChannelDescription || '---',
-        address: ch.channelid,
         type: ch.ValueType || 8,
         unit: ch.UnitInASCII,
         resolution: ch.Resolution,
         rw: ch.rw || 0
-      });
+      };
+
+      if (sensor.isVirtualSensor === true) {
+        virtualChannels.push(channelData);
+      } else if (sensor.isSuto === true) {
+        sutoChannels.push(channelData);
+      } else {
+        thirdPartyChannels.push(channelData);
+      }
     });
   });
+
+  // Extract Option Board channels (analog sensor)
+  optionBoardItems.forEach(item => {
+    const locationText = getChannelLocation(String(item.CreateTime));
+    analogChannels.push({
+      location: locationText,
+      sensorDescription: item.SensorDescription || '---',
+      channelDescription: item.ChannelDescription || '---',
+      type: item.ValueType || 8,
+      unit: item.PreDefineUnit || item.UnitInASCII || '---',
+      resolution: item.Resolution,
+      rw: item.rw || 0
+    });
+  });
+
+  // Combine channels in requested order: suto sensor, 3-Party senser, analog sensor, virtual channel
+  const orderedChannels = [
+    ...sutoChannels,
+    ...thirdPartyChannels,
+    ...analogChannels,
+    ...virtualChannels
+  ];
+
+  // Assign holding register value: every channel from 0 add + 2 n (0, 2, 4, 6, ...)
+  const allChannels = orderedChannels.map((ch, idx) => ({
+    ...ch,
+    address: idx * 2
+  }));
 
   const getResolutionText = (res) => {
     const resolutions = {

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
 import CustomDialog from './CustomDialog';
 import '../pages/Graphic.css';
@@ -181,6 +182,20 @@ const ChannelSelectModal = ({
       />
     </div>
   );
+};
+
+
+ChannelSelectModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSettingClick: PropTypes.func,
+  onConfirm: PropTypes.func,
+  allChannels: PropTypes.array,
+  initialSelectedIds: PropTypes.array,
+  maxLimit: PropTypes.number,
+  selectionMessage: PropTypes.string,
+  showOperate: PropTypes.bool,
+  title: PropTypes.string
 };
 
 export default ChannelSelectModal;

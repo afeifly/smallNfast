@@ -7,6 +7,7 @@ import { ConfigProvider, useConfig } from './ConfigContext';
 // Mock fileMapStorage
 vi.mock('../util/fileMapStorage', () => ({
   saveFileMap: vi.fn(() => Promise.resolve()),
+  saveOneFileMap: vi.fn(() => Promise.resolve()),
   loadFileMap: vi.fn(() => Promise.resolve({})),
   clearFileMap: vi.fn(() => Promise.resolve()),
 }));

@@ -58,6 +58,12 @@
             </el-button>
           </el-tooltip>
 
+          <el-tooltip v-if="isAdmin" content="Reset Password" placement="top">
+            <el-button link type="warning" @click="openResetPasswordDialog(scope.row)">
+              <el-icon><Lock /></el-icon>
+            </el-button>
+          </el-tooltip>
+
           <el-tooltip v-if="canDelete(scope.row)" content="Delete" placement="top">
             <el-button link type="danger" @click="handleDelete(scope.row)">
               <el-icon><Delete /></el-icon>
@@ -233,6 +239,21 @@
         </el-table>
       </div>
     </el-dialog>
+
+    <!-- Reset Password Dialog (Admin-only) -->
+    <el-dialog v-model="showResetDialog" :title="'Reset Password - ' + selectedUser?.username" width="450px">
+      <el-form label-width="120px">
+        <el-form-item label="New Password" required>
+          <el-input v-model="resetPasswordVal" type="password" placeholder="Enter new password" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showResetDialog = false">Cancel</el-button>
+          <el-button type="danger" :disabled="!resetPasswordVal" @click="confirmResetPassword">Reset Password</el-button>
+        </span>
+      </template>
+    </el-dialog>
 </template>
 
 <script setup>
@@ -240,7 +261,7 @@ import { ref, onMounted, computed } from 'vue'
 import api from '../api/axios'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, Delete, Folder, Key, DataAnalysis } from '@element-plus/icons-vue'
+import { Edit, Delete, Folder, Key, DataAnalysis, Lock } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
@@ -255,6 +276,7 @@ const showProjectDialog = ref(false)
 const isEditing = ref(false)
 const selectedUser = ref(null)
 const selectedProjects = ref([])
+const resetPasswordVal = ref('')
 
 const costCenters = ref([])
 const showCostCenterDialog = ref(false)
@@ -382,10 +404,43 @@ const openCreateDialog = () => {
   showCreateDialog.value = true
 }
 
+const showResetDialog = ref(false)
+
 const openEditDialog = (user) => {
   isEditing.value = true
   form.value = { ...user, password: '' }
   showCreateDialog.value = true
+}
+
+const openResetPasswordDialog = (user) => {
+  selectedUser.value = user
+  resetPasswordVal.value = ''
+  showResetDialog.value = true
+}
+
+const confirmResetPassword = () => {
+  if (resetPasswordVal.value.length < 6 || resetPasswordVal.value.length > 16) {
+    ElMessage.error('Password must be between 6 and 16 characters')
+    return
+  }
+  
+  ElMessageBox.confirm(
+    `Are you sure you want to force-reset the password for user ${selectedUser.value?.username}?`,
+    'Double Confirmation',
+    {
+      confirmButtonText: 'Yes, Reset',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    }
+  ).then(async () => {
+    try {
+      await api.put(`/users/${selectedUser.value.id}/reset-password`, { new_password: resetPasswordVal.value })
+      ElMessage.success(`Password for ${selectedUser.value.username} has been reset successfully`)
+      showResetDialog.value = false
+    } catch (error) {
+      ElMessage.error('Failed to reset password: ' + (error.response?.data?.detail || error.message))
+    }
+  }).catch(() => {})
 }
 
 const submitUser = async () => {

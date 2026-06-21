@@ -18,6 +18,9 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(min_length=6, max_length=16)
 
+class PasswordResetAdmin(BaseModel):
+    new_password: str = Field(min_length=6, max_length=16)
+
 @router.get("/", response_model=List[User])
 def read_users(
     session: Session = Depends(get_session),
@@ -170,6 +173,32 @@ def change_password(
     current_user.password_hash = get_password_hash(password_data.new_password)
     session.add(current_user)
     session.commit()
+    return {"ok": True}
+
+@router.put("/{user_id}/reset-password")
+def admin_reset_password(
+    user_id: int,
+    reset_data: PasswordResetAdmin,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
+):
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    db_user.password_hash = get_password_hash(reset_data.new_password)
+    session.add(db_user)
+    session.commit()
+    
+    # Log activity
+    log = ActivityLog(
+        user_id=current_user.id,
+        action="RESET_PASSWORD",
+        details=f"Admin force-reset password for user {db_user.username}"
+    )
+    session.add(log)
+    session.commit()
+    
     return {"ok": True}
 
 @router.get("/me/compliance")

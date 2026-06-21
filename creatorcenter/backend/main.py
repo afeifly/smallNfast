@@ -31,12 +31,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(projects_router, prefix="/api")
-app.include_router(segments_router, prefix="/api")
-app.include_router(translations_router, prefix="/api")
-app.include_router(export_router, prefix="/api")
-app.include_router(keys_router, prefix="/api")
-app.include_router(images_router, prefix="/api")
+from fastapi import Depends
+from backend.router_auth import router as auth_router, verify_session
+
+app.include_router(auth_router, prefix="/api")
+app.include_router(projects_router, prefix="/api", dependencies=[Depends(verify_session)])
+app.include_router(segments_router, prefix="/api", dependencies=[Depends(verify_session)])
+app.include_router(translations_router, prefix="/api", dependencies=[Depends(verify_session)])
+app.include_router(export_router, prefix="/api", dependencies=[Depends(verify_session)])
+app.include_router(keys_router, prefix="/api", dependencies=[Depends(verify_session)])
+app.include_router(images_router, prefix="/api", dependencies=[Depends(verify_session)])
+
 
 # Serve frontend static files in production
 if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():

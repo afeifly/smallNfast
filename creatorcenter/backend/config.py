@@ -48,3 +48,7 @@ TRANSLATION_API_KEY = os.getenv("TRANSLATION_API_KEY", "b5adf2ddfcmsh9d2b1e6e004
 TRANSLATION_API_URL = os.getenv("TRANSLATION_API_URL", "https://openl-translate.p.rapidapi.com/translate/bulk")
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.5")
+
+APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
+JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-me")
+

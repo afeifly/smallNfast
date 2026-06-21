@@ -1,78 +1,31 @@
-# Rule 30-testing-standards.md: Automated Testing Guidelines (Timesheet Lite)
+# Rule: Testing Standards
 
-This rule governs the automated testing phase. When writing unit, integration, or store tests for either the FastAPI backend or the Vue 3 frontend, the AI **must** adhere to these testing configurations.
-
----
-
-## 1. Trigger Scenario & Activation
-- **Trigger**: When the AI is asked to write, refactor, or debug test suites, or create new test files (e.g., files matching `test_*.py`, `*.spec.js`, `*.test.js` or located under `tests/` directories).
-- **Activation Mode**: Target Match (triggered dynamically for test contexts).
+All agents must follow these testing standards.
 
 ---
 
-## 2. Backend Testing Guidelines (Python / FastAPI / SQLModel)
-
-- **Test Runner**: Use `pytest`.
-- **Database Isolations**:
-  - Test suites must use a clean, isolated SQLite test database (in-memory or distinct test file) separate from development database (`database.db`).
-  - **Transaction Rollback Pattern**: Implement a pytest fixture that initiates a transaction block, provides a session, and rolls back the transaction (`session.rollback()`) after each test runs. This guarantees test isolation and prevents pollution between test cases.
-- **FastAPI Endpoint Testing**:
-  - Utilize `fastapi.testclient.TestClient` for API integration testing.
-  - Mock authenticated sessions by overriding dependencies (e.g., `get_current_user`, `get_current_admin_user`) using `app.dependency_overrides`.
-
-### Backend Test Structure Example:
-```python
-import pytest
-from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
-from app.main import app
-from app.database import get_session
-
-# Setup isolated database engine
-@pytest.fixture(name="session")
-def session_fixture():
-    engine = create_engine("sqlite:///:memory:")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
-
-@pytest.fixture(name="client")
-def client_fixture(session: Session):
-    def get_session_override():
-        return session
-    app.dependency_overrides[get_session] = get_session_override
-    client = TestClient(app)
-    yield client
-    app.dependency_overrides.clear()
-```
+## 1. Testing Stack & Environment
+* **Backend:** Use `pytest` and `httpx` (`AsyncClient`/`TestClient`) for integration testing of FastAPI routers. Database instances in tests must be mocked or run on in-memory sqlite engine.
+* **Frontend:** Use `Vitest` and `@vue/test-utils` for unit testing. End-to-end (E2E) testing should use `Playwright` or `Cypress` if needed.
+* **Target Coverage:** Maintain a minimum of **80% code coverage** for core domains (e.g., timesheet limit checking services, password hashing logic, and helper functions).
 
 ---
 
-## 3. Frontend Testing Guidelines (Vue 3 / Vitest / Pinia)
+## 2. Test File Naming
+* **Backend:** Name test files with `test_` prefix (e.g. `tests/test_timesheets.py`).
+* **Frontend:** Name test files with `.spec.js` or `.test.js` extension matching component names (e.g. `components/__tests__/TimesheetTable.spec.js`).
 
-- **Test Runner**: Use `vitest` for fast Unit testing.
-- **Component Testing**:
-  - Use `@vue/test-utils` to mount Vue components.
-  - Stub Element Plus UI elements if necessary, or verify state properties using props, triggers, and events.
-- **Store Testing (Pinia)**:
-  - When testing Pinia stores (like `auth` store), always invoke `setActivePinia(createPinia())` before each test to ensure state isolation.
-  - Test action triggers such as authentication storage, token decoding, and role matching.
+---
 
-### Frontend Test Structure Example:
-```javascript
-import { setActivePinia, createPinia } from 'pinia'
-import { describe, beforeEach, it, expect, vi } from 'vitest'
-import { useAuthStore } from '../stores/auth'
+## 3. Mock Configurations
+* **Web Workers:** Mock worker message exchanges using fake event emitters (`postMessage`, `onmessage`).
+* **External Services:** Always mock HTTP requests to external email services or SMTPSettings connections to guarantee tests can run completely offline.
+* **Databases:** Implement database fixtures with auto-rollback transactions to isolate test execution states.
 
-describe('Auth Store Test', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-  })
+---
 
-  it('updates token and decodes user role upon login', async () => {
-    const store = useAuthStore()
-    // Mock Axios client API post request
-    // Verify store states update accordingly
-  })
-})
-```
+## 4. Verification Steps
+Before considering a feature complete, run the verification scripts:
+- **Backend:** `pytest`
+- **Frontend:** `npm run test:unit`
+Verify that no errors or warning diagnostics are thrown.

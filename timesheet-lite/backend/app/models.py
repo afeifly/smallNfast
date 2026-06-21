@@ -18,7 +18,20 @@ class WorkDayType(str, Enum):
     OFF = "off"
     HALF_OFF = "half_off"
 
+class WorkDaySetting(SQLModel, table=True):
+    __tablename__ = "workdaysetting"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    description: Optional[str] = None
+    is_default: bool = Field(default=False)
+
+class WorkDaySettingUserLink(SQLModel, table=True):
+    __tablename__ = "workdaysettinguserlink"
+    setting_id: int = Field(foreign_key="workdaysetting.id", primary_key=True)
+    user_id: int = Field(foreign_key="user.id", primary_key=True)
+
 class WorkDay(SQLModel, table=True):
+    setting_id: int = Field(foreign_key="workdaysetting.id", primary_key=True)
     date: DtDate = Field(primary_key=True)
     day_type: WorkDayType = Field(default=WorkDayType.WORK)
     remark: Optional[str] = None
@@ -33,6 +46,13 @@ class SMTPSettings(SQLModel, table=True):
     checking_service_enabled: bool = Field(default=False)
 
 
+class CostCenter(SQLModel, table=True):
+    __tablename__ = "costcenter"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    workday_setting_id: Optional[int] = Field(default=None, foreign_key="workdaysetting.id")
+
+
 class UserProjectLink(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, foreign_key="user.id", primary_key=True)
     project_id: Optional[int] = Field(default=None, foreign_key="project.id", primary_key=True)
@@ -42,7 +62,7 @@ class User(SQLModel, table=True):
     username: str = Field(index=True, unique=True)
     email: Optional[str] = None
     full_name: Optional[str] = None
-    cost_center: Optional[str] = None
+    cost_center: Optional[str] = Field(default=None, foreign_key="costcenter.name")
     remark: Optional[str] = None
     start_date: Optional[DtDate] = None
     end_date: Optional[DtDate] = None

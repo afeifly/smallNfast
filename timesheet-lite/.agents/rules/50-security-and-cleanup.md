@@ -1,39 +1,22 @@
-# Rule 50-security-and-cleanup.md: Code Security & Database Integrity (Timesheet Lite)
+# Rule: Security Policies & Memory Cleanup
 
-This rule governs code safety, credentials management, and database query security. AI and developers **must** strictly adhere to these guidelines to prevent credential leaks, SQL injection, and database locking issues.
-
----
-
-## 1. Trigger Scenario & Activation
-- **Trigger**: When editing sensitive configurations, backend route validators, database models, or authentication handlers.
-- **Activation Mode**: Always On (acts as a global guardrail for all code generation).
+All code, configurations, and scripts must follow these security and cleanup guidelines.
 
 ---
 
-## 2. Credentials & Environment Variable Safety
-- **No Hardcoded Secrets**: Under no circumstances should passwords, SMTP credentials, JWT secret keys, or security tokens be hardcoded in the codebase.
-- **Environment Management**: Secrets must be loaded dynamically using environment variables or a `.env` file (utilizing Pydantic `BaseSettings` or `os.getenv`).
-- **Git Safety Check**: Ensure that `.gitignore` contains exclusions for `.env`, `*.local`, `venv/`, and `.venv/` to prevent committing configuration secrets.
+## 1. Secrets Management
+* **No Hardcoded Credentials:** Never store SMTP passwords, database keys, session secrets, or JWT secret keys directly in the codebase.
+* **Environment Variables:** Access all secret and dynamic configurations through environment variables or backend configuration layers (e.g. `pydantic-settings` or `os.getenv`). Keep template files (`.env.example`) updated.
 
 ---
 
-## 3. Database Security & Injection Prevention (SQLModel)
-- **Use parameter bindings**: Always query database tables using SQLModel ORM statements (`select(Model).where(Model.attribute == value)`).
-- **No String Concatenation in Queries**: Never use raw string formatting or f-strings to concatenate inputs directly into database queries (e.g., `text(f"SELECT * FROM user WHERE username = '{username}'")`), as this exposes the system to SQL Injection attacks.
-- **Safe Raw Executions**: If raw SQL execution is required, parameterize the inputs:
-  ```python
-  # Safe SQL Parameter Binding
-  session.exec(text("SELECT * FROM user WHERE username = :name"), {"name": username})
-  ```
+## 2. Input Sanitation & Path Security
+* **Sanitize Inputs:** Validate user-supplied names, comments, and IDs to prevent injection attacks (SQL injection, XSS). Use parametrized SQL queries via SQLModel.
+* **Prevent Directory Traversal:** When handling backup file exports or manual database restore paths, check that the paths stay strictly within the designated backup folder. Do not allow users to specify absolute system paths or path traversal syntax (`../`).
 
 ---
 
-## 4. Connection Disposal & Backup Restores
-- **Engine Disposal**: When executing low-level sqlite operations (such as restoring database files or truncating files), you must first dispose of the SQLAlchemy engine (`engine.dispose()`) to close all open socket connections. This prevents file locking errors on SQLite.
-- **WAL Invariant**: After replacing/restoring database files under WAL (Write-Ahead Logging) mode, you must explicitly search for and remove any associated `.db-wal` or `.db-shm` files to prevent SQLite from applying stale logs to the newly restored file.
-
----
-
-## 5. Passwords & Tokens Validation
-- **Secure Password Hashing**: Passwords must be hashed using a strong hashing algorithm (Argon2 or bcrypt). Plain text comparisons are strictly prohibited.
-- **JWT Verification**: JWT verification endpoints must check token expiration (`exp` claim), verify signature integrity using the configured environment secret, and confirm the subject claims before authorizing requests.
+## 3. Concurrency & Worker Cleanup
+* **Worker Termination:** In the frontend, always terminate active Web Workers (`worker.terminate()`) when their lifecycle is complete or when the initiating Vue components are unmounted.
+* **Tear Down Listeners:** Clean up global event listeners, scroll listeners, and timers (`clearInterval`, `clearTimeout`) in the Vue `onBeforeUnmount` lifecycle hooks to avoid memory leaks.
+* **Scheduler Shutdown:** In the backend, ensure the APScheduler background thread-pool is cleanly stopped when the FastAPI server receives a shutdown signal.

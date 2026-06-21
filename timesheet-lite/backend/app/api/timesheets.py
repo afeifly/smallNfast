@@ -3,8 +3,22 @@ from datetime import date, timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, func
 from app.database import get_session
-from app.models import Timesheet, User, ActivityLog, Role, Project, WorkDay, WorkDayType
+from app.models import Timesheet, User, ActivityLog, Role, Project, WorkDay, WorkDayType, WorkDaySetting, CostCenter
 from app.api.deps import get_current_user
+
+def get_workday_setting_id_for_user(session: Session, user_id: int) -> int:
+    default_setting = session.exec(select(WorkDaySetting).where(WorkDaySetting.is_default == True)).first()
+    default_id = default_setting.id if default_setting else 1
+    
+    user = session.get(User, user_id)
+    if not user or not user.cost_center:
+        return default_id
+        
+    cc = session.exec(select(CostCenter).where(CostCenter.name == user.cost_center)).first()
+    if cc and cc.workday_setting_id is not None:
+        return cc.workday_setting_id
+        
+    return default_id
 
 router = APIRouter()
 
@@ -64,8 +78,14 @@ def upsert_timesheet_logic(session: Session, timesheet: Timesheet, current_user:
     start_of_week = timesheet.date - timedelta(days=timesheet.date.weekday())
     end_of_week = start_of_week + timedelta(days=6)
     
+    setting_id = get_workday_setting_id_for_user(session, timesheet.user_id)
+    
     # Check for OFF day
-    current_workday = session.get(WorkDay, timesheet.date)
+    current_workday = session.exec(
+        select(WorkDay)
+        .where(WorkDay.setting_id == setting_id)
+        .where(WorkDay.date == timesheet.date)
+    ).first()
     if current_workday and current_workday.day_type == WorkDayType.OFF:
         raise HTTPException(status_code=400, detail="Cannot log work on an off day")
     
@@ -74,6 +94,7 @@ def upsert_timesheet_logic(session: Session, timesheet: Timesheet, current_user:
     
     week_exceptions = session.exec(
         select(WorkDay)
+        .where(WorkDay.setting_id == setting_id)
         .where(WorkDay.date >= start_of_week)
         .where(WorkDay.date <= end_of_week)
     ).all()
@@ -231,9 +252,12 @@ def batch_create_timesheet(
     for start_of_week, batch_updates in updates_by_week.items():
         end_of_week = start_of_week + timedelta(days=6)
         
+        setting_id = get_workday_setting_id_for_user(session, target_user_id)
+        
         # 1. Fetch WorkDay Exceptions for this week
         week_exceptions = session.exec(
             select(WorkDay)
+            .where(WorkDay.setting_id == setting_id)
             .where(WorkDay.date >= start_of_week)
             .where(WorkDay.date <= end_of_week)
         ).all()

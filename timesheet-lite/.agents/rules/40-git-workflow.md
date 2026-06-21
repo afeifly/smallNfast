@@ -1,71 +1,48 @@
-# Rule 40-git-workflow.md: Git Workflow & Commit Guidelines (Timesheet Lite)
+# Rule: Git Workflow & Conventional Commits
 
-This rule governs the Git management phase. When the AI is asked to draft commit messages, organize branch checkouts, or write Pull Request descriptions, it **must** strictly apply these guidelines.
-
----
-
-## 1. Trigger Scenario & Activation
-- **Trigger**: When performing git commits, staging code, checking out branches, or formatting pull requests.
-- **Activation Mode**: Target Match (loaded during git operations and task finalization).
+All changes proposed, committed, or pushed to this repository must follow these Git standards.
 
 ---
 
-## 2. Commit Message Standard (Conventional Commits)
-All commit messages must strictly follow the **Conventional Commits** specification:
+## 1. Branch Naming Scheme
+* **Feature Branches:** `feature/[feature-name]`
+* **Bug Fixes:** `bugfix/[bug-name]`
+* **Hot Fixes:** `hotfix/[description]`
+* **Refactoring:** `refactor/[description]`
 
+---
+
+## 2. Commit Message Structure
+We enforce **Conventional Commits**. All commits must be prefixed with one of the following lowercase tags:
+* `feat`: A new user feature
+* `fix`: A bug fix
+* `docs`: Documentation only changes
+* `style`: Styling changes (formatting, white-space, missing semi-colons, etc.)
+* `refactor`: A code change that neither fixes a bug nor adds a feature
+* `perf`: A code change that improves performance
+* `test`: Adding missing tests or correcting existing tests
+* `build`: Changes that affect the build system or external dependencies
+* `ci`: Changes to our CI configuration files and scripts
+* `chore`: Other changes that don't modify src or test files
+
+### Example Commit Format:
 ```
-<type>(<scope>): <description>
+feat(timesheets): add dynamic weekly limits validation
+
+Implemented check against WorkDay exceptions to calculate max allowed hours.
 ```
 
-### A. Acceptable Types
-- `feat`: A new feature (e.g. adding regional workday overrides).
-- `fix`: A bug fix (e.g. correcting a timesheet validation limit calculation).
-- `refactor`: A code change that neither fixes a bug nor adds a feature.
-- `docs`: Documentation-only adjustments (such as editing PRD or rule files).
-- `style`: Visual formatting, spacing, semicolons, or CSS updates.
-- `test`: Adding or correcting automated tests.
-- `chore`: Auxiliary build configurations, dependency installs, or folder setups.
-
-### B. Acceptable Scopes
-- `auth` (JWT/login/encryption)
-- `timesheets` (logging/upsert/verify)
-- `reports` (weekly summaries/excel exporting)
-- `backups` (vacuum backups/restore/cleanup)
-- `workdays` (exceptions calendar)
-- `users` / `projects` / `config`
-
-### C. Description Guidelines
-- Use the imperative mood (e.g. "add endpoint" instead of "added endpoint").
-- Start with a lowercase letter.
-- Do not add a period (`.`) at the end of the commit description.
-
-*Example*: `feat(timesheets): add support for regional holiday overrides`
-
 ---
 
-## 3. Branch Naming Conventions
-When checking out branches for new development or hotfixes, enforce this structure:
-
-| Branch Type | Syntax | Example |
-| :--- | :--- | :--- |
-| **New Features** | `feature/<short-feature-name>` | `feature/multi-region-holidays` |
-| **Bug Fixes** | `bugfix/<issue-description>` | `bugfix/fix-hours-calculation` |
-| **Production Hotfixes** | `hotfix/<quick-fix-description>` | `hotfix/restore-wal-locking` |
-
----
-
-## 4. Pull Request Description Template
-When drafting Pull Requests, the AI should generate a summary using the following layout:
-
+## 3. Pull Request (PR) Description Template
+When opening a PR, populate the description with the following outline:
 ```markdown
-## Description
-*A concise summary of what was accomplished and the rationale behind the changes.*
+## Summary
+*Briefly describe the purpose of the PR and the main changes.*
 
-## Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Refactor / Chore
+## Related Issues/PRDs
+*Link the feature PRD from docs/prd/ or issue number.*
 
-## Verification & Testing
-- *Detail how the changes were verified (pytest suites run, UI manual verification).*
+## Verification Performed
+*What tests were run, and how can the reviewer manual-verify this behavior?*
 ```

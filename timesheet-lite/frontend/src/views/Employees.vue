@@ -505,7 +505,7 @@ const saveProjectAssignments = async () => {
 const fetchCostCenters = async () => {
   try {
     const response = await api.get('/cost-centers/')
-    costCenters.value = response.data
+    costCenters.value = response.data.map(cc => cc.name)
   } catch (error) {
     console.error('Failed to fetch cost centers')
   }
@@ -515,7 +515,7 @@ const addCostCenter = async () => {
   if (!newCostCenter.value) return
   try {
     const response = await api.post('/cost-centers/', { name: newCostCenter.value })
-    costCenters.value = response.data
+    costCenters.value = response.data.map(cc => cc.name)
     newCostCenter.value = ''
     ElMessage.success('Cost Center added')
   } catch (error) {
@@ -526,7 +526,7 @@ const addCostCenter = async () => {
 const deleteCostCenter = async (name) => {
   try {
     const response = await api.delete(`/cost-centers/${name}`)
-    costCenters.value = response.data
+    costCenters.value = response.data.map(cc => cc.name)
     ElMessage.success('Cost Center deleted')
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || 'Failed to delete cost center')

@@ -53,7 +53,7 @@ const router = createRouter({
             path: '/workdays',
             name: 'workdays',
             component: () => import('../views/WorkDayManagement.vue'),
-            meta: { requiresAuth: true, requiresAdmin: true }
+            meta: { requiresAuth: true }
         },
         {
             path: '/team-timesheets',

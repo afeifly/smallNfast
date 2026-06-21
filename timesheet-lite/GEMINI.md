@@ -1,46 +1,87 @@
-# GEMINI.md: Code Development & Logical Constraints (Timesheet Lite)
+# GEMINI.md - Timesheet Lite Project Rules & Context
 
-This file sets the core performance and business requirements for the development phase of the `timesheet-lite` project. Both developers and AI coding assistants **must** strictly enforce the following rules when writing or refactoring FastAPI (Python) or Vue 3 (Element Plus) code.
-
----
-
-## 1. Automatic Integration & Contract Adherence
-- **Payload Naming Standard**: Prior to generating logic, the AI must check the endpoint definitions. Frontend JSON requests and backend SQLModel serializers **must strictly map properties using `snake_case` naming** (e.g., `user_id`, `project_id`, `day_type`, `team_leader_id`, `is_deleted`).
-- **Role-Based Guards**:
-  - `admin`: Performs project, account, workday exception setup, and manages database configurations. **Strictly prohibited** from logging work hours.
-  - `team_leader`: Review, edit, and verify work logs of assigned employees only.
-  - `employee`: Logs, views, and edits own logs only.
-  - Core controller dependencies must verify user session JWT credentials and role restrictions.
+This document is the single source of truth for developer and agent alignment on patterns, architectures, and guidelines for the Timesheet Lite codebase.
 
 ---
 
-## 2. Event Loop Optimization & DB Integrity (Main Loop & DB Guard)
-> [!WARNING]
-> **Heavy administrative background operations (backups, restores, notifications) must never block the main FastAPI request thread!**
+## 1. Project Context
 
-- **Asynchronous Task Offloading**: Data operations such as SQLite `VACUUM INTO` backups, DB restorations, and weekly compliance checks must execute inside FastAPI `BackgroundTasks` or cron jobs (via `APScheduler`) so the API response remains non-blocking.
-- **Soft-Delete Invariants**:
-  - Any removal commands for `User` or `Project` must map to soft deletes (setting `is_deleted = True`).
-  - Active search queries on these tables must include the condition `is_deleted == False` to exclude deleted records.
-- **Audit Logging**:
-  - Every create, edit, or delete event targeting `Timesheet`, `User`, or `Project` **must** insert a record in the `ActivityLog` table capturing the initiating user, timestamp, action type, and details.
+Timesheet Lite is a lightweight timesheet management web application structured with a decoupled frontend and backend:
+* **Frontend:** Vue 3, Vite, Pinia (State Management), Element Plus (UI Component Library), Axios (HTTP client).
+  - Target URL: `http://localhost:5173` (development) proxied via `/api` to the backend.
+* **Backend:** FastAPI, SQLModel (ORM integrating SQLAlchemy & Pydantic), SQLite (with WAL mode enabled), APScheduler (for cron-like background jobs).
+  - Target URL: `http://127.0.0.1:8003` (development).
+* **Database & Storage:** Single local SQLite database, using `VACUUM INTO` for backup scheduling.
 
 ---
 
-## 3. Frontend Work Logs Validation & Interface Rules (LogWork Logic)
-- **Workday Overrides (`WorkDayException`)**:
-  - Timesheet submission limits must correlate with exceptions defined in `WorkDay`. AI must compute the daily hour capacity dynamically:
-    - `work`: Maximum capacity is 8 hours.
-    - `half_off`: Maximum capacity is 4 hours.
-    - `off`: Maximum capacity is 0 hours (slider inputs disabled, input fields set to read-only).
-- **Edit Window Enforcement**:
-  - Regular employees (`employee`) must not edit logs outside of validation windows: single timesheet changes are limited to **2 weeks** in the past; batch inputs are limited to **30 days** in the past. Older changes must be rejected by the backend.
-- **Verification Lock**:
-  - If a daily entry is verified by a Team Leader (`verify = True`), all input controls (sliders and buttons) associated with that day must be set to **disabled**.
-- **Weekly Hour Limits Warning**:
-  - The frontend must evaluate the weekly hours total against the calculated weekly limit. If the total exceeds the limit, display an Element Plus `el-alert` warning (`type="error"`) and disable the save button.
-- **Table Paging Optimization**:
-  - Large tabular reports on the client side must use Element Plus pagination or virtual scroller techniques to prevent UI thread freezes.
+## 2. Core Business & Concurrency Constraints
+
+* **Database Engine:** SQLite in WAL (Write-Ahead Logging) mode. All writes should be quick to prevent locking issues.
+* **Role-Based Authorization:**
+  - `admin`: Manages settings, users, workdays, backups, SMTP settings, view activity logs. *Cannot log time.*
+  - `team_leader`: Manages and verifies assigned employees' timesheets. Can view team reports.
+  - `employee`: Logs their own timesheet entries. Has weekly hour limit checks.
+* **Timesheet Constraints:**
+  - **Dynamic Weekly Limits:** Calculated dynamically based on `WorkDayType` exceptions (`WORK` = 8h, `HALF_OFF` = 4h, `OFF` = 0h). Default is 40h per week (Mon-Fri 8h/day).
+  - **Off-Day Enforcement:** Cannot log time on a day explicitly marked as `OFF` (holiday/vacation).
+  - **Edit Windows:** Employees can modify individual entries up to the previous 2 weeks, and batch entries up to the previous 30 days. No modifications allowed on verified timesheets by employees.
+* **Background Jobs (APScheduler):**
+  - **Compliance Emails:** Scheduled for Monday at 10:00 AM (reminds users with missing timesheets or pending approvals).
+  - **Backup Schedule:** Scheduled daily at 3:00 AM.
+  - **Backup Cleanup:** Scheduled daily at 3:30 AM (deletes old backups).
 
 ---
-*Ensure these core rules are loaded and obeyed before implementing code on the timesheet-lite repository.*
+
+## 3. Design System & UI Guidelines
+
+* **Theme:** Light/Dark responsive design using curated slate colors and deep primary tints.
+* **Palette:**
+  - Primary: Deep violet/blue (#6366f1) and Indigo gradients.
+  - Secondary/Success: Emerald green (#10b981).
+  - Warning: Amber (#f59e0b).
+  - Danger/Error: Rose red (#f43f5e).
+  - Neutral Dark: Slate (#0f172a / #1e293b).
+  - Neutral Light: Cool gray (#f8fafc / #f1f5f9).
+* **Typography:** Modern sans-serif (e.g., Inter, system font fallback) instead of browser defaults.
+* **Component Library:** Use Element Plus for structures (buttons, forms, modals, tables, calendars, tooltips). Apply custom CSS overrides for premium styling, subtle drop shadows, and rounded borders.
+* **Animations:** 
+  - Smooth 150ms transitions on hover (`transform: translateY(-1px)`, opacity changes).
+  - Glassmorphic accents on navigation and dashboard panels (`backdrop-filter: blur(12px)`).
+  - Micro-animations for button presses and load states.
+
+---
+
+## 4. Frontend/Backend Standards
+
+### Backend (Python/FastAPI)
+* **Code Structure:** Separate routes into APIRouter submodules in `backend/app/api/`. Keep database models in `backend/app/models.py`.
+* **API Contracts:** Use `snake_case` naming conventions for all request/response JSON fields.
+* **Dependency Injection:** Inject active database sessions via FastAPI's `Depends(get_session)` and current user via `Depends(get_current_user)`.
+
+### Frontend (Vue 3 + Vite)
+* **Framework:** Vue 3 using the Composition API (`<script setup>` syntax) and CSS variables for styling.
+* **State Management:** Use Pinia stores for authentication, app state, and configurations.
+* **Routing:** Use Vue Router with route meta guards (`requiresAuth`, `requiresAdmin`, `requiresTeamLeader`) to protect views.
+
+---
+
+## 5. Error Handling & Feedback Protocols
+
+* **Backend Error Format:** Raise `HTTPException` with appropriate status code and `detail` payload string.
+* **Frontend Error Handlers:**
+  - Axios interceptors must trap `401 Unauthorized` and redirect to `/login`.
+  - Display business validation errors or request failures using Element Plus `ElMessage.error()` or `ElNotification`.
+* **Feedback States:** Ensure all asynchronous API submits have loading states (`v-loading` or local reactive flags) to prevent duplicate submissions.
+
+---
+
+## 6. Developer & Agent Interaction Protocol
+
+When proposing a new feature or modification:
+1. **Analyze existing contexts** to verify where domain logic lives (do not duplicate logic in both frontend and backend).
+2. **Strictly adhere to the rules in `.agents/rules/`**.
+3. **Template for proposed changes:**
+   - File modification path
+   - Purpose & Business logic justification
+   - Dependency / side effects mapping

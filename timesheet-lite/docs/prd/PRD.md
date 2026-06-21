@@ -1,110 +1,83 @@
-# Product Requirement Document (PRD) - Timesheet Lite
+# Product Requirements Document (PRD) - Timesheet Lite Baseline
 
-Timesheet Lite is a lightweight, role-based timesheet management application designed to track employee work hours on assigned projects, enforce labor compliance rules, facilitate approvals, and manage data backups.
-
----
-
-## 1. Objectives & Target Audience
-- **Target Audience**: Internal teams consisting of administrators, team leaders, and employees logging hourly activities.
-- **Key Objectives**:
-  - Provide a simple grid and slider interface for employees to log work hours.
-  - Dynamically calculate weekly hour limits and enforce workday overrides (holiday/half-day exemptions).
-  - Implement a verification workflow (approvals) managed by Team Leaders.
-  - Automate administrative tasks such as compliance checking, mailing, and database backups.
+## Metadata
+* **Creation Date:** 2026-06-21
+* **Author:** Antigravity AI
+* **Version:** 1.0.0
+* **Status:** Approved
 
 ---
 
-## 2. User Roles & Permission Model
-The system enforces three distinct user roles:
+## 1. Objective
 
-| Role | Timesheet Logging | Approvals / Verification | System Settings & Backups | View Scope |
-| :--- | :--- | :--- | :--- | :--- |
-| **Employee** | Allowed (own logs only) | Not allowed | Not allowed | Can view own timesheets, stats, and assigned projects. |
-| **Team Leader** | Allowed (own logs only) | Allowed for assigned employees | Not allowed | Can view and verify timesheets of assigned employees (`team_leader_id` link). |
-| **Admin** | **Strictly Prohibited** | Not allowed | Full access (Users, Projects, Exceptions, SMTP, Backups) | Global view of system metrics, activity logs, and settings. |
+### Problem Statement
+Organizations need a lightweight, low-overhead system for logging and tracking timesheets. Standard enterprise tools are often overly complex, slow, and expensive. Team leaders need simple tools to verify hours worked, and admins need standard interfaces to manage settings, users, and backups.
 
-### Access & Impersonation (Admin Only)
-- Admins have access to a "Login As" feature, allowing them to impersonate any user for troubleshooting purposes without knowing their password.
+### Target Audience
+* **Employees:** General staff who log hours worked on assigned and default projects.
+* **Team Leaders:** Managers who oversee specific employees, verify timesheets, and view team productivity reports.
+* **Admins:** System administrators who configure system preferences (SMTP, default values), manage cost centers, projects, work days (holiday exceptions), and maintain backups.
 
----
-
-## 3. Functional Modules
-
-### 3.1 Timesheet Logging & Grid (`LogWork`)
-- **Project Selection**:
-  - The UI automatically loads projects that are marked as **Default** (`is_default = true`) OR are explicitly **Assigned** to the employee (via `UserProjectLink`).
-  - Sorted to show Assigned projects first, followed by Default projects.
-- **Weekly Calendar Grid**:
-  - Displays days from Monday to Sunday for the selected week.
-  - Uses an interactive slider (`el-slider`) for hour inputs (0 to 8 hours).
-  - Automatically disables sliders on **Off Days** (`off` day-type exceptions or weekends).
-  - Automatically restricts the maximum selectable hours on a slider based on hours logged on other projects for that day (daily limit constraint).
-- **Edit Window Constraints**:
-  - Single-day edits: Allowed only for the current week and the previous **2 weeks** for standard employees.
-  - Batch edits: Cutoff date is **30 days** in the past.
-- **Approval Lockout**:
-  - If a day is approved (`verify = true`), all input elements (sliders and save button) for that day are disabled.
-  - Week Approval state: A week is considered approved if all days are verified or marked as off days.
-- **Auto-Cleanup**:
-  - Timesheet entries with `hours = 0` are automatically removed from the database during save actions to optimize space and prevent incomplete verification checks.
-
-### 3.2 Team Verification (`TeamTimesheets`)
-- **TL View**:
-  - Allows Team Leaders to select from their assigned employees and navigate through calendar weeks.
-  - Displays daily totals and project breakdowns.
-- **Verify Logic**:
-  - A Team Leader can mark a specific day as "Verified" (`verify = true`).
-  - **Constraint**: Cannot verify a day if total logged hours exceed 8 hours.
-  - Once verified, the employee's edit permissions are locked.
-
-### 3.3 Dashboard & Reports
-- **Dashboard Stats**:
-  - **Admin**: Shows global counts of active users and custom projects.
-  - **Employee/TL**: Shows total verified hours, custom project counts, and a breakdown chart (hours per project and percentages).
-- **Weekly Reports**:
-  - Admin/TL can generate weekly reports for a specific date range.
-  - Displays users as rows and projects as columns, listing accumulated hours.
-  - **Excel Export**: Enables downloading the weekly report grid in `.xlsx` format (using `exceljs` or `xlsx` client-side).
-
-### 3.4 Administration & Metadata Management (Admin Only)
-- **User Management**:
-  - CRUD operations for accounts.
-  - Attributes: Username, Email, Full Name, Cost Center, Active Date Range, Password (stored as Argon2/bcrypt hash), Role, and Team Leader assignment.
-  - Employs **Soft-Delete** (`is_deleted = true`); deleted users are filtered out from all regular queries.
-- **Project Management**:
-  - CRUD operations for projects.
-  - Attributes: Name, Full Name, Chinese Name, Custom ID, Status (`RUN`, `CLOSE`, `NOT START`), Active Date Range, Description, Default flag, and Remark.
-  - Employs **Soft-Delete** (`is_deleted = true`).
-- **Workday Exception Management**:
-  - Defines overrides for specific dates (e.g., public holidays, weekend makeup workdays).
-  - Types: `work` (8 hours capacity), `off` (0 hours capacity), `half_off` (4 hours capacity).
-- **Email Settings (SMTP)**:
-  - Settings for SMTP Server, SMTP Port, SMTP Username/Password, Sender Email, and a checking service toggle.
-- **Backup & Restore Manager**:
-  - **Backup Action**: Creates database snapshots using SQLite `VACUUM INTO` command to ensure transactional integrity of the backup file.
-  - **Cleanup Action**: Automatically deletes backups older than 30 days.
-  - **Restore Action**: Overwrites the active `database.db` file.
-    - **Security requirement**: Must provide a "Super Code" to authorize restoration.
-    - **Super Code verification**: The token must be a Base64-encoded string containing the admin password concatenated with today's date in `YYYY-MM-DD` format (e.g., `Base64("password2026-06-19")`).
-    - **Restore execution**: Disposes the active database engine connections, replaces the DB file, and explicitly deletes stale `-wal` and `-shm` transaction files to prevent data corruption.
+### Business Goals
+* Provide a clean, fast timesheet submission interface.
+* Prevent logging of excessive hours through dynamic weekly limits and holiday checks.
+* Streamline the validation/approval flow via Team Leader verification.
+* Ensure data safety with automated and manual database backups.
 
 ---
 
-## 4. Automated Background Tasks (Scheduler)
-An active background scheduler (such as `BackgroundScheduler` in FastAPI) executes tasks automatically:
-1. **Compliance Email Reminder (Mondays at 10:00 AM)**:
-   - Evaluates timesheet logging compliance for the prior week: dispatches warning emails to users with incomplete logs.
-   - Evaluates approval compliance: dispatches reminder emails to Team Leaders with pending timesheets.
-2. **Automated Database Backup (Daily at 3:00 AM)**:
-   - Initiates database backup via `VACUUM INTO`.
-3. **Automated Backup Cleanup (Daily at 3:30 AM)**:
-   - Searches and deletes backup files older than 30 days.
+## 2. User Stories
+
+### Employee
+1. *As an Employee*, I want to log my daily hours against my assigned projects or default projects, so that my work is tracked.
+2. *As an Employee*, I want to submit batch timesheets for an entire week, so that I don't have to submit them day-by-day.
+3. *As an Employee*, I need to be prevented from logging hours on designated off-days (holidays/vacations) or exceeding the weekly hours limit.
+4. *As an Employee*, I should not be allowed to modify my timesheets if they are older than 2 weeks (single entry) or 30 days (batch entry), or if they have already been verified by my Team Leader.
+
+### Team Leader
+1. *As a Team Leader*, I want to view my team members' logged hours, so that I can monitor their workload.
+2. *As a Team Leader*, I want to verify (approve) timesheet entries for my assigned team members, so that finance/HR can process them.
+3. *As a Team Leader*, I want to view dynamic reporting dashboards showing project hour distributions.
+
+### Admin
+1. *As an Admin*, I want to manage users, roles, cost centers, and project registrations, so that the organization's structure is up to date.
+2. *As an Admin*, I want to configure workday exceptions (e.g. marking a weekday as a holiday or weekend as a make-up day), so that weekly limits are dynamically updated.
+3. *As an Admin*, I want to setup SMTPSettings for reminders and check the activity logs of all users.
+4. *As an Admin*, I want to impersonate employees/team leaders to troubleshoot bugs or check specific configurations.
+5. *As an Admin*, I want to perform manually triggered database backups and restores, so that system data can be easily recovered.
 
 ---
 
-## 5. Non-Functional & Structural Constraints
-- **Database System**: SQLite running in WAL (Write-Ahead Logging) mode.
-- **Auditing**: Every create, update, or delete action regarding Timesheets, Projects, or Users must append a record in the `ActivityLog` table.
-- **Case Convention**:
-  - Python/FastAPI backend and SQLModel fields utilize `snake_case`.
-  - Frontend Vue 3 / Axios payloads must match the `snake_case` properties exactly during network communication to ensure accurate serialization.
+## 3. Functional Requirements
+
+### 3.1 Authentication & Impersonation
+* JWT-based token generation and authentication.
+* Admin impersonation flow allows the admin to log in as any user ID directly to verify frontend display and resolve user issues.
+
+### 3.2 Projects & Cost Centers
+* Projects can have statuses: `NOT START`, `RUN`, `CLOSE`.
+* Default projects (e.g., "Research", "Maintenance") are automatically visible to all users. Non-default projects must be linked to users via a many-to-many relationship (`UserProjectLink`).
+* Projects and Users support a soft-delete mechanism via `is_deleted` flags to preserve historical timesheet associations.
+
+### 3.3 Timesheet Logging & Limits
+* **Weekly Limit Calculation:** Dynamic calculations based on Monday-Sunday ISO weeks. Standard days log 8 hours. Workday exceptions adjust this: `WORK` adds 8h, `HALF_OFF` adds 4h, `OFF` adds 0h.
+* **Off-day Enforcement:** Any date defined as `OFF` rejects inputs greater than 0 hours.
+* **Edit Windows:** Employees cannot modify timesheets older than 14 days (single entry) or 30 days (batch entry) unless they are admins or team leaders.
+* **Deduplication:** Multiple entries for the same user, project, and date are resolved. Batch submissions overwrite existing entries for matching keys. Zero-hour submissions delete the entry.
+
+### 3.4 Verification & Approvals
+* Team leaders can execute `/timesheets/verify` to approve an employee's work hours on a specific date.
+* Once verified (`verify = True`), employees cannot modify the timesheet.
+* Team leaders cannot verify hours exceeding 8 hours per day for a single employee.
+
+### 3.5 Automation & Backups
+* **Email Reminders:** Automated reminder emails sent every Monday at 10:00 AM using configured SMTP credentials to notify users of missing timesheets and team leaders of pending verifications.
+* **Backups:** SQLite backups are executed using SQL's `VACUUM INTO` command to ensure database consistency in WAL mode. Automated daily backup at 3:00 AM and cleanup of files older than retention policy at 3:30 AM.
+
+---
+
+## 4. Technical & Security Constraints
+
+* **Database Constraint:** SQLite WAL mode requires active database connections to execute transactions quickly to prevent table locking.
+* **Input Sanitation:** All batch and single inputs must validate datetime constraints, date formats, and numerical values.
+* **Access Control:** Role-based access is strictly enforced on all routers. Custom dependencies (`get_current_admin_user`, `get_current_user`) evaluate JWT payload parameters.

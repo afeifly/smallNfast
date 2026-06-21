@@ -53,9 +53,9 @@
       <el-menu-item @click="showPasswordDialog = true">Change Password</el-menu-item>
       <template v-if="authStore.isAdmin">
         <el-menu-item index="/email-settings">Email Settings</el-menu-item>
-        <el-menu-item index="/workdays">Work Day Management</el-menu-item>
         <el-menu-item index="/backups">Backup Manager</el-menu-item>
       </template>
+      <el-menu-item v-if="canManageWorkDays" index="/workdays">Work Day Management</el-menu-item>
       <el-menu-item @click="handleLogout">Logout</el-menu-item>
     </el-sub-menu>
 
@@ -121,6 +121,21 @@ const changePassword = async () => {
 const isCompliant = ref(true)
 const firstIncompleteDate = ref(null)
 const hasPendingApprovals = ref(false)
+const canManageWorkDays = ref(false)
+
+const checkWorkdaysPermission = async () => {
+  if (!authStore.user) return
+  if (authStore.isAdmin) {
+    canManageWorkDays.value = true
+    return
+  }
+  try {
+    const response = await api.get('/workdays/settings')
+    canManageWorkDays.value = response.data.some(p => p.can_edit)
+  } catch (error) {
+    console.error('Failed to check workday settings permission', error)
+  }
+}
 
 const checkCompliance = async () => {
   if (!authStore.user) return
@@ -156,6 +171,7 @@ const handleTeamAlarmClick = () => {
 onMounted(() => {
   checkCompliance()
   checkPendingApprovals()
+  checkWorkdaysPermission()
   
   // Listen for refresh events from TeamTimesheets
   window.addEventListener('refresh-pending-approvals', checkPendingApprovals)

@@ -160,3 +160,17 @@ export async function startExport(projectId: number, targetLang: string): Promis
 export function getExportDownloadUrl(projectId: number, jobId: string): string {
   return `/api/projects/${projectId}/export/download/${jobId}`;
 }
+
+export async function login(password: string): Promise<void> {
+  await api.post("/auth/login", { password });
+}
+
+export async function logout(): Promise<void> {
+  await api.post("/auth/logout");
+}
+
+export async function checkAuthStatus(): Promise<{ authenticated: boolean }> {
+  const res = await api.get("/auth/status");
+  return res.data;
+}
+

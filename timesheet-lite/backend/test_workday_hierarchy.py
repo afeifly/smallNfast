@@ -123,5 +123,63 @@ class TestWorkDayHierarchy(unittest.TestCase):
             self.assertIsNotNone(result)
             self.assertEqual(result.hours, 8.0)
 
+    def test_keep_preexisting_work_on_off_day(self):
+        test_date = date(2026, 6, 23) # Tuesday
+        with Session(self.engine) as session:
+            # 1. Start with Monday/Tuesday as WORK by default (no exceptions)
+            # Add a project
+            from app.models import Project
+            p = Project(id=2, name="Project Beta", description="Beta")
+            session.add(p)
+            session.commit()
+            
+            # 2. Log 8 hours on Tuesday
+            ts = Timesheet(user_id=self.employee.id, project_id=2, date=test_date, hours=8.0)
+            result = upsert_timesheet_logic(session, ts, self.employee)
+            session.commit()
+            
+            # 3. Now Tuesday is marked as OFF in Default settings profile
+            ex_default = WorkDay(setting_id=self.default_id, date=test_date, day_type=WorkDayType.OFF, remark="Off day")
+            session.add(ex_default)
+            session.commit()
+            
+            # 4. Try to save the same hours (8.0) on the off day. It should succeed!
+            ts_same = Timesheet(user_id=self.employee.id, project_id=2, date=test_date, hours=8.0)
+            result_same = upsert_timesheet_logic(session, ts_same, self.employee)
+            session.commit()
+            self.assertEqual(result_same.hours, 8.0)
+            
+            # 5. Try to decrease hours (4.0) on the off day. It should succeed!
+            ts_dec = Timesheet(user_id=self.employee.id, project_id=2, date=test_date, hours=4.0)
+            result_dec = upsert_timesheet_logic(session, ts_dec, self.employee)
+            session.commit()
+            self.assertEqual(result_dec.hours, 4.0)
+            
+            # 6. Try to increase hours (6.0) on the off day. Since the last saved was 4.0, 6.0 > 4.0, it should raise error!
+            ts_inc = Timesheet(user_id=self.employee.id, project_id=2, date=test_date, hours=6.0)
+            with self.assertRaises(HTTPException) as ctx:
+                upsert_timesheet_logic(session, ts_inc, self.employee)
+            self.assertEqual(ctx.exception.status_code, 400)
+            
+    def test_read_workdays_resolves_user_id(self):
+        from app.api.workdays import read_workdays
+        test_date = date(2026, 6, 24) # Wednesday
+        
+        with Session(self.engine) as session:
+            # Assign cost center to SZ profile
+            cc = session.exec(select(CostCenter).where(CostCenter.name == "R&D-SZ")).one()
+            cc.workday_setting_id = self.sz_id
+            session.add(cc)
+            
+            # Add exception to SZ profile
+            ex_sz = WorkDay(setting_id=self.sz_id, date=test_date, day_type=WorkDayType.HALF_OFF, remark="Half Day")
+            session.add(ex_sz)
+            session.commit()
+            
+            # Read workdays for employee, it should resolve to SZ profile and return the exception
+            res = read_workdays(start_date=test_date, end_date=test_date, user_id=self.employee.id, session=session, current_user=self.admin)
+            self.assertEqual(len(res), 1)
+            self.assertEqual(res[0].day_type, WorkDayType.HALF_OFF)
+
 if __name__ == "__main__":
     unittest.main()

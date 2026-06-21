@@ -86,8 +86,15 @@ def upsert_timesheet_logic(session: Session, timesheet: Timesheet, current_user:
         .where(WorkDay.setting_id == setting_id)
         .where(WorkDay.date == timesheet.date)
     ).first()
-    if current_workday and current_workday.day_type == WorkDayType.OFF:
-        raise HTTPException(status_code=400, detail="Cannot log work on an off day")
+    
+    day_type = current_workday.day_type if current_workday else None
+    if not day_type:
+        day_type = WorkDayType.WORK if timesheet.date.weekday() < 5 else WorkDayType.OFF
+        
+    if day_type == WorkDayType.OFF:
+        existing_hours = sum(e.hours for e in existing_entries)
+        if timesheet.hours > existing_hours:
+            raise HTTPException(status_code=400, detail="Cannot log work on an off day")
     
     # Calculate Dynamic Weekly Limit
     limit = 0.0
@@ -172,6 +179,7 @@ def upsert_timesheet_logic(session: Session, timesheet: Timesheet, current_user:
              
         target_entry.updated_at = datetime.utcnow()
         session.add(target_entry)
+        session.flush()
         session.refresh(target_entry)
         
         log = ActivityLog(user_id=current_user.id, action="UPDATE_TIMESHEET", details=f"Updated {timesheet.hours}h for project '{project_name}' (ID: {timesheet.project_id}) on {timesheet.date}")
@@ -314,10 +322,13 @@ def batch_create_timesheet(
             if not day_type:
                 day_type = WorkDayType.WORK if update.date.weekday() < 5 else WorkDayType.OFF
             
-            if day_type == WorkDayType.OFF and update.hours > 0:
+            key = (update.date, update.project_id)
+            existing_entry = existing_entries_map.get(key)
+            existing_hours = existing_entry.hours if existing_entry else 0.0
+            
+            if day_type == WorkDayType.OFF and update.hours > existing_hours:
                  raise HTTPException(status_code=400, detail=f"Cannot log work on an off day ({update.date})")
             
-            key = (update.date, update.project_id)
             week_state[key] = update.hours # value from batch overwrites existing
             
         # 5. Calculate Total

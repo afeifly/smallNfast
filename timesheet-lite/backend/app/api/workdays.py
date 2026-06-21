@@ -226,13 +226,15 @@ def read_workdays(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     setting_id: Optional[int] = None,
+    user_id: Optional[int] = None,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # If setting_id is not provided, locate default setting profile
+    # If setting_id is not provided, resolve based on user_id or current_user
     if setting_id is None:
-        default_setting = session.exec(select(WorkDaySetting).where(WorkDaySetting.is_default == True)).first()
-        setting_id = default_setting.id if default_setting else 1
+        from app.api.timesheets import get_workday_setting_id_for_user
+        target_user_id = user_id if user_id is not None else current_user.id
+        setting_id = get_workday_setting_id_for_user(session, target_user_id)
 
     query = select(WorkDay).where(WorkDay.setting_id == setting_id)
     if start_date:

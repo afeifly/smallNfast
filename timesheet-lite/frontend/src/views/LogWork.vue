@@ -178,7 +178,8 @@ const fetchData = async () => {
       api.get('/workdays/', {
         params: {
           start_date: weekDays.value[0].date,
-          end_date: weekDays.value[6].date
+          end_date: weekDays.value[6].date,
+          user_id: authStore.user.id
         }
       })
     ])

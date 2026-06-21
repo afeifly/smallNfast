@@ -16,6 +16,7 @@ import ExportProgressDialog from "../components/ExportProgressDialog";
 import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, X } from "lucide-react";
 import * as React from "react";
 import axios from "axios";
+import mermaid from "mermaid";
 
 type Mode = "preview" | "edit" | "segments";
 
@@ -23,6 +24,94 @@ const PROVIDERS = [
   { id: "minimax", name: "MiniMax" },
   { id: "openl", name: "OpenL" },
 ];
+
+const MermaidCode = ({ code }: { code: string }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = React.useState<string>("");
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    const renderChart = async () => {
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "default",
+          securityLevel: "loose",
+        });
+        const id = `mermaid-svg-${Math.random().toString(36).substring(2, 9)}`;
+        const { svg: renderedSvg } = await mermaid.render(id, code);
+        if (active) {
+          setSvg(renderedSvg);
+          setError(null);
+        }
+      } catch (err: any) {
+        if (active) {
+          setError(err.message || "Failed to render mermaid diagram");
+        }
+      }
+    };
+
+    renderChart();
+    return () => {
+      active = false;
+    };
+  }, [code]);
+
+  if (error) {
+    return (
+      <div className="p-4 my-2 border border-red-200 bg-red-50 text-red-700 rounded text-xs">
+        <div className="font-semibold mb-1">Mermaid Render Error:</div>
+        <pre className="overflow-x-auto whitespace-pre-wrap">{code}</pre>
+        <div className="mt-1 text-[10px] text-red-500">{error}</div>
+      </div>
+    );
+  }
+
+  if (!svg) {
+    return <div className="p-4 text-xs text-gray-400">Rendering diagram...</div>;
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex justify-center my-4 overflow-x-auto bg-white p-4 border border-gray-100 rounded-lg shadow-sm"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+};
+
+const getCodeText = (children: any): string => {
+  if (children === null || children === undefined) return "";
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) {
+    return children.map(getCodeText).join("");
+  }
+  if (typeof children === "object") {
+    if (children.props && children.props.children !== undefined) {
+      return getCodeText(children.props.children);
+    }
+    if (children.value !== undefined) {
+      return String(children.value);
+    }
+  }
+  return "";
+};
+
+const renderCode = ({ className, children, ...props }: any) => {
+  const match = /language-(\w+)/.exec(className || "");
+  const isMermaid = match && match[1] === "mermaid";
+  if (isMermaid) {
+    const codeStr = getCodeText(children).replace(/\n$/, "");
+    return <MermaidCode code={codeStr} />;
+  }
+  return <code className={className} {...props}>{children}</code>;
+};
+
+const codeComponent = {
+  code: renderCode
+};
 
 export default function MarkdownProject() {
   const { id } = useParams<{ id: string }>();
@@ -308,14 +397,20 @@ export default function MarkdownProject() {
       {mode === "preview" && (
         <div className="flex-1 overflow-auto px-4 py-4">
           <div className="max-w-4xl mx-auto border border-gray-200 rounded-lg bg-white p-6">
-            <MDEditor.Markdown source={project.markdown_content || "*No content yet*"} />
+            <MDEditor.Markdown source={project.markdown_content || "*No content yet*"} components={codeComponent} />
           </div>
         </div>
       )}
 
       {mode === "edit" && (
         <div className="flex-1 overflow-hidden">
-          <MDEditor value={content} onChange={handleEditorChange} height="100%" visibleDragbar={false} />
+          <MDEditor 
+            value={content} 
+            onChange={handleEditorChange} 
+            height="100%" 
+            visibleDragbar={false}
+            previewOptions={{ components: codeComponent }}
+          />
         </div>
       )}
 

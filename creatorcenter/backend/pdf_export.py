@@ -13,6 +13,9 @@ import re
 import json
 import markdown
 import logging
+import base64
+import html
+import httpx
 from weasyprint import HTML, CSS
 from backend.config import UPLOADS_DIR
 from backend.job_manager import update_job_progress
@@ -98,6 +101,46 @@ def _resolve_images(html: str) -> str:
 
     html = re.sub(r'<img\b[^>]*/?>', _normalise_img, html, flags=re.IGNORECASE)
     return html
+
+
+def _render_mermaid_charts_in_html(html_string: str) -> str:
+    """
+    Finds <pre><code class="language-mermaid">...</code></pre> blocks in the HTML,
+    extracts the Mermaid code, unescapes it, base64 encodes it, fetches the compiled
+    SVG from mermaid.ink, and replaces the block with the SVG inline.
+    """
+    pattern = re.compile(
+        r'<pre(?:\s+class="[^"]*")?\s*><code\s+class="language-mermaid"\s*>(.*?)</code></pre>',
+        re.DOTALL | re.IGNORECASE
+    )
+
+    def replacer(match):
+        escaped_code = match.group(1)
+        mermaid_code = html.unescape(escaped_code).strip()
+        if not mermaid_code:
+            return match.group(0)
+
+        try:
+            code_bytes = mermaid_code.encode("utf-8")
+            base64_str = base64.b64encode(code_bytes).decode("utf-8")
+            url = f"https://mermaid.ink/svg/{base64_str}"
+
+            response = httpx.get(url, timeout=10.0)
+            if response.status_code == 200 and response.text.strip().startswith("<svg"):
+                svg_content = response.text.strip()
+                # Wrap the SVG in a styled div so WeasyPrint centers it and doesn't break pages
+                return (
+                    f'<div class="mermaid-chart" style="display: block; margin: 12pt 0; text-align: center; page-break-inside: avoid;">'
+                    f'{svg_content}'
+                    f'</div>'
+                )
+        except Exception as e:
+            # Fallback gracefully to raw code on any fetch failure or timeout
+            print(f"Failed to fetch/render mermaid chart from mermaid.ink: {e}", flush=True)
+
+        return match.group(0)
+
+    return pattern.sub(replacer, html_string)
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +423,18 @@ td {{
     vertical-align: top;
     color: #334155;
 }}
+
+/* ── Mermaid Charts ── */
+.mermaid-chart {{
+    display: block;
+    margin: 12pt 0;
+    text-align: center;
+    page-break-inside: avoid;
+}}
+.mermaid-chart svg {{
+    max-width: 100%;
+    height: auto;
+}}
 """
 
 
@@ -422,6 +477,9 @@ class JobProgressHandler(logging.Handler):
             update_job_progress(self.job_id, progress)
 
 def _generate_pdf(html_string: str, output_path: str, job_id: str = None):
+    # Render mermaid diagrams in the HTML prior to compiling to PDF
+    html_string = _render_mermaid_charts_in_html(html_string)
+
     handler = None
     logger = logging.getLogger('weasyprint.progress')
     if job_id:

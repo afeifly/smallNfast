@@ -38,21 +38,64 @@ The AI must classify business subdomains into one of two contexts:
 ## 3. Standard Analysis Output Skeleton
 When responding to analysis tasks, the AI **must** output its findings using the following Markdown template:
 
-```markdown
-# Domain-Driven Design (DDD) Analysis Report
+# Domain-Driven Design (DDD) Analysis Report - [Feature Name]
 
 ## 1. Bounded Contexts & Classifications
-*Provide context names, responsibilities, and classification (Heavy-Duty / Lightweight).*
+*Context names, responsibilities, and classification (Heavy-Duty / Lightweight).*
+
+### Context Map (Mermaid Diagram)
+*Include a Mermaid diagram visualizing the bounded contexts and their interaction (e.g., UI vs Worker threads).*
+```mermaid
+flowchart TD
+    subgraph UI ["Lightweight UI Context"]
+        A[User Action / Component]
+    end
+    subgraph Worker ["Heavy-Duty Processing Context"]
+        B[Background Parser / Engine]
+    end
+    A -- postMessage / Events --> B
+    B -- Progress / Results --> A
+```
 
 ## 2. Core Domain Entities & Attributes
 - **[Entity Name]**:
   - Attributes: *Attribute list and data types*
   - Business Rules & Ownership: *e.g., Global keys deduplicate translation records, editing propagates translations to all segments, etc.*
 
-## 3. Business Invariants & Work Hour Constraints
+### Domain Model (Mermaid Diagram)
+*Include a class diagram showing entities, value objects, and aggregate roots.*
+```mermaid
+classDiagram
+    class AggregateRoot {
+        +String id
+        +Operation()
+    }
+    class Entity {
+        +String id
+    }
+    class ValueObject {
+        <<immutable>>
+        +String details
+    }
+    AggregateRoot *-- Entity
+    AggregateRoot *-- ValueObject
+```
+
+## 3. Business Invariants & Constraints
 - **File Upload Limits**: Document files max 50MB; Image files max 10MB.
 - **Image Normalization**: Rewriting image pathways to filesystem roots, converting HTML presentation formatting to inline CSS.
 
 ## 4. Execution & Offloading Strategy
 - Identify which endpoints must run asynchronously via `BackgroundTasks` (e.g. PDF generation, API translations) and how progress is communicated.
+
+### Sequence Flow (Mermaid Diagram)
+*Include a sequence diagram showing async/worker execution flow.*
+```mermaid
+sequenceDiagram
+    participant UI as UI Component
+    participant W as Web Worker
+    UI->>W: postMessage(start_processing, data)
+    Note over W: Slice & Parse Chunks
+    W-->>UI: postMessage(progress, %)
+    W-->>UI: postMessage(completed, result)
 ```

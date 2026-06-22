@@ -8,6 +8,8 @@ import ExportPage from "./pages/ExportPage";
 import GlobalKeysPage from "./pages/GlobalKeysPage";
 import MarkdownProject from "./pages/MarkdownProject";
 
+import SharePage from "./pages/SharePage";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -22,6 +24,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path="/share/:code" element={<SharePage />} />
           <Route element={<Layout />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />

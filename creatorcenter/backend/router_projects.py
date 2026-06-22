@@ -262,3 +262,50 @@ def delete_project(project_id: int, db=Depends(get_db)):
         pass
     db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
     db.commit()
+
+
+@router.post("/{project_id}/publish")
+def publish_project(project_id: int, db=Depends(get_db)):
+    existing = db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if not existing:
+        raise HTTPException(404, "Project not found")
+        
+    share_code = existing["share_code"]
+    if not share_code:
+        import random
+        import string
+        chars = string.ascii_letters + string.digits
+        for _ in range(10):
+            code = "".join(random.choices(chars, k=6))
+            coll = db.execute("SELECT 1 FROM projects WHERE share_code = ?", (code,)).fetchone()
+            if not coll:
+                share_code = code
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Failed to generate unique share code")
+            
+    db.execute(
+        "UPDATE projects SET is_published = 1, share_code = ?, updated_at = datetime('now') WHERE id = ?",
+        (share_code, project_id),
+    )
+    db.commit()
+    
+    row = _project_out_row(project_id, db)
+    return ProjectOut.from_row(row)
+
+
+@router.post("/{project_id}/unpublish")
+def unpublish_project(project_id: int, db=Depends(get_db)):
+    existing = db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if not existing:
+        raise HTTPException(404, "Project not found")
+        
+    db.execute(
+        "UPDATE projects SET is_published = 0, updated_at = datetime('now') WHERE id = ?",
+        (project_id,),
+    )
+    db.commit()
+    
+    row = _project_out_row(project_id, db)
+    return ProjectOut.from_row(row)
+

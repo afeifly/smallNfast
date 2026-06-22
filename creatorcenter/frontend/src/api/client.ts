@@ -149,7 +149,7 @@ export async function updateMarkdownContent(projectId: number, markdown_content:
 }
 
 // Export
-export async function startExport(projectId: number, targetLang: string): Promise<{job_id: string}> {
+export async function startExport(projectId: number, targetLang: string): Promise<{ job_id: string }> {
   const res = await api.post(
     `/projects/${projectId}/export`,
     { target_lang: targetLang }
@@ -173,4 +173,28 @@ export async function checkAuthStatus(): Promise<{ authenticated: boolean }> {
   const res = await api.get("/auth/status");
   return res.data;
 }
+
+export async function publishProject(projectId: number): Promise<Project> {
+  const res = await api.post(`/projects/${projectId}/publish`);
+  return res.data;
+}
+
+export async function unpublishProject(projectId: number): Promise<Project> {
+  const res = await api.post(`/projects/${projectId}/unpublish`);
+  return res.data;
+}
+
+export interface SharedProject {
+  name: string;
+  content_type: string;
+  source_lang: string;
+  target_lang: string;
+  content: string;
+}
+
+export async function getSharedProject(shareCode: string): Promise<SharedProject> {
+  const res = await api.get(`/share/${shareCode}`);
+  return res.data;
+}
+
 

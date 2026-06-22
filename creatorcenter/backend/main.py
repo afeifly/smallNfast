@@ -11,6 +11,7 @@ from backend.router_translations import router as translations_router
 from backend.router_export import router as export_router
 from backend.router_keys import router as keys_router
 from backend.router_images import router as images_router
+from backend.router_share import router as share_router
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -35,6 +36,7 @@ from fastapi import Depends
 from backend.router_auth import router as auth_router, verify_session
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(share_router, prefix="/api")
 app.include_router(projects_router, prefix="/api", dependencies=[Depends(verify_session)])
 app.include_router(segments_router, prefix="/api", dependencies=[Depends(verify_session)])
 app.include_router(translations_router, prefix="/api", dependencies=[Depends(verify_session)])

@@ -6,6 +6,8 @@ export interface Project {
   target_lang: string | null;
   status: string;
   segment_count: number;
+  share_code: string | null;
+  is_published: boolean;
   created_at: string;
 }
 

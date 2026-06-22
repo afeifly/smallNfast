@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS projects (
     source_lang     TEXT NOT NULL DEFAULT 'EN',
     target_lang     TEXT,
     status          TEXT NOT NULL DEFAULT 'uploaded',
+    share_code      TEXT UNIQUE,
+    is_published    INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -72,6 +74,18 @@ def init_db(db_path: Optional[Path] = None) -> None:
         db_path = DATABASE_PATH
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.executescript(SCHEMA)
+    
+    # Retroactively add columns if they don't exist
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN share_code TEXT UNIQUE")
+    except sqlite3.OperationalError:
+        pass  # already exists
+        
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # already exists
+        
     conn.commit()
     conn.close()
 

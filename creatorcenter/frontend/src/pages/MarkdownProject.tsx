@@ -13,7 +13,7 @@ import LanguageSelector from "../components/LanguageSelector";
 import TranslationProgress from "../components/TranslationProgress";
 import SegmentTable from "../components/SegmentTable";
 import ExportProgressDialog from "../components/ExportProgressDialog";
-import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, X } from "lucide-react";
+import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, X, Copy, ExternalLink } from "lucide-react";
 import * as React from "react";
 import axios from "axios";
 import mermaid from "mermaid";
@@ -134,6 +134,33 @@ export default function MarkdownProject() {
   const [exportJobId, setExportJobId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [copiedShare, setCopiedShare] = useState(false);
+
+  const handlePublishToggle = async () => {
+    if (!project) return;
+    setPublishing(true);
+    try {
+      if (project.is_published) {
+        await api.unpublishProject(projectId);
+      } else {
+        await api.publishProject(projectId);
+      }
+      qc.invalidateQueries({ queryKey: ["project", projectId] });
+    } catch (err: any) {
+      alert("Action failed: " + (err?.response?.data?.detail || err.message));
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleCopyShareLink = () => {
+    if (!project || !project.share_code) return;
+    const link = `${window.location.origin}/share/${project.share_code}`;
+    navigator.clipboard.writeText(link);
+    setCopiedShare(true);
+    setTimeout(() => setCopiedShare(false), 2000);
+  };
 
   // Close export dropdown on outside click / escape
   useEffect(() => {
@@ -263,122 +290,168 @@ export default function MarkdownProject() {
       {/* Top bar — fixed, content centered */}
       <div className="border-b border-gray-200 bg-white shrink-0">
         <div className="max-w-5xl mx-auto flex items-center gap-3 flex-wrap px-4 py-3">
-        {editingName ? (
-          <form onSubmit={async (e) => { e.preventDefault();
-            if (nameInput.trim()) {
-              await api.updateProject(projectId, { name: nameInput.trim() });
-              qc.invalidateQueries({ queryKey: ["project", projectId] });
-            }
-            setEditingName(false);
-          }} className="flex items-center gap-1">
-            <input value={nameInput} onChange={(e) => setNameInput(e.target.value)}
-              className="text-lg font-bold border-b-2 border-blue-400 bg-transparent outline-none w-64 px-1" autoFocus />
-            <button type="submit" className="p-0.5 text-green-600"><Check className="w-4 h-4" /></button>
-            <button type="button" onClick={() => setEditingName(false)} className="p-0.5 text-gray-400"><X className="w-4 h-4" /></button>
-          </form>
-        ) : (
-          <h1 className="text-lg font-bold truncate max-w-xs cursor-pointer hover:text-blue-600"
-            onClick={() => { setNameInput(project.name); setEditingName(true); }}
-            title="Click to rename">
-            {project.name}
-          </h1>
-        )}
+          {editingName ? (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (nameInput.trim()) {
+                await api.updateProject(projectId, { name: nameInput.trim() });
+                qc.invalidateQueries({ queryKey: ["project", projectId] });
+              }
+              setEditingName(false);
+            }} className="flex items-center gap-1">
+              <input value={nameInput} onChange={(e) => setNameInput(e.target.value)}
+                className="text-lg font-bold border-b-2 border-blue-400 bg-transparent outline-none w-64 px-1" autoFocus />
+              <button type="submit" className="p-0.5 text-green-600"><Check className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setEditingName(false)} className="p-0.5 text-gray-400"><X className="w-4 h-4" /></button>
+            </form>
+          ) : (
+            <h1 className="text-lg font-bold truncate max-w-xs cursor-pointer hover:text-blue-600"
+              onClick={() => { setNameInput(project.name); setEditingName(true); }}
+              title="Click to rename">
+              {project.name}
+            </h1>
+          )}
 
-        {/* Mode tabs */}
-        <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-          {modes.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => handleModeChange(m.key)}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                mode === m.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {m.icon} {m.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Edit-only toolbar */}
-        {mode === "edit" && (
-          <>
-            <span className={`text-xs ${saved ? "text-green-600" : "text-amber-600"}`}>
-              {saved ? "Saved" : "Unsaved"}
-            </span>
-            <button onClick={handleImageUpload} className="p-1.5 border rounded hover:bg-gray-50" title="Upload image">
-              <ImageIcon className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => {
-              const next = content + "\n---newpage---\n";
-              setContent(next);
-              setSaved(false);
-              doSave(next);
-            }} className="p-1.5 border rounded hover:bg-gray-50" title="Page break">
-              <Scissors className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
-
-        {mode === "segments" && (
-          <>
-            <LanguageSelector value={lang || project.target_lang || ""} onChange={setLang} />
-            <select
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white"
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <button
-              onClick={handleTranslate}
-              disabled={!lang || triggerTranslate.isPending}
-              className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {triggerTranslate.isPending ? "..." : `Translate${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
-            </button>
-          </>
-        )}
-
-        {/* Export dropdown — not on edit tab */}
-        {mode !== "edit" && (
-        <div className="relative" ref={exportRef}>
-          <button
-            onClick={() => setExportOpen(!exportOpen)}
-            className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700"
-          >
-            <Download className="w-3.5 h-3.5" />
-            PDF
-            <ChevronDown className="w-3 h-3" />
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[160px]">
-              <div className="px-3 py-1 text-xs text-gray-400">Download PDF</div>
+          {/* Mode tabs */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+            {modes.map((m) => (
               <button
-                onClick={() => handleExport(project.source_lang)}
-                className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between"
+                key={m.key}
+                onClick={() => handleModeChange(m.key)}
+                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === m.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
               >
-                {project.source_lang}
-                <span className="text-xs text-gray-400">original</span>
+                {m.icon} {m.label}
               </button>
-              {project.available_languages.map((l: string) => (
-                <button
-                  key={l}
-                  onClick={() => handleExport(l)}
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between"
-                >
-                  {l}
-                  <span className="text-xs text-green-600">translated</span>
-                </button>
-              ))}
+            ))}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Edit-only toolbar */}
+          {mode === "edit" && (
+            <>
+              <span className={`text-xs ${saved ? "text-green-600" : "text-amber-600"}`}>
+                {saved ? "Saved" : "Unsaved"}
+              </span>
+              <button onClick={handleImageUpload} className="p-1.5 border rounded hover:bg-gray-50" title="Upload image">
+                <ImageIcon className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => {
+                const next = content + "\n---newpage---\n";
+                setContent(next);
+                setSaved(false);
+                doSave(next);
+              }} className="p-1.5 border rounded hover:bg-gray-50" title="Page break">
+                <Scissors className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+
+          {mode === "segments" && (
+            <>
+              <LanguageSelector value={lang || project.target_lang || ""} onChange={setLang} />
+              <select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1.5 text-xs bg-white"
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleTranslate}
+                disabled={!lang || triggerTranslate.isPending}
+                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {triggerTranslate.isPending ? "..." : `Translate${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+              </button>
+            </>
+          )}
+
+          {/* Export dropdown — not on edit tab */}
+          {mode !== "edit" && (
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setExportOpen(!exportOpen)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+              >
+                <Download className="w-3.5 h-3.5" />
+                PDF
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {exportOpen && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[160px]">
+                  <div className="px-3 py-1 text-xs text-gray-400">Download PDF</div>
+                  <button
+                    onClick={() => handleExport(project.source_lang)}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between"
+                  >
+                    {project.source_lang}
+                    <span className="text-xs text-gray-400">original</span>
+                  </button>
+                  {project.available_languages.map((l: string) => (
+                    <button
+                      key={l}
+                      onClick={() => handleExport(l)}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between"
+                    >
+                      {l}
+                      <span className="text-xs text-green-600">translated</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
-        )}
+      </div>
+
+      {/* Publishing Card */}
+      <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${project.is_published ? "bg-green-500 animate-pulse" : "bg-slate-300"}`} />
+            <span className="text-xs font-semibold text-slate-800">
+              {project.is_published ? "Published" : "Private"}
+            </span>
+          </div>
+          {project.is_published && project.share_code && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-mono bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600 select-all font-medium">
+                {`${window.location.origin}/share/${project.share_code}`}
+              </span>
+              <button
+                onClick={handleCopyShareLink}
+                className="p-1 hover:bg-slate-200 rounded border border-slate-200 bg-white text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                title="Copy share link"
+              >
+                {copiedShare ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+              </button>
+              <a
+                href={`/share/${project.share_code}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-1 hover:bg-slate-200 rounded border border-slate-200 bg-white text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Open public page"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
         </div>
+        <button
+          onClick={handlePublishToggle}
+          disabled={publishing}
+          className={`px-3 py-1 rounded text-[11px] font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer ${
+            project.is_published
+              ? "bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          {publishing ? "..." : project.is_published ? "Unpublish" : "Publish"}
+        </button>
       </div>
 
       {/* Messages + progress (above scroll area) */}
@@ -404,10 +477,10 @@ export default function MarkdownProject() {
 
       {mode === "edit" && (
         <div className="flex-1 overflow-hidden">
-          <MDEditor 
-            value={content} 
-            onChange={handleEditorChange} 
-            height="100%" 
+          <MDEditor
+            value={content}
+            onChange={handleEditorChange}
+            height="100%"
             visibleDragbar={false}
             previewOptions={{ components: codeComponent }}
           />
@@ -432,10 +505,10 @@ export default function MarkdownProject() {
       )}
 
       {exportJobId && (
-        <ExportProgressDialog 
-          projectId={projectId} 
-          jobId={exportJobId} 
-          onClose={() => setExportJobId(null)} 
+        <ExportProgressDialog
+          projectId={projectId}
+          jobId={exportJobId}
+          onClose={() => setExportJobId(null)}
         />
       )}
     </div>

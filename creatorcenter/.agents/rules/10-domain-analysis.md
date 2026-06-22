@@ -3,7 +3,7 @@
 This rule guides the AI during the initial project scoping phase to perform Bounded Context decomposition and Domain-Driven Design (DDD) on product requirements located in the `docs/prd/` directory. This ensures a unified consensus on project scope and design granularity across teams.
 
 ## 1. Trigger Scenario & Goal
-- **Trigger**: When analyzing any raw requirement document, feature specifications, or user stories in the `docs/prd/` directory.
+- **Trigger**: When the user request contains the keyword `ddd` (case-insensitive) or when analyzing raw requirements, feature specifications, or user stories in the `docs/prd/` directory. This trigger mandates outputting a Domain-Driven Design (DDD) Analysis Report before code implementation.
 - **Core Objective**: Automatically structure and identify domain boundaries and business invariants, providing a standardized model skeleton for API contract design and backend services.
 
 ---

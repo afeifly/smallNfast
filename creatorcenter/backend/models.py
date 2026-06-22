@@ -9,12 +9,15 @@ class ProjectOut(BaseModel):
     target_lang: Optional[str]
     status: str
     segment_count: int
+    share_code: Optional[str] = None
+    is_published: bool = False
     created_at: str
 
     @classmethod
     def from_row(cls, row) -> "ProjectOut":
         d = dict(row)
         d["segment_count"] = d.pop("segment_count", 0)
+        d["is_published"] = bool(d.get("is_published", 0))
         return cls(**d)
 
 
@@ -118,3 +121,11 @@ class EditTranslationRequest(BaseModel):
 
 class BatchEditRequest(BaseModel):
     edits: List[dict]
+
+
+class PublishedProjectOut(BaseModel):
+    name: str
+    content_type: str
+    source_lang: str
+    target_lang: str
+    content: str

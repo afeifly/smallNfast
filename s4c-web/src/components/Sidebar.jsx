@@ -91,6 +91,7 @@ export const NAV = [
     icons: { active: iconSystemL, inactive: iconSystemD },
     children: [
       { label: 'Config file', to: '/config-manager' },
+      { label: 'File verification', to: '/system/file-verification' },
       { label: 'Support', to: '/system/support' },
     ],
   },
@@ -219,7 +220,7 @@ const Sidebar = () => {
                 <div className={`submenu ${isOpen ? 'submenu-open' : ''}`}>
                   {item.children.map((child) => {
                     const childActive = currentPath === child.to || currentPath.startsWith(child.to + '/');
-                    const isChildDisabled = !hasConfig && child.to !== '/config-manager';
+                    const isChildDisabled = !hasConfig && child.to !== '/config-manager' && child.to !== '/system/file-verification';
                     
                     if (isChildDisabled) {
                       return (

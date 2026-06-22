@@ -1,0 +1,241 @@
+.verification-page {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.verification-header {
+  height: 68px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #F0F0F0;
+  flex-shrink: 0;
+  justify-content: space-between;
+}
+
+.verification-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #191919;
+  font-family: 'Arial', sans-serif;
+  text-transform: capitalize;
+}
+
+.verification-header-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.verification-header-icon:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.verification-body {
+  flex: 1;
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.verification-row {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.verification-label-container {
+  width: 150px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+
+.verification-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #4E5969;
+  font-family: 'PingFang SC', sans-serif;
+  line-height: 22px;
+}
+
+.verification-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Upload zone styles */
+.upload-zone {
+  width: 440px;
+  height: 201px;
+  background: white;
+  border-radius: 4px;
+  border: 1px dashed #DDDFE6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.upload-zone:hover,
+.upload-zone.dragging {
+  border-color: #00AB84;
+  background: #F0FBF9;
+}
+
+.upload-icon {
+  width: 48px;
+  height: 48px;
+  color: #86909C;
+  transition: color 0.25s;
+}
+
+.upload-zone:hover .upload-icon,
+.upload-zone.dragging .upload-icon {
+  color: #00AB84;
+}
+
+.upload-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #191919;
+  font-family: 'Arial', sans-serif;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+/* File list card styles */
+.file-cards-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 440px;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #F8F9FA;
+  border: 1px solid #E5E6EB;
+  border-radius: 4px;
+  gap: 8px;
+  font-size: 13px;
+  color: #1D2129;
+}
+
+.file-card .file-icon {
+  font-size: 16px;
+}
+
+.file-card .file-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  font-weight: 500;
+}
+
+.file-card .file-size {
+  color: #86909C;
+  font-size: 11px;
+}
+
+.file-card .btn-remove {
+  cursor: pointer;
+  color: #86909C;
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+}
+
+.file-card .btn-remove:hover {
+  color: #F53F3F;
+  background: rgba(245, 63, 63, 0.05);
+}
+
+/* Result box styles */
+.result-box {
+  width: 440px;
+  min-height: 48px;
+  background: #F3F3F3;
+  border-radius: 4px;
+  border: 1px solid #D9D9D9;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-family: 'Arial', sans-serif;
+  color: #4E5969;
+  transition: all 0.25s ease;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.result-box.success {
+  background: #F0FBF9;
+  border-color: #B2E5D9;
+  color: #00AB84;
+  font-weight: bold;
+}
+
+.result-box.error {
+  background: #FFECE8;
+  border-color: #FFB4AB;
+  color: #F53F3F;
+}
+
+.result-box.verifying {
+  background: #F2F3F5;
+  border-color: #E5E6EB;
+  color: #86909C;
+}
+
+.result-details {
+  margin-top: 12px;
+  font-size: 12px;
+  font-family: monospace;
+  color: #4E5969;
+  background: #F8F9FA;
+  padding: 12px;
+  border-radius: 4px;
+  border: 1px solid #E5E6EB;
+  width: 440px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.result-details-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: #1D2129;
+}

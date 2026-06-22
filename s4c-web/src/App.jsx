@@ -15,6 +15,7 @@ import ModbusTCP from './pages/communication/ModbusTCP';
 import HoldingRegister from './pages/communication/HoldingRegister';
 import Alarm from './pages/Alarm';
 import Support from './pages/system/Support';
+import FileVerification from './pages/system/FileVerification';
 import DataAnalysis from './pages/DataAnalysis';
 
 import './App.css';
@@ -38,6 +39,7 @@ function App() {
         <Route path="/communication/holding-register" element={<HoldingRegister />} />
         <Route path="/alarm" element={<Alarm />} />
         <Route path="/system/support" element={<Support />} />
+        <Route path="/system/file-verification" element={<FileVerification />} />
         <Route path="/analysis" element={<DataAnalysis />} />
 
       </Routes>

@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS projects (
     source_lang     TEXT NOT NULL DEFAULT 'EN',
     target_lang     TEXT,
     status          TEXT NOT NULL DEFAULT 'uploaded',
-    share_code      TEXT UNIQUE,
+    share_code      TEXT,
     is_published    INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -77,7 +77,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
     
     # Retroactively add columns if they don't exist
     try:
-        conn.execute("ALTER TABLE projects ADD COLUMN share_code TEXT UNIQUE")
+        conn.execute("ALTER TABLE projects ADD COLUMN share_code TEXT")
     except sqlite3.OperationalError:
         pass  # already exists
         
@@ -85,6 +85,11 @@ def init_db(db_path: Optional[Path] = None) -> None:
         conn.execute("ALTER TABLE projects ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass  # already exists
+        
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_share_code ON projects(share_code)")
+    except sqlite3.OperationalError:
+        pass
         
     conn.commit()
     conn.close()

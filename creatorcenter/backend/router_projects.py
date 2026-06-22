@@ -209,20 +209,9 @@ def get_project(project_id: int, db=Depends(get_db)):
     langs = [r["target_lang"] for r in lang_rows]
 
     d = dict(row)
-    return ProjectDetail(
-        id=d["id"],
-        name=d["name"],
-        content_type=d.get("content_type", "docx"),
-        source_lang=d["source_lang"],
-        target_lang=d["target_lang"],
-        status=d["status"],
-        segment_count=d["segment_count"],
-        created_at=d["created_at"],
-        original_file=d.get("original_file"),
-        markdown_content=d.get("markdown_content"),
-        updated_at=d["updated_at"],
-        available_languages=langs,
-    )
+    d["segment_count"] = d.pop("segment_count", 0)
+    d["is_published"] = bool(d.get("is_published", 0))
+    return ProjectDetail(available_languages=langs, **d)
 
 
 @router.patch("/{project_id}")

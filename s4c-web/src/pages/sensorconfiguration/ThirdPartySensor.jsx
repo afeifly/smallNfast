@@ -8,6 +8,15 @@ import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import { isSensorUsedInLogger, remarshalAll } from '../../util/remarshalUtils';
 import './SUTOSensor.css';
 
+const formatSN = (sn) => {
+  if (!sn) return '---';
+  const clean = String(sn).trim();
+  if (clean.length > 4) {
+    return `${clean.slice(0, 4)} ${clean.slice(4)}`;
+  }
+  return clean;
+};
+
 const ThirdPartySensor = () => {
   const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
@@ -116,7 +125,7 @@ const ThirdPartySensor = () => {
                     <td>{sensor.Name || '---'}</td>
                     <td>{sensor.Description || '---'}</td>
                     <td>{sensor.Addr || '---'}</td>
-                    <td>{sensor.SN || '---'}</td>
+                    <td>{formatSN(sensor.SN)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button

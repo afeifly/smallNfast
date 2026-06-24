@@ -12,6 +12,15 @@ import './SensorConfigModal.css';
 // Dynamically import all .sutoch files from the sensordata directory as raw text
 const sensorFiles = import.meta.glob('../../sensordata/*.sutoch', { query: '?raw', import: 'default', eager: true });
 
+const formatSN = (value) => {
+  if (!value) return '';
+  const clean = String(value).replace(/\s+/g, '');
+  if (clean.length > 4) {
+    return `${clean.slice(0, 4)} ${clean.slice(4)}`;
+  }
+  return clean;
+};
+
 const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
@@ -28,6 +37,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   const [ipAddress, setIpAddress] = useState(''); // IpAddr
   const [port, setPort] = useState(''); // Port
   const [sn, setSn] = useState('');
+  const [selectedSensorTemplate, setSelectedSensorTemplate] = useState(null);
 
   // Dialog state for CustomDialog
   const [dialogState, setDialogState] = useState({
@@ -55,10 +65,10 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       handleSensorSelect(configName);
       setDescription(initialData.Description || '');
       setProtocol(initialData.ConnectType || 9);
-      setAddress(initialData.Addr || '');
+      setAddress(initialData.Addr !== undefined ? String(initialData.Addr) : '1');
       setIpAddress(initialData.IpAddr || '');
-      setPort(initialData.Port || '0008');
-      setSn(initialData.SN || '');
+      setPort(initialData.Port !== undefined ? String(initialData.Port) : '502');
+      setSn(formatSN(initialData.SN || ''));
       // If the sensor data already has channels, use them; otherwise handleSensorSelect will load them from file
       if (initialData.cfgchannel && initialData.cfgchannel.length > 0) {
         setChannels(initialData.cfgchannel);
@@ -67,11 +77,12 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       // Add mode - reset fields
       setDescription('');
       setSelectedSensor('');
+      setSelectedSensorTemplate(null);
       setProtocol(9);
       setAddress('1');
       setIpAddress('192.168.1.1');
-      setPort('0008');
-      setSn('0000 0020');
+      setPort('502');
+      setSn(formatSN('00000000'));
       if (isSuto && names.length > 0) {
         handleSensorSelect(names[0]);
       } else {
@@ -87,6 +98,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     if (path && sensorFiles[path]) {
       try {
         const content = JSON.parse(sensorFiles[path]);
+        setSelectedSensorTemplate(content);
         const loadedChannels = (content.cfgchannel || []).map((ch, idx) => ({
           ...ch,
           CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
@@ -94,6 +106,12 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
         setChannels(loadedChannels);
         if (content.ConnectType) {
           setProtocol(content.ConnectType);
+        }
+        if (content.Addr !== undefined) {
+          setAddress(String(content.Addr));
+        }
+        if (content.Port !== undefined) {
+          setPort(String(content.Port));
         }
         // Copy sensor name to description as requested
         setDescription(name);
@@ -107,24 +125,6 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   const handleConfirm = () => {
     if (!configData) return;
 
-    // Construct the updated sensor object
-    const updatedSensor = {
-      ...initialData,
-      Name: isSuto ? selectedSensor : description,
-      Description: description,
-      Addr: address,
-      IpAddr: ipAddress,
-      Port: port,
-      SN: sn,
-      ConnectType: protocol,
-      ConfigFileName: isSuto ? `${selectedSensor}.sutoch` : '',
-      isSuto: initialData ? initialData.isSuto : isSuto,
-      cfgchannel: channels.map((ch, idx) => ({
-        ...ch,
-        CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
-      }))
-    };
-
     // Find the sensor list path
     const listPath = Object.keys(configData.configs).find(p => p.endsWith('SUTO-SensorList.sutolist'));
     if (!listPath) {
@@ -136,11 +136,85 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     const currentList = configData.configs[listPath];
     let updatedSensors = [...(currentList.cfgsensor || [])];
 
+    const cleanSn = sn ? sn.replace(/\s+/g, '') : '';
+
+    // Determine the base template or object to inherit properties from
+    const templateObj = isSuto ? { ...selectedSensorTemplate } : {};
+    delete templateObj.SN;
+
+    const baseObj = {
+      Index: 0,
+      SensorID: 0,
+      Name: isSuto ? selectedSensor : (description || ''),
+      Description: description || '',
+      ConnectType: protocol,
+      ProtocolType: 0,
+      Addr: 1,
+      IpAddr: '192.168.1.1',
+      Port: 502,
+      isSuto: isSuto,
+      isVirtualSensor: false,
+      isReadMultRegister: false,
+      RegisterNumber: 0,
+      DataStartAddr: 0,
+      UnitStartAddr: 0,
+      ResolutionStartAddr: 0,
+      RelayIndex: 0,
+      SN: cleanSn || '00000000',
+      PN: '',
+      FW: '',
+      HW: '',
+      Location: '',
+      Meapoint: '',
+      ConfigFileName: isSuto ? `${selectedSensor}.sutoch` : '',
+      CreateTime: String(Date.now()),
+      ...templateObj,
+      ...(initialData || {})
+    };
+
+    // Parse values to ensure they are of correct types (numbers, booleans, strings)
+    const parsedAddr = address === '' ? Number(baseObj.Addr || 1) : Number(address);
+    const parsedPort = port === '' ? Number(baseObj.Port || 502) : Number(port);
+    const parsedConnectType = Number(protocol);
+
+    const updatedSensor = {
+      ...baseObj,
+      // User-editable/system fields
+      Name: isSuto ? selectedSensor : (description || ''),
+      Description: description || '',
+      Addr: parsedAddr,
+      IpAddr: ipAddress || baseObj.IpAddr || '',
+      Port: parsedPort,
+      SN: cleanSn || '00000000',
+      ConnectType: parsedConnectType,
+      ConfigFileName: isSuto ? `${selectedSensor}.sutoch` : '',
+      isSuto: Boolean(baseObj.isSuto),
+      isVirtualSensor: Boolean(baseObj.isVirtualSensor),
+      isReadMultRegister: Boolean(baseObj.isReadMultRegister),
+      RegisterNumber: Number(baseObj.RegisterNumber),
+      DataStartAddr: Number(baseObj.DataStartAddr),
+      UnitStartAddr: Number(baseObj.UnitStartAddr),
+      ResolutionStartAddr: Number(baseObj.ResolutionStartAddr),
+      RelayIndex: Number(baseObj.RelayIndex),
+      SensorID: Number(baseObj.SensorID),
+      ProtocolType: Number(baseObj.ProtocolType),
+      PN: String(baseObj.PN ?? ''),
+      FW: String(baseObj.FW ?? ''),
+      HW: String(baseObj.HW ?? ''),
+      Location: String(baseObj.Location ?? ''),
+      Meapoint: String(baseObj.Meapoint ?? ''),
+      CreateTime: (initialData && initialData.CreateTime) ? String(initialData.CreateTime) : String(baseObj.CreateTime || Date.now()),
+      cfgchannel: channels.map((ch, idx) => ({
+        ...ch,
+        CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
+      }))
+    };
+
     // Address uniqueness check for Modbus/RTU
     if (protocol === 4) {
-      const isDuplicate = updatedSensors.some(s => 
-        s !== initialData && 
-        String(s.Addr) === String(address) && 
+      const isDuplicate = updatedSensors.some(s =>
+        s !== initialData &&
+        String(s.Addr) === String(address) &&
         s.ConnectType === 4
       );
       if (isDuplicate) {
@@ -160,10 +234,12 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       // Update existing
       const index = updatedSensors.findIndex(s => s === initialData);
       if (index !== -1) {
+        updatedSensor.Index = initialData.Index !== undefined ? Number(initialData.Index) : index;
         updatedSensors[index] = updatedSensor;
       }
     } else {
       // Add new
+      updatedSensor.Index = updatedSensors.length;
       updatedSensors.push(updatedSensor);
     }
 
@@ -393,7 +469,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
               <input
                 className="form-input"
                 value={sn}
-                onChange={(e) => setSn(e.target.value)}
+                onChange={(e) => setSn(formatSN(e.target.value))}
               />
             </div>
           </div>

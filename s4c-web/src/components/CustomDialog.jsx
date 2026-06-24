@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../context/LanguageContext';
 import './CustomDialog.css';
 import smallWarnIcon from '../assets/images/small_warn_icon.png';
 import smallInfoIcon from '../assets/images/small_info_icon.png';
@@ -9,16 +10,22 @@ const CustomDialog = ({
   isOpen,
   onClose,
   onConfirm,
-  title = 'Note',
+  title,
   body = '',
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  confirmText,
+  cancelText,
   type = 'warn', // warn, info, succ, err
   showConfirm = true,
   showCancel = true,
   style = {}
 }) => {
+  const lang = useLanguage();
+  const t = lang ? lang.t : (key) => key;
   if (!isOpen) return null;
+
+  const displayTitle = title || t('Note');
+  const displayConfirmText = confirmText || t('Confirm');
+  const displayCancelText = cancelText || t('Cancel');
 
   const getIcon = () => {
     switch (type) {
@@ -43,7 +50,7 @@ const CustomDialog = ({
           </div>
           <div className="custom-dialog-text-wrapper">
             <div className="custom-dialog-header">
-              <div className="custom-dialog-title">{title}</div>
+              <div className="custom-dialog-title">{displayTitle}</div>
             </div>
             <div className="custom-dialog-body">{body}</div>
           </div>
@@ -52,12 +59,12 @@ const CustomDialog = ({
         <div className="custom-dialog-footer">
           {showCancel && (
             <div className="custom-dialog-btn cancel" onClick={onClose}>
-              {cancelText}
+              {displayCancelText}
             </div>
           )}
           {showConfirm && (
             <div className="custom-dialog-btn confirm" onClick={onConfirm}>
-              {confirmText}
+              {displayConfirmText}
             </div>
           )}
         </div>

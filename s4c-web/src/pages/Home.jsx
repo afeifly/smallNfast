@@ -25,11 +25,7 @@ const Home = () => {
         <div className="empty-state" style={{ maxWidth: '400px', margin: '0 auto', gap: '20px', textAlign: 'center' }}>
           <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           <p className="empty-text" style={{ fontSize: '14px', color: '#86909C', fontWeight: 'normal', margin: 0, lineHeight: '1.5' }}>
-            {t({
-              en: 'Please load a configuration file first to view the Home dashboard.',
-              de: 'Bitte laden Sie zuerst eine Konfigurationsdatei, um das Startseite-Dashboard anzuzeigen.',
-              cn: '请先加载配置文件以查看首页仪表板。'
-            })}
+            {t('Please load a configuration file first to view the Home dashboard.')}
           </p>
           <Link 
             to="/config-manager" 
@@ -50,11 +46,7 @@ const Home = () => {
               transition: 'background 0.2s'
             }}
           >
-            {t({
-              en: 'Go to Config File Page',
-              de: 'Gehe zur Konfigurationsdateiseite',
-              cn: '转到配置文件页面'
-            })}
+            {t('Go to Config File Page')}
           </Link>
         </div>
       </div>
@@ -82,7 +74,7 @@ const Home = () => {
 
   // Process layout into cards
   // Process layout into cards
-  const unknownText = t({ en: 'Unknown', de: 'Unbekannt', cn: '未知' });
+  const unknownText = t('Unknown');
   const cards = layoutList.map((group, idx) => {
     const title = `${group.location || unknownText} / ${group.meapoint || group.measurepoint || unknownText}`;
     const items = (group.channels || []).map(uid => {
@@ -111,11 +103,7 @@ const Home = () => {
       <div className="content-card" style={{ flexDirection: 'column', gap: 4 }}>
         <PlusCircleLarge />
         <span style={{ textAlign: 'center', color: '#4E5969', fontSize: 16, fontWeight: 700, maxWidth: 349 }}>
-          {t({
-            en: 'Add more at Layout setting page',
-            de: 'Fügen Sie mehr auf der Layout-Einstellungsseite hinzu',
-            cn: '在布局设置页面添加更多'
-          })}
+          {t('Add more at Layout setting page')}
         </span>
       </div>
     );

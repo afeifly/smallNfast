@@ -33,12 +33,12 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
 
   const handleConfirm = () => {
     if (!name.trim()) {
-      setErrorMessage(t({ en: 'Please enter a virtual channel name.', de: 'Bitte geben Sie einen virtuellen Kanalnamen ein.', cn: '请输入虚拟通道名称。' }));
+      setErrorMessage(t('Please enter a virtual channel name.'));
       setShowErrorDialog(true);
       return;
     }
     if (!formula.trim()) {
-      setErrorMessage(t({ en: 'Please enter a formula.', de: 'Bitte geben Sie eine Formel ein.', cn: '请输入公式。' }));
+      setErrorMessage(t('Please enter a formula.'));
       setShowErrorDialog(true);
       return;
     }
@@ -60,7 +60,7 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
           {/* Header */}
           <header className="edit-channel-header">
             <div className="edit-channel-title">
-              {initialData ? t({ en: 'Edit virtual channel', de: 'Virtuellen Kanal bearbeiten', cn: '编辑虚拟通道' }) : t({ en: 'Add virtual channel', de: 'Virtuellen Kanal hinzufügen', cn: '添加虚拟通道' })}
+              {initialData ? t('Edit virtual channel') : t('Add virtual channel')}
             </div>
             <div className="edit-channel-close" onClick={onClose}>
               <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
@@ -69,31 +69,31 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
 
           <div className="edit-channel-body">
             <div className="edit-form-item">
-              <label className="edit-form-label">{t({ en: 'Virtual channel', de: 'Virtueller Kanal', cn: '虚拟通道' })}</label>
+              <label className="edit-form-label">{t('Virtual channel')}</label>
               <div className="edit-form-input-wrapper">
                 <input
                   className="edit-form-input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={t({ en: 'Enter channel name', de: 'Kanalname eingeben', cn: '输入通道名称' })}
+                  placeholder={t('Enter channel name')}
                 />
               </div>
             </div>
 
             <div className="edit-form-item">
-              <label className="edit-form-label">{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</label>
+              <label className="edit-form-label">{t('Unit')}</label>
               <div className="edit-form-input-wrapper">
                 <input
                   className="edit-form-input"
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
-                  placeholder={t({ en: 'Enter unit', de: 'Einheit eingeben', cn: '输入单位' })}
+                  placeholder={t('Enter unit')}
                 />
               </div>
             </div>
 
             <div className="edit-form-item">
-              <label className="edit-form-label">{t({ en: 'Resolution', de: 'Auflösung', cn: '分辨率' })}</label>
+              <label className="edit-form-label">{t('Resolution')}</label>
               <div className="edit-form-input-wrapper">
                 <select
                   className="edit-form-input"
@@ -113,12 +113,12 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
             </div>
 
             <div className="edit-form-item" style={{ alignItems: 'flex-start' }}>
-              <label className="edit-form-label" style={{ marginTop: '8px' }}>{t({ en: 'Formula', de: 'Formel', cn: '公式' })}</label>
+              <label className="edit-form-label" style={{ marginTop: '8px' }}>{t('Formula')}</label>
               <div className="edit-form-input-wrapper" style={{ height: '80px', padding: '0px' }}>
                 <textarea
                   className="edit-form-input"
                   style={{ resize: 'none', background: '#F9FAFB', cursor: 'pointer', padding: '15px' }}
-                  value={formula || t({ en: 'Click to create formula...', de: 'Klicken, um Formel zu erstellen...', cn: '点击创建公式...' })}
+                  value={formula || t('Click to create formula...')}
                   readOnly
                   onClick={() => setIsFormulaEditorOpen(true)}
                 />
@@ -128,8 +128,8 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
 
           {/* Footer */}
           <footer className="edit-channel-footer">
-            <button className="btn-edit-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
-            <button className="btn-edit-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
+            <button className="btn-edit-cancel" onClick={onClose}>{t('Cancel')}</button>
+            <button className="btn-edit-confirm" onClick={handleConfirm}>{t('Confirm')}</button>
           </footer>
         </div>
       </div>
@@ -145,9 +145,9 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
         isOpen={showErrorDialog}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        title={t({ en: 'Warning Notification', de: 'Warnhinweis', cn: '警告通知' })}
+        title={t('Warning Notification')}
         body={errorMessage}
-        confirmText={t({ en: 'OK', de: 'OK', cn: '好的' })}
+        confirmText={t('OK')}
         showCancel={false}
         type="err"
       />

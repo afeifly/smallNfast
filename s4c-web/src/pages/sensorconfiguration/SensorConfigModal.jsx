@@ -146,12 +146,8 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       if (isDuplicate) {
         setDialogState({
           isOpen: true,
-          title: t({ en: 'Duplicate Address', de: 'Doppelte Adresse', cn: '地址重复' }),
-          body: t({ 
-            en: `The Modbus Address "${address}" is already in use by another sensor. Please use a unique address.`, 
-            de: `Die Modbus-Adresse "${address}" wird bereits von einem anderen Sensor verwendet. Bitte verwenden Sie eine eindeutige Adresse.`, 
-            cn: `Modbus 地址 "${address}" 已被其他传感器使用。请使用唯一的地址。` 
-          }),
+          title: t('Duplicate Address'),
+          body: t('The Modbus Address "{address}" is already in use by another sensor. Please use a unique address.').replaceAll('{address}', address),
           type: 'err',
           showCancel: false,
           onConfirm: closeDialog
@@ -236,12 +232,8 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     if (isChannelUsedInLogger(configData, channel)) {
       setDialogState({
         isOpen: true,
-        title: t({ en: 'Delete Restricted', de: 'Löschen eingeschränkt', cn: '删除受限' }),
-        body: t({ 
-          en: `Cannot delete channel "${channel.ChannelDescription}". it is currently used in Logger settings. Please remove it from Logger settings first.`, 
-          de: `Kanal "${channel.ChannelDescription}" kann nicht gelöscht werden. Er wird derzeit in den Logger-Einstellungen verwendet. Bitte entfernen Sie ihn zuerst aus den Logger-Einstellungen.`, 
-          cn: `无法删除通道 "${channel.ChannelDescription}"。它当前在记录仪设置中使用。请先从记录仪设置中移除它。` 
-        }),
+        title: t('Delete Restricted'),
+        body: t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Logger settings. Please remove it from Logger settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription),
         type: 'err',
         showCancel: false,
         onConfirm: closeDialog
@@ -251,12 +243,8 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
 
     setDialogState({
       isOpen: true,
-      title: t({ en: 'Delete Confirmation', de: 'Löschbestätigung', cn: '删除确认' }),
-      body: t({ 
-        en: `Are you sure you want to delete channel "${channel.ChannelDescription}"?`, 
-        de: `Sind Sie sicher, dass Sie den Kanal "${channel.ChannelDescription}" löschen möchten?`, 
-        cn: `确定要删除通道 "${channel.ChannelDescription}" 吗？` 
-      }),
+      title: t('Delete Confirmation'),
+      body: t('Are you sure you want to delete channel "{channel.ChannelDescription}"?').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription),
       type: 'warn',
       showCancel: true,
       onConfirm: () => {
@@ -283,15 +271,15 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       <div className="config-modal">
         {/* Header */}
         <header className="config-header">
-          <div className="config-title">{t({ en: 'Channel configuration', de: 'Kanalkonfiguration', cn: '通道配置' })}</div>
+          <div className="config-title">{t('Channel configuration')}</div>
           <div className="close-btn" onClick={onClose}>
-            <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
+            <img src={iconBtnClose} alt={t('Close')} style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
         {/* Warning & Add Channel */}
         <div className="config-warning" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{t({ en: 'Please check and confirm that the unit matches the sensor', de: 'Bitte überprüfen und bestätigen Sie, dass die Einheit mit dem Sensor übereinstimmt', cn: '请检查并确认单位与传感器匹配' })}</span>
+          <span>{t('Please check and confirm that the unit matches the sensor')}</span>
           {!isSuto && (
             <button
               className="btn-add-channel"
@@ -307,7 +295,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                 fontWeight: '600'
               }}
             >
-              + {t({ en: 'Add channel', de: 'Kanal hinzufügen', cn: '添加通道' })}
+              + {t('Add channel')}
             </button>
           )}
         </div>
@@ -317,7 +305,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
           {/* Left Form */}
           <div className="config-left">
             <div className="form-item">
-              <label className="form-label">{t({ en: 'Protocol', de: 'Protokoll', cn: '协议' })}</label>
+              <label className="form-label">{t('Protocol')}</label>
               <div className="form-control-wrapper">
                 <select
                   className="form-select-hidden"
@@ -338,7 +326,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
 
             {isSuto && (
               <div className="form-item">
-                <label className="form-label">{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</label>
+                <label className="form-label">{t('Sensor')}</label>
                 <div className="form-control-wrapper">
                   <select
                     className="form-select-hidden"
@@ -350,7 +338,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                     ))}
                   </select>
                   <div className="form-control">
-                    <span>{selectedSensor || t({ en: 'Select Sensor', de: 'Sensor auswählen', cn: '选择传感器' })}</span>
+                    <span>{selectedSensor || t('Select Sensor')}</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M6 9l6 6 6-6" />
                     </svg>
@@ -360,10 +348,10 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
             )}
 
             <div className="form-item">
-              <label className="form-label">{t({ en: 'Description', de: 'Beschreibung', cn: '描述' })}</label>
+              <label className="form-label">{t('Description')}</label>
               <input
                 className="form-input"
-                placeholder={t({ en: '20 characters max', de: 'max. 20 Zeichen', cn: '20个字符以内' })}
+                placeholder={t('20 characters max')}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -371,7 +359,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
 
             {protocol === 4 ? (
               <div className="form-item">
-                <label className="form-label">{t({ en: 'Address', de: 'Adresse', cn: '地址' })}</label>
+                <label className="form-label">{t('Address')}</label>
                 <input
                   className="form-input"
                   value={address}
@@ -381,7 +369,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
             ) : (
               <>
                 <div className="form-item">
-                  <label className="form-label">{t({ en: 'IP Address', de: 'IP-Adresse', cn: 'IP 地址' })}</label>
+                  <label className="form-label">{t('IP Address')}</label>
                   <input
                     className="form-input"
                     value={ipAddress}
@@ -390,7 +378,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                 </div>
 
                 <div className="form-item">
-                  <label className="form-label">{t({ en: 'Port', de: 'Port', cn: '端口' })}</label>
+                  <label className="form-label">{t('Port')}</label>
                   <input
                     className="form-input"
                     value={port}
@@ -401,7 +389,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
             )}
 
             <div className="form-item">
-              <label className="form-label">{t({ en: 'S/N', de: 'S/N', cn: '序列号' })}</label>
+              <label className="form-label">{t('S/N')}</label>
               <input
                 className="form-input"
                 value={sn}
@@ -422,10 +410,10 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                     <th className="checkbox-cell">
                       <div className="checkbox-custom indeterminate" />
                     </th>
-                    <th className="col-channel">{t({ en: 'Channel', de: 'Kanal', cn: '通道' })}</th>
-                    <th className="col-unit">{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
-                    <th className="col-resolution">{t({ en: 'Resolution', de: 'Auflösung', cn: '分辨率' })}</th>
-                    <th className="col-operate">{t({ en: 'Operate', de: 'Aktion', cn: '操作' })}</th>
+                    <th className="col-channel">{t('Channel')}</th>
+                    <th className="col-unit">{t('Unit')}</th>
+                    <th className="col-resolution">{t('Resolution')}</th>
+                    <th className="col-operate">{t('Operate')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -452,17 +440,17 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                             className="btn-icon-img"
                             style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             onClick={() => handleEditClick(ch, idx)}
-                            title={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })}
+                            title={t('Edit')}
                           >
-                            <img src={iconBtnEdit} alt={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })} style={{ width: 18, height: 18 }} />
+                            <img src={iconBtnEdit} alt={t('Edit')} style={{ width: 18, height: 18 }} />
                           </button>
                           <button
                             className="btn-icon-img"
                             style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             onClick={() => deleteChannel(idx)}
-                            title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })}
+                            title={t('Delete')}
                           >
-                            <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 18, height: 18 }} />
+                            <img src={iconBtnDelete} alt={t('Delete')} style={{ width: 18, height: 18 }} />
                           </button>
                         </div>
                       </td>
@@ -476,8 +464,8 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
 
         {/* Footer */}
         <footer className="config-footer">
-          <button className="btn-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
-          <button className="btn-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
+          <button className="btn-cancel" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn-confirm" onClick={handleConfirm}>{t('Confirm')}</button>
         </footer>
 
         {/* Nested Edit Channel Modal */}

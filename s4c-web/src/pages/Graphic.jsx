@@ -35,7 +35,7 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 3000 }}>
       <div className="settings-drawer" onClick={e => e.stopPropagation()}>
         <div className="drawer-header-title">
-          <span>{t({ en: 'Y-axis', de: 'Y-Achse', cn: 'Y轴' })}</span>
+          <span>{t('Y-axis')}</span>
         </div>
         <div className="drawer-close-btn" onClick={onClose}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#191919" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -47,18 +47,18 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
               <div style={{ width: 14.85, height: 11.02, background: 'rgba(255, 255, 255, 0.90)', maskImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 15 11\'%3E%3Cpath d=\'M1 5.5L5.5 10L14 1\' stroke=\'black\' stroke-width=\'2.5\'/%3E%3C/svg%3E")', WebkitMaskImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 15 11\'%3E%3Cpath d=\'M1 5.5L5.5 10L14 1\' stroke=\'black\' stroke-width=\'2.5\'/%3E%3C/svg%3E")' }} />
             )}
           </div>
-          <div className="auto-scaling-label" style={{ color: '#1D1D1B', fontSize: 20, fontFamily: 'Arial' }}>{t({ en: 'Automatic scaling', de: 'Automatische Skalierung', cn: '自动缩放' })}</div>
+          <div className="auto-scaling-label" style={{ color: '#1D1D1B', fontSize: 20, fontFamily: 'Arial' }}>{t('Automatic scaling')}</div>
         </div>
 
         <div className="range-inputs-container">
           <div className="range-field">
-            <span className="range-label">{t({ en: 'min', de: 'Min', cn: '最小值' })}</span>
+            <span className="range-label">{t('min')}</span>
             <div className="range-input-box">
               <input type="number" value={min} onChange={e => setMin(e.target.value)} disabled={autoScale} style={{ color: autoScale ? '#999' : '#191919' }} />
             </div>
           </div>
           <div className="range-field">
-            <span className="range-label">{t({ en: 'max', de: 'Max', cn: '最大值' })}</span>
+            <span className="range-label">{t('max')}</span>
             <div className="range-input-box">
               <input type="number" value={max} onChange={e => setMax(e.target.value)} disabled={autoScale} style={{ color: autoScale ? '#999' : '#191919' }} />
             </div>
@@ -66,7 +66,7 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
         </div>
 
         <div className="color-section">
-          <div className="color-section-label">{t({ en: 'Color', de: 'Farbe', cn: '颜色' })}</div>
+          <div className="color-section-label">{t('Color')}</div>
           <div className="color-blocks-grid">
             {colorRows.map((row, rowIndex) => (
               <div key={rowIndex} className="color-blocks-row">
@@ -90,8 +90,8 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
         </div>
 
         <div className="drawer-footer-bar">
-          <button className="btn-drawer-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
-          <button className="btn-drawer-confirm" onClick={() => onSave({ isAutomaticScale: autoScale, yMin: Number(min), yMax: Number(max), color: selectedColor })}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确定' })}</button>
+          <button className="btn-drawer-cancel" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn-drawer-confirm" onClick={() => onSave({ isAutomaticScale: autoScale, yMin: Number(min), yMax: Number(max), color: selectedColor })}>{t('Confirm')}</button>
         </div>
       </div>
     </div>
@@ -109,19 +109,19 @@ const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="chart-name-dialog" onClick={e => e.stopPropagation()}>
-        <div className="chart-name-modal-title">{t({ en: 'Create Chart Name', de: 'Diagrammnamen erstellen', cn: '创建图表名称' })}</div>
+        <div className="chart-name-modal-title">{t('Create Chart Name')}</div>
         <div className="chart-name-input-area">
           <div className="input-with-label">
-            <label>{t({ en: 'Chart name', de: 'Diagrammname', cn: '图表名称' })}</label>
+            <label>{t('Chart name')}</label>
             <div className="input-wrapper-bordered">
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder={t({ en: 'Please enter content', de: 'Bitte Inhalt eingeben', cn: '请输入内容' })} />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder={t('Please enter content')} />
             </div>
           </div>
-          <div className="input-hint">{t({ en: 'The maximum length is 20 characters', de: 'Die maximale Länge beträgt 20 Zeichen', cn: '最大长度为 20 个字符' })}</div>
+          <div className="input-hint">{t('The maximum length is 20 characters')}</div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 'auto' }}>
-          <button className="btn-drawer-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确定' })}</button>
-          <button className="btn-drawer-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
+          <button className="btn-drawer-confirm" onClick={handleConfirm}>{t('Confirm')}</button>
+          <button className="btn-drawer-cancel" onClick={onClose}>{t('Cancel')}</button>
         </div>
       </div>
     </div>
@@ -136,7 +136,7 @@ const HeaderControls = ({ isMini, onAddGraphic, onToggleGrid, addDisabled, onRem
         <button
           onClick={(e) => { e.stopPropagation(); onRemoveGraphic(); }}
           className={`btn-graphic-remove ${isMini ? 'mini' : ''}`}
-          title={t({ en: 'Remove chart', de: 'Diagramm entfernen', cn: '删除图表' })}
+          title={t('Remove chart')}
         >
           <svg width={isMini ? 12 : 16} height={isMini ? 12 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -151,7 +151,7 @@ const HeaderControls = ({ isMini, onAddGraphic, onToggleGrid, addDisabled, onRem
         disabled={addDisabled}
       >
         <img src={iconSmallPlusCircle} width={isMini ? 11 : 16} height={isMini ? 11 : 16} alt="add" />
-        <span className={`label-text ${isMini ? 'mini' : ''}`}>{t({ en: 'Add graphic', de: 'Diagramm hinzufügen', cn: '添加图表' })}</span>
+        <span className={`label-text ${isMini ? 'mini' : ''}`}>{t('Add graphic')}</span>
       </button>
       <div
         onClick={(e) => { e.stopPropagation(); onToggleGrid(); }}
@@ -196,7 +196,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
               {!slot.isSet ? (
                 <>
                   {!isMini && <img src={iconPlusCircle} width={22} height={22} alt="add channel" />}
-                  <span style={{ fontSize: isMini ? '9px' : '18px' }}>{t({ en: 'Add channel', de: 'Kanal hinzufügen', cn: '添加通道' })}</span>
+                  <span style={{ fontSize: isMini ? '9px' : '18px' }}>{t('Add channel')}</span>
                 </>
               ) : (
                 <>
@@ -227,7 +227,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
             {!isMini && activeChannelsInConfig.length === 0 && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                 <PlusCircleLarge />
-                <span style={{ textAlign: 'center', color: '#4E5969', fontSize: 16, fontWeight: 700, maxWidth: 349 }}>{t({ en: "Please click 'Add channel' for channel configuration!", de: "Bitte klicken Sie auf 'Kanal hinzufügen' zur Kanalkonfiguration!", cn: "请点击“添加通道”进行通道配置！" })}</span>
+                <span style={{ textAlign: 'center', color: '#4E5969', fontSize: 16, fontWeight: 700, maxWidth: 349 }}>{t('Please click \'Add channel\' for channel configuration!')}</span>
               </div>
             )}
           </div>
@@ -393,7 +393,7 @@ const Graphic = () => {
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <button onClick={handleAddGraphic} className="btn-graphic-control">
                 <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
-                <span className="label-text">{t({ en: 'Add graphic', de: 'Diagramm hinzufügen', cn: '添加图表' })}</span>
+                <span className="label-text">{t('Add graphic')}</span>
               </button>
             </div>
           </div>
@@ -406,7 +406,7 @@ const Graphic = () => {
     <div className="content-card graphic-view">
       <header className="card-header">
         <div className="graphic-title" onClick={() => setIsNameModalOpen(true)} style={{ cursor: 'pointer' }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{currentGraphic.tableName || t({ en: 'create chart name', de: 'Diagrammname erstellen', cn: '创建图表名称' })}</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{currentGraphic.tableName || t('create chart name')}</span>
           <div className="edit-icon-wrapper">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -436,14 +436,10 @@ const Graphic = () => {
           setDeletingGraphicIndex(null);
         }}
         onConfirm={handleConfirmDelete}
-        title={t({ en: 'Warning', de: 'Warnung', cn: '警告' })}
-        body={t({
-          en: 'Are you sure to delete the chart?',
-          de: 'Sind Sie sicher, dass Sie das Diagramm löschen möchten?',
-          cn: '确定要删除该图表吗？'
-        })}
-        confirmText={t({ en: 'Remove', de: 'Entfernen', cn: '删除' })}
-        cancelText={t({ en: 'No', de: 'Nein', cn: '取消' })}
+        title={t('Warning')}
+        body={t('Are you sure to delete the chart?')}
+        confirmText={t('Remove')}
+        cancelText={t('No')}
         type="warn"
         showCancel={true}
       />

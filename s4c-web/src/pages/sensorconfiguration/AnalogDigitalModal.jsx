@@ -192,18 +192,18 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
         <header className="edit-channel-header">
           <div className="edit-channel-title">
             {initialData 
-              ? t({ en: 'Edit analog & digital input', de: 'Analogen & digitalen Eingang bearbeiten', cn: '编辑模拟与数字输入' })
-              : t({ en: 'Add analog & digital input', de: 'Analogen & digitalen Eingang hinzufügen', cn: '添加模拟与数字输入' })
+              ? t('Edit analog & digital input')
+              : t('Add analog & digital input')
             }
           </div>
           <div className="edit-channel-close" onClick={onClose}>
-            <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
+            <img src={iconBtnClose} alt={t('Close')} style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
         <div className="edit-channel-body">
           <div className="edit-form-item">
-            <label className="edit-form-label">{t({ en: 'Input module', de: 'Eingangsmodul', cn: '输入模块' })}</label>
+            <label className="edit-form-label">{t('Input module')}</label>
             <div className="edit-form-input-wrapper">
               <select 
                 className="edit-form-input"
@@ -211,14 +211,14 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                 value={optionBoardType}
                 onChange={handleOptionBoardTypeChange}
               >
-                <option value={0}>{t({ en: 'Analog', de: 'Analog', cn: '模拟' })}</option>
-                <option value={1}>{t({ en: 'Digital', de: 'Digital', cn: '数字' })}</option>
+                <option value={0}>{t('Analog')}</option>
+                <option value={1}>{t('Digital')}</option>
               </select>
             </div>
           </div>
 
           <div className="edit-form-item">
-            <label className="edit-form-label">{t({ en: 'Terminal', de: 'Klemme', cn: '端子' })}</label>
+            <label className="edit-form-label">{t('Terminal')}</label>
             <div className="edit-form-input-wrapper">
               <select 
                 className="edit-form-input"
@@ -234,7 +234,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
           </div>
 
           <div className="edit-form-item">
-            <label className="edit-form-label">{t({ en: 'Sensor description', de: 'Sensorbeschreibung', cn: '传感器描述' })}</label>
+            <label className="edit-form-label">{t('Sensor description')}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -245,7 +245,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
           </div>
 
           <div className="edit-form-item">
-            <label className="edit-form-label">{t({ en: 'Channel description', de: 'Kanalbeschreibung', cn: '通道描述' })}</label>
+            <label className="edit-form-label">{t('Channel description')}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -258,7 +258,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
           {Number(optionBoardType) === 0 ? (
             <>
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Signal', de: 'Signal', cn: '信号' })}</label>
+                <label className="edit-form-label">{t('Signal')}</label>
                 <div className="edit-form-input-wrapper">
                   <select 
                     className="edit-form-input"
@@ -275,7 +275,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               </div>
 
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Unit type', de: 'Einheitstyp', cn: '单位类型' })}</label>
+                <label className="edit-form-label">{t('Unit type')}</label>
                 <div className="edit-form-input-wrapper">
                   <select 
                     className="edit-form-input"
@@ -283,15 +283,15 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                     value={uintType}
                     onChange={(e) => setUintType(e.target.value)}
                   >
-                    <option value={0}>{t({ en: 'Flow', de: 'Durchfluss', cn: '流量' })}</option>
-                    <option value={10}>{t({ en: 'Voltage', de: 'Spannung', cn: '电压' })}</option>
-                    <option value={1}>{t({ en: 'Pressure', de: 'Druck', cn: '压力' })}</option>
+                    <option value={0}>{t('Flow')}</option>
+                    <option value={10}>{t('Voltage')}</option>
+                    <option value={1}>{t('Pressure')}</option>
                   </select>
                 </div>
               </div>
 
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</label>
+                <label className="edit-form-label">{t('Unit')}</label>
                 <div className="edit-form-input-wrapper">
                   <input 
                     className="edit-form-input" 
@@ -303,7 +303,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               </div>
 
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Resolution', de: 'Auflösung', cn: '分辨率' })}</label>
+                <label className="edit-form-label">{t('Resolution')}</label>
                 <div className="edit-form-input-wrapper">
                   <select 
                     className="edit-form-input"
@@ -323,7 +323,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               </div>
 
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Scale Min', de: 'Skala Min', cn: '量程下限' })}</label>
+                <label className="edit-form-label">{t('Scale Min')}</label>
                 <div className="edit-form-input-wrapper">
                   <input 
                     type="number"
@@ -335,7 +335,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
               </div>
 
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Scale Max', de: 'Skala Max', cn: '量程上限' })}</label>
+                <label className="edit-form-label">{t('Scale Max')}</label>
                 <div className="edit-form-input-wrapper">
                   <input 
                     type="number"
@@ -349,7 +349,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
           ) : (
             <>
               <div className="edit-form-item">
-                <label className="edit-form-label">{t({ en: 'Type', de: 'Typ', cn: '类型' })}</label>
+                <label className="edit-form-label">{t('Type')}</label>
                 <div className="edit-form-input-wrapper">
                   <select 
                     className="edit-form-input"
@@ -357,16 +357,16 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                     value={digitalType}
                     onChange={handleDigitalTypeChange}
                   >
-                    <option value={0}>{t({ en: 'Counter', de: 'Zähler', cn: '计数器' })}</option>
-                    <option value={1}>{t({ en: 'Runtime', de: 'Laufzeit', cn: '运行时间' })}</option>
-                    <option value={2}>{t({ en: 'Status', de: 'Status', cn: '状态' })}</option>
+                    <option value={0}>{t('Counter')}</option>
+                    <option value={1}>{t('Runtime')}</option>
+                    <option value={2}>{t('Status')}</option>
                   </select>
                 </div>
               </div>
 
               {Number(digitalType) === 0 && (
                 <div className="edit-form-item">
-                  <label className="edit-form-label">{t({ en: 'Display unit', de: 'Anzeigeeinheit', cn: '显示单位' })}</label>
+                  <label className="edit-form-label">{t('Display unit')}</label>
                   <div className="edit-form-input-wrapper">
                     <input 
                       className="edit-form-input" 
@@ -389,8 +389,8 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                         value={digitalState0}
                         onChange={(e) => handleRuntimeState0Change(e.target.value)}
                       >
-                        <option value="Off">{t({ en: 'Off', de: 'Aus', cn: '关' })}</option>
-                        <option value="On">{t({ en: 'On', de: 'An', cn: '开' })}</option>
+                        <option value="Off">{t('Off')}</option>
+                        <option value="On">{t('On')}</option>
                       </select>
                     </div>
                   </div>
@@ -404,8 +404,8 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                         value={digitalState1}
                         onChange={(e) => handleRuntimeState1Change(e.target.value)}
                       >
-                        <option value="Off">{t({ en: 'Off', de: 'Aus', cn: '关' })}</option>
-                        <option value="On">{t({ en: 'On', de: 'An', cn: '开' })}</option>
+                        <option value="Off">{t('Off')}</option>
+                        <option value="On">{t('On')}</option>
                       </select>
                     </div>
                   </div>
@@ -423,8 +423,8 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                         value={digitalState0}
                         onChange={(e) => handleStatusState0Change(e.target.value)}
                       >
-                        <option value="Good">{t({ en: 'Good', de: 'Gut', cn: '正常' })}</option>
-                        <option value="Failure">{t({ en: 'Failure', de: 'Fehler', cn: '故障' })}</option>
+                        <option value="Good">{t('Good')}</option>
+                        <option value="Failure">{t('Failure')}</option>
                       </select>
                     </div>
                   </div>
@@ -438,8 +438,8 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
                         value={digitalState1}
                         onChange={(e) => handleStatusState1Change(e.target.value)}
                       >
-                        <option value="Good">{t({ en: 'Good', de: 'Gut', cn: '正常' })}</option>
-                        <option value="Failure">{t({ en: 'Failure', de: 'Fehler', cn: '故障' })}</option>
+                        <option value="Good">{t('Good')}</option>
+                        <option value="Failure">{t('Failure')}</option>
                       </select>
                     </div>
                   </div>
@@ -451,8 +451,8 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
 
         {/* Footer */}
         <footer className="edit-channel-footer">
-          <button className="btn-edit-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
-          <button className="btn-edit-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
+          <button className="btn-edit-cancel" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn-edit-confirm" onClick={handleConfirm}>{t('Confirm')}</button>
         </footer>
       </div>
     </div>

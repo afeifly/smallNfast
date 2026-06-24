@@ -30,7 +30,7 @@ const FileVerification = () => {
 
     if (hasInvalid) {
       setStatus('error');
-      setErrorMessage(t({ en: 'not valid file', de: 'ungültige Datei', cn: '无效文件' }));
+      setErrorMessage(t('not valid file'));
       return;
     }
 
@@ -70,7 +70,7 @@ const FileVerification = () => {
 
       if (!parsed || !parsed.expectedHash) {
         setStatus('error');
-        setErrorMessage(t({ en: 'not valid file', de: 'ungültige Datei', cn: '无效文件' }));
+        setErrorMessage(t('not valid file'));
         return;
       }
 
@@ -82,12 +82,12 @@ const FileVerification = () => {
         setStatus('success');
       } else {
         setStatus('error');
-        setErrorMessage(t({ en: 'Verification failed', de: 'Verifizierung fehlgeschlagen', cn: '验证失败' }));
+        setErrorMessage(t('Verification failed'));
       }
     } catch (err) {
       console.error('[FileVerification] Error during verification:', err);
       setStatus('error');
-      setErrorMessage(t({ en: 'Verification failed', de: 'Verifizierung fehlgeschlagen', cn: '验证失败' }));
+      setErrorMessage(t('Verification failed'));
     }
   }, [dataFile, fvFile]);
 
@@ -100,36 +100,28 @@ const FileVerification = () => {
     if (status === 'idle') {
       return (
         <div className="result-box" style={{ justifyContent: 'center' }}>
-          {t({
-            en: 'Pending upload of CSV/Excel and verification files...',
-            de: 'Ausstehender Upload von CSV/Excel- und Verifizierungsdateien...',
-            cn: '等待上传 CSV/Excel 和验证文件...'
-          })}
+          {t('Pending upload of CSV/Excel and verification files...')}
         </div>
       );
     }
     if (status === 'verifying') {
       return (
         <div className="result-box verifying" style={{ justifyContent: 'center' }}>
-          {t({
-            en: 'Verifying signatures...',
-            de: 'Signaturen werden verifiziert...',
-            cn: '正在验证签名...'
-          })}
+          {t('Verifying signatures...')}
         </div>
       );
     }
     if (status === 'success') {
       return (
         <div className="result-box success" style={{ backgroundColor: '#00B42A', color: 'white', borderColor: '#00B42A', justifyContent: 'center' }}>
-          {t({ en: 'Pass', de: 'Bestanden', cn: '通过' })}
+          {t('Pass')}
         </div>
       );
     }
     if (status === 'error') {
       return (
         <div className="result-box error" style={{ backgroundColor: '#FF7200', color: 'white', borderColor: '#FF7200', justifyContent: 'center' }}>
-          {errorMessage || t({ en: 'Verification failed', de: 'Verifizierung fehlgeschlagen', cn: '验证失败' })}
+          {errorMessage || t('Verification failed')}
         </div>
       );
     }
@@ -139,14 +131,14 @@ const FileVerification = () => {
   return (
     <div className="content-card verification-page">
       <header className="verification-header">
-        <h2 className="verification-title">{t({ en: 'Import File & Verification', de: 'Datei importieren & Verifizierung', cn: '导入文件与校验' })}</h2>
+        <h2 className="verification-title">{t('Import File & Verification')}</h2>
       </header>
 
       <div className="verification-body">
         {/* Row 1: Upload & verify */}
         <div className="verification-row">
           <div className="verification-label-container">
-            <span className="verification-label">{t({ en: 'Upload & verify', de: 'Hochladen & verifizieren', cn: '上传与校验' })}</span>
+            <span className="verification-label">{t('Upload & verify')}</span>
           </div>
           <div className="verification-content">
             <div
@@ -173,7 +165,7 @@ const FileVerification = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
               </svg>
 
-              <div className="upload-text">{t({ en: 'Upload & verify', de: 'Hochladen & verifizieren', cn: '上传与校验' })}</div>
+              <div className="upload-text">{t('Upload & verify')}</div>
             </div>
 
             {/* Display selected files */}
@@ -205,7 +197,7 @@ const FileVerification = () => {
         {/* Row 2: Verification Result */}
         <div className="verification-row">
           <div className="verification-label-container">
-            <span className="verification-label">{t({ en: 'Verification Result', de: 'Verifizierungsergebnis', cn: '校验结果' })}</span>
+            <span className="verification-label">{t('Verification Result')}</span>
           </div>
           <div className="verification-content">
             {renderResultBox()}

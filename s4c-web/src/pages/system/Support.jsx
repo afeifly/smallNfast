@@ -95,7 +95,7 @@ const Support = () => {
     <div className="content-card support-page">
       {/* Header */}
       <header className="support-header">
-        <h2 className="support-title">{t({ en: 'Support information', de: 'Support-Informationen', cn: '支持信息' })}</h2>
+        <h2 className="support-title">{t('Support information')}</h2>
       </header>
 
       {/* Content Body */}
@@ -103,7 +103,7 @@ const Support = () => {
         <div className="support-row">
           {/* Service company name */}
           <div className="support-field">
-            <label className="support-label">{t({ en: 'Service company name', de: 'Name des Dienstleistungsunternehmens', cn: '服务公司名称' })} <span className="required">*</span></label>
+            <label className="support-label">{t('Service company name')} <span className="required">*</span></label>
             <div className="support-input-container">
               <input
                 type="text"
@@ -116,7 +116,7 @@ const Support = () => {
 
           {/* Address */}
           <div className="support-field">
-            <label className="support-label">{t({ en: 'Address', de: 'Adresse', cn: '地址' })} <span className="required">*</span></label>
+            <label className="support-label">{t('Address')} <span className="required">*</span></label>
             <div className="support-input-container">
               <input
                 type="text"
@@ -131,7 +131,7 @@ const Support = () => {
         <div className="support-row">
           {/* Telephone */}
           <div className="support-field">
-            <label className="support-label">{t({ en: 'Telephone', de: 'Telefon', cn: '电话' })} <span className="required">*</span></label>
+            <label className="support-label">{t('Telephone')} <span className="required">*</span></label>
             <div className="support-input-container">
               <input
                 type="text"
@@ -144,7 +144,7 @@ const Support = () => {
 
           {/* Email */}
           <div className="support-field">
-            <label className="support-label">{t({ en: 'Email', de: 'E-Mail', cn: '电子邮件' })} <span className="required">*</span></label>
+            <label className="support-label">{t('Email')} <span className="required">*</span></label>
             <div className="support-input-container">
               <input
                 type="email"
@@ -159,7 +159,7 @@ const Support = () => {
         <div className="support-row">
           {/* Website */}
           <div className="support-field">
-            <label className="support-label">{t({ en: 'Website', de: 'Webseite', cn: '网址' })} <span className="required">*</span></label>
+            <label className="support-label">{t('Website')} <span className="required">*</span></label>
             <div className="support-input-container">
               <input
                 type="url"

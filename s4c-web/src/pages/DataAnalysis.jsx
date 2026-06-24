@@ -12,11 +12,7 @@ const DataAnalysis = () => {
           {t('Data Analysis')}
         </h3>
         <p className="empty-text" style={{ fontSize: '14px', color: '#86909C', fontWeight: 'normal', margin: 0, lineHeight: '1.5' }}>
-          {t({
-            en: 'Go to S4A-Web for Professional and Precise Data Analysis.',
-            de: 'Gehen Sie zu S4A-Web für professionelle und präzise Datenanalyse.',
-            cn: '前往 S4A-Web 进行专业、精准的数据分析。'
-          })}
+          {t('Go to S4A-Web for Professional and Precise Data Analysis.')}
         </p>
         <a 
           href="https://test2.exmm.top" 
@@ -39,11 +35,7 @@ const DataAnalysis = () => {
             transition: 'background 0.2s'
           }}
         >
-          {t({
-            en: 'Visit S4A-Web',
-            de: 'Besuchen Sie S4A-Web',
-            cn: '访问 S4A-Web'
-          })}
+          {t('Visit S4A-Web')}
         </a>
       </div>
     </div>

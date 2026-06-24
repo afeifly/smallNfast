@@ -250,8 +250,8 @@ const Alarm = () => {
     } catch (err) {
       console.error('[Alarm.jsx] Failed to insert new alarm(s):', err);
       showAlertDialog(
-        t({ en: 'Create Alarm Failed', de: 'Alarmerstellung fehlgeschlagen', cn: '创建报警失败' }),
-        `${t({ en: 'Failed to create alarm', de: 'Fehler beim Erstellen des Alarms', cn: '创建报警失败' })}: ${err.message || err}`,
+        t('Create Alarm Failed'),
+        `${t('Failed to create alarm')}: ${err.message || err}`,
         'err'
       );
       return;
@@ -337,7 +337,7 @@ const Alarm = () => {
       {/* Header */}
       <header className="suto-header">
         <h2 className="suto-title">
-          {t({ en: 'Alarm List', de: 'Alarmliste', cn: '报警列表' })}
+          {t('Alarm List')}
         </h2>
         <button
           className="add-sensor-btn"
@@ -351,12 +351,8 @@ const Alarm = () => {
             if (!isDbReady) {
               console.warn('[Alarm.jsx] Create Alarm clicked but database is not ready. Status:', dbStatus);
               showAlertDialog(
-                t({ en: 'Database Not Ready', de: 'Datenbank nicht bereit', cn: '数据库未就绪' }),
-                t({
-                  en: `Cannot create alarm: The alarm database is not ready (Status: ${dbStatus}). Please make sure a valid configuration package containing Alarm.db is active.`,
-                  de: `Alarm kann nicht erstellt werden: Die Alarmdatenbank ist nicht bereit (Status: ${dbStatus}). Bitte stellen Sie sicher, dass ein gültiges Konfigurationspaket mit Alarm.db aktiv ist.`,
-                  cn: `无法创建报警：报警数据库未就绪 (状态: ${dbStatus})。请确保包含 Alarm.db 的有效配置包已激活。`
-                }),
+                t('Database Not Ready'),
+                t('Cannot create alarm: The alarm database is not ready (Status: {dbStatus}). Please make sure a valid configuration package containing Alarm.db is active.').replaceAll('{dbStatus}', dbStatus),
                 'warn'
               );
               return;
@@ -368,7 +364,7 @@ const Alarm = () => {
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>{t({ en: 'Create Alarm', de: 'Alarm erstellen', cn: '创建报警' })}</span>
+          <span>{t('Create Alarm')}</span>
         </button>
       </header>
 
@@ -376,27 +372,23 @@ const Alarm = () => {
       <div className="suto-body">
         {noConfig ? (
           <div className="suto-empty-container">
-            {t({
-              en: 'No configuration loaded. Please import a .cfgf file in the Configuration Manager first.',
-              de: 'Keine Konfiguration geladen. Bitte importieren Sie zuerst eine .cfgf-Datei in der Konfigurationsverwaltung.',
-              cn: '未加载配置。请先在配置管理中导入 .cfgf 文件。'
-            })}
+            {t('No configuration loaded. Please import a .cfgf file in the Configuration Manager first.')}
           </div>
         ) : (
           <div className="suto-table-container">
             <table className="suto-table alarm-config-table">
               <thead>
                 <tr>
-                  <th style={{ width: '190px' }}>{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</th>
-                  <th style={{ width: '200px' }}>{t({ en: 'Channel', de: 'Kanal', cn: '通道' })}</th>
-                  <th style={{ width: '80px' }}>{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
-                  <th style={{ width: '100px' }}>{t({ en: 'Threshold', de: 'Schwellenwert', cn: '报警值' })}</th>
-                  <th style={{ width: '100px' }}>{t({ en: 'Hysteresis', de: 'Hysterese', cn: '回差' })}</th>
-                  <th style={{ width: '100px' }}>{t({ en: 'Direction', de: 'Richtung', cn: '方向' })}</th>
-                  <th style={{ width: '90px' }}>{t({ en: 'Delay (s)', de: 'Verzögerung (s)', cn: '延时 (秒)' })}</th>
-                  <th style={{ width: '110px' }}>{t({ en: 'Relay', de: 'Relais', cn: '继电器' })}</th>
-                  <th style={{ width: '120px' }}>{t({ en: 'Relay Active', de: 'Relais aktiv', cn: '继电器使能' })}</th>
-                  <th style={{ width: '60px' }} className="col-operate">{t({ en: 'Action', de: 'Aktion', cn: '操作' })}</th>
+                  <th style={{ width: '190px' }}>{t('Sensor')}</th>
+                  <th style={{ width: '200px' }}>{t('Channel')}</th>
+                  <th style={{ width: '80px' }}>{t('Unit')}</th>
+                  <th style={{ width: '100px' }}>{t('Threshold')}</th>
+                  <th style={{ width: '100px' }}>{t('Hysteresis')}</th>
+                  <th style={{ width: '100px' }}>{t('Direction')}</th>
+                  <th style={{ width: '90px' }}>{t('Delay (s)')}</th>
+                  <th style={{ width: '110px' }}>{t('Relay')}</th>
+                  <th style={{ width: '120px' }}>{t('Relay Active')}</th>
+                  <th style={{ width: '60px' }} className="col-operate">{t('Action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -436,8 +428,8 @@ const Alarm = () => {
                           value={alarm.Direction}
                           onChange={(e) => updateAlarm(index, 'Direction', e.target.value)}
                         >
-                          <option value="UP">{t({ en: 'UP', de: 'UP', cn: '高报' })}</option>
-                          <option value="Down">{t({ en: 'Down', de: 'Down', cn: '低报' })}</option>
+                          <option value="UP">{t('UP')}</option>
+                          <option value="Down">{t('Down')}</option>
                         </select>
                       </td>
 
@@ -460,11 +452,11 @@ const Alarm = () => {
                           value={alarm.RelayId}
                           onChange={(e) => updateAlarm(index, 'RelayId', e.target.value)}
                         >
-                          <option value="0">{t({ en: 'None', de: 'Keine', cn: '无' })}</option>
-                          <option value="1">{t({ en: 'Relay', de: 'Relais', cn: '继电器' })} 1</option>
-                          <option value="2">{t({ en: 'Relay', de: 'Relais', cn: '继电器' })} 2</option>
-                          <option value="3">{t({ en: 'Relay', de: 'Relais', cn: '继电器' })} 3</option>
-                          <option value="4">{t({ en: 'Relay', de: 'Relais', cn: '继电器' })} 4</option>
+                          <option value="0">{t('None')}</option>
+                          <option value="1">{t('Relay')} 1</option>
+                          <option value="2">{t('Relay')} 2</option>
+                          <option value="3">{t('Relay')} 3</option>
+                          <option value="4">{t('Relay')} 4</option>
                         </select>
                       </td>
 
@@ -483,10 +475,10 @@ const Alarm = () => {
                         <div style={{ display: 'flex', justifyContent: 'center' }}>
                           <button
                             className="btn-icon-img"
-                            title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })}
+                            title={t('Delete')}
                             onClick={() => handleDelete(index)}
                           >
-                            <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 18, height: 18 }} />
+                            <img src={iconBtnDelete} alt={t('Delete')} style={{ width: 18, height: 18 }} />
                           </button>
                         </div>
                       </td>
@@ -497,10 +489,10 @@ const Alarm = () => {
                     <td colSpan={10} style={{ borderBottom: 'none', padding: 0 }}>
                       <div className="suto-empty-container">
                         {isDbLoading
-                          ? t({ en: 'Loading alarm configuration…', de: 'Alarmliste wird geladen…', cn: '正在加载报警配置…' })
+                          ? t('Loading alarm configuration…')
                           : noDb
-                            ? t({ en: 'Alarm.db not found in the loaded config package.', de: 'Alarm.db im geladenen Konfigurationspaket nicht gefunden.', cn: '在加载的配置包中未找到 Alarm.db。' })
-                            : t({ en: 'No alarms configured. Click "Create Alarm" to get started.', de: 'Keine Alarme konfiguriert. Klicken Sie auf "Alarm erstellen", um zu beginnen.', cn: '未配置报警。请点击“创建报警”开始配置。' })}
+                            ? t('Alarm.db not found in the loaded config package.')
+                            : t('No alarms configured. Click "Create Alarm" to get started.')}
                       </div>
                     </td>
                   </tr>
@@ -514,7 +506,7 @@ const Alarm = () => {
       {/* Footer / Pagination */}
       <footer className="suto-footer">
         <div className="pagination-info">
-          <span>{t({ en: 'Items per page:', de: 'Einträge pro Seite:', cn: '每页条数:' })}</span>
+          <span>{t('Items per page:')}</span>
           <div className="items-per-page">
             <span>10</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -524,11 +516,7 @@ const Alarm = () => {
         </div>
 
         <div className="page-counter">
-          {t({
-            en: `${alarms.length} of ${alarms.length}`,
-            de: `${alarms.length} von ${alarms.length}`,
-            cn: `共 ${alarms.length} 条`
-          })}
+          {t('{alarms.length} of {alarms.length}').replaceAll('{alarms.length}', alarms.length)}
         </div>
 
         <div className="pagination-controls">
@@ -562,9 +550,9 @@ const Alarm = () => {
         initialSelectedIds={currentlySelectedIds}
         onConfirm={handleConfirmSelection}
         maxLimit={null}
-        selectionMessage={t({ en: 'Select channels to create alarms.', de: 'Kanäle auswählen, um Alarme zu erstellen.', cn: '选择要创建报警的通道。' })}
+        selectionMessage={t('Select channels to create alarms.')}
         showOperate={false}
-        title={t({ en: 'Select channels for alarm', de: 'Kanäle für Alarm auswählen', cn: '选择报警通道' })}
+        title={t('Select channels for alarm')}
       />
 
       <CustomDialog
@@ -574,7 +562,7 @@ const Alarm = () => {
         type={dialogState.type}
         showConfirm={true}
         showCancel={false}
-        confirmText={t({ en: 'OK', de: 'OK', cn: '确定' })}
+        confirmText={t('OK')}
         onConfirm={() => setDialogState(prev => ({ ...prev, isOpen: false }))}
         onClose={() => setDialogState(prev => ({ ...prev, isOpen: false }))}
       />

@@ -115,7 +115,7 @@ const VirtualChannel = () => {
     <div className="content-card suto-sensor-page">
       {/* Header */}
       <header className="suto-header">
-        <h2 className="suto-title">{t({ en: 'Virtual channel list', de: 'Virtuelle Kanalliste', cn: '虚拟通道列表' })}</h2>
+        <h2 className="suto-title">{t('Virtual channel list')}</h2>
         <button
           className="add-sensor-btn"
           onClick={() => {
@@ -127,7 +127,7 @@ const VirtualChannel = () => {
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>{t({ en: 'Create Virtual channel', de: 'Virtuellen Kanal erstellen', cn: '创建虚拟通道' })}</span>
+          <span>{t('Create Virtual channel')}</span>
         </button>
       </header>
 
@@ -137,12 +137,12 @@ const VirtualChannel = () => {
           <table className="suto-table">
             <thead>
               <tr>
-                <th>{t({ en: 'Created on', de: 'Erstellt am', cn: '创建于' })}</th>
-                <th>{t({ en: 'Virtual channel', de: 'Virtueller Kanal', cn: '虚拟通道' })}</th>
-                <th>{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
-                <th>{t({ en: 'Resolution', de: 'Auflösung', cn: '分辨率' })}</th>
-                <th>{t({ en: 'Formula', de: 'Formel', cn: '公式' })}</th>
-                <th className="col-operate">{t({ en: 'Operate', de: 'Aktion', cn: '操作' })}</th>
+                <th>{t('Created on')}</th>
+                <th>{t('Virtual channel')}</th>
+                <th>{t('Unit')}</th>
+                <th>{t('Resolution')}</th>
+                <th>{t('Formula')}</th>
+                <th className="col-operate">{t('Operate')}</th>
               </tr>
             </thead>
             <tbody>
@@ -158,20 +158,20 @@ const VirtualChannel = () => {
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button 
                           className="btn-icon-img" 
-                          title={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })}
+                          title={t('Edit')}
                           onClick={() => {
                             setEditingItem(item);
                             setIsModalOpen(true);
                           }}
                         >
-                          <img src={iconBtnEdit} alt={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })} style={{ width: 18, height: 18 }} />
+                          <img src={iconBtnEdit} alt={t('Edit')} style={{ width: 18, height: 18 }} />
                         </button>
                         <button 
                           className="btn-icon-img" 
-                          title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })}
+                          title={t('Delete')}
                           onClick={() => handleDelete(item.channelid)}
                         >
-                          <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 18, height: 18 }} />
+                          <img src={iconBtnDelete} alt={t('Delete')} style={{ width: 18, height: 18 }} />
                         </button>
                       </div>
                     </td>
@@ -181,11 +181,7 @@ const VirtualChannel = () => {
                 <tr>
                   <td colSpan={6} style={{ borderBottom: 'none', padding: 0 }}>
                     <div className="suto-empty-container">
-                      {t({ 
-                        en: 'No Virtual channel configured. Click "Create Virtual channel"', 
-                        de: 'Kein virtueller Kanal konfiguriert. Klicken Sie auf "Virtuellen Kanal erstellen"', 
-                        cn: '未配置虚拟通道。点击“创建虚拟通道”开始。' 
-                      })}
+                      {t('No Virtual channel configured. Click "Create Virtual channel"')}
                     </div>
                   </td>
                 </tr>
@@ -198,7 +194,7 @@ const VirtualChannel = () => {
       {/* Footer / Pagination */}
       <footer className="suto-footer">
         <div className="pagination-info">
-          <span>{t({ en: 'Items per page:', de: 'Einträge pro Seite:', cn: '每页条数:' })}</span>
+          <span>{t('Items per page:')}</span>
           <div className="items-per-page">
             <span>10</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -208,7 +204,7 @@ const VirtualChannel = () => {
         </div>
 
         <div className="page-counter">
-          {items.length} {t({ en: 'of', de: 'von', cn: '/' })} {items.length}
+          {items.length} {t('of')} {items.length}
         </div>
 
         <div className="pagination-controls">

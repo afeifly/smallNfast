@@ -16,9 +16,9 @@ const ModbusRTUModal = ({ isOpen, onClose, onSave, initialData }) => {
       <div className="modbus-modal">
         {/* Header */}
         <header className="modbus-header">
-          <div className="modbus-title">{t({ en: 'Modbus connection information', de: 'Modbus-Verbindungsinformationen', cn: 'Modbus 连接信息' })}</div>
+          <div className="modbus-title">{t('Modbus connection information')}</div>
           <div className="modbus-close" onClick={onClose}>
-            <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
+            <img src={iconBtnClose} alt={t('Close')} style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
@@ -27,7 +27,7 @@ const ModbusRTUModal = ({ isOpen, onClose, onSave, initialData }) => {
           <div className="modbus-row">
             {/* Protocol */}
             <div className="modbus-field">
-              <label className="modbus-label">{t({ en: 'Protocol', de: 'Protokoll', cn: '协议' })} <span className="required">*</span></label>
+              <label className="modbus-label">{t('Protocol')} <span className="required">*</span></label>
               <div className="modbus-input-readonly">
                 <span>RTU</span>
               </div>
@@ -35,7 +35,7 @@ const ModbusRTUModal = ({ isOpen, onClose, onSave, initialData }) => {
 
             {/* Baud rate */}
             <div className="modbus-field">
-              <label className="modbus-label">{t({ en: 'Baud rate', de: 'Baudrate', cn: '波特率' })} <span className="required">*</span></label>
+              <label className="modbus-label">{t('Baud rate')} <span className="required">*</span></label>
               <div className="modbus-select-wrapper">
                 <select 
                   className="modbus-select"
@@ -55,7 +55,7 @@ const ModbusRTUModal = ({ isOpen, onClose, onSave, initialData }) => {
           <div className="modbus-row">
             {/* Frame parity */}
             <div className="modbus-field">
-              <label className="modbus-label">{t({ en: 'Frame parity', de: 'Frame-Parität', cn: '帧校验' })} <span className="required">*</span></label>
+              <label className="modbus-label">{t('Frame parity')} <span className="required">*</span></label>
               <div className="modbus-select-wrapper">
                 <select 
                   className="modbus-select"
@@ -72,7 +72,7 @@ const ModbusRTUModal = ({ isOpen, onClose, onSave, initialData }) => {
 
             {/* Response timeout */}
             <div className="modbus-field">
-              <label className="modbus-label">{t({ en: 'Response timeout(s)', de: 'Antwort-Timeout (s)', cn: '响应超时 (秒)' })} <span className="required">*</span></label>
+              <label className="modbus-label">{t('Response timeout(s)')} <span className="required">*</span></label>
               <div className="modbus-input-container">
                 <input 
                   type="number"
@@ -90,8 +90,8 @@ const ModbusRTUModal = ({ isOpen, onClose, onSave, initialData }) => {
 
         {/* Footer */}
         <footer className="modbus-footer">
-          <button className="btn-modbus-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
-          <button className="btn-modbus-save" onClick={() => onSave({ baudRate, parity, timeout })}>{t({ en: 'Save', de: 'Speichern', cn: '保存' })}</button>
+          <button className="btn-modbus-cancel" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn-modbus-save" onClick={() => onSave({ baudRate, parity, timeout })}>{t('Save')}</button>
         </footer>
       </div>
     </div>

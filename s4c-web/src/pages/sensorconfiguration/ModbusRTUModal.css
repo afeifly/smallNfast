@@ -39,13 +39,8 @@
   font-weight: 700;
   color: #191919;
   font-family: 'Arial', sans-serif;
-  text-transform: lowercase; /* Matching snippet's request */
 }
 
-/* Capitalize the first letter for readability despite lowercase request */
-.modbus-title::first-letter {
-  text-transform: uppercase;
-}
 
 .modbus-close {
   width: 32px;
@@ -62,7 +57,8 @@
 
 .modbus-body {
   flex: 1;
-  padding: 33px 108px; /* Starting top: 101, minus header 68 = 33 */
+  padding: 33px 108px;
+  /* Starting top: 101, minus header 68 = 33 */
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -70,7 +66,8 @@
 
 .modbus-row {
   display: flex;
-  gap: 26px; /* 442 - 108 - 308 = 26 */
+  gap: 26px;
+  /* 442 - 108 - 308 = 26 */
 }
 
 .modbus-field {
@@ -121,7 +118,8 @@
   font-size: 14px;
   color: rgba(0, 0, 0, 0.90);
   outline: none;
-  appearance: auto; /* Show standard arrow */
+  appearance: auto;
+  /* Show standard arrow */
 }
 
 .modbus-input-container {
@@ -177,7 +175,8 @@
 .btn-modbus-save {
   min-width: 78px;
   padding: 5px 24px;
-  background: #00AB84; /* Standard green instead of the 0.38 alpha one in snippet */
+  background: #00AB84;
+  /* Standard green instead of the 0.38 alpha one in snippet */
   border: none;
   border-radius: 3px;
   font-size: 14px;

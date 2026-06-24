@@ -30,14 +30,10 @@
   font-weight: 700;
   color: #191919;
   font-family: 'Arial', sans-serif;
-  text-transform: lowercase;
   margin: 0;
   line-height: 1.5;
 }
 
-.holding-title::first-letter {
-  text-transform: uppercase;
-}
 
 .holding-subtitle {
   font-size: 14px;
@@ -98,7 +94,8 @@
 
 .summary-item {
   display: flex;
-  gap: 4px; /* Space between label and value if needed, but here label-above pattern */
+  gap: 4px;
+  /* Space between label and value if needed, but here label-above pattern */
   flex-direction: row;
   justify-content: space-between;
   align-items: center;

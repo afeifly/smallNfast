@@ -21,12 +21,8 @@
   font-weight: 700;
   color: #191919;
   font-family: 'Arial', sans-serif;
-  text-transform: lowercase;
 }
 
-.support-title::first-letter {
-  text-transform: uppercase;
-}
 
 .support-body {
   flex: 1;

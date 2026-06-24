@@ -87,11 +87,11 @@ const ChannelSelectModal = ({
   };
 
   const resolvedTitle = title === 'Channel configuration' 
-    ? t({ en: 'Channel configuration', de: 'Kanalkonfiguration', cn: '通道配置' })
+    ? t('Channel configuration')
     : title;
 
   const resolvedMessage = selectionMessage === 'You can only select up to 5 channels.'
-    ? t({ en: 'You can only select up to 5 channels.', de: 'Sie können nur bis zu 5 Kanäle auswählen.', cn: '您最多只能选择 5 个通道。' })
+    ? t('You can only select up to 5 channels.')
     : selectionMessage;
 
   return (
@@ -103,7 +103,7 @@ const ChannelSelectModal = ({
             <div className="search-input-wrapper" style={{ width: '320px' }}>
               <input
                 type="text"
-                placeholder={t({ en: 'please search sensor name', de: 'Bitte Sensorname suchen', cn: '请输入传感器名称搜索' })}
+                placeholder={t('please search sensor name')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -113,7 +113,7 @@ const ChannelSelectModal = ({
             </div>
           </div>
           <div className="modal-close-btn" onClick={onClose}>
-            <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
+            <img src={iconBtnClose} alt={t('Close')} style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
@@ -128,12 +128,12 @@ const ChannelSelectModal = ({
                     onClick={handleSelectAll}
                   ></div>
                 </th>
-                <th>{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</th>
-                <th>{t({ en: 'Channel', de: 'Kanal', cn: '通道' })}</th>
-                <th>{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
-                <th>{t({ en: 'Location', de: 'Standort', cn: '位置' })}</th>
-                <th>{t({ en: 'Point', de: 'Messpunkt', cn: '测量点' })}</th>
-                {showOperate && <th>{t({ en: 'Operate', de: 'Aktion', cn: '操作' })}</th>}
+                <th>{t('Sensor')}</th>
+                <th>{t('Channel')}</th>
+                <th>{t('Unit')}</th>
+                <th>{t('Location')}</th>
+                <th>{t('Point')}</th>
+                {showOperate && <th>{t('Operate')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -177,7 +177,7 @@ const ChannelSelectModal = ({
                                 if (onSettingClick) onSettingClick(ch);
                               }}
                             >
-                              {t({ en: 'Setting', de: 'Einstellung', cn: '设置' })}
+                              {t('Setting')}
                             </span>
                           )}
                         </td>
@@ -188,7 +188,7 @@ const ChannelSelectModal = ({
               ) : (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                    {t({ en: 'No channels found matching search', de: 'Keine passenden Kanäle gefunden', cn: '未找到匹配的通道' })}
+                    {t('No channels found matching search')}
                   </td>
                 </tr>
               )}
@@ -197,8 +197,8 @@ const ChannelSelectModal = ({
         </div>
 
         <footer className="modal-footer">
-          <button className="btn-drawer-confirm" style={{ width: '120px' }} onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
-          <button className="btn-drawer-cancel" style={{ width: '120px' }} onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
+          <button className="btn-drawer-confirm" style={{ width: '120px' }} onClick={handleConfirm}>{t('Confirm')}</button>
+          <button className="btn-drawer-cancel" style={{ width: '120px' }} onClick={onClose}>{t('Cancel')}</button>
         </footer>
       </div>
 
@@ -206,7 +206,7 @@ const ChannelSelectModal = ({
         isOpen={isLimitAlertOpen}
         onClose={() => setIsLimitAlertOpen(false)}
         onConfirm={() => setIsLimitAlertOpen(false)}
-        title={t({ en: 'Selection Limit', de: 'Auswahllimit', cn: '选择限制' })}
+        title={t('Selection Limit')}
         body={resolvedMessage}
         type="warn"
         showCancel={false}

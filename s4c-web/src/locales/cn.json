@@ -1,0 +1,22 @@
+{
+  "Home": "首页",
+  "Graphic": "图表",
+  "Logger": "记录器",
+  "Alarm": "报警",
+  "Sensor Configuration": "传感器配置",
+  "Communication": "通讯配置",
+  "System": "系统",
+  "Data Analysis": "数据分析",
+  "File Verification": "文件校验",
+  "Config Management": "配置管理",
+  "Support": "技术支持",
+  "SUTO iTEC Sensor": "SUTO iTEC 传感器",
+  "3rd-Party Sensor": "第三方传感器",
+  "Analog & Digital Input": "模拟量与数字量输入",
+  "Virtual Channel": "虚拟通道",
+  "Live-View Layout": "实时视图布局",
+  "Modbus RTU Master": "Modbus RTU 主站",
+  "Modbus RTU Slave": "Modbus RTU 从站",
+  "Holding Register": "保持寄存器",
+  "Logger Settings": "记录器设置"
+}

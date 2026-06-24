@@ -1,0 +1,22 @@
+{
+  "Home": "Startseite",
+  "Graphic": "Grafik",
+  "Logger": "Logger",
+  "Alarm": "Alarm",
+  "Sensor Configuration": "Sensorkonfiguration",
+  "Communication": "Kommunikation",
+  "System": "System",
+  "Data Analysis": "Datenanalyse",
+  "File Verification": "Dateiverifizierung",
+  "Config Management": "Konfigurationsverwaltung",
+  "Support": "Unterstützung",
+  "SUTO iTEC Sensor": "SUTO iTEC Sensor",
+  "3rd-Party Sensor": "Drittanbieter-Sensor",
+  "Analog & Digital Input": "Analoger & digitaler Eingang",
+  "Virtual Channel": "Virtueller Kanal",
+  "Live-View Layout": "Live-View-Layout",
+  "Modbus RTU Master": "Modbus RTU Master",
+  "Modbus RTU Slave": "Modbus RTU Slave",
+  "Holding Register": "Holding-Register",
+  "Logger Settings": "Logger-Einstellungen"
+}

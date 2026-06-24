@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import iconBtnClose from '../../assets/images/icon_btn_close.png';
+import { useLanguage } from '../../context/LanguageContext';
 import './EditChannelModal.css';
 
 const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
@@ -11,6 +12,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
   const [outputValueType, setOutputValueType] = useState('8'); // Default FLOAT_L
   const [functionCode, setFunctionCode] = useState('');
   const [errorValue, setErrorValue] = useState('');
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (channelData) {
@@ -45,15 +47,20 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
       <div className="edit-channel-modal">
         {/* Header */}
         <header className="edit-channel-header">
-          <div className="edit-channel-title">{isSuto ? 'Edit SUTO channel' : 'Edit channel'}</div>
+          <div className="edit-channel-title">
+            {isSuto 
+              ? t({ en: 'Edit SUTO channel', de: 'SUTO-Kanal bearbeiten', cn: '编辑 SUTO 通道' }) 
+              : t({ en: 'Edit channel', de: 'Kanal bearbeiten', cn: '编辑通道' })
+            }
+          </div>
           <div className="edit-channel-close" onClick={onClose}>
-            <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
+            <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
         <div className="edit-channel-body">
           <div className="edit-form-item">
-            <label className="edit-form-label">Channel Description</label>
+            <label className="edit-form-label">{t({ en: 'Channel Description', de: 'Kanalbeschreibung', cn: '通道描述' })}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -64,7 +71,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className="edit-form-item">
-            <label className="edit-form-label">Unit</label>
+            <label className="edit-form-label">{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -75,7 +82,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className="edit-form-item">
-            <label className="edit-form-label">Resolution</label>
+            <label className="edit-form-label">{t({ en: 'Resolution', de: 'Auflösung', cn: '分辨率' })}</label>
             <div className="edit-form-input-wrapper">
               <select 
                 className="edit-form-input"
@@ -95,7 +102,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className={`edit-form-item ${isSuto ? 'disabled' : ''}`}>
-            <label className="edit-form-label">Address</label>
+            <label className="edit-form-label">{t({ en: 'Address', de: 'Adresse', cn: '地址' })}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -107,7 +114,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className={`edit-form-item ${isSuto ? 'disabled' : ''}`}>
-            <label className="edit-form-label">Input value type</label>
+            <label className="edit-form-label">{t({ en: 'Input value type', de: 'Eingangswert-Typ', cn: '输入值类型' })}</label>
             <div className="edit-form-input-wrapper">
               <select 
                 className="edit-form-input"
@@ -129,7 +136,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className={`edit-form-item ${isSuto ? 'disabled' : ''}`}>
-            <label className="edit-form-label">Output value type</label>
+            <label className="edit-form-label">{t({ en: 'Output value type', de: 'Ausgangswert-Typ', cn: '输出值类型' })}</label>
             <div className="edit-form-input-wrapper">
               <select 
                 className="edit-form-input"
@@ -151,7 +158,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className={`edit-form-item ${isSuto ? 'disabled' : ''}`}>
-            <label className="edit-form-label">Function Code</label>
+            <label className="edit-form-label">{t({ en: 'Function Code', de: 'Funktionscode', cn: '功能码' })}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -163,7 +170,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
           </div>
 
           <div className={`edit-form-item ${isSuto ? 'disabled' : ''}`}>
-            <label className="edit-form-label">Error Value</label>
+            <label className="edit-form-label">{t({ en: 'Error Value', de: 'Fehlerwert', cn: '错误值' })}</label>
             <div className="edit-form-input-wrapper">
               <input 
                 className="edit-form-input" 
@@ -177,8 +184,8 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
 
         {/* Footer */}
         <footer className="edit-channel-footer">
-          <button className="btn-edit-cancel" onClick={onClose}>Cancel</button>
-          <button className="btn-edit-confirm" onClick={handleConfirm}>Confirm</button>
+          <button className="btn-edit-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
+          <button className="btn-edit-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
         </footer>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useConfig } from '../../context/ConfigContext';
+import { useLanguage } from '../../context/LanguageContext';
 import CustomDialog from '../../components/CustomDialog';
 import ChannelSelectModal from '../../components/ChannelSelectModal';
 import OnlineValueCard from '../../components/OnlineValueCard';
@@ -25,6 +26,7 @@ const findSensorListPath = (configs) => {
 // ── Main Component ───────────────────────────────────────────────────────────
 const LayoutSetting = () => {
   const { configData, setConfigData } = useConfig();
+  const { t } = useLanguage();
 
   // Dialog and Modal open states
   const [isEditingLayout, setIsEditingLayout] = useState(false);
@@ -61,18 +63,30 @@ const LayoutSetting = () => {
     const result = [];
     sensors.forEach(sensor => {
       (sensor.cfgchannel || []).forEach(ch => {
+        // Find if this channel is assigned to any location / meapoint
+        let chLocation = '';
+        let chPoint = '';
+        locationsArray.forEach(loc => {
+          (loc.meapoints || []).forEach(mp => {
+            if ((mp.channels || []).some(id => String(id) === String(ch.CreateTime))) {
+              chLocation = loc.location;
+              chPoint = mp.meapoint;
+            }
+          });
+        });
+
         result.push({
           CreateTime: String(ch.CreateTime || ''),
           sensorName: sensor.Name || sensor.Description || 'Unknown Sensor',
           channelName: ch.ChannelDescription || 'Unknown Channel',
           unit: ch.UnitInASCII || '',
-          location: '',
-          point: ''
+          location: chLocation,
+          point: chPoint
         });
       });
     });
     return result;
-  }, [sensors]);
+  }, [sensors, locationsArray]);
 
   // Currently selected location inside the editor modal
   const selectedLocation = selectedLocationIdx !== null ? locationsArray[selectedLocationIdx] : null;
@@ -160,6 +174,23 @@ const LayoutSetting = () => {
       return ch || { CreateTime: String(id), sensorName: '---', channelName: `Unknown (${id})`, unit: '---' };
     });
   }, [meapointChannelIds, allChannels]);
+
+  // Channels assigned to any other measurement point in any location
+  const blockedChannelIds = useMemo(() => {
+    const ids = new Set();
+    locationsArray.forEach((loc, lIdx) => {
+      (loc.meapoints || []).forEach((mp, mIdx) => {
+        // Skip the currently selected measurement point
+        if (lIdx === selectedLocationIdx && mIdx === selectedMeapointIdx) {
+          return;
+        }
+        (mp.channels || []).forEach(chId => {
+          ids.add(String(chId));
+        });
+      });
+    });
+    return Array.from(ids);
+  }, [locationsArray, selectedLocationIdx, selectedMeapointIdx]);
 
   // Derive dashboard cards list (Location / Point -> Channels)
   const cards = useMemo(() => {
@@ -357,8 +388,14 @@ const LayoutSetting = () => {
   const handleDeleteLocation = (idx) => {
     const loc = locationsArray[idx];
     setDialogState({
-      isOpen: true, title: 'Delete Location',
-      body: `Delete location "${loc.location}" and all its measurement points?`, type: 'warn',
+      isOpen: true, 
+      title: t({ en: 'Delete Location', de: 'Standort löschen', cn: '删除位置' }),
+      body: t({ 
+        en: `Delete location "${loc.location}" and all its measurement points?`, 
+        de: `Standort "${loc.location}" und alle zugehörigen Messpunkte löschen?`, 
+        cn: `确定删除位置 "${loc.location}" 及其所有测量点吗？` 
+      }), 
+      type: 'warn',
       showCancel: true,
       onConfirm: () => {
         const updated = locationsArray.filter((_, i) => i !== idx);
@@ -385,9 +422,16 @@ const LayoutSetting = () => {
     const dup = locationsArray.some((l, i) => l.location === name && i !== editingLocIdx);
     if (dup) {
       setDialogState({
-        isOpen: true, title: 'Duplicate Location',
-        body: `Location "${name}" already exists.`, type: 'err',
-        showCancel: false, onConfirm: closeDialog
+        isOpen: true, 
+        title: t({ en: 'Duplicate Location', de: 'Standort duplizieren', cn: '位置重复' }),
+        body: t({ 
+          en: `Location "${name}" already exists.`, 
+          de: `Standort "${name}" existiert bereits.`, 
+          cn: `位置 "${name}" 已存在。` 
+        }), 
+        type: 'err',
+        showCancel: false, 
+        onConfirm: closeDialog
       });
       return;
     }
@@ -431,8 +475,14 @@ const LayoutSetting = () => {
     const mp = (selectedLocation?.meapoints || [])[mpIdx];
     if (!mp) return;
     setDialogState({
-      isOpen: true, title: 'Delete Measurement Point',
-      body: `Delete measurement point "${mp.meapoint}" and unlink its channels?`, type: 'warn',
+      isOpen: true, 
+      title: t({ en: 'Delete Measurement Point', de: 'Messpunkt löschen', cn: '删除测量点' }),
+      body: t({ 
+        en: `Delete measurement point "${mp.meapoint}" and unlink its channels?`, 
+        de: `Messpunkt "${mp.meapoint}" löschen und Kanäle entkoppeln?`, 
+        cn: `确定删除测量点 "${mp.meapoint}" 并取消其通道关联吗？` 
+      }), 
+      type: 'warn',
       showCancel: true,
       onConfirm: () => {
         const updatedLocs = locationsArray.map((l, i) => {
@@ -459,9 +509,16 @@ const LayoutSetting = () => {
     const dup = (selectedLocation?.meapoints || []).some((mp, i) => mp.meapoint === name && i !== editingMpIdx);
     if (dup) {
       setDialogState({
-        isOpen: true, title: 'Duplicate Point',
-        body: `Measurement point "${name}" already exists.`, type: 'err',
-        showCancel: false, onConfirm: closeDialog
+        isOpen: true, 
+        title: t({ en: 'Duplicate Point', de: 'Messpunkt duplizieren', cn: '测量点重复' }),
+        body: t({ 
+          en: `Measurement point "${name}" already exists.`, 
+          de: `Messpunkt "${name}" existiert bereits.`, 
+          cn: `测量点 "${name}" 已存在。` 
+        }), 
+        type: 'err',
+        showCancel: false, 
+        onConfirm: closeDialog
       });
       return;
     }
@@ -534,8 +591,8 @@ const LayoutSetting = () => {
       {/* Header */}
       <header className="layout-header">
         <div>
-          <h2>Layout setting</h2>
-          <p>Manage locations, measurement points, and channel assignments.</p>
+          <h2>{t({ en: 'Layout setting', de: 'Layout-Einstellung', cn: '布局设置' })}</h2>
+          <p>{t({ en: 'Manage locations, measurement points, and channel assignments.', de: 'Verwalten Sie Standorte, Messpunkte und Kanalzuweisungen.', cn: '管理位置、测量点和通道分配。' })}</p>
         </div>
         <button
           className="btn-layout-action"
@@ -558,7 +615,7 @@ const LayoutSetting = () => {
             fontWeight: '600'
           }}
         >
-          Edit Layout
+          {t({ en: 'Edit Layout', de: 'Layout bearbeiten', cn: '编辑布局' })}
         </button>
       </header>
 
@@ -590,9 +647,9 @@ const LayoutSetting = () => {
                 ) : (
                   <div key={`card-${col}-${row}`} style={{ ...gridStyle, height: '100%' }}>
                     <OnlineValueCard
-                      title={card.title}
-                      items={card.items}
-                      style={{ height: '100%' }}
+                       title={card.title}
+                       items={card.items}
+                       style={{ height: '100%' }}
                     />
                   </div>
                 );
@@ -655,7 +712,11 @@ const LayoutSetting = () => {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
             <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain' }} />
             <span style={{ fontSize: 16, fontWeight: '700', color: '#4E5969' }}>
-              No layouts configured yet. Click &quot;Edit Layout&quot; in the top right to start.
+              {t({
+                en: 'No layouts configured yet. Click "Edit Layout" in the top right to start.',
+                de: 'Noch keine Layouts konfiguriert. Klicken Sie oben rechts auf "Layout bearbeiten", um zu beginnen.',
+                cn: '尚未配置布局。点击右上角的“编辑布局”开始。'
+              })}
             </span>
           </div>
         )}
@@ -668,9 +729,9 @@ const LayoutSetting = () => {
             
             {/* Modal Header */}
             <header className="config-header">
-              <div className="config-title">Layout Configuration Detail</div>
+              <div className="config-title">{t({ en: 'Layout Configuration Detail', de: 'Layout-Konfigurationsdetails', cn: '布局配置详情' })}</div>
               <div className="close-btn" onClick={() => setIsEditingLayout(false)}>
-                <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
+                <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
               </div>
             </header>
 
@@ -681,10 +742,10 @@ const LayoutSetting = () => {
               <div className="layout-card location-card" style={{ background: 'white' }}>
                 <div className="layout-card-header">
                   <span>
-                    <span className="card-title">Locations</span>
+                    <span className="card-title">{t({ en: 'Locations', de: 'Standorte', cn: '位置' })}</span>
                     <span className="card-count">({locationsArray.length})</span>
                   </span>
-                  <button className="btn-layout-icon" title="Add Location" onClick={handleAddLocation} style={{ background: '#00AB84', borderRadius: '4px' }}>
+                  <button className="btn-layout-icon" title={t({ en: 'Add Location', de: 'Standort hinzufügen', cn: '添加位置' })} onClick={handleAddLocation} style={{ background: '#00AB84', borderRadius: '4px' }}>
                     <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
                       <path d="M8 3V13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                       <path d="M3 8H13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
@@ -718,22 +779,22 @@ const LayoutSetting = () => {
                         ) : (
                           <>
                             <span className="item-name">{loc.location}</span>
-                            <span className="item-badge">{(loc.meapoints || []).length} pts</span>
+                            <span className="item-badge">{(loc.meapoints || []).length} {t({ en: 'pts', de: 'Pkte', cn: '个点' })}</span>
                           </>
                         )}
 
                         <div className="item-actions">
-                          <button className="btn-layout-icon" title="Rename" onClick={e => { e.stopPropagation(); startEditLocation(idx); }}>
-                            <img src={iconBtnEdit} alt="Edit" style={{ width: 16, height: 16 }} />
+                          <button className="btn-layout-icon" title={t({ en: 'Rename', de: 'Umbenennen', cn: '重命名' })} onClick={e => { e.stopPropagation(); startEditLocation(idx); }}>
+                            <img src={iconBtnEdit} alt={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })} style={{ width: 16, height: 16 }} />
                           </button>
-                          <button className="btn-layout-icon" title="Delete" onClick={e => { e.stopPropagation(); handleDeleteLocation(idx); }}>
-                            <img src={iconBtnDelete} alt="Delete" style={{ width: 16, height: 16 }} />
+                          <button className="btn-layout-icon" title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} onClick={e => { e.stopPropagation(); handleDeleteLocation(idx); }}>
+                            <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 16, height: 16 }} />
                           </button>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="layout-empty">No locations yet. Click &apos;+&apos; to add.</div>
+                    <div className="layout-empty">{t({ en: "No locations yet. Click '+' to add.", de: "Noch keine Standorte. Klicken Sie auf '+', um welche hinzuzufügen.", cn: "暂无位置。点击 '+' 添加。" })}</div>
                   )}
                 </div>
               </div>
@@ -742,11 +803,11 @@ const LayoutSetting = () => {
               <div className="layout-card meapoint-card" style={{ background: 'white' }}>
                 <div className="layout-card-header">
                   <span>
-                    <span className="card-title">Measurement Points</span>
+                    <span className="card-title">{t({ en: 'Measurement Points', de: 'Messpunkte', cn: '测量点' })}</span>
                     {selectedLocation && <span className="card-count">({meapoints.length})</span>}
                   </span>
                   {selectedLocation && (
-                    <button className="btn-layout-icon" title="Add Point" onClick={handleAddMeapoint} style={{ background: '#00AB84', borderRadius: '4px' }}>
+                    <button className="btn-layout-icon" title={t({ en: 'Add Point', de: 'Messpunkt hinzufügen', cn: '添加测量点' })} onClick={handleAddMeapoint} style={{ background: '#00AB84', borderRadius: '4px' }}>
                       <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
                         <path d="M8 3V13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                         <path d="M3 8H13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
@@ -758,7 +819,7 @@ const LayoutSetting = () => {
                 {selectedLocation ? (
                   <>
                     <div className="layout-context-bar">
-                      <span>Location:</span>
+                      <span>{t({ en: 'Location:', de: 'Standort:', cn: '位置:' })}</span>
                       <span className="ctx-label">{selectedLocation.location}</span>
                     </div>
 
@@ -784,28 +845,28 @@ const LayoutSetting = () => {
                             ) : (
                               <>
                                 <span className="item-name">{mp.meapoint}</span>
-                                <span className="item-badge" style={{ marginRight: '8px' }}>{(mp.channels || []).length} ch</span>
+                                <span className="item-badge" style={{ marginRight: '8px' }}>{(mp.channels || []).length} {t({ en: 'ch', de: 'Ch', cn: '通道' })}</span>
                               </>
                             )}
 
                             <div className="item-actions">
-                              <button className="btn-layout-icon" title="Rename" onClick={e => { e.stopPropagation(); startEditMeapoint(mp.originalIdx); }}>
-                                <img src={iconBtnEdit} alt="Edit" style={{ width: 16, height: 16 }} />
+                              <button className="btn-layout-icon" title={t({ en: 'Rename', de: 'Umbenennen', cn: '重命名' })} onClick={e => { e.stopPropagation(); startEditMeapoint(mp.originalIdx); }}>
+                                <img src={iconBtnEdit} alt={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })} style={{ width: 16, height: 16 }} />
                               </button>
-                              <button className="btn-layout-icon" title="Delete" onClick={e => { e.stopPropagation(); handleDeleteMeapoint(mp.originalIdx); }}>
-                                <img src={iconBtnDelete} alt="Delete" style={{ width: 16, height: 16 }} />
+                              <button className="btn-layout-icon" title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} onClick={e => { e.stopPropagation(); handleDeleteMeapoint(mp.originalIdx); }}>
+                                <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 16, height: 16 }} />
                               </button>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div className="layout-empty">No measurement points. Click &apos;+&apos; to add.</div>
+                        <div className="layout-empty">{t({ en: "No measurement points. Click '+' to add.", de: "Keine Messpunkte. Klicken Sie auf '+', um welche hinzuzufügen.", cn: "暂无测量点。点击 '+' 添加。" })}</div>
                       )}
                     </div>
                   </>
                 ) : (
                   <div className="layout-card-body">
-                    <div className="layout-empty">Select a location to manage its measurement points.</div>
+                    <div className="layout-empty">{t({ en: 'Select a location to manage its measurement points.', de: 'Wählen Sie einen Standort aus, um seine Messpunkte zu verwalten.', cn: '选择一个位置以管理其测量点。' })}</div>
                   </div>
                 )}
               </div>
@@ -814,12 +875,12 @@ const LayoutSetting = () => {
               <div className="layout-card channel-card" style={{ background: 'white' }}>
                 <div className="layout-card-header">
                   <span>
-                    <span className="card-title">Channels</span>
+                    <span className="card-title">{t({ en: 'Channels', de: 'Kanäle', cn: '通道' })}</span>
                     {selectedMeapoint && <span className="card-count">({meapointChannelIds.length})</span>}
                   </span>
                   {selectedMeapoint && (
                     <button className="btn-layout-action" onClick={() => setIsChannelModalOpen(true)}>
-                      Select Channels
+                      {t({ en: 'Select Channels', de: 'Kanäle auswählen', cn: '选择通道' })}
                     </button>
                   )}
                 </div>
@@ -828,10 +889,10 @@ const LayoutSetting = () => {
                   <>
                     <div className="layout-context-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>Location:</span>
+                        <span>{t({ en: 'Location:', de: 'Standort:', cn: '位置:' })}</span>
                         <span className="ctx-label">{selectedLocation?.location}</span>
                         <span className="ctx-separator">›</span>
-                        <span>Point:</span>
+                        <span>{t({ en: 'Point:', de: 'Messpunkt:', cn: '测量点:' })}</span>
                         <span className="ctx-label">{selectedMeapoint.meapoint}</span>
                       </div>
 
@@ -869,10 +930,10 @@ const LayoutSetting = () => {
                         </span>
                         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, textAlign: 'left' }}>
                           <span style={{ fontSize: '11px', fontWeight: '600', color: '#1D2129' }}>
-                            2x Height Card
+                            {t({ en: '2x Height Card', de: 'Doppelt hohe Karte', cn: '双倍高度卡片' })}
                           </span>
                           <span style={{ fontSize: '9px', color: '#86909C' }}>
-                            Takes 2 rows in dashboard
+                            {t({ en: 'Takes 2 rows in dashboard', de: 'Belegt 2 Zeilen im Dashboard', cn: '在仪表盘中占用 2 行' })}
                           </span>
                         </div>
                       </label>
@@ -884,10 +945,10 @@ const LayoutSetting = () => {
                           <thead>
                             <tr>
                               <th style={{ width: 40 }}>#</th>
-                              <th>Sensor</th>
-                              <th>Channel</th>
-                              <th>Unit</th>
-                              <th style={{ width: 80 }}>Operate</th>
+                              <th>{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</th>
+                              <th>{t({ en: 'Channel', de: 'Kanal', cn: '通道' })}</th>
+                              <th>{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
+                              <th style={{ width: 80 }}>{t({ en: 'Operate', de: 'Aktion', cn: '操作' })}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -900,10 +961,10 @@ const LayoutSetting = () => {
                                 <td>
                                   <button
                                     className="btn-layout-icon"
-                                    title="Remove channel"
+                                    title={t({ en: 'Remove channel', de: 'Kanal entfernen', cn: '移除通道' })}
                                     onClick={() => handleRemoveChannel(ch.CreateTime)}
                                   >
-                                    <img src={iconBtnDelete} alt="Remove" style={{ width: 16, height: 16 }} />
+                                    <img src={iconBtnDelete} alt={t({ en: 'Remove', de: 'Entfernen', cn: '移除' })} style={{ width: 16, height: 16 }} />
                                   </button>
                                 </td>
                               </tr>
@@ -911,7 +972,7 @@ const LayoutSetting = () => {
                           </tbody>
                         </table>
                       ) : (
-                        <div className="layout-empty">No channels assigned. Click &quot;Select Channels&quot; to add.</div>
+                        <div className="layout-empty">{t({ en: 'No channels assigned. Click "Select Channels" to add.', de: 'Keine Kanäle zugewiesen. Klicken Sie auf "Kanäle auswählen", um welche hinzuzufügen.', cn: '未分配通道。点击“选择通道”进行添加。' })}</div>
                       )}
                     </div>
                   </>
@@ -919,8 +980,8 @@ const LayoutSetting = () => {
                   <div className="layout-card-body">
                     <div className="layout-empty">
                       {selectedLocation
-                        ? 'Select a measurement point to manage its channels.'
-                        : 'Select a location and measurement point to manage channels.'}
+                        ? t({ en: 'Select a measurement point to manage its channels.', de: 'Wählen Sie einen Messpunkt aus, um seine Kanäle zu verwalten.', cn: '选择一个测量点以管理其通道。' })
+                        : t({ en: 'Select a location and measurement point to manage channels.', de: 'Wählen Sie einen Standort und einen Messpunkt aus, um Kanäle zu verwalten.', cn: '选择位置和测量点以管理通道。' })}
                     </div>
                   </div>
                 )}
@@ -930,7 +991,7 @@ const LayoutSetting = () => {
 
             {/* Modal Footer */}
             <footer className="config-footer">
-              <button className="btn-confirm" onClick={() => setIsEditingLayout(false)}>Done</button>
+              <button className="btn-confirm" onClick={() => setIsEditingLayout(false)}>{t({ en: 'Done', de: 'Fertig', cn: '完成' })}</button>
             </footer>
 
           </div>
@@ -943,11 +1004,12 @@ const LayoutSetting = () => {
         onClose={() => setIsChannelModalOpen(false)}
         allChannels={allChannels}
         initialSelectedIds={meapointChannelIds.map(String)}
+        blockedSelectedIds={blockedChannelIds}
         onConfirm={handleChannelsConfirm}
         maxLimit={0}
-        selectionMessage="Select channels for this measurement point."
+        selectionMessage={t({ en: 'Select channels for this measurement point.', de: 'Wählen Sie Kanäle für diesen Messpunkt aus.', cn: '为此测量点选择通道。' })}
         showOperate={false}
-        title="Select channels for measurement point"
+        title={t({ en: 'Select channels for measurement point', de: 'Kanäle für Messpunkt auswählen', cn: '为测量点选择通道' })}
       />
 
       {/* Custom Dialog */}

@@ -9,12 +9,9 @@ describe('OnlineValueCard', () => {
     expect(screen.getByText('Test Sensor')).toBeInTheDocument();
   });
 
-  it('renders default items when no items provided', () => {
+  it('renders "No channels assigned" when no items provided', () => {
     render(<OnlineValueCard />);
-    // Multiple default items share the same value, use getAllByText
-    const flowValues = screen.getAllByText('34.566.774.8');
-    expect(flowValues.length).toBeGreaterThanOrEqual(4);
-    expect(screen.getByText("S401 2# Consumption")).toBeInTheDocument();
+    expect(screen.getByText("No channels assigned")).toBeInTheDocument();
   });
 
   it('renders provided items', () => {

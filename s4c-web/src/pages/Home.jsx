@@ -3,22 +3,19 @@ import { Link } from 'react-router-dom';
 import iconAlertBig from '../assets/images/icon_alert_big.png';
 import OnlineValueCard from '../components/OnlineValueCard';
 import { useConfig } from '../context/ConfigContext';
+import { useLanguage } from '../context/LanguageContext';
 
-const EmptyCard = () => (
-  <div style={{ width: 368, height: '100%', minHeight: 184, position: 'relative', background: 'white', overflow: 'hidden', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-    <div style={{ width: 185, left: '50%', top: '50%', transform: 'translate(-50%, -50%)', position: 'absolute', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center', gap: 4, display: 'inline-flex' }}>
-      <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain', marginBottom: 8 }} />
-      <div style={{ width: 309, textAlign: 'center', justifyContent: 'center', display: 'flex', flexDirection: 'column' }}>
-        <span style={{ color: '#4E5969', fontSize: 16, fontFamily: 'Arial', fontWeight: '700', textTransform: 'none' }}>
-          Add more at Layout setting page
-        </span>
-      </div>
-    </div>
-  </div>
+const PlusCircleLarge = () => (
+  <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="#FFE000" stroke="#FFE000" />
+    <line x1="28" y1="16" x2="28" y2="40" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
+    <line x1="16" y1="28" x2="40" y2="28" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
+  </svg>
 );
 
 const Home = () => {
   const { configData } = useConfig();
+  const { t } = useLanguage();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   // If no config data is loaded, show the empty state
@@ -28,7 +25,11 @@ const Home = () => {
         <div className="empty-state" style={{ maxWidth: '400px', margin: '0 auto', gap: '20px', textAlign: 'center' }}>
           <img src={iconAlertBig} alt="Alert" style={{ width: 68, height: 68, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           <p className="empty-text" style={{ fontSize: '14px', color: '#86909C', fontWeight: 'normal', margin: 0, lineHeight: '1.5' }}>
-            Please load a configuration file first to view the Home dashboard.
+            {t({
+              en: 'Please load a configuration file first to view the Home dashboard.',
+              de: 'Bitte laden Sie zuerst eine Konfigurationsdatei, um das Startseite-Dashboard anzuzeigen.',
+              cn: '请先加载配置文件以查看首页仪表板。'
+            })}
           </p>
           <Link 
             to="/config-manager" 
@@ -49,7 +50,11 @@ const Home = () => {
               transition: 'background 0.2s'
             }}
           >
-            Go to Config File Page
+            {t({
+              en: 'Go to Config File Page',
+              de: 'Gehe zur Konfigurationsdateiseite',
+              cn: '转到配置文件页面'
+            })}
           </Link>
         </div>
       </div>
@@ -77,8 +82,9 @@ const Home = () => {
 
   // Process layout into cards
   // Process layout into cards
+  const unknownText = t({ en: 'Unknown', de: 'Unbekannt', cn: '未知' });
   const cards = layoutList.map((group, idx) => {
-    const title = `${group.location || 'Unknown'} / ${group.meapoint || group.measurepoint || 'Unknown'}`;
+    const title = `${group.location || unknownText} / ${group.meapoint || group.measurepoint || unknownText}`;
     const items = (group.channels || []).map(uid => {
       const info = findChannelInfo(uid);
       return {
@@ -98,6 +104,22 @@ const Home = () => {
 
   // Sort cards by index ascending
   const sortedCards = [...cards].sort((a, b) => a.index - b.index);
+
+  // If no cards are configured, show a big centered message matching Graphic style and container margins
+  if (sortedCards.length === 0) {
+    return (
+      <div className="content-card" style={{ flexDirection: 'column', gap: 4 }}>
+        <PlusCircleLarge />
+        <span style={{ textAlign: 'center', color: '#4E5969', fontSize: 16, fontWeight: 700, maxWidth: 349 }}>
+          {t({
+            en: 'Add more at Layout setting page',
+            de: 'Fügen Sie mehr auf der Layout-Einstellungsseite hinzu',
+            cn: '在布局设置页面添加更多'
+          })}
+        </span>
+      </div>
+    );
+  }
 
   // Pagination algorithm preferring vertical (column-first) placement without backfilling
   const pages = [];
@@ -205,13 +227,7 @@ const Home = () => {
               gridRow: `${row + 1} / span ${span}`
             };
             return card.isPlaceholder ? (
-              <div key={`empty-${col}-${row}`} style={gridStyle}>
-                {cards.length === 0 && col === 0 && row === 0 ? (
-                  <EmptyCard />
-                ) : (
-                  <div style={{ width: 368, height: '100%', background: '#F8F9FA', border: '1px dashed #E5E6EB', borderRadius: 6 }} />
-                )}
-              </div>
+              <div key={`empty-${col}-${row}`} style={gridStyle} />
             ) : (
               <div key={`card-${col}-${row}`} style={{ ...gridStyle, height: '100%' }}>
                 <OnlineValueCard

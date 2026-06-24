@@ -1,9 +1,11 @@
 import React from 'react';
 import { useConfig } from '../../context/ConfigContext';
+import { useLanguage } from '../../context/LanguageContext';
 import './HoldingRegister.css';
 
 const HoldingRegister = () => {
   const { configData } = useConfig();
+  const { t } = useLanguage();
 
   // Extract configuration
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('SUTO-SensorList.sutolist'));
@@ -108,7 +110,7 @@ const HoldingRegister = () => {
       5: 'UINT32_B', 6: 'UINT32_L', 7: 'FLOAT_B', 8: 'FLOAT_L',
       9: 'UINT64_B', 10: 'UINT64_L'
     };
-    return types[type] || 'Unknown';
+    return types[type] || t({ en: 'Unknown', de: 'Unbekannt', cn: '未知' });
   };
 
   const getRWText = (rw) => {
@@ -128,16 +130,20 @@ const HoldingRegister = () => {
       {/* Header - RESTORED STYLE */}
       <header className="holding-header">
         <div className="holding-title-section">
-          <h2 className="holding-title">Holding register table</h2>
+          <h2 className="holding-title">{t({ en: 'Holding register table', de: 'Holding-Register-Tabelle', cn: '保持寄存器表' })}</h2>
           <p className="holding-subtitle">
-            Use this holding register table to read data via Modbus/RTU or Modbus/TCP.
+            {t({
+              en: 'Use this holding register table to read data via Modbus/RTU or Modbus/TCP.',
+              de: 'Verwenden Sie diese Holding-Register-Tabelle, um Daten über Modbus/RTU oder Modbus/TCP zu lesen.',
+              cn: '使用此保持寄存器表通过 Modbus/RTU 或 Modbus/TCP 读取数据。'
+            })}
           </p>
         </div>
         <button className="btn-export-pdf">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M12 10V12H4V10H2V12C2 13.1 2.9 14 4 14H12C13.1 14 14 13.1 14 12V10H12ZM9 7H11L8 11L5 7H7V2H9V7Z" fill="white" />
           </svg>
-          <span>Export PDF</span>
+          <span>{t({ en: 'Export PDF', de: 'PDF exportieren', cn: '导出 PDF' })}</span>
         </button>
       </header>
 
@@ -146,45 +152,45 @@ const HoldingRegister = () => {
         <div className="holding-summary-box">
           <div className="summary-column">
             <div className="summary-item">
-              <label>Communication</label>
+              <label>{t({ en: 'Communication', de: 'Kommunikation', cn: '通讯方式' })}</label>
               <span>RS485</span>
             </div>
             <div className="summary-item">
-              <label>Baud rate</label>
+              <label>{t({ en: 'Baud rate', de: 'Baudrate', cn: '波特率' })}</label>
               <span>19200</span>
             </div>
             <div className="summary-item">
-              <label>Response delay</label>
+              <label>{t({ en: 'Response delay', de: 'Antwortverzögerung', cn: '响应延迟' })}</label>
               <span>3</span>
             </div>
           </div>
 
           <div className="summary-column">
             <div className="summary-item">
-              <label>Protocol</label>
+              <label>{t({ en: 'Protocol', de: 'Protokoll', cn: '协议' })}</label>
               <span>Modbus</span>
             </div>
             <div className="summary-item">
-              <label>Interframe spacing char</label>
+              <label>{t({ en: 'Interframe spacing char', de: 'Frame-Abstand (Zeichen)', cn: '字符间距' })}</label>
               <span>7</span>
             </div>
             <div className="summary-item">
-              <label>Response timeout(s)</label>
+              <label>{t({ en: 'Response timeout(s)', de: 'Antwort-Timeout (s)', cn: '响应超时 (秒)' })}</label>
               <span>10</span>
             </div>
           </div>
 
           <div className="summary-column">
             <div className="summary-item">
-              <label>Slave address</label>
+              <label>{t({ en: 'Slave address', de: 'Slave-Adresse', cn: '从站地址' })}</label>
               <span>3</span>
             </div>
             <div className="summary-item">
-              <label>Interframe spacing us</label>
+              <label>{t({ en: 'Interframe spacing us', de: 'Frame-Abstand (µs)', cn: '帧间距 (微秒)' })}</label>
               <span>2005</span>
             </div>
             <div className="summary-item">
-              <label>Return error value</label>
+              <label>{t({ en: 'Return error value', de: 'Fehlerwert zurückgeben', cn: '返回错误值' })}</label>
               <span>-9999.0</span>
             </div>
           </div>
@@ -195,15 +201,15 @@ const HoldingRegister = () => {
           <table className="holding-table">
             <thead>
               <tr>
-                <th>Location</th>
-                <th>Sensor Description</th>
-                <th>Channel Description</th>
-                <th>Holding register</th>
-                <th>Data type</th>
-                <th>No. of byte</th>
-                <th>Unit</th>
-                <th>Resolution</th>
-                <th>Read/Write</th>
+                <th>{t({ en: 'Location', de: 'Ort', cn: '位置' })}</th>
+                <th>{t({ en: 'Sensor Description', de: 'Sensorbeschreibung', cn: '传感器描述' })}</th>
+                <th>{t({ en: 'Channel Description', de: 'Kanalbeschreibung', cn: '通道描述' })}</th>
+                <th>{t({ en: 'Holding register', de: 'Holding-Register', cn: '保持寄存器' })}</th>
+                <th>{t({ en: 'Data type', de: 'Datentyp', cn: '数据类型' })}</th>
+                <th>{t({ en: 'No. of byte', de: 'Byte-Anzahl', cn: '字节数' })}</th>
+                <th>{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
+                <th>{t({ en: 'Resolution', de: 'Auflösung', cn: '分辨率' })}</th>
+                <th>{t({ en: 'Read/Write', de: 'Lesen/Schreiben', cn: '读/写' })}</th>
               </tr>
             </thead>
             <tbody>

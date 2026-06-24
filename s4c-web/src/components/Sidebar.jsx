@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useConfig } from '../context/ConfigContext';
+import { useLanguage } from '../context/LanguageContext';
 
 // Import PNG Icons
 import iconHomeL from '../assets/images/icon_home_l.png';
@@ -21,6 +22,10 @@ import iconDashbL from '../assets/images/icon_dashb_l.png';
 import iconDashbD from '../assets/images/icon_dashb_d.png';
 import btnItems from '../assets/images/btn-items.png';
 import mainLogo from '../assets/images/main_logo.png';
+
+// SVG icons for File Verification
+const iconVerifyL = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%2300AB84" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
+const iconVerifyD = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23333333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
 
 const Icons = {
   chevron: (open) => (
@@ -68,11 +73,11 @@ export const NAV = [
     label: 'Sensor Configuration',
     icons: { active: iconSettingL, inactive: iconSettingD },
     children: [
-      { label: 'Add SUTO Sensor', to: '/sensor/add-suto' },
-      { label: '3-Party sensor', to: '/sensor/add-3rd' },
-      { label: 'Analog & digital input', to: '/sensor/analog-digital' },
-      { label: 'Virtual channel', to: '/sensor/virtual-channel' },
-      { label: 'Layout setting', to: '/sensor/layout-setting' },
+      { label: 'SUTO iTEC Sensor', to: '/sensor/add-suto' },
+      { label: '3rd-Party Sensor', to: '/sensor/add-3rd' },
+      { label: 'Analog & Digital Input', to: '/sensor/analog-digital' },
+      { label: 'Virtual Channel', to: '/sensor/virtual-channel' },
+      { label: 'Live-View Layout', to: '/sensor/layout-setting' },
     ],
   },
   {
@@ -82,7 +87,7 @@ export const NAV = [
     children: [
       { label: 'Modbus RTU Master', to: '/communication/modbus-rtu-master' },
       { label: 'Modbus RTU Slave', to: '/communication/modbus-rtu-slave' },
-      { label: 'Holding register', to: '/communication/holding-register' },
+      { label: 'Holding Register', to: '/communication/holding-register' },
     ],
   },
   {
@@ -90,10 +95,15 @@ export const NAV = [
     label: 'System',
     icons: { active: iconSystemL, inactive: iconSystemD },
     children: [
-      { label: 'Config file', to: '/config-manager' },
-      { label: 'File verification', to: '/system/file-verification' },
+      { label: 'Config Management', to: '/config-manager' },
       { label: 'Support', to: '/system/support' },
     ],
+  },
+  {
+    key: 'file-verification',
+    label: 'File Verification',
+    to: '/system/file-verification',
+    icons: { active: iconVerifyL, inactive: iconVerifyD },
   },
   {
     key: 'analysis',
@@ -107,6 +117,7 @@ const Sidebar = () => {
   const location = useLocation();
   const currentPath = location.pathname;
   const { activeConfigId } = useConfig();
+  const { t } = useLanguage();
   const hasConfig = !!activeConfigId;
 
   // Determine which group is initially open based on current path
@@ -138,7 +149,7 @@ const Sidebar = () => {
             : item.to && currentPath.startsWith(item.to);
 
           const hasChildren = !!item.children;
-          const isParentDisabled = !hasConfig && item.key !== 'system' && item.key !== 'home';
+          const isParentDisabled = !hasConfig && item.key !== 'system' && item.key !== 'home' && item.key !== 'file-verification';
           const isActive = isLeafActive && !isParentDisabled;
           const isOpen = !isParentDisabled && !!openMenus[item.key];
 
@@ -159,11 +170,11 @@ const Sidebar = () => {
                     <div className="nav-icon">
                       <img
                         src={item.icons.inactive}
-                        alt={item.label}
+                        alt={t(item.label)}
                         style={normalIconStyle}
                       />
                     </div>
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                   </div>
                 ) : (
                   <Link
@@ -173,11 +184,11 @@ const Sidebar = () => {
                     <div className="nav-icon">
                       <img
                         src={iconSrc}
-                        alt={item.label}
+                        alt={t(item.label)}
                         style={normalIconStyle}
                       />
                     </div>
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                   </Link>
                 )
               ) : (
@@ -186,11 +197,11 @@ const Sidebar = () => {
                     <div className="nav-icon">
                       <img
                         src={item.icons.inactive}
-                        alt={item.label}
+                        alt={t(item.label)}
                         style={normalIconStyle}
                       />
                     </div>
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                     <span className="chevron">
                       {Icons.chevron(false)}
                     </span>
@@ -203,11 +214,11 @@ const Sidebar = () => {
                     <div className="nav-icon">
                       <img
                         src={iconSrc}
-                        alt={item.label}
+                        alt={t(item.label)}
                         style={normalIconStyle}
                       />
                     </div>
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                     <span className="chevron">
                       {Icons.chevron(isOpen)}
                     </span>
@@ -221,14 +232,14 @@ const Sidebar = () => {
                   {item.children.map((child) => {
                     const childActive = currentPath === child.to || currentPath.startsWith(child.to + '/');
                     const isChildDisabled = !hasConfig && child.to !== '/config-manager' && child.to !== '/system/file-verification';
-                    
+
                     if (isChildDisabled) {
                       return (
                         <div
                           key={child.to}
                           className="submenu-item disabled"
                         >
-                          <span>{child.label}</span>
+                          <span>{t(child.label)}</span>
                         </div>
                       );
                     }
@@ -239,7 +250,7 @@ const Sidebar = () => {
                         to={child.to}
                         className={`submenu-item ${childActive ? 'active' : ''}`}
                       >
-                        <span>{child.label}</span>
+                        <span>{t(child.label)}</span>
                       </Link>
                     );
                   })}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
+import { useLanguage } from '../../context/LanguageContext';
 import SensorConfigModal from './SensorConfigModal';
 import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
@@ -9,6 +10,7 @@ import './SUTOSensor.css';
 
 const ThirdPartySensor = () => {
   const { configData, setConfigData } = useConfig();
+  const { t } = useLanguage();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSensor, setEditingSensor] = useState(null);
 
@@ -29,8 +31,12 @@ const ThirdPartySensor = () => {
     if (usedChannel) {
       setDialogState({
         isOpen: true,
-        title: 'Delete Restricted',
-        body: `Cannot delete sensor. Channel "${usedChannel}" is currently used in Logger settings. Please remove it from Logger settings first.`,
+        title: t({ en: 'Delete Restricted', de: 'Löschen eingeschränkt', cn: '删除受限' }),
+        body: t({ 
+          en: `Cannot delete sensor. Channel "${usedChannel}" is currently used in Logger settings. Please remove it from Logger settings first.`, 
+          de: `Sensor kann nicht gelöscht werden. Kanal "${usedChannel}" wird derzeit in den Logger-Einstellungen verwendet. Bitte entfernen Sie ihn zuerst aus den Logger-Einstellungen.`, 
+          cn: `无法删除传感器。通道 "${usedChannel}" 当前在记录仪设置中使用。请先从记录仪设置中移除它。` 
+        }),
         type: 'err',
         showCancel: false,
         onConfirm: closeDialog
@@ -40,8 +46,12 @@ const ThirdPartySensor = () => {
 
     setDialogState({
       isOpen: true,
-      title: 'Delete Confirmation',
-      body: `Are you sure you want to delete sensor "${sensor.Name || sensor.Description}"?`,
+      title: t({ en: 'Delete Confirmation', de: 'Löschbestätigung', cn: '删除确认' }),
+      body: t({ 
+        en: `Are you sure you want to delete sensor "${sensor.Name || sensor.Description}"?`, 
+        de: `Sind Sie sicher, dass Sie den Sensor "${sensor.Name || sensor.Description}" löschen möchten?`, 
+        cn: `确定要删除传感器 "${sensor.Name || sensor.Description}" 吗？` 
+      }),
       type: 'warn',
       showCancel: true,
       onConfirm: () => {
@@ -78,7 +88,7 @@ const ThirdPartySensor = () => {
     <div className="content-card suto-sensor-page">
       {/* Header */}
       <header className="suto-header">
-        <h2 className="suto-title">3-Party sensor list</h2>
+        <h2 className="suto-title">{t({ en: '3-Party sensor list', de: 'Drittanbieter-Sensorliste', cn: '第三方传感器列表' })}</h2>
         <button
           className="add-sensor-btn"
           onClick={() => {
@@ -90,7 +100,7 @@ const ThirdPartySensor = () => {
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>Add 3-Party sensor</span>
+          <span>{t({ en: 'Add 3-Party sensor', de: 'Drittanbieter-Sensor hinzufügen', cn: '添加第三方传感器' })}</span>
         </button>
       </header>
 
@@ -100,11 +110,11 @@ const ThirdPartySensor = () => {
           <table className="suto-table">
             <thead>
               <tr>
-                <th className="col-sensor">Sensor</th>
-                <th className="col-description">Description</th>
-                <th className="col-address">Address</th>
-                <th className="col-sn">S/N</th>
-                <th className="col-operate">Operate</th>
+                <th className="col-sensor">{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</th>
+                <th className="col-description">{t({ en: 'Description', de: 'Beschreibung', cn: '描述' })}</th>
+                <th className="col-address">{t({ en: 'Address', de: 'Adresse', cn: '地址' })}</th>
+                <th className="col-sn">{t({ en: 'S/N', de: 'S/N', cn: '序列号' })}</th>
+                <th className="col-operate">{t({ en: 'Operate', de: 'Aktion', cn: '操作' })}</th>
               </tr>
             </thead>
             <tbody>
@@ -119,20 +129,20 @@ const ThirdPartySensor = () => {
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                           className="btn-icon-img"
-                          title="Edit"
+                          title={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })}
                           onClick={() => {
                             setEditingSensor(sensor);
                             setIsModalOpen(true);
                           }}
                         >
-                          <img src={iconBtnEdit} alt="Edit" style={{ width: 18, height: 18 }} />
+                          <img src={iconBtnEdit} alt={t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })} style={{ width: 18, height: 18 }} />
                         </button>
                         <button 
                           className="btn-icon-img" 
-                          title="Delete"
+                          title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })}
                           onClick={() => handleDeleteSensor(sensor)}
                         >
-                          <img src={iconBtnDelete} alt="Delete" style={{ width: 18, height: 18 }} />
+                          <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 18, height: 18 }} />
                         </button>
                       </div>
                     </td>
@@ -142,7 +152,11 @@ const ThirdPartySensor = () => {
                 <tr>
                   <td colSpan={5} style={{ borderBottom: 'none', padding: 0 }}>
                     <div className="suto-empty-container">
-                      No 3-Party sensor configured. Click "Add 3-Party sensor"
+                      {t({ 
+                        en: 'No 3-Party sensor configured. Click "Add 3-Party sensor"', 
+                        de: 'Kein Drittanbieter-Sensor konfiguriert. Klicken Sie auf "Drittanbieter-Sensor hinzufügen"', 
+                        cn: '未配置第三方传感器。点击“添加第三方传感器”开始。' 
+                      })}
                     </div>
                   </td>
                 </tr>
@@ -155,7 +169,7 @@ const ThirdPartySensor = () => {
       {/* Footer / Pagination */}
       <footer className="suto-footer">
         <div className="pagination-info">
-          <span>Items per page:</span>
+          <span>{t({ en: 'Items per page:', de: 'Einträge pro Seite:', cn: '每页条数:' })}</span>
           <div className="items-per-page">
             <span>10</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -165,7 +179,7 @@ const ThirdPartySensor = () => {
         </div>
 
         <div className="page-counter">
-          {sensors.length} of {sensors.length}
+          {sensors.length} {t({ en: 'of', de: 'von', cn: '/' })} {sensors.length}
         </div>
 
         <div className="pagination-controls">

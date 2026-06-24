@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import HoldingRegister from './HoldingRegister';
+import { LanguageProvider } from '../../context/LanguageContext';
 
 const mockConfigData = {
   configs: {
@@ -107,7 +108,11 @@ vi.mock('../../context/ConfigContext', () => ({
 
 describe('HoldingRegister', () => {
   it('renders the holding register table in the correct order', () => {
-    render(<HoldingRegister />);
+    render(
+      <LanguageProvider>
+        <HoldingRegister />
+      </LanguageProvider>
+    );
     
     expect(screen.getByText('Holding register table')).toBeInTheDocument();
 

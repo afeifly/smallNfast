@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import FileVerification from './FileVerification';
 import { parseVerificationFile, calculateSHA512 } from '../../util/verificationUtils';
+import { LanguageProvider } from '../../context/LanguageContext';
 
 describe('parseVerificationFile', () => {
   it('parses expected hash and algorithm from verification file content', () => {
@@ -52,8 +53,12 @@ describe('calculateSHA512', () => {
 
 describe('FileVerification Page Component', () => {
   it('renders initial state with empty fields', () => {
-    render(<FileVerification />);
+    render(
+      <LanguageProvider>
+        <FileVerification />
+      </LanguageProvider>
+    );
     expect(screen.getByText('Import File & Verification')).toBeInTheDocument();
-    expect(screen.getByText('Pending upload of CSV/Excel and calibration files...')).toBeInTheDocument();
+    expect(screen.getByText('Pending upload of CSV/Excel and verification files...')).toBeInTheDocument();
   });
 });

@@ -60,7 +60,7 @@
 }
 
 .modal-content-area {
-  padding: 24px;
+  padding: 0 24px 24px 24px;
   max-height: 400px;
   overflow-y: auto;
 }
@@ -640,4 +640,31 @@
   border-left: 2px solid white;
   border-bottom: 2px solid white;
   transform: rotate(-45deg) translateY(-1px);
+}
+
+/* Remove Graphic Button */
+.btn-graphic-remove {
+  width: 32px;
+  height: 32px;
+  background: #FFE000;
+  border: none;
+  border-radius: 3.2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #191919;
+  transition: background 0.2s, color 0.2s;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.btn-graphic-remove:hover {
+  background: #FF4D4F;
+  color: white;
+}
+
+.btn-graphic-remove.mini {
+  width: 22px;
+  height: 22px;
 }

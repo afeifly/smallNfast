@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import CustomDialog from '../../components/CustomDialog';
+import { useLanguage } from '../../context/LanguageContext';
 import './FormulaEditorModal.css';
 
 const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
@@ -10,6 +11,7 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const { t } = useLanguage();
 
   const timerRef = useRef(null);
 
@@ -101,7 +103,11 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
       onConfirm(formula);
       onClose();
     } catch (e) {
-      setErrorMessage('Formula format is invalid. Please check your operators, brackets, and numbers.');
+      setErrorMessage(t({ 
+        en: 'Formula format is invalid. Please check your operators, brackets, and numbers.', 
+        de: 'Das Formelformat ist ungültig. Bitte überprüfen Sie Ihre Operatoren, Klammern und Zahlen.', 
+        cn: '公式格式无效。请检查您的运算符、括号和数字。' 
+      }));
       setShowErrorDialog(true);
     }
   };
@@ -119,8 +125,8 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
           <div className="formula-header">
             <div style={{ width: '586px', flexShrink: 0 }}>
               <div className="formula-header-left">
-                <h2 className="formula-title">Create formula</h2>
-                <p className="formula-subtitle">Create a new virtual channel for complex calculations</p>
+                <h2 className="formula-title">{t({ en: 'Create formula', de: 'Formel erstellen', cn: '创建公式' })}</h2>
+                <p className="formula-subtitle">{t({ en: 'Create a new virtual channel for complex calculations', de: 'Erstellen Sie einen neuen virtuellen Kanal für komplexe Berechnungen', cn: '创建一个新的虚拟通道以进行复杂计算' })}</p>
               </div>
             </div>
             
@@ -135,7 +141,7 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
                   </svg>
                   <input 
                     type="text" 
-                    placeholder="please search sensor name"
+                    placeholder={t({ en: 'please search sensor name', de: 'Bitte Sensorname suchen', cn: '请输入传感器名称搜索' })}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -143,7 +149,7 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
               </div>
 
               <div className="formula-close" onClick={onClose}>
-                <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
+                <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
               </div>
             </div>
           </div>
@@ -152,15 +158,15 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
             {/* Left Side: Builder & Keypad */}
             <div className="formula-left">
               <div className="formula-display-area">
-                <label>Formula</label>
+                <label>{t({ en: 'Formula', de: 'Formel', cn: '公式' })}</label>
                 <div className="formula-builder-box">
-                  {formula ? <span className="formula-text-display">{formula}</span> : <span className="formula-placeholder">Your formula will appear here...</span>}
+                  {formula ? <span className="formula-text-display">{formula}</span> : <span className="formula-placeholder">{t({ en: 'Your formula will appear here...', de: 'Ihre Formel wird hier angezeigt...', cn: '您的公式将在此处显示...' })}</span>}
                 </div>
               </div>
 
               <div className="formula-keypad-section">
                 <div className="keypad-group">
-                  <label>Operators</label>
+                  <label>{t({ en: 'Operators', de: 'Operatoren', cn: '运算符' })}</label>
                   <div className="keypad-grid-unified">
                     {allTokens.map((token, idx) => (
                       token === 'backspace' ? (
@@ -200,9 +206,9 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
                 <table className="channel-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '40px' }}>ID</th>
-                      <th style={{ width: '100px' }}>Sensor</th>
-                      <th>Channel</th>
+                      <th style={{ width: '40px' }}>{t({ en: 'ID', de: 'ID', cn: 'ID' })}</th>
+                      <th style={{ width: '100px' }}>{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</th>
+                      <th>{t({ en: 'Channel', de: 'Kanal', cn: '通道' })}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -221,8 +227,8 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
 
           {/* Footer */}
           <div className="formula-footer">
-            <button className="btn-formula-cancel" onClick={onClose}>Cancel</button>
-            <button className="btn-formula-confirm" onClick={handleConfirm}>Confirm</button>
+            <button className="btn-formula-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
+            <button className="btn-formula-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
           </div>
         </div>
       </div>
@@ -231,9 +237,9 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
         isOpen={showErrorDialog}
         onClose={() => setShowErrorDialog(false)}
         onConfirm={() => setShowErrorDialog(false)}
-        title="警告通知"
+        title={t({ en: 'Warning Notification', de: 'Warnhinweis', cn: '警告通知' })}
         body={errorMessage}
-        confirmText="好的"
+        confirmText={t({ en: 'OK', de: 'OK', cn: '好的' })}
         showCancel={false}
         type="err"
       />

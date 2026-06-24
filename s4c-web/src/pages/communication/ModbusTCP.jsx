@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
+import { useLanguage } from '../../context/LanguageContext';
 import './ModbusTCP.css';
 
 const ModbusTCP = () => {
@@ -10,6 +11,7 @@ const ModbusTCP = () => {
   const [port, setPort] = useState('502');
 
   const { configData, setConfigData } = useConfig();
+  const { t } = useLanguage();
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
   const currentConfig = configData?.configs?.[configPath];
   const tcpConfig = currentConfig?.retcp;
@@ -36,20 +38,20 @@ const ModbusTCP = () => {
   return (
     <div className="content-card modbus-tcp-page">
       <header className="modbus-header">
-        <h2 className="modbus-title">Modbus TCP connection information</h2>
+        <h2 className="modbus-title">{t({ en: 'Modbus TCP connection information', de: 'Modbus TCP-Verbindungsinformationen', cn: 'Modbus TCP 连接信息' })}</h2>
       </header>
 
       <div className="modbus-body">
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">Protocol <span className="required">*</span></label>
+            <label className="modbus-label">{t({ en: 'Protocol', de: 'Protokoll', cn: '协议' })} <span className="required">*</span></label>
             <div className="modbus-input-readonly">
               <span>TCP</span>
             </div>
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">DHCP Enable</label>
+            <label className="modbus-label">{t({ en: 'DHCP Enable', de: 'DHCP aktivieren', cn: '启用 DHCP' })}</label>
             <div 
               className={`modbus-switch ${dhcp ? 'on' : ''}`} 
               onClick={() => {
@@ -67,7 +69,7 @@ const ModbusTCP = () => {
           <>
             <div className="modbus-row">
               <div className="modbus-field">
-                <label className="modbus-label">IP address <span className="required">*</span></label>
+                <label className="modbus-label">{t({ en: 'IP address', de: 'IP-Adresse', cn: 'IP 地址' })} <span className="required">*</span></label>
                 <div className="modbus-input-container">
                   <input 
                     type="text"
@@ -80,7 +82,7 @@ const ModbusTCP = () => {
               </div>
 
               <div className="modbus-field">
-                <label className="modbus-label">Sub mask <span className="required">*</span></label>
+                <label className="modbus-label">{t({ en: 'Sub mask', de: 'Subnetzmaske', cn: '子网掩码' })} <span className="required">*</span></label>
                 <div className="modbus-input-container">
                   <input 
                     type="text"
@@ -95,7 +97,7 @@ const ModbusTCP = () => {
 
             <div className="modbus-row">
               <div className="modbus-field">
-                <label className="modbus-label">Default gateway <span className="required">*</span></label>
+                <label className="modbus-label">{t({ en: 'Default gateway', de: 'Standard-Gateway', cn: '默认网关' })} <span className="required">*</span></label>
                 <div className="modbus-input-container">
                   <input 
                     type="text"
@@ -108,7 +110,7 @@ const ModbusTCP = () => {
               </div>
 
               <div className="modbus-field">
-                <label className="modbus-label">Port <span className="required">*</span></label>
+                <label className="modbus-label">{t({ en: 'Port', de: 'Port', cn: '端口' })} <span className="required">*</span></label>
                 <div className="modbus-input-container">
                   <input 
                     type="number"

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useConfig } from '../context/ConfigContext';
+import { useLanguage } from '../context/LanguageContext';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
 import ChannelSelectModal from '../components/ChannelSelectModal';
 import './LoggerSettings.css';
@@ -59,6 +60,7 @@ function extractLogger(configs) {
  *   - two scroll-wheel columns for hour (0–23) and minute (0–59)
  */
 const DateTimePicker = ({ value, onChange, disabled }) => {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -83,7 +85,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
 
   const displayLabel = value
     ? `${dateStr}  ${pad2(hour)}:${pad2(minute)}`
-    : '— Select date & time —';
+    : t({ en: '— Select date & time —', de: '— Datum & Zeit auswählen —', cn: '— 选择日期与时间 —' });
 
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%' }}>
@@ -129,7 +131,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
         }}>
           {/* Date row */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, color: '#86909C', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Date</span>
+            <span style={{ fontSize: 11, color: '#86909C', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>{t({ en: 'Date', de: 'Datum', cn: '日期' })}</span>
             <input
               type="date"
               value={dateStr}
@@ -150,7 +152,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
 
           {/* Time row — scroll wheels */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, color: '#86909C', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Time (24H)</span>
+            <span style={{ fontSize: 11, color: '#86909C', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>{t({ en: 'Time (24H)', de: 'Zeit (24H)', cn: '时间 (24H)' })}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <ScrollWheel
                 value={hour}
@@ -186,7 +188,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
               width: '100%',
             }}
           >
-            OK
+            {t({ en: 'OK', de: 'OK', cn: '确定' })}
           </button>
         </div>
       )}
@@ -273,6 +275,7 @@ const ScrollWheel = ({ value, min, max, onChange, label }) => {
 
 // ── Edit Logger Drawer ────────────────────────────────────────────────────────
 const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdToCreateTime, onSave }) => {
+  const { t } = useLanguage();
   const [form, setForm] = useState({ mode: 0, filename: '', starttime: 0, samplerate: 1, channelArray: [] });
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -321,42 +324,43 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
       {isOpen && <div className="logger-drawer-backdrop" onClick={onClose} />}
       <div className={`logger-drawer ${isOpen ? 'open' : 'closed'}`}>
         <div style={{ height: 56, borderBottom: '1px solid #E7E7E7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0 }}>
-          <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>Logger configuration file detail</span>
+          <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>{t({ en: 'Logger configuration file detail', de: 'Details der Logger-Konfigurationsdatei', cn: '记录器配置文件详情' })}</span>
           <button onClick={onClose} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', cursor: 'pointer' }}>
             <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
           </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
           <div className="drawer-form-row">
-            <label className="drawer-label"><span className="required">*</span>Startup mode</label>
+            <label className="drawer-label"><span className="required">*</span>{t({ en: 'Startup mode', de: 'Startmodus', cn: '启动模式' })}</label>
             <select className="drawer-input" value={form.mode} onChange={e => handleChange('mode', Number(e.target.value))}>
-              {MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <option value={0}>{t({ en: 'Key start', de: 'Tastenstart', cn: '按键启动' })}</option>
+              <option value={1}>{t({ en: 'Time start', de: 'Zeitstart', cn: '定时启动' })}</option>
             </select>
           </div>
           <div className="drawer-form-row">
-            <label className="drawer-label"><span className="required">*</span>Recorded file name</label>
-            <input className="drawer-input" type="text" placeholder="Max 30 characters" maxLength={30} value={form.filename} onChange={e => handleChange('filename', e.target.value)} />
+            <label className="drawer-label"><span className="required">*</span>{t({ en: 'Recorded file name', de: 'Aufgezeichneter Dateiname', cn: '记录文件名' })}</label>
+            <input className="drawer-input" type="text" placeholder={t({ en: 'Max 30 characters', de: 'Maximal 30 Zeichen', cn: '最多 30 个字符' })} maxLength={30} value={form.filename} onChange={e => handleChange('filename', e.target.value)} />
           </div>
           <div className="drawer-form-row">
-            <label className="drawer-label"><span className="required">*</span>Start time</label>
+            <label className="drawer-label"><span className="required">*</span>{t({ en: 'Start time', de: 'Startzeit', cn: '开始时间' })}</label>
             <DateTimePicker value={form.starttime} onChange={v => handleChange('starttime', v)} />
           </div>
           <div className="drawer-form-row">
-            <label className="drawer-label"><span className="required">*</span>Logger rate (s)</label>
+            <label className="drawer-label"><span className="required">*</span>{t({ en: 'Logger rate (s)', de: 'Logger-Rate (s)', cn: '记录频率 (秒)' })}</label>
             <select className="drawer-input" value={form.samplerate} onChange={e => handleChange('samplerate', Number(e.target.value))}>
               {RATE_OPTIONS.map(r => <option key={r} value={r}>{r}s</option>)}
             </select>
           </div>
           <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>Selected Channels ({form.channelArray.length})</span>
-            <button className="btn-select-channels" onClick={() => setIsModalOpen(true)}>Select Channels</button>
+            <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>{t({ en: 'Selected Channels', de: 'Ausgewählte Kanäle', cn: '选定通道' })} ({form.channelArray.length})</span>
+            <button className="btn-select-channels" onClick={() => setIsModalOpen(true)}>{t({ en: 'Select Channels', de: 'Kanäle auswählen', cn: '选择通道' })}</button>
           </div>
           <div style={{ border: '1px solid #E6E6E6', borderRadius: 8, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ width: 162, padding: '12px 16px', background: '#F3F3F3', borderBottom: '1px solid #E7E7E7', textAlign: 'left', fontSize: 14, fontWeight: 600, color: '#191919' }}>Channel name</th>
-                  <th style={{ padding: '12px 16px', background: '#F3F3F3', borderBottom: '1px solid #E7E7E7', textAlign: 'left', fontSize: 14, fontWeight: 600, color: '#191919' }}>Location information</th>
+                  <th style={{ width: 162, padding: '12px 16px', background: '#F3F3F3', borderBottom: '1px solid #E7E7E7', textAlign: 'left', fontSize: 14, fontWeight: 600, color: '#191919' }}>{t({ en: 'Channel name', de: 'Kanalname', cn: '通道名称' })}</th>
+                  <th style={{ padding: '12px 16px', background: '#F3F3F3', borderBottom: '1px solid #E7E7E7', textAlign: 'left', fontSize: 14, fontWeight: 600, color: '#191919' }}>{t({ en: 'Location information', de: 'Ortsinformationen', cn: '位置信息' })}</th>
                 </tr>
               </thead>
               <tbody>
@@ -366,19 +370,18 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
                     <td style={{ padding: '12px 16px', borderBottom: '1px solid #F0F0F0', fontSize: 14, color: '#4E5969' }}>{ch.location} / {ch.point}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={2} style={{ padding: '40px 16px', textAlign: 'center', fontSize: 14, color: 'rgba(0,0,0,0.4)' }}>No channels selected</td></tr>
+                  <tr><td colSpan={2} style={{ padding: '40px 16px', textAlign: 'center', fontSize: 14, color: 'rgba(0,0,0,0.4)' }}>{t({ en: 'No channels selected', de: 'Keine Kanäle ausgewählt', cn: '未选择通道' })}</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
         <div style={{ height: 72, borderTop: '1px solid #E7E7E7', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8, flexShrink: 0 }}>
-          <button onClick={handleSubmit} style={{ padding: '5px 16px', background: '#00AB84', border: 'none', borderRadius: 3, color: 'rgba(255,255,255,0.9)', fontSize: 14, cursor: 'pointer' }}>Submit</button>
-          <button onClick={onClose} style={{ padding: '5px 16px', background: '#E7E7E7', border: 'none', borderRadius: 3, color: 'rgba(0,0,0,0.9)', fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSubmit} style={{ padding: '5px 16px', background: '#00AB84', border: 'none', borderRadius: 3, color: 'rgba(255,255,255,0.9)', fontSize: 14, cursor: 'pointer' }}>{t({ en: 'Submit', de: 'Absenden', cn: '提交' })}</button>
+          <button onClick={onClose} style={{ padding: '5px 16px', background: '#E7E7E7', border: 'none', borderRadius: 3, color: 'rgba(0,0,0,0.9)', fontSize: 14, cursor: 'pointer' }}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
         </div>
       </div>
 
-      {/* Channel Select Modal */}
       <ChannelSelectModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -386,7 +389,7 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
         initialSelectedIds={selectedIds}
         onConfirm={handleChannelsConfirm}
         maxLimit={0}
-        selectionMessage="Select channels to include in the logger."
+        selectionMessage={t({ en: 'Select channels to include in the logger.', de: 'Wählen Sie Kanäle aus, die in den Logger aufgenommen werden sollen.', cn: '选择要包含在记录器中的通道。' })}
         showOperate={false}
       />
     </>
@@ -395,6 +398,7 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
 
 // ── Logger Settings Page ──────────────────────────────────────────────────────
 const LoggerSettings = () => {
+  const { t } = useLanguage();
   const { configData, setConfigData } = useConfig();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -436,8 +440,8 @@ const LoggerSettings = () => {
       allChannels.push({ 
         CreateTime: createTimeStr, 
         ChannelId: cid, // Add the actual ChannelId here
-        sensorName: sensor.Name || sensor.Description || 'Unknown Sensor',
-        channelName: ch.ChannelDescription || 'Unknown Channel', 
+        sensorName: sensor.Name || sensor.Description || t({ en: 'Unknown Sensor', de: 'Unbekannter Sensor', cn: '未知传感器' }),
+        channelName: ch.ChannelDescription || t({ en: 'Unknown Channel', de: 'Unbekannter Kanal', cn: '未知通道' }), 
         unit: ch.UnitInASCII || '',
         location: locationValue, 
         point: pointValue 
@@ -476,14 +480,14 @@ const LoggerSettings = () => {
       {/* Header */}
       <header className="logger-header">
         <div className="logger-title-section">
-          <h2 className="logger-title">Logger settings</h2>
-          <p className="logger-subtitle">Configure the data logger for your device.</p>
+          <h2 className="logger-title">{t({ en: 'Logger settings', de: 'Logger-Einstellungen', cn: '记录器设置' })}</h2>
+          <p className="logger-subtitle">{t({ en: 'Configure the data logger for your device.', de: 'Konfigurieren Sie den Datenlogger für Ihr Gerät.', cn: '配置您设备的记录器设置。' })}</p>
         </div>
         <button className="btn-header-edit" onClick={() => setIsDrawerOpen(true)}>
           <svg viewBox="0 0 16 16" fill="none" width="16" height="16" style={{ marginRight: 6 }}>
             <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Edit
+          {t({ en: 'Edit', de: 'Bearbeiten', cn: '编辑' })}
         </button>
       </header>
 
@@ -496,13 +500,13 @@ const LoggerSettings = () => {
           {/* Column 1: Startup mode + Recorded file name */}
           <div className="logger-fields-column">
             <div className="logger-field-item">
-              <label>Startup mode</label>
+              <label>{t({ en: 'Startup mode', de: 'Startmodus', cn: '启动模式' })}</label>
               <div className="logger-display-value">
-                {rawLogger?.mode === 1 ? 'Time start' : 'Key start'}
+                {rawLogger?.mode === 1 ? t({ en: 'Time start', de: 'Zeitstart', cn: '定时启动' }) : t({ en: 'Key start', de: 'Tastenstart', cn: '按键启动' })}
               </div>
             </div>
             <div className="logger-field-item">
-              <label>Recorded file name</label>
+              <label>{t({ en: 'Recorded file name', de: 'Aufgezeichneter Dateiname', cn: '记录文件名' })}</label>
               <div className="logger-display-value">
                 {rawLogger?.filename || '—'}
               </div>
@@ -512,7 +516,7 @@ const LoggerSettings = () => {
           {/* Column 2: Start time + Logger rate */}
           <div className="logger-fields-column">
             <div className="logger-field-item">
-              <label>Start time</label>
+              <label>{t({ en: 'Start time', de: 'Startzeit', cn: '开始时间' })}</label>
               <div className="logger-display-value">
                 {rawLogger?.starttime ? (
                   (() => {
@@ -523,7 +527,7 @@ const LoggerSettings = () => {
               </div>
             </div>
             <div className="logger-field-item">
-              <label>Logger rate (s)</label>
+              <label>{t({ en: 'Logger rate (s)', de: 'Logger-Rate (s)', cn: '记录频率 (秒)' })}</label>
               <div className="logger-display-value">
                 {rawLogger?.samplerate !== undefined ? `${rawLogger.samplerate}s` : '—'}
               </div>
@@ -533,15 +537,15 @@ const LoggerSettings = () => {
 
         {/* Channel table */}
         <div className="logger-table-header">
-          <span className="logger-table-title">Channel list ({channelArray.length})</span>
+          <span className="logger-table-title">{t({ en: 'Channel list', de: 'Kanalliste', cn: '通道列表' })} ({channelArray.length})</span>
         </div>
 
         <div className="logger-table-container">
           <table className="logger-table">
             <thead>
               <tr>
-                <th>Channel name</th>
-                <th>Location information</th>
+                <th>{t({ en: 'Channel name', de: 'Kanalname', cn: '通道名称' })}</th>
+                <th>{t({ en: 'Location information', de: 'Ortsinformationen', cn: '位置信息' })}</th>
               </tr>
             </thead>
             <tbody>
@@ -554,7 +558,7 @@ const LoggerSettings = () => {
                 ))
               ) : (
                 <tr className="logger-empty-row">
-                  <td colSpan={2}>No channels configured.</td>
+                  <td colSpan={2}>{t({ en: 'No channels configured.', de: 'Keine Kanäle konfiguriert.', cn: '未配置通道。' })}</td>
                 </tr>
               )}
             </tbody>

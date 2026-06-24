@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
 import CustomDialog from './CustomDialog';
+import { useLanguage } from '../context/LanguageContext';
 import '../pages/Graphic.css';
 
 const ChannelSelectModal = ({
@@ -11,6 +12,7 @@ const ChannelSelectModal = ({
   onConfirm,
   allChannels = [],
   initialSelectedIds = [],
+  blockedSelectedIds = [], // Added prop
   maxLimit = 5,
   selectionMessage = 'You can only select up to 5 channels.',
   showOperate = true,
@@ -19,6 +21,7 @@ const ChannelSelectModal = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [isLimitAlertOpen, setIsLimitAlertOpen] = useState(false);
+  const { t } = useLanguage();
 
   // Initialize selection from prop
   useEffect(() => {
@@ -37,6 +40,8 @@ const ChannelSelectModal = ({
   );
 
   const toggleSelection = (id) => {
+    if (blockedSelectedIds.includes(id)) return; // Ignore toggling if channel is blocked
+
     setSelectedIds(prev => {
       if (prev.includes(id)) {
         return prev.filter(i => i !== id);
@@ -51,19 +56,22 @@ const ChannelSelectModal = ({
     });
   };
 
-  const isAllVisibleSelected = filteredChannels.length > 0 &&
-    filteredChannels.every(ch => selectedIds.includes(ch.CreateTime));
+  // Determine selectable (unblocked) visible channels
+  const unblockedVisibleChannels = filteredChannels.filter(ch => !blockedSelectedIds.includes(ch.CreateTime));
+  const unblockedVisibleIds = unblockedVisibleChannels.map(ch => ch.CreateTime);
+
+  // Checked if all unblocked visible channels are selected
+  const isAllVisibleSelected = unblockedVisibleIds.length > 0 &&
+    unblockedVisibleIds.every(id => selectedIds.includes(id));
 
   const handleSelectAll = () => {
     if (isAllVisibleSelected) {
-      // Unselect all visible
-      const visibleIds = filteredChannels.map(ch => ch.CreateTime);
-      setSelectedIds(prev => prev.filter(id => !visibleIds.includes(id)));
+      // Unselect all unblocked visible
+      setSelectedIds(prev => prev.filter(id => !unblockedVisibleIds.includes(id)));
     } else {
-      // Select all visible (respecting limit if any)
-      const visibleIds = filteredChannels.map(ch => ch.CreateTime);
+      // Select all unblocked visible (respecting limit if any)
       setSelectedIds(prev => {
-        const combined = [...new Set([...prev, ...visibleIds])];
+        const combined = [...new Set([...prev, ...unblockedVisibleIds])];
         if (typeof maxLimit === 'number' && maxLimit > 0) {
           return combined.slice(0, maxLimit);
         }
@@ -78,16 +86,24 @@ const ChannelSelectModal = ({
     }
   };
 
+  const resolvedTitle = title === 'Channel configuration' 
+    ? t({ en: 'Channel configuration', de: 'Kanalkonfiguration', cn: '通道配置' })
+    : title;
+
+  const resolvedMessage = selectionMessage === 'You can only select up to 5 channels.'
+    ? t({ en: 'You can only select up to 5 channels.', de: 'Sie können nur bis zu 5 Kanäle auswählen.', cn: '您最多只能选择 5 个通道。' })
+    : selectionMessage;
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-container" onClick={e => e.stopPropagation()}>
         <header className="modal-header">
           <div className="modal-header-content">
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{title}</h3>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{resolvedTitle}</h3>
             <div className="search-input-wrapper" style={{ width: '320px' }}>
               <input
                 type="text"
-                placeholder="please search sensor name"
+                placeholder={t({ en: 'please search sensor name', de: 'Bitte Sensorname suchen', cn: '请输入传感器名称搜索' })}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -97,7 +113,7 @@ const ChannelSelectModal = ({
             </div>
           </div>
           <div className="modal-close-btn" onClick={onClose}>
-            <img src={iconBtnClose} alt="Close" style={{ width: 32, height: 32 }} />
+            <img src={iconBtnClose} alt={t({ en: 'Close', de: 'Schließen', cn: '关闭' })} style={{ width: 32, height: 32 }} />
           </div>
         </header>
 
@@ -112,52 +128,67 @@ const ChannelSelectModal = ({
                     onClick={handleSelectAll}
                   ></div>
                 </th>
-                <th>Sensor</th>
-                <th>Channel</th>
-                <th>Unit</th>
-                <th>Location</th>
-                <th>Point</th>
-                {showOperate && <th>Operate</th>}
+                <th>{t({ en: 'Sensor', de: 'Sensor', cn: '传感器' })}</th>
+                <th>{t({ en: 'Channel', de: 'Kanal', cn: '通道' })}</th>
+                <th>{t({ en: 'Unit', de: 'Einheit', cn: '单位' })}</th>
+                <th>{t({ en: 'Location', de: 'Standort', cn: '位置' })}</th>
+                <th>{t({ en: 'Point', de: 'Messpunkt', cn: '测量点' })}</th>
+                {showOperate && <th>{t({ en: 'Operate', de: 'Aktion', cn: '操作' })}</th>}
               </tr>
             </thead>
             <tbody>
               {filteredChannels.length > 0 ? (
-                filteredChannels.map(ch => (
-                  <tr key={ch.CreateTime} onClick={() => toggleSelection(ch.CreateTime)} style={{ cursor: 'pointer' }}>
-                    <td style={{ textAlign: 'center' }}>
-                      <div
-                        className={`custom-checkbox ${selectedIds.includes(ch.CreateTime) ? 'checked' : ''}`}
-                        style={{ margin: '0 auto', cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSelection(ch.CreateTime);
-                        }}
-                      ></div>
-                    </td>
-                    <td>{ch.sensorName}</td>
-                    <td>{ch.channelName}</td>
-                    <td>{ch.unit}</td>
-                    <td>{ch.location}</td>
-                    <td>{ch.point}</td>
-                    {showOperate && (
-                      <td>
-                        <span
-                          style={{ color: '#00AB84', cursor: 'pointer', textDecoration: 'underline' }}
+                filteredChannels.map(ch => {
+                  const isBlocked = blockedSelectedIds.includes(ch.CreateTime);
+                  const isSelected = selectedIds.includes(ch.CreateTime) || isBlocked;
+                  return (
+                    <tr 
+                      key={ch.CreateTime} 
+                      onClick={() => toggleSelection(ch.CreateTime)} 
+                      style={isBlocked ? { opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#F8F9FA' } : { cursor: 'pointer' }}
+                    >
+                      <td style={{ textAlign: 'center' }}>
+                        <div
+                          className={`custom-checkbox ${isSelected ? 'checked' : ''} ${isBlocked ? 'disabled' : ''}`}
+                          style={isBlocked ? {
+                            margin: '0 auto',
+                            background: '#CCCCCC',
+                            borderColor: '#CCCCCC',
+                            cursor: 'not-allowed'
+                          } : { margin: '0 auto', cursor: 'pointer' }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (onSettingClick) onSettingClick(ch);
+                            toggleSelection(ch.CreateTime);
                           }}
-                        >
-                          Setting
-                        </span>
+                        ></div>
                       </td>
-                    )}
-                  </tr>
-                ))
+                      <td>{ch.sensorName}</td>
+                      <td>{ch.channelName}</td>
+                      <td>{ch.unit}</td>
+                      <td>{ch.location}</td>
+                      <td>{ch.point}</td>
+                      {showOperate && (
+                        <td>
+                          {!isBlocked && (
+                            <span
+                              style={{ color: '#00AB84', cursor: 'pointer', textDecoration: 'underline' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onSettingClick) onSettingClick(ch);
+                              }}
+                            >
+                              {t({ en: 'Setting', de: 'Einstellung', cn: '设置' })}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                    No channels found matching search
+                    {t({ en: 'No channels found matching search', de: 'Keine passenden Kanäle gefunden', cn: '未找到匹配的通道' })}
                   </td>
                 </tr>
               )}
@@ -166,8 +197,8 @@ const ChannelSelectModal = ({
         </div>
 
         <footer className="modal-footer">
-          <button className="btn-drawer-confirm" style={{ width: '120px' }} onClick={handleConfirm}>Confirm</button>
-          <button className="btn-drawer-cancel" style={{ width: '120px' }} onClick={onClose}>Cancel</button>
+          <button className="btn-drawer-confirm" style={{ width: '120px' }} onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确认' })}</button>
+          <button className="btn-drawer-cancel" style={{ width: '120px' }} onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
         </footer>
       </div>
 
@@ -175,8 +206,8 @@ const ChannelSelectModal = ({
         isOpen={isLimitAlertOpen}
         onClose={() => setIsLimitAlertOpen(false)}
         onConfirm={() => setIsLimitAlertOpen(false)}
-        title="Selection Limit"
-        body={selectionMessage}
+        title={t({ en: 'Selection Limit', de: 'Auswahllimit', cn: '选择限制' })}
+        body={resolvedMessage}
         type="warn"
         showCancel={false}
       />
@@ -192,6 +223,7 @@ ChannelSelectModal.propTypes = {
   onConfirm: PropTypes.func,
   allChannels: PropTypes.array,
   initialSelectedIds: PropTypes.array,
+  blockedSelectedIds: PropTypes.array,
   maxLimit: PropTypes.number,
   selectionMessage: PropTypes.string,
   showOperate: PropTypes.bool,

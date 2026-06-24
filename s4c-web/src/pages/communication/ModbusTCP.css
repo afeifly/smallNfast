@@ -108,7 +108,7 @@
   background: #00AB84;
 }
 
-.switch-knob {
+.modbus-switch .switch-knob {
   width: 20px;
   height: 20px;
   background: white;

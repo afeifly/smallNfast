@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useConfig } from '../../context/ConfigContext';
+import { useLanguage } from '../../context/LanguageContext';
 import './ModbusRTU.css';
 
 const ModbusRTUSlave = () => {
   const { configData, setConfigData } = useConfig();
+  const { t } = useLanguage();
   const [baudRate, setBaudRate] = useState(19200);
   const [parity, setParity] = useState(3);
   const [timeout, setTimeoutVal] = useState(10);
@@ -46,20 +48,20 @@ const ModbusRTUSlave = () => {
   return (
     <div className="content-card modbus-rtu-page">
       <header className="modbus-header">
-        <h2 className="modbus-title">Modbus RTU slave information</h2>
+        <h2 className="modbus-title">{t({ en: 'Modbus RTU slave information', de: 'Modbus RTU Slave-Informationen', cn: 'Modbus RTU 从站信息' })}</h2>
       </header>
 
       <div className="modbus-body">
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">Protocol <span className="required">*</span></label>
+            <label className="modbus-label">{t({ en: 'Protocol', de: 'Protokoll', cn: '协议' })} <span className="required">*</span></label>
             <div className="modbus-input-readonly">
               <span>RTU</span>
             </div>
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">Slave address <span className="required">*</span></label>
+            <label className="modbus-label">{t({ en: 'Slave address', de: 'Slave-Adresse', cn: '从站地址' })} <span className="required">*</span></label>
             <div className="modbus-input-container">
               <input 
                 type="number"
@@ -80,7 +82,7 @@ const ModbusRTUSlave = () => {
 
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">Baud rate <span className="required">*</span></label>
+            <label className="modbus-label">{t({ en: 'Baud rate', de: 'Baudrate', cn: '波特率' })} <span className="required">*</span></label>
             <div className="modbus-select-wrapper">
               <select 
                 className="modbus-select"
@@ -100,7 +102,7 @@ const ModbusRTUSlave = () => {
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">Frame parity <span className="required">*</span></label>
+            <label className="modbus-label">{t({ en: 'Frame parity', de: 'Frame-Parität', cn: '帧校验' })} <span className="required">*</span></label>
             <div className="modbus-select-wrapper">
               <select 
                 className="modbus-select"
@@ -122,7 +124,7 @@ const ModbusRTUSlave = () => {
 
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">Response timeout(s) <span className="required">*</span></label>
+            <label className="modbus-label">{t({ en: 'Response timeout(s)', de: 'Antwort-Timeout (s)', cn: '响应超时 (秒)' })} <span className="required">*</span></label>
             <div className="modbus-input-container">
               <input 
                 type="number"

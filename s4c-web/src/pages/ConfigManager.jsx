@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { unzipConfigFile, parseSummary, calculateConfigHash, exportConfigPackage, generateSummary } from '../util/configFileUtils';
 import { useConfig } from '../context/ConfigContext';
+import { useLanguage } from '../context/LanguageContext';
 import { createEmptyAlarmDb } from '../util/alarmDbUtils';
 import iconAlertBig from '../assets/images/icon_alert_big.png';
 import iconSmallPlusCircle from '../assets/images/icon-small-plus-circle.png';
@@ -9,6 +10,7 @@ import CustomDialog from '../components/CustomDialog';
 import './sensorconfiguration/SUTOSensor.css'; // Reuse table styles
 
 const ConfigManager = () => {
+  const { t } = useLanguage();
   const { 
     configData: activeConfig, 
     configList, 
@@ -33,7 +35,7 @@ const ConfigManager = () => {
     type: 'warn',
     onConfirm: null,
     showCancel: true,
-    confirmText: 'Confirm',
+    confirmText: t({ en: 'Confirm', de: 'Bestätigen', cn: '确定' }),
     style: {}
   });
 
@@ -74,7 +76,11 @@ const ConfigManager = () => {
       addConfig(newConfig);
     } catch (err) {
       console.error(err);
-      setError('Failed to process config file. Check password or file format.');
+      setError(t({
+        en: 'Failed to process config file. Check password or file format.',
+        de: 'Fehler beim Verarbeiten der Konfigurationsdatei. Passwort oder Dateiformat überprüfen.',
+        cn: '处理配置文件失败。请检查密码或文件格式。'
+      }));
     } finally {
       setLoading(false);
       if (event.target) event.target.value = '';
@@ -162,7 +168,11 @@ const ConfigManager = () => {
       });
     } catch (err) {
       console.error(err);
-      setError('Failed to create new configuration.');
+      setError(t({
+        en: 'Failed to create new configuration.',
+        de: 'Fehler beim Erstellen der neuen Konfiguration.',
+        cn: '创建新配置失败。'
+      }));
     } finally {
       setLoading(false);
     }
@@ -189,11 +199,11 @@ const ConfigManager = () => {
       console.error(err);
       setDialogState({
         isOpen: true,
-        title: 'Export Failed',
-        body: 'Failed to export configuration.',
+        title: t({ en: 'Export Failed', de: 'Export fehlgeschlagen', cn: '导出失败' }),
+        body: t({ en: 'Failed to export configuration.', de: 'Fehler beim Exportieren der Konfiguration.', cn: '导出配置失败。' }),
         type: 'err',
         showCancel: false,
-        confirmText: 'OK',
+        confirmText: t({ en: 'OK', de: 'OK', cn: '确定' }),
         onConfirm: closeDialog
       });
     } finally {
@@ -204,11 +214,15 @@ const ConfigManager = () => {
   const handleDeleteClick = (id, fileName) => {
     setDialogState({
       isOpen: true,
-      title: 'Delete Config',
-      body: `Are you sure you want to delete "${fileName}"?`,
+      title: t({ en: 'Delete Config', de: 'Konfiguration löschen', cn: '删除配置' }),
+      body: t({
+        en: `Are you sure you want to delete "${fileName}"?`,
+        de: `Sind Sie sicher, dass Sie "${fileName}" löschen möchten?`,
+        cn: `您确定要删除“${fileName}”吗？`
+      }),
       type: 'warn',
       showCancel: true,
-      confirmText: 'Delete',
+      confirmText: t({ en: 'Delete', de: 'Löschen', cn: '删除' }),
       onConfirm: () => {
         deleteConfig(id);
         closeDialog();
@@ -239,10 +253,10 @@ const ConfigManager = () => {
   const handleShowJsonDialog = (cfg) => {
     setDialogState({
       isOpen: true,
-      title: `JSON Viewer - ${cfg.fileName}`,
+      title: `${t({ en: 'JSON Viewer', de: 'JSON-Viewer', cn: 'JSON 查看器' })} - ${cfg.fileName}`,
       type: 'info',
       showCancel: false,
-      confirmText: 'Close',
+      confirmText: t({ en: 'Close', de: 'Schließen', cn: '关闭' }),
       onConfirm: closeDialog,
       style: { maxWidth: '800px', width: '800px' },
       body: (
@@ -302,18 +316,18 @@ const ConfigManager = () => {
                 <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
             </button>
-            <h2 className="suto-title">Config Details: {config.fileName}</h2>
+            <h2 className="suto-title">{t({ en: 'Config Details', de: 'Konfigurationsdetails', cn: '配置详情' })}: {config.fileName}</h2>
           </div>
         </header>
         <div className="suto-body" style={{ padding: '24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '24px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <div style={{ background: '#F8F9FA', padding: '20px', borderRadius: '8px' }}>
-                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Properties</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>{t({ en: 'Properties', de: 'Eigenschaften', cn: '属性' })}</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <PropertyRow label="File Name" value={config.fileName} />
-                  <PropertyRow label="File Size" value={config.fileSize} />
-                  <PropertyRow label="Imported" value={config.importTime} />
+                  <PropertyRow label={t({ en: 'File Name', de: 'Dateiname', cn: '文件名' })} value={config.fileName} />
+                  <PropertyRow label={t({ en: 'File Size', de: 'Dateigröße', cn: '文件大小' })} value={config.fileSize} />
+                  <PropertyRow label={t({ en: 'Imported', de: 'Importiert', cn: '导入时间' })} value={config.importTime} />
                 </div>
               </div>
               <div style={{ background: '#F8F9FA', padding: '20px', borderRadius: '8px' }}>
@@ -324,7 +338,7 @@ const ConfigManager = () => {
               </div>
             </div>
             <div style={{ background: '#F8F9FA', padding: '20px', borderRadius: '8px' }}>
-              <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Embedded Documents</h3>
+              <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>{t({ en: 'Embedded Documents', de: 'Eingebettete Dokumente', cn: '嵌入文档' })}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {Object.entries(config.configs).map(([path, data]) => (
                   <div key={path} style={{ border: '1px solid #E5E6EB', borderRadius: '6px', background: 'white' }}>
@@ -345,14 +359,14 @@ const ConfigManager = () => {
   return (
     <div className="content-card suto-sensor-page">
       <header className="suto-header">
-        <h2 className="suto-title">Config file</h2>
+        <h2 className="suto-title">{t({ en: 'Config file', de: 'Konfigurationsdatei', cn: '配置文件' })}</h2>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button 
             className="add-sensor-btn"
             onClick={handleCreateNew}
             style={{ background: '#F2F3F5', color: '#4E5969' }}
           >
-            <span>Create New</span>
+            <span>{t({ en: 'Create New', de: 'Neu erstellen', cn: '新建' })}</span>
           </button>
           <input 
             type="file" 
@@ -363,7 +377,7 @@ const ConfigManager = () => {
           />
           <label htmlFor="cfg-upload" className="add-sensor-btn" style={{ cursor: 'pointer' }}>
             <img src={iconSmallPlusCircle} width="16" height="16" style={{ filter: 'brightness(0) invert(1)' }} alt="plus" />
-            <span>Import .cfgf</span>
+            <span>{t({ en: 'Import .cfgf', de: 'Importieren .cfgf', cn: '导入 .cfgf' })}</span>
           </label>
         </div>
       </header>
@@ -373,11 +387,11 @@ const ConfigManager = () => {
           <table className="suto-table">
             <thead>
               <tr>
-                <th>File name</th>
-                <th style={{ width: '120px' }}>Version</th>
-                <th style={{ width: '180px' }}>Create time</th>
-                <th style={{ width: '100px' }}>Status</th>
-                <th style={{ width: '180px' }} className="col-operate">Action</th>
+                <th>{t({ en: 'File name', de: 'Dateiname', cn: '文件名' })}</th>
+                <th style={{ width: '120px' }}>{t({ en: 'Version', de: 'Version', cn: '版本' })}</th>
+                <th style={{ width: '180px' }}>{t({ en: 'Create time', de: 'Erstellungszeit', cn: '创建时间' })}</th>
+                <th style={{ width: '100px' }}>{t({ en: 'Status', de: 'Status', cn: '状态' })}</th>
+                <th style={{ width: '180px' }} className="col-operate">{t({ en: 'Action', de: 'Aktion', cn: '操作' })}</th>
               </tr>
             </thead>
             <tbody>
@@ -393,7 +407,7 @@ const ConfigManager = () => {
                       style={{ cursor: 'pointer', fontWeight: cfg.id === activeConfigId ? 'bold' : 'normal' }}
                     >
                       {cfg.fileName}
-                      {cfg.id === activeConfigId && <span style={{ marginLeft: '8px', color: '#00AB84', fontSize: '12px' }}>[Loaded]</span>}
+                      {cfg.id === activeConfigId && <span style={{ marginLeft: '8px', color: '#00AB84', fontSize: '12px' }}>{t({ en: '[Loaded]', de: '[Geladen]', cn: '[已加载]' })}</span>}
                     </td>
                     <td>{cfg.summary?.['Config-Version'] || cfg.summary?.['version'] || '1.0.0'}</td>
                     <td>{cfg.summary?.['Config-Date'] || cfg.summary?.['date'] || cfg.importTime}</td>
@@ -405,7 +419,7 @@ const ConfigManager = () => {
                         borderRadius: '10px',
                         fontSize: '12px'
                       }}>
-                        {cfg.id === activeConfigId ? 'Active' : 'Idle'}
+                        {cfg.id === activeConfigId ? t({ en: 'Active', de: 'Aktiv', cn: '激活' }) : t({ en: 'Idle', de: 'Inaktiv', cn: '空闲' })}
                       </span>
                     </td>
                     <td>
@@ -423,7 +437,7 @@ const ConfigManager = () => {
                             }}
                             onClick={() => setActiveConfigId(null)}
                           >
-                            Clear
+                            {t({ en: 'Clear', de: 'Leeren', cn: '卸载' })}
                           </button>
                         ) : (
                           <button 
@@ -431,13 +445,13 @@ const ConfigManager = () => {
                             style={{ padding: '2px 12px', fontSize: '12px', height: '28px' }}
                             onClick={() => setActiveConfigId(cfg.id)}
                           >
-                            Load
+                            {t({ en: 'Load', de: 'Laden', cn: '加载' })}
                           </button>
                         )}
                         <button 
                           className="btn-icon-img" 
                           onClick={(e) => handleDownloadClick(e, cfg)}
-                          title="Export (Shift+Click to view JSON)"
+                          title={t({ en: 'Export (Shift+Click to view JSON)', de: 'Exportieren (Shift+Klick zum Anzeigen von JSON)', cn: '导出 (Shift+点击查看 JSON)' })}
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4E5969" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -446,9 +460,9 @@ const ConfigManager = () => {
                         <button 
                           className="btn-icon-img" 
                           onClick={() => handleDeleteClick(cfg.id, cfg.fileName)}
-                          title="Delete"
+                          title={t({ en: 'Delete', de: 'Löschen', cn: '删除' })}
                         >
-                          <img src={iconBtnDelete} alt="Delete" style={{ width: 18, height: 18 }} />
+                          <img src={iconBtnDelete} alt={t({ en: 'Delete', de: 'Löschen', cn: '删除' })} style={{ width: 18, height: 18 }} />
                         </button>
                       </div>
                     </td>
@@ -458,7 +472,11 @@ const ConfigManager = () => {
                 <tr>
                   <td colSpan="5">
                     <div className="suto-empty-container">
-                      No configuration files loaded. Import a .cfgf file to begin.
+                      {t({
+                        en: 'No configuration files loaded. Import a .cfgf file to begin.',
+                        de: 'Keine Konfigurationsdateien geladen. Importieren Sie eine .cfgf-Datei, um zu beginnen.',
+                        cn: '未加载配置文件。请导入 .cfgf 文件以开始。'
+                      })}
                     </div>
                   </td>
                 </tr>
@@ -500,6 +518,7 @@ const PropertyRow = ({ label, value }) => (
 );
 
 const CopyButton = ({ text }) => {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -535,7 +554,7 @@ const CopyButton = ({ text }) => {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
-          <span>Copied!</span>
+          <span>{t({ en: 'Copied!', de: 'Kopiert!', cn: '已复制!' })}</span>
         </>
       ) : (
         <>
@@ -543,7 +562,7 @@ const CopyButton = ({ text }) => {
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
           </svg>
-          <span>Copy</span>
+          <span>{t({ en: 'Copy', de: 'Kopieren', cn: '复制' })}</span>
         </>
       )}
     </button>

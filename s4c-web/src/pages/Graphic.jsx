@@ -4,9 +4,12 @@ import iconSmallPlusCircle from '../assets/images/icon-small-plus-circle.png';
 import iconShowGrid from '../assets/images/icon_show_grid.png';
 import { useConfig } from '../context/ConfigContext';
 import ChannelSelectModal from '../components/ChannelSelectModal';
+import { useLanguage } from '../context/LanguageContext';
+import CustomDialog from '../components/CustomDialog';
 import './Graphic.css';
 
 const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
+  const { t } = useLanguage();
   const [autoScale, setAutoScale] = useState(true);
   const [min, setMin] = useState(0);
   const [max, setMax] = useState(100);
@@ -32,7 +35,7 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 3000 }}>
       <div className="settings-drawer" onClick={e => e.stopPropagation()}>
         <div className="drawer-header-title">
-          <span>Y-axis</span>
+          <span>{t({ en: 'Y-axis', de: 'Y-Achse', cn: 'Y轴' })}</span>
         </div>
         <div className="drawer-close-btn" onClick={onClose}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#191919" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -44,18 +47,18 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
               <div style={{ width: 14.85, height: 11.02, background: 'rgba(255, 255, 255, 0.90)', maskImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 15 11\'%3E%3Cpath d=\'M1 5.5L5.5 10L14 1\' stroke=\'black\' stroke-width=\'2.5\'/%3E%3C/svg%3E")', WebkitMaskImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 15 11\'%3E%3Cpath d=\'M1 5.5L5.5 10L14 1\' stroke=\'black\' stroke-width=\'2.5\'/%3E%3C/svg%3E")' }} />
             )}
           </div>
-          <div className="auto-scaling-label" style={{ color: '#1D1D1B', fontSize: 20, fontFamily: 'Arial' }}>Automatic scaling</div>
+          <div className="auto-scaling-label" style={{ color: '#1D1D1B', fontSize: 20, fontFamily: 'Arial' }}>{t({ en: 'Automatic scaling', de: 'Automatische Skalierung', cn: '自动缩放' })}</div>
         </div>
 
         <div className="range-inputs-container">
           <div className="range-field">
-            <span className="range-label">min</span>
+            <span className="range-label">{t({ en: 'min', de: 'Min', cn: '最小值' })}</span>
             <div className="range-input-box">
               <input type="number" value={min} onChange={e => setMin(e.target.value)} disabled={autoScale} style={{ color: autoScale ? '#999' : '#191919' }} />
             </div>
           </div>
           <div className="range-field">
-            <span className="range-label">max</span>
+            <span className="range-label">{t({ en: 'max', de: 'Max', cn: '最大值' })}</span>
             <div className="range-input-box">
               <input type="number" value={max} onChange={e => setMax(e.target.value)} disabled={autoScale} style={{ color: autoScale ? '#999' : '#191919' }} />
             </div>
@@ -63,12 +66,12 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
         </div>
 
         <div className="color-section">
-          <div className="color-section-label">Color</div>
+          <div className="color-section-label">{t({ en: 'Color', de: 'Farbe', cn: '颜色' })}</div>
           <div className="color-blocks-grid">
             {colorRows.map((row, rowIndex) => (
               <div key={rowIndex} className="color-blocks-row">
                 {row.map(color => (
-                  <div 
+                  <div
                     key={color}
                     onClick={() => setSelectedColor(color)}
                     className="color-swatch"
@@ -87,8 +90,8 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
         </div>
 
         <div className="drawer-footer-bar">
-          <button className="btn-drawer-cancel" onClick={onClose}>Cancel</button>
-          <button className="btn-drawer-confirm" onClick={() => onSave({ isAutomaticScale: autoScale, yMin: Number(min), yMax: Number(max), color: selectedColor })}>Confirm</button>
+          <button className="btn-drawer-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
+          <button className="btn-drawer-confirm" onClick={() => onSave({ isAutomaticScale: autoScale, yMin: Number(min), yMax: Number(max), color: selectedColor })}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确定' })}</button>
         </div>
       </div>
     </div>
@@ -96,6 +99,7 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
 };
 
 const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
+  const { t } = useLanguage();
   const [name, setName] = useState(initialName || '');
   React.useEffect(() => { if (isOpen) setName(initialName || ''); }, [isOpen, initialName]);
   if (!isOpen) return null;
@@ -105,34 +109,49 @@ const ChartNameModal = ({ isOpen, onClose, initialName, onSave }) => {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="chart-name-dialog" onClick={e => e.stopPropagation()}>
-        <div className="chart-name-modal-title">Create Chart Name</div>
+        <div className="chart-name-modal-title">{t({ en: 'Create Chart Name', de: 'Diagrammnamen erstellen', cn: '创建图表名称' })}</div>
         <div className="chart-name-input-area">
           <div className="input-with-label">
-            <label>Chart name</label>
+            <label>{t({ en: 'Chart name', de: 'Diagrammname', cn: '图表名称' })}</label>
             <div className="input-wrapper-bordered">
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="请输入内容" />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder={t({ en: 'Please enter content', de: 'Bitte Inhalt eingeben', cn: '请输入内容' })} />
             </div>
           </div>
-          <div className="input-hint">The maximum length is 20 characters</div>
+          <div className="input-hint">{t({ en: 'The maximum length is 20 characters', de: 'Die maximale Länge beträgt 20 Zeichen', cn: '最大长度为 20 个字符' })}</div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 'auto' }}>
-          <button className="btn-drawer-confirm" onClick={handleConfirm}>Confirm</button>
-          <button className="btn-drawer-cancel" onClick={onClose}>Cancel</button>
+          <button className="btn-drawer-confirm" onClick={handleConfirm}>{t({ en: 'Confirm', de: 'Bestätigen', cn: '确定' })}</button>
+          <button className="btn-drawer-cancel" onClick={onClose}>{t({ en: 'Cancel', de: 'Abbrechen', cn: '取消' })}</button>
         </div>
       </div>
     </div>
   );
 };
 
-const HeaderControls = ({ isMini, onAddGraphic, onToggleGrid }) => {
+const HeaderControls = ({ isMini, onAddGraphic, onToggleGrid, addDisabled, onRemoveGraphic, showRemove }) => {
+  const { t } = useLanguage();
   return (
     <div className={`header-controls-container ${isMini ? 'mini' : ''}`}>
+      {showRemove && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemoveGraphic(); }}
+          className={`btn-graphic-remove ${isMini ? 'mini' : ''}`}
+          title={t({ en: 'Remove chart', de: 'Diagramm entfernen', cn: '删除图表' })}
+        >
+          <svg width={isMini ? 12 : 16} height={isMini ? 12 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      )}
       <button
-        onClick={(e) => { e.stopPropagation(); onAddGraphic(); }}
-        className={`btn-graphic-control ${isMini ? 'mini' : ''}`}
+        onClick={(e) => { e.stopPropagation(); if (!addDisabled) onAddGraphic(); }}
+        className={`btn-graphic-control ${isMini ? 'mini' : ''} ${addDisabled ? 'disabled' : ''}`}
+        style={addDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+        disabled={addDisabled}
       >
         <img src={iconSmallPlusCircle} width={isMini ? 11 : 16} height={isMini ? 11 : 16} alt="add" />
-        <span className={`label-text ${isMini ? 'mini' : ''}`}>Add graphic</span>
+        <span className={`label-text ${isMini ? 'mini' : ''}`}>{t({ en: 'Add graphic', de: 'Diagramm hinzufügen', cn: '添加图表' })}</span>
       </button>
       <div
         onClick={(e) => { e.stopPropagation(); onToggleGrid(); }}
@@ -156,6 +175,7 @@ const yLabels = ['100', '40', '30', '20', '10', '0'];
 const xLabels = ['10:30:28', '10:50:28', '11:10:28', '11:30:28', '11:50:28', '12:10:28', '12:30:28', '12:50:28', '13:10:28', '13:30:28', '13:50:28'];
 
 const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
+  const { t } = useLanguage();
   const activeChannelsInConfig = (graphic?.graphicChannels || []).filter(c => c.isShow === true);
   const slots = [...Array(5)].map((_, i) => {
     const activeCh = activeChannelsInConfig[i];
@@ -176,7 +196,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
               {!slot.isSet ? (
                 <>
                   {!isMini && <img src={iconPlusCircle} width={22} height={22} alt="add channel" />}
-                  <span style={{ fontSize: isMini ? '9px' : '18px' }}>Add channel</span>
+                  <span style={{ fontSize: isMini ? '9px' : '18px' }}>{t({ en: 'Add channel', de: 'Kanal hinzufügen', cn: '添加通道' })}</span>
                 </>
               ) : (
                 <>
@@ -207,7 +227,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
             {!isMini && activeChannelsInConfig.length === 0 && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                 <PlusCircleLarge />
-                <span style={{ textAlign: 'center', color: '#4E5969', fontSize: 16, fontWeight: 700, maxWidth: 349 }}>Please long press add channel for channel configuration!</span>
+                <span style={{ textAlign: 'center', color: '#4E5969', fontSize: 16, fontWeight: 700, maxWidth: 349 }}>{t({ en: "Please click 'Add channel' for channel configuration!", de: "Bitte klicken Sie auf 'Kanal hinzufügen' zur Kanalkonfiguration!", cn: "请点击“添加通道”进行通道配置！" })}</span>
               </div>
             )}
           </div>
@@ -226,6 +246,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
 };
 
 const Graphic = () => {
+  const { t } = useLanguage();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
@@ -233,6 +254,8 @@ const Graphic = () => {
   const [editingChannel, setEditingChannel] = useState(null);
   const [selectedGraphicIndex, setSelectedGraphicIndex] = useState(0);
   const { configData, setConfigData } = useConfig();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingGraphicIndex, setDeletingGraphicIndex] = useState(null);
 
   const sensors = configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor || configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor || [];
   const graphicConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgGraphic.json'));
@@ -265,9 +288,10 @@ const Graphic = () => {
 
   const handleAddGraphic = () => {
     if (!graphicConfigPath) return;
+    if (graphicList.length >= 5) return;
     const newIndex = graphicList.length;
     const newGraphic = {
-      tableName: `New Chart ${newIndex + 1}`,
+      tableName: 'Graphic chart name',
       graphicChannels: []
     };
     const updatedList = [...graphicList, newGraphic];
@@ -282,30 +306,53 @@ const Graphic = () => {
     setIsGridView(false);
   };
 
+  const handleRemoveGraphic = (indexToRemove) => {
+    if (!graphicConfigPath || graphicList.length <= 1) return;
+    const updatedList = graphicList.filter((_, idx) => idx !== indexToRemove);
+    setConfigData({
+      ...configData,
+      configs: {
+        ...configData.configs,
+        [graphicConfigPath]: updatedList
+      }
+    });
+    if (selectedGraphicIndex >= updatedList.length) {
+      setSelectedGraphicIndex(Math.max(0, updatedList.length - 1));
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (deletingGraphicIndex !== null) {
+      handleRemoveGraphic(deletingGraphicIndex);
+      setDeletingGraphicIndex(null);
+    }
+    setShowDeleteConfirm(false);
+  };
+
   const handleChannelConfirm = (selectedIds) => {
     if (!graphicConfigPath || graphicList.length === 0) { setIsModalOpen(false); return; }
     const updatedList = [...graphicList];
     const targetGraphic = { ...updatedList[selectedGraphicIndex] };
-    
+
     // Only process channels that are actually selected
     const updatedGraphicChannels = allChannels
       .filter(ch => selectedIds.includes(ch.CreateTime))
       .map((ch, index) => {
         const existing = (targetGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime));
-        return { 
-          isShow: true, 
-          channelIndex: index, 
-          channelId: index, 
-          channelSensorId: 0, 
-          sensorCreateTime: ch.sensorCreateTime, 
-          channelCreateTime: ch.CreateTime, 
-          channelSensorName: ch.sensorName, 
-          channelName: ch.channelName, 
-          channelUnitInASCII: ch.unit, 
-          isAutomaticScale: existing ? existing.isAutomaticScale : true, 
-          yMin: existing ? existing.yMin : 0, 
-          yMax: existing ? existing.yMax : 100, 
-          color: existing ? existing.color : ['#019A68', '#04CD94', '#6FB996', '#008F85', '#1E7FF7'][index % 5] 
+        return {
+          isShow: true,
+          channelIndex: index,
+          channelId: index,
+          channelSensorId: 0,
+          sensorCreateTime: ch.sensorCreateTime,
+          channelCreateTime: ch.CreateTime,
+          channelSensorName: ch.sensorName,
+          channelName: ch.channelName,
+          channelUnitInASCII: ch.unit,
+          isAutomaticScale: existing ? existing.isAutomaticScale : true,
+          yMin: existing ? existing.yMin : 0,
+          yMax: existing ? existing.yMax : 100,
+          color: existing ? existing.color : ['#019A68', '#04CD94', '#6FB996', '#008F85', '#1E7FF7'][index % 5]
         };
       })
       .slice(0, 5); // Limit to 5 active channels as per requirements
@@ -323,7 +370,17 @@ const Graphic = () => {
           <div key={i} className="graphic-mini-card">
             <div className="card-top-header">
               <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{graphic.tableName}</span>
-              <HeaderControls isMini={true} onAddGraphic={handleAddGraphic} onToggleGrid={() => setIsGridView(false)} />
+              <HeaderControls
+                isMini={true}
+                onAddGraphic={handleAddGraphic}
+                onToggleGrid={() => setIsGridView(false)}
+                addDisabled={graphicList.length >= 5}
+                onRemoveGraphic={() => {
+                  setDeletingGraphicIndex(i);
+                  setShowDeleteConfirm(true);
+                }}
+                showRemove={graphicList.length > 1}
+              />
             </div>
             <div className="mini-chart-wrapper" onClick={() => { setSelectedGraphicIndex(i); setIsGridView(false); }}>
               <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
@@ -331,14 +388,16 @@ const Graphic = () => {
           </div>
         ))}
         {/* Empty slot for adding new graphic */}
-        <div className="graphic-mini-card" style={{ border: '1px dashed #DCDCDC', background: 'transparent', boxShadow: 'none' }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <button onClick={handleAddGraphic} className="btn-graphic-control">
-              <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
-              <span className="label-text">Add graphic</span>
-            </button>
+        {graphicList.length < 5 && (
+          <div className="graphic-mini-card" style={{ border: '1px dashed #DCDCDC', background: 'transparent', boxShadow: 'none' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={handleAddGraphic} className="btn-graphic-control">
+                <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
+                <span className="label-text">{t({ en: 'Add graphic', de: 'Diagramm hinzufügen', cn: '添加图表' })}</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -347,19 +406,47 @@ const Graphic = () => {
     <div className="content-card graphic-view">
       <header className="card-header">
         <div className="graphic-title" onClick={() => setIsNameModalOpen(true)} style={{ cursor: 'pointer' }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{currentGraphic.tableName || 'create chart name'}</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{currentGraphic.tableName || t({ en: 'create chart name', de: 'Diagrammname erstellen', cn: '创建图表名称' })}</span>
           <div className="edit-icon-wrapper">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
         </div>
-        <HeaderControls isMini={false} onAddGraphic={handleAddGraphic} onToggleGrid={() => setIsGridView(true)} />
+        <HeaderControls
+          isMini={false}
+          onAddGraphic={handleAddGraphic}
+          onToggleGrid={() => setIsGridView(true)}
+          addDisabled={graphicList.length >= 5}
+          onRemoveGraphic={() => {
+            setDeletingGraphicIndex(selectedGraphicIndex);
+            setShowDeleteConfirm(true);
+          }}
+          showRemove={graphicList.length > 1}
+        />
       </header>
       <GraphicView graphic={currentGraphic} sensors={sensors} onAddChannel={() => setIsModalOpen(true)} />
       <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={currentGraphic.tableName} onSave={(newName) => { const updatedGraphic = { ...currentGraphic, tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); }} />
       <ChannelSelectModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} allChannels={allChannels} initialSelectedIds={(currentGraphic.graphicChannels || []).filter(c => c.isShow === true).map(c => String(c.channelCreateTime))} onConfirm={handleChannelConfirm} onSettingClick={(ch) => { const existing = (currentGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime)); setEditingChannel(existing ? { ...ch, ...existing } : ch); setIsSettingsOpen(true); }} />
       <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...currentGraphic }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); setIsSettingsOpen(false); }} />
+      <CustomDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setDeletingGraphicIndex(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        title={t({ en: 'Warning', de: 'Warnung', cn: '警告' })}
+        body={t({
+          en: 'Are you sure to delete the chart?',
+          de: 'Sind Sie sicher, dass Sie das Diagramm löschen möchten?',
+          cn: '确定要删除该图表吗？'
+        })}
+        confirmText={t({ en: 'Remove', de: 'Entfernen', cn: '删除' })}
+        cancelText={t({ en: 'No', de: 'Nein', cn: '取消' })}
+        type="warn"
+        showCancel={true}
+      />
     </div>
   );
 };

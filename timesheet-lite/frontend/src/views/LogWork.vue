@@ -6,6 +6,14 @@
           <el-alert title="Admins cannot log work" type="warning" :closable="false" show-icon />
         </div>
         <el-card v-else class="timesheet-card">
+          <el-alert 
+            v-if="hasTooOldDays" 
+            :title="`Some days in this week are older than the ${logWorkLimitDays}-day limit and cannot be edited.`" 
+            type="warning" 
+            :closable="false" 
+            show-icon 
+            style="margin-bottom: 15px;"
+          />
           <div class="timesheet-header">
             <h3>Log Work (Mon - Sun)</h3>
             <div class="header-actions">
@@ -60,7 +68,7 @@
                       :step="1" 
                       show-stops
                       :active="false"
-                      :disabled="isDayVerified(index)"
+                      :disabled="isDayVerified(index) || !isDayEditable(day.date)"
                       @change="handleHoursChange(project.id, day.date, project.hours[index])"
                     />
                   </div>
@@ -290,8 +298,8 @@ const saveTimesheet = async () => {
       row.hours.forEach((h, index) => {
         if (h >= 0) {
            const date = weekDays.value[index].date
-           // Skip if day is verified
-           if (isDayVerified(index)) return
+           // Skip if day is verified or not editable
+           if (isDayVerified(index) || !isDayEditable(date)) return
 
            // Logic: Save if hours > 0 OR if there was an existing entry (to update/clear it)
            if (h > 0 || timesheets.value.some(t => t.project_id === row.id && t.date === date && t.hours > 0)) {
@@ -326,7 +334,32 @@ watch(() => route.query.date, (newDate) => {
   }
 }, { immediate: true })
 
-onMounted(fetchData)
+const logWorkLimitDays = ref(30)
+
+const fetchLimit = async () => {
+  try {
+    const res = await api.get('/timesheets/limit')
+    logWorkLimitDays.value = res.data.log_work_limit_days
+  } catch (error) {
+    console.error('Failed to load log work limit:', error)
+  }
+}
+
+const isDayEditable = (dateStr) => {
+  if (authStore.user?.role !== 'employee') return true
+  const cutoffDate = dayjs().subtract(logWorkLimitDays.value, 'day').startOf('day')
+  return !dayjs(dateStr).isBefore(cutoffDate, 'day')
+}
+
+const hasTooOldDays = computed(() => {
+  if (authStore.user?.role !== 'employee') return false
+  return weekDays.value.some(day => !isDayEditable(day.date))
+})
+
+onMounted(() => {
+  fetchLimit()
+  fetchData()
+})
 </script>
 
 <style scoped>

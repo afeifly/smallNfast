@@ -5,6 +5,7 @@ from sqlmodel import Session, select, func
 from app.database import get_session
 from app.models import Timesheet, User, ActivityLog, Role, Project, WorkDay, WorkDayType, WorkDaySetting, CostCenter
 from app.api.deps import get_current_user
+from app.core.config import get_log_work_limit_days
 
 def get_workday_setting_id_for_user(session: Session, user_id: int) -> int:
     default_setting = session.exec(select(WorkDaySetting).where(WorkDaySetting.is_default == True)).first()
@@ -21,6 +22,12 @@ def get_workday_setting_id_for_user(session: Session, user_id: int) -> int:
     return default_id
 
 router = APIRouter()
+
+@router.get("/limit")
+def get_timesheet_limit(
+    current_user: User = Depends(get_current_user)
+):
+    return {"log_work_limit_days": get_log_work_limit_days()}
 
 @router.get("/", response_model=List[Timesheet])
 def read_timesheets(
@@ -225,9 +232,10 @@ def batch_create_timesheet(
     if current_user.role == Role.EMPLOYEE and target_user_id != current_user.id:
          raise HTTPException(status_code=403, detail="Cannot log time for others")
 
-    # Limit Validation: 30 days
+    # Limit Validation: Configured days
     if current_user.role == Role.EMPLOYEE:
-        cutoff_date = date.today() - timedelta(days=30)
+        limit_days = get_log_work_limit_days()
+        cutoff_date = date.today() - timedelta(days=limit_days)
         for t in timesheets:
              # Normalize date if needed (it's done below too, but we need it now)
              check_date = t.date
@@ -235,7 +243,7 @@ def batch_create_timesheet(
                  check_date = datetime.strptime(check_date, "%Y-%m-%d").date()
              
              if check_date < cutoff_date:
-                  raise HTTPException(status_code=400, detail="Cannot log work older than 30 days")
+                  raise HTTPException(status_code=400, detail=f"Cannot log work older than {limit_days} days")
 
     # Group by week to validate limits per week
     # Assuming standard ISO week Monday start.

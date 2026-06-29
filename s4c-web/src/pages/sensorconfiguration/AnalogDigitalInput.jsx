@@ -21,7 +21,7 @@ const AnalogDigitalInput = () => {
 
   // Load initial data from the correct config file path
   useEffect(() => {
-    const optionBoardConfig = configData?.configs?.['cfgOptionBoard.json']?.cfgOptionBoard || [];
+    const optionBoardConfig = configData?.configs?.['config/cfgOptionBoard.json']?.cfgOptionBoard || [];
     setItems(optionBoardConfig);
   }, [configData]);
 
@@ -51,8 +51,8 @@ const AnalogDigitalInput = () => {
 
   const updateConfig = (newItems) => {
     const newConfigs = { ...configData.configs };
-    newConfigs['cfgOptionBoard.json'] = {
-      ...newConfigs['cfgOptionBoard.json'],
+    newConfigs['config/cfgOptionBoard.json'] = {
+      ...newConfigs['config/cfgOptionBoard.json'],
       cfgOptionBoard: newItems
     };
 

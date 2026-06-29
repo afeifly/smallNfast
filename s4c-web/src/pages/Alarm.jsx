@@ -205,8 +205,7 @@ const Alarm = () => {
     if (!dbRef.current) return;
 
     const newChannels = allChannelsForSelection.filter(ch =>
-      selectedIds.includes(ch.CreateTime) &&
-      !currentlySelectedIds.includes(ch.channelId)
+      selectedIds.includes(ch.CreateTime)
     );
 
     const newAlarms = [];
@@ -547,7 +546,7 @@ const Alarm = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         allChannels={allChannelsForSelection}
-        initialSelectedIds={currentlySelectedIds}
+        initialSelectedIds={[]}
         onConfirm={handleConfirmSelection}
         maxLimit={null}
         selectionMessage={t('Select channels to create alarms.')}

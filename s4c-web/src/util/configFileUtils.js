@@ -15,23 +15,47 @@ const CONFIG_PASSWORD = "SUTOXZCONFIG";
  * @returns {string} The final MD5 hash.
  */
 export async function calculateConfigHash(fileMap) {
-  // 1. Collect and 2. Sort relative paths alphabetically
-  const sortedPaths = Array.from(fileMap.keys())
-    // Skip the summary file itself as it's the metadata containing the hash
-    .filter(path => !path.endsWith('summary.yml') && !path.startsWith('parser.'))
-    .sort();
+  // 1. Collect all paths
+  const allPaths = Array.from(fileMap.keys());
+  console.group('[ConfigHash] Hash Calculation');
+  console.log(`[ConfigHash] All files in fileMap (${allPaths.length}):`);
+  allPaths.forEach((p, i) => {
+    const val = fileMap.get(p);
+    console.log(`  [${i}] ${p} (${val?.length ?? '?'} bytes, type: ${val?.constructor?.name ?? typeof val})`);
+  });
+
+  // 2. Filter and sort
+  const filteredPaths = allPaths
+    .filter(path => !path.endsWith('summary.yml') && !path.startsWith('parser.'));
+  console.log(`[ConfigHash] After filter (removed summary.yml & parser.*) (${filteredPaths.length}):`);
+  filteredPaths.forEach((p, i) => console.log(`  [${i}] ${p}`));
+
+  const sortedPaths = [...filteredPaths].sort();
+  console.log(`[ConfigHash] After sort (${sortedPaths.length}):`);
+  sortedPaths.forEach((p, i) => console.log(`  [${i}] ${p}`));
 
   const spark = new SparkMD5();
+  let concatenatedMD5 = '';
 
+  console.log('[ConfigHash] --- Per-file MD5 ---');
   for (const path of sortedPaths) {
     const content = fileMap.get(path);
+    const contentType = content?.constructor?.name ?? typeof content;
+    const contentSize = content?.length ?? content?.byteLength ?? '?';
     // 3. Calculate individual MD5 for each file
     const fileMD5 = SparkMD5.ArrayBuffer.hash(content.buffer);
+    concatenatedMD5 += fileMD5;
+    console.log(`[ConfigHash]   ${path}  |  ${contentSize} bytes (${contentType})  |  MD5: ${fileMD5}`);
     // 4. Update the combined MD5
     spark.append(fileMD5);
   }
 
-  return spark.end();
+  const finalHash = spark.end();
+  console.log(`[ConfigHash] Concatenated MD5 string: ${concatenatedMD5}`);
+  console.log(`[ConfigHash] Final combined hash: ${finalHash}`);
+  console.groupEnd();
+
+  return finalHash;
 }
 
 /**
@@ -110,20 +134,27 @@ export function generateSummary(summaryData) {
  * @returns {Promise<Blob>}
  */
 export async function exportConfigPackage(configs, summary, originalFileMap) {
+  console.group('[Export] exportConfigPackage');
   const fileMap = originalFileMap ? new Map(originalFileMap) : new Map();
   const encoder = new TextEncoder();
+
+  console.log('[Export] Original fileMap keys:', Array.from(fileMap.keys()));
 
   // 1. Update/Add all JSON configs back to the fileMap
   for (const [path, data] of Object.entries(configs)) {
     const jsonString = JSON.stringify(data, null, 2);
     fileMap.set(path, encoder.encode(jsonString));
+    console.log(`[Export] Serialized config: ${path} (${jsonString.length} bytes)`);
   }
 
   // 2. Remove summary.yml temporarily to calculate hash of payload
   fileMap.delete('summary.yml');
+  console.log('[Export] fileMap after removing summary.yml:', Array.from(fileMap.keys()));
 
   // 3. Calculate new hash
   const newHash = await calculateConfigHash(fileMap);
+  console.log('[Export] Old hash: %s', summary.hash);
+  console.log('[Export] New hash: %s', newHash);
 
   // 4. Update summary with new hash and timestamp
   const updatedSummary = {
@@ -135,6 +166,8 @@ export async function exportConfigPackage(configs, summary, originalFileMap) {
   // 5. Add updated summary.yml
   const summaryContent = generateSummary(updatedSummary);
   fileMap.set('summary.yml', summaryContent);
+  console.log('[Export] Final fileMap keys:', Array.from(fileMap.keys()));
+  console.groupEnd();
 
   // 6. Zip it all up
   return await zipConfigFile(fileMap);

@@ -124,7 +124,7 @@ const ThirdPartySensor = () => {
                   <tr key={index}>
                     <td>{sensor.Name || '---'}</td>
                     <td>{sensor.Description || '---'}</td>
-                    <td>{sensor.Addr || '---'}</td>
+                    <td>{sensor.ConnectType === 9 ? (sensor.IpAddr || '---') : (sensor.Addr || '---')}</td>
                     <td>{formatSN(sensor.SN)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>

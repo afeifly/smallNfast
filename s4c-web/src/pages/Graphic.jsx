@@ -365,40 +365,56 @@ const Graphic = () => {
 
   if (isGridView) {
     return (
-      <div className="graphic-grid-layout">
-        {graphicList.map((graphic, i) => (
-          <div key={i} className="graphic-mini-card">
-            <div className="card-top-header">
-              <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{graphic.tableName}</span>
-              <HeaderControls
-                isMini={true}
-                onAddGraphic={handleAddGraphic}
-                onToggleGrid={() => setIsGridView(false)}
-                addDisabled={graphicList.length >= 5}
-                onRemoveGraphic={() => {
-                  setDeletingGraphicIndex(i);
-                  setShowDeleteConfirm(true);
-                }}
-                showRemove={graphicList.length > 1}
-              />
+      <>
+        <div className="graphic-grid-layout">
+          {graphicList.map((graphic, i) => (
+            <div key={i} className="graphic-mini-card">
+              <div className="card-top-header">
+                <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{graphic.tableName}</span>
+                <HeaderControls
+                  isMini={true}
+                  onAddGraphic={handleAddGraphic}
+                  onToggleGrid={() => setIsGridView(false)}
+                  addDisabled={graphicList.length >= 5}
+                  onRemoveGraphic={() => {
+                    setDeletingGraphicIndex(i);
+                    setShowDeleteConfirm(true);
+                  }}
+                  showRemove={graphicList.length > 1}
+                />
+              </div>
+              <div className="mini-chart-wrapper" onClick={() => { setSelectedGraphicIndex(i); setIsGridView(false); }}>
+                <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
+              </div>
             </div>
-            <div className="mini-chart-wrapper" onClick={() => { setSelectedGraphicIndex(i); setIsGridView(false); }}>
-              <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
+          ))}
+          {/* Empty slot for adding new graphic */}
+          {graphicList.length < 5 && (
+            <div className="graphic-mini-card" style={{ border: '1px dashed #DCDCDC', background: 'transparent', boxShadow: 'none' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button onClick={handleAddGraphic} className="btn-graphic-control">
+                  <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
+                  <span className="label-text">{t('Add graphic')}</span>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-        {/* Empty slot for adding new graphic */}
-        {graphicList.length < 5 && (
-          <div className="graphic-mini-card" style={{ border: '1px dashed #DCDCDC', background: 'transparent', boxShadow: 'none' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <button onClick={handleAddGraphic} className="btn-graphic-control">
-                <img src={iconSmallPlusCircle} width={16} height={16} alt="add" />
-                <span className="label-text">{t('Add graphic')}</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+        <CustomDialog
+          isOpen={showDeleteConfirm}
+          onClose={() => {
+            setShowDeleteConfirm(false);
+            setDeletingGraphicIndex(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          title={t('Warning')}
+          body={t('Are you sure to delete the chart?')}
+          confirmText={t('Remove')}
+          cancelText={t('No')}
+          type="warn"
+          showCancel={true}
+        />
+      </>
     );
   }
 

@@ -230,6 +230,29 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       }
     }
 
+    // IP Address uniqueness check for Modbus/TCP
+    if (protocol === 9 && ipAddress) {
+      const isDuplicateIp = updatedSensors.some(s =>
+        s !== initialData &&
+        s.ConnectType === 9 &&
+        !s.isVirtualSensor &&
+        !s.isOptionBoardSensor &&
+        s.IpAddr &&
+        String(s.IpAddr).trim() === String(ipAddress).trim()
+      );
+      if (isDuplicateIp) {
+        setDialogState({
+          isOpen: true,
+          title: t('Duplicate IP Address'),
+          body: t('The IP Address "{ipAddress}" is already in use by another sensor. Please use a unique IP address.').replaceAll('{ipAddress}', ipAddress),
+          type: 'err',
+          showCancel: false,
+          onConfirm: closeDialog
+        });
+        return;
+      }
+    }
+
     if (initialData) {
       // Update existing
       const index = updatedSensors.findIndex(s => s === initialData);

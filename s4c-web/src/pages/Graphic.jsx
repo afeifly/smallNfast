@@ -419,32 +419,36 @@ const Graphic = () => {
   }
 
   return (
-    <div className="content-card graphic-view">
-      <header className="card-header">
-        <div className="graphic-title" onClick={() => setIsNameModalOpen(true)} style={{ cursor: 'pointer' }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{currentGraphic.tableName || t('create chart name')}</span>
-          <div className="edit-icon-wrapper">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', height: '100%', overflowY: 'auto', scrollSnapType: 'y mandatory' }}>
+      {graphicList.map((graphic, idx) => (
+        <div className="content-card graphic-view" key={idx} style={{ height: '100%', display: 'flex', flexDirection: 'column', flexShrink: 0, scrollSnapAlign: 'start' }}>
+          <header className="card-header">
+            <div className="graphic-title" onClick={() => { setSelectedGraphicIndex(idx); setIsNameModalOpen(true); }} style={{ cursor: 'pointer' }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{graphic.tableName || t('create chart name')}</span>
+              <div className="edit-icon-wrapper">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M11.333 2.00004C11.51 1.82274 11.7206 1.68253 11.9527 1.58734C12.1847 1.49215 12.4335 1.44385 12.6847 1.44531C12.9359 1.44677 13.1841 1.49796 13.4149 1.59583C13.6458 1.6937 13.8547 1.83632 14.0303 2.01564C14.206 2.19497 14.3445 2.40736 14.4378 2.64057C14.5312 2.87379 14.5312 3.12302 14.5775 3.37419C14.571 3.62536 14.5181 3.87328 14.4188 4.10393C14.3195 4.33458 14.1755 4.5432 13.995 4.71671L5.333 13.3334L1.333 14.3334L2.333 10.3334L11.333 2.00004Z" stroke="#4E5969" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </div>
+            <HeaderControls
+              isMini={false}
+              onAddGraphic={handleAddGraphic}
+              onToggleGrid={() => setIsGridView(true)}
+              addDisabled={graphicList.length >= 5}
+              onRemoveGraphic={() => {
+                setDeletingGraphicIndex(idx);
+                setShowDeleteConfirm(true);
+              }}
+              showRemove={graphicList.length > 1}
+            />
+          </header>
+          <GraphicView graphic={graphic} sensors={sensors} onAddChannel={() => { setSelectedGraphicIndex(idx); setIsModalOpen(true); }} />
         </div>
-        <HeaderControls
-          isMini={false}
-          onAddGraphic={handleAddGraphic}
-          onToggleGrid={() => setIsGridView(true)}
-          addDisabled={graphicList.length >= 5}
-          onRemoveGraphic={() => {
-            setDeletingGraphicIndex(selectedGraphicIndex);
-            setShowDeleteConfirm(true);
-          }}
-          showRemove={graphicList.length > 1}
-        />
-      </header>
-      <GraphicView graphic={currentGraphic} sensors={sensors} onAddChannel={() => setIsModalOpen(true)} />
-      <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={currentGraphic.tableName} onSave={(newName) => { const updatedGraphic = { ...currentGraphic, tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); }} />
-      <ChannelSelectModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} allChannels={allChannels} initialSelectedIds={(currentGraphic.graphicChannels || []).filter(c => c.isShow === true).map(c => String(c.channelCreateTime))} onConfirm={handleChannelConfirm} onSettingClick={(ch) => { const existing = (currentGraphic.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime)); setEditingChannel(existing ? { ...ch, ...existing } : ch); setIsSettingsOpen(true); }} />
-      <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...currentGraphic }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); setIsSettingsOpen(false); }} />
+      ))}
+      <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={graphicList[selectedGraphicIndex]?.tableName} onSave={(newName) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex], tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); }} />
+      <ChannelSelectModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} allChannels={allChannels} initialSelectedIds={(graphicList[selectedGraphicIndex]?.graphicChannels || []).filter(c => c.isShow === true).map(c => String(c.channelCreateTime))} onConfirm={handleChannelConfirm} onSettingClick={(ch) => { const existing = (graphicList[selectedGraphicIndex]?.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime)); setEditingChannel(existing ? { ...ch, ...existing } : ch); setIsSettingsOpen(true); }} />
+      <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex] }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); setIsSettingsOpen(false); }} />
       <CustomDialog
         isOpen={showDeleteConfirm}
         onClose={() => {

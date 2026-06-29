@@ -14,18 +14,18 @@ const DataAnalysis = () => {
         <p className="empty-text" style={{ fontSize: '14px', color: '#86909C', fontWeight: 'normal', margin: 0, lineHeight: '1.5' }}>
           {t('Go to S4A-Web for Professional and Precise Data Analysis.')}
         </p>
-        <a 
-          href="https://test2.exmm.top" 
-          target="_blank" 
+        <a
+          href="https://s4a.suto-portal.com"
+          target="_blank"
           rel="noopener noreferrer"
-          style={{ 
+          style={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             textDecoration: 'none',
-            padding: '8px 24px', 
-            fontSize: '14px', 
-            fontWeight: '600', 
+            padding: '8px 24px',
+            fontSize: '14px',
+            fontWeight: '600',
             borderRadius: '4px',
             color: '#191919',
             background: '#FFE000', // Matches --primary-color: #FFE000

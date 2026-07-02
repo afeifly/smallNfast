@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
 import VirtualChannelModal from './VirtualChannelModal';
+import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
+import { isChannelUsedInLogger, isChannelUsedInAlarm, isChannelUsedInLayout, remarshalAll } from '../../util/remarshalUtils';
 import './SUTOSensor.css';
 
 const VirtualChannel = () => {
@@ -11,6 +13,17 @@ const VirtualChannel = () => {
   const { t } = useLanguage();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+    onConfirm: null,
+    showCancel: true
+  });
+
+  const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
   // Dynamically find the config path
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('SUTO-SensorList.sutolist'));
@@ -52,20 +65,44 @@ const VirtualChannel = () => {
 
     // 2. Update the cfgchannel within that virtual sensor
     let channels = [...(virtualSensor.cfgchannel || [])];
+    const channelIdVal = editingItem ? (editingItem.ChannelId ?? editingItem.channelid) : (channels.length > 0 ? Math.max(...channels.map(c => c.ChannelId ?? c.channelid ?? 0)) + 1 : 0);
     const channelData = {
-      channelid: editingItem ? editingItem.channelid : (channels.length > 0 ? Math.max(...channels.map(c => c.channelid)) + 1 : 0),
       ChannelDescription: newItem.Name,
-      UnitInASCII: newItem.Unit,
+      DeviceID: 0,
+      ErrorValue: -9999,
+      ChannelId: channelIdVal,
+      InputValueType: 0,
+      MBAccessFuncCode: 0,
+      MBValueAddr: 0,
+      MBValueByteOrder: 0,
+      MBValueLength: 0,
+      Maximum: 0,
+      MeasureType: 0,
+      Minimum: 0,
+      Output: false,
+      OutputValueType: 0,
       Resolution: newItem.Resolution,
-      Formula: newItem.Formula,
-      isvirtualsensor: true,
       Show: true,
-      logger: true,
-      CreatedOn: newItem.CreatedOn
+      SlaverInnerChannelNo: -1,
+      SubDeviceID: 0,
+      UnitInASCII: newItem.Unit,
+      UnitIndex: 0,
+      UseErrorValue: false,
+      UseMinMax: false,
+      Logger: true,
+      Formula: newItem.Formula,
+      isVirtualSensor: true,
+      EnableAlarm: false,
+      MaxThreshold: 0,
+      MaxHysteresis: 0,
+      Direction: 0,
+      RelayIndex: 0,
+      Id: channelIdVal,
+      CreateTime: editingItem ? (editingItem.CreateTime || editingItem.CreatedOn || Date.now().toString()) : Date.now().toString()
     };
 
     if (editingItem) {
-      channels = channels.map(ch => ch.channelid === editingItem.channelid ? channelData : ch);
+      channels = channels.map(ch => (ch.ChannelId ?? ch.channelid) === (editingItem.ChannelId ?? editingItem.channelid) ? channelData : ch);
     } else {
       channels.push(channelData);
     }
@@ -79,34 +116,74 @@ const VirtualChannel = () => {
     }
 
     // 4. Update Global Context
-    setConfigData({
+    const nextConfigData = {
       ...configData,
       configs: {
         ...configData.configs,
         [configPath]: { ...currentConfig, cfgsensor: sensorList }
       }
-    });
+    };
+    setConfigData(remarshalAll(nextConfigData));
 
     setIsModalOpen(false);
     setEditingItem(null);
   };
 
-  const handleDelete = (channelId) => {
-    if (!configPath) return;
-    const currentConfig = configData.configs[configPath];
-    if (!currentConfig) return;
+  const handleDeleteClick = async (channel) => {
+    // 1. Check Logger
+    const usedInLogger = isChannelUsedInLogger(configData, channel);
+    // 2. Check Alarm
+    const usedInAlarm = await isChannelUsedInAlarm(configData, channel);
+    // 3. Check Layout
+    const usedInLayout = isChannelUsedInLayout(configData, channel);
+    
+    if (usedInLogger || usedInAlarm || usedInLayout) {
+      let body = '';
+      if (usedInLogger) {
+        body = t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Logger settings. Please remove it from Logger settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription);
+      } else if (usedInAlarm) {
+        body = t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Alarm settings. Please remove it from Alarm settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription);
+      } else {
+        body = t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Layout settings. Please remove it from Layout settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription);
+      }
+      
+      setDialogState({
+        isOpen: true,
+        title: t('Delete Restricted'),
+        body: body,
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+    
+    setDialogState({
+      isOpen: true,
+      title: t('Delete Confirmation'),
+      body: t('Are you sure you want to delete channel "{channel.ChannelDescription}"?').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription),
+      type: 'warn',
+      showCancel: true,
+      onConfirm: () => {
+        if (!configPath) return;
+        const currentConfig = configData.configs[configPath];
+        if (!currentConfig) return;
 
-    let sensorList = [...(currentConfig.cfgsensor || [])];
-    let vSensor = sensorList.find(s => s.isVirtualSensor);
-    if (!vSensor) return;
+        let sensorList = [...(currentConfig.cfgsensor || [])];
+        let vSensor = sensorList.find(s => s.isVirtualSensor);
+        if (!vSensor) return;
 
-    vSensor.cfgchannel = (vSensor.cfgchannel || []).filter(ch => ch.channelid !== channelId);
+        vSensor.cfgchannel = (vSensor.cfgchannel || []).filter(ch => (ch.ChannelId ?? ch.channelid) !== (channel.ChannelId ?? channel.channelid));
 
-    setConfigData({
-      ...configData,
-      configs: {
-        ...configData.configs,
-        [configPath]: { ...currentConfig, cfgsensor: sensorList }
+        const nextConfigData = {
+          ...configData,
+          configs: {
+            ...configData.configs,
+            [configPath]: { ...currentConfig, cfgsensor: sensorList }
+          }
+        };
+        setConfigData(remarshalAll(nextConfigData));
+        closeDialog();
       }
     });
   };
@@ -149,7 +226,14 @@ const VirtualChannel = () => {
               {items.length > 0 ? (
                 items.map((item, index) => (
                   <tr key={index}>
-                    <td>{item.CreatedOn || '---'}</td>
+                    <td>
+                      {item.CreatedOn || 
+                       (item.CreateTime 
+                         ? (isNaN(Number(item.CreateTime)) 
+                             ? item.CreateTime.split(' ')[0] 
+                             : new Date(Number(item.CreateTime)).toISOString().split('T')[0]) 
+                         : '---')}
+                    </td>
                     <td>{item.ChannelDescription || '---'}</td>
                     <td>{item.UnitInASCII || '---'}</td>
                     <td>{item.Resolution || '---'}</td>
@@ -167,9 +251,9 @@ const VirtualChannel = () => {
                           <img src={iconBtnEdit} alt={t('Edit')} style={{ width: 18, height: 18 }} />
                         </button>
                         <button 
-                          className="btn-icon-img" 
-                          title={t('Delete')}
-                          onClick={() => handleDelete(item.channelid)}
+                           className="btn-icon-img" 
+                           title={t('Delete')}
+                           onClick={() => handleDeleteClick(item)}
                         >
                           <img src={iconBtnDelete} alt={t('Delete')} style={{ width: 18, height: 18 }} />
                         </button>
@@ -236,6 +320,16 @@ const VirtualChannel = () => {
         onClose={() => setIsModalOpen(false)}
         initialData={editingItem}
         onSave={handleSave}
+      />
+
+      <CustomDialog
+        isOpen={dialogState.isOpen}
+        onClose={closeDialog}
+        onConfirm={dialogState.onConfirm}
+        title={dialogState.title}
+        body={dialogState.body}
+        type={dialogState.type}
+        showCancel={dialogState.showCancel}
       />
     </div>
   );

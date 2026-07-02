@@ -5,7 +5,7 @@ import SensorConfigModal from './SensorConfigModal';
 import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
-import { isSensorUsedInLogger, remarshalAll } from '../../util/remarshalUtils';
+import { isSensorUsedInLogger, isSensorUsedInAlarm, isSensorUsedInLayout, remarshalAll } from '../../util/remarshalUtils';
 import './SUTOSensor.css';
 
 const formatSN = (sn) => {
@@ -35,13 +35,39 @@ const ThirdPartySensor = () => {
 
   const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
-  const handleDeleteSensor = (sensor) => {
-    const usedChannel = isSensorUsedInLogger(configData, sensor);
-    if (usedChannel) {
+  const handleDeleteSensor = async (sensor) => {
+    const usedChannelLogger = isSensorUsedInLogger(configData, sensor);
+    if (usedChannelLogger) {
       setDialogState({
         isOpen: true,
         title: t('Delete Restricted'),
-        body: t('Cannot delete sensor. Channel "{usedChannel}" is currently used in Logger settings. Please remove it from Logger settings first.').replaceAll('{usedChannel}', usedChannel),
+        body: t('Cannot delete sensor. Channel "{usedChannel}" is currently used in Logger settings. Please remove it from Logger settings first.').replaceAll('{usedChannel}', usedChannelLogger),
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+
+    const usedChannelAlarm = await isSensorUsedInAlarm(configData, sensor);
+    if (usedChannelAlarm) {
+      setDialogState({
+        isOpen: true,
+        title: t('Delete Restricted'),
+        body: t('Cannot delete sensor. Channel "{usedChannel}" is currently used in Alarm settings. Please remove it from Alarm settings first.').replaceAll('{usedChannel}', usedChannelAlarm),
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+
+    const usedChannelLayout = isSensorUsedInLayout(configData, sensor);
+    if (usedChannelLayout) {
+      setDialogState({
+        isOpen: true,
+        title: t('Delete Restricted'),
+        body: t('Cannot delete sensor. Channel "{usedChannel}" is currently used in Layout settings. Please remove it from Layout settings first.').replaceAll('{usedChannel}', usedChannelLayout),
         type: 'err',
         showCancel: false,
         onConfirm: closeDialog
@@ -83,7 +109,7 @@ const ThirdPartySensor = () => {
     configData?.configs?.['/config/SUTO-SensorList.sutolist']?.cfgsensor ||
     configData?.configs?.['config/SUTO-SensorList.sutolist']?.cfgsensor ||
     []
-  ).filter(s => s.isSuto !== true && s.isVirtualSensor !== true);
+  ).filter(s => s.isSuto !== true && s.isVirtualSensor !== true && s.isOptionBoardSensor !== true);
 
   return (
     <div className="content-card suto-sensor-page">

@@ -6,7 +6,7 @@ import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import iconBtnClose from '../../assets/images/icon_btn_close.png';
-import { isChannelUsedInLogger, remarshalAll } from '../../util/remarshalUtils';
+import { isChannelUsedInLogger, isChannelUsedInAlarm, isChannelUsedInLayout, remarshalAll } from '../../util/remarshalUtils';
 import './SensorConfigModal.css';
 
 // Dynamically import all .sutoch files from the sensordata directory as raw text
@@ -32,7 +32,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   const [selectedSensor, setSelectedSensor] = useState('');
   const [channels, setChannels] = useState([]);
   const [description, setDescription] = useState('');
-  const [protocol, setProtocol] = useState(9); // 4 for RTU, 9 for TCP (ConnectType)
+  const [protocol, setProtocol] = useState(4); // 4 for RTU, 9 for TCP (ConnectType)
   const [address, setAddress] = useState(''); // Addr
   const [ipAddress, setIpAddress] = useState(''); // IpAddr
   const [port, setPort] = useState(''); // Port
@@ -78,7 +78,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       setDescription('');
       setSelectedSensor('');
       setSelectedSensorTemplate(null);
-      setProtocol(9);
+      setProtocol(4);
       setAddress('1');
       setIpAddress('192.168.1.1');
       setPort('502');
@@ -210,18 +210,37 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       }))
     };
 
+    // Duplicate Address check for channels in one sensor (3-party only)
+    if (!isSuto) {
+      const addresses = channels.map(ch => String(ch.Address || '').trim());
+      const duplicates = addresses.filter((addr, index) => addr !== '' && addresses.indexOf(addr) !== index);
+      if (duplicates.length > 0) {
+        setDialogState({
+          isOpen: true,
+          title: t('Duplicate Channel Address'),
+          body: t('Multiple channels use the same value address "{address}". Each channel within a sensor must have a unique address.').replaceAll('{address}', duplicates[0]),
+          type: 'err',
+          showCancel: false,
+          onConfirm: closeDialog
+        });
+        return;
+      }
+    }
+
     // Address uniqueness check for Modbus/RTU
     if (protocol === 4) {
       const isDuplicate = updatedSensors.some(s =>
         s !== initialData &&
-        String(s.Addr) === String(address) &&
-        s.ConnectType === 4
+        !s.isVirtualSensor &&
+        !s.isOptionBoardSensor &&
+        s.ConnectType === 4 &&
+        String(s.Addr) === String(address)
       );
       if (isDuplicate) {
         setDialogState({
           isOpen: true,
           title: t('Duplicate Address'),
-          body: t('The Modbus Address "{address}" is already in use by another sensor. Please use a unique address.').replaceAll('{address}', address),
+          body: t('The Modbus Address "{address}" is already in use by another Modbus/RTU sensor. Please use a unique address.').replaceAll('{address}', address),
           type: 'err',
           showCancel: false,
           onConfirm: closeDialog
@@ -234,9 +253,9 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     if (protocol === 9 && ipAddress) {
       const isDuplicateIp = updatedSensors.some(s =>
         s !== initialData &&
-        s.ConnectType === 9 &&
         !s.isVirtualSensor &&
         !s.isOptionBoardSensor &&
+        s.ConnectType === 9 &&
         s.IpAddr &&
         String(s.IpAddr).trim() === String(ipAddress).trim()
       );
@@ -244,7 +263,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
         setDialogState({
           isOpen: true,
           title: t('Duplicate IP Address'),
-          body: t('The IP Address "{ipAddress}" is already in use by another sensor. Please use a unique IP address.').replaceAll('{ipAddress}', ipAddress),
+          body: t('The IP Address "{ipAddress}" is already in use by another Modbus/TCP sensor. Please use a unique IP address.').replaceAll('{ipAddress}', ipAddress),
           type: 'err',
           showCancel: false,
           onConfirm: closeDialog
@@ -311,8 +330,8 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       Resolution: 0.1,
       Show: true,
       Address: '0',
-      InDataType: 0,
-      OutDataType: 0,
+      InDataType: 8,
+      OutDataType: 8,
       FunctionCode: '3',
       ErrorValue: '0',
       CreateTime: String(Date.now() + channels.length)
@@ -326,13 +345,39 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     setIsEditModalOpen(true);
   };
 
-  const deleteChannel = (index) => {
+  const deleteChannel = async (index) => {
     const channel = channels[index];
     if (isChannelUsedInLogger(configData, channel)) {
       setDialogState({
         isOpen: true,
         title: t('Delete Restricted'),
         body: t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Logger settings. Please remove it from Logger settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription),
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+
+    const usedInAlarm = await isChannelUsedInAlarm(configData, channel);
+    if (usedInAlarm) {
+      setDialogState({
+        isOpen: true,
+        title: t('Delete Restricted'),
+        body: t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Alarm settings. Please remove it from Alarm settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription),
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+
+    const usedInLayout = isChannelUsedInLayout(configData, channel);
+    if (usedInLayout) {
+      setDialogState({
+        isOpen: true,
+        title: t('Delete Restricted'),
+        body: t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Layout settings. Please remove it from Layout settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription),
         type: 'err',
         showCancel: false,
         onConfirm: closeDialog
@@ -354,6 +399,24 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   };
 
   const updateChannelData = (index, newData) => {
+    if (!isSuto) {
+      const newAddr = String(newData.Address || '').trim();
+      if (newAddr !== '') {
+        const isDuplicate = channels.some((ch, idx) => idx !== index && String(ch.Address || '').trim() === newAddr);
+        if (isDuplicate) {
+          setDialogState({
+            isOpen: true,
+            title: t('Duplicate Channel Address'),
+            body: t('Multiple channels use the same value address "{address}". Each channel within a sensor must have a unique address.').replaceAll('{address}', newAddr),
+            type: 'err',
+            showCancel: false,
+            onConfirm: closeDialog
+          });
+          return;
+        }
+      }
+    }
+
     setChannels(prev => {
       const updatedChannels = [...prev];
       updatedChannels[index] = {

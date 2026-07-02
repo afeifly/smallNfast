@@ -2,6 +2,8 @@
  * Utility to manage ChannelId remarshaling and usage checks.
  */
 
+import { openAlarmDb, readAlarmConfigs } from './alarmDbUtils';
+
 const CFGLOGGER_PATHS = [
   'config/cfglogger.json',
   '/config/cfglogger.json',
@@ -57,6 +59,84 @@ export function isChannelUsedInLogger(configData, channel) {
   return (cid !== undefined && usedIds.has(cid));
 }
 
+/** Get a set of channel_identify_id (matching CreateTime) currently used in alarms */
+export async function getUsedAlarmChannelIds(configData) {
+  const fileMap = configData?.fileMap;
+  if (!fileMap) return new Set();
+  
+  try {
+    const result = await openAlarmDb(fileMap);
+    if (!result) return new Set();
+    const { db } = result;
+    const alarms = readAlarmConfigs(db) || [];
+    db.close();
+    
+    // channel_identify_id in DB corresponds to CreateTime
+    return new Set(alarms.map(a => String(a.channel_identify_id)));
+  } catch (err) {
+    console.error('Error getting used alarm channel IDs:', err);
+    return new Set();
+  }
+}
+
+/** Get a set of ChannelIds (CreateTime strings) currently used in layout points */
+export function getUsedLayoutChannelIds(configData) {
+  if (!configData?.configs) return new Set();
+  const path = Object.keys(configData.configs).find(p => p.endsWith('cfgLocation.json'));
+  if (!path) return new Set();
+  
+  const locations = configData.configs[path]?.Locations || [];
+  const usedIds = new Set();
+  for (const loc of locations) {
+    for (const mp of (loc.meapoints || [])) {
+      for (const chId of (mp.channels || [])) {
+        if (chId !== undefined && chId !== null) {
+          usedIds.add(String(chId));
+        }
+      }
+    }
+  }
+  return usedIds;
+}
+
+/** Check if any channel in a sensor is used in the alarm database. */
+export async function isSensorUsedInAlarm(configData, sensor) {
+  const usedIds = await getUsedAlarmChannelIds(configData);
+  for (const ch of (sensor.cfgchannel || [])) {
+    const cid = String(ch.CreateTime || ch.CreatedOn || ch.channelid || '');
+    if (cid && usedIds.has(cid)) {
+      return ch.ChannelDescription || `CH ${cid}`;
+    }
+  }
+  return null;
+}
+
+/** Check if any channel in a sensor is used in the layout configuration. */
+export function isSensorUsedInLayout(configData, sensor) {
+  const usedIds = getUsedLayoutChannelIds(configData);
+  for (const ch of (sensor.cfgchannel || [])) {
+    const cid = String(ch.CreateTime || ch.CreatedOn || ch.channelid || '');
+    if (cid && usedIds.has(cid)) {
+      return ch.ChannelDescription || `CH ${cid}`;
+    }
+  }
+  return null;
+}
+
+/** Check if a specific channel is used in alarms. */
+export async function isChannelUsedInAlarm(configData, channel) {
+  const usedIds = await getUsedAlarmChannelIds(configData);
+  const cid = String(channel.CreateTime || channel.CreatedOn || channel.channelid || '');
+  return cid !== '' && usedIds.has(cid);
+}
+
+/** Check if a specific channel is used in layout. */
+export function isChannelUsedInLayout(configData, channel) {
+  const usedIds = getUsedLayoutChannelIds(configData);
+  const cid = String(channel.CreateTime || channel.CreatedOn || channel.channelid || '');
+  return cid !== '' && usedIds.has(cid);
+}
+
 /**
  * Remarshal all ChannelIds across all sensors starting from 0.
  * Also updates the logger's channelid values to keep them in sync.
@@ -73,6 +153,7 @@ export function remarshalAll(configData) {
   const idMap = new Map(); // oldId -> newId
   let nextId = 0;
 
+  // 1. Remarshal sensors inside SUTO-SensorList.sutolist
   const updatedSensors = sensors.map(sensor => {
     const updatedChannels = (sensor.cfgchannel || []).map(ch => {
       const oldId = ch.ChannelId ?? ch.channelid ?? ch.ChannelID;
@@ -94,19 +175,51 @@ export function remarshalAll(configData) {
     return { ...sensor, cfgchannel: updatedChannels };
   });
 
-  // Update the sensor list
-  let nextConfigData = {
-    ...configData,
-    configs: {
-      ...configData.configs,
-      [listPath]: {
-        ...currentList,
-        cfgsensor: updatedSensors
-      }
+  let nextConfigs = {
+    ...configData.configs,
+    [listPath]: {
+      ...currentList,
+      cfgsensor: updatedSensors
     }
   };
 
-  // Update the logger to match new IDs
+  // 2. Remarshal Option Board channels in cfgOptionBoard.json
+  const obPath = findPath(configData.configs, [
+    'config/cfgOptionBoard.json',
+    '/config/cfgOptionBoard.json',
+    'cfgOptionBoard.json'
+  ]);
+  if (obPath && configData.configs[obPath]?.cfgOptionBoard) {
+    const obConfig = configData.configs[obPath];
+    const obChannels = obConfig.cfgOptionBoard || [];
+    const updatedObChannels = obChannels.map(ch => {
+      const oldId = ch.ChannelId ?? ch.channelid ?? ch.ChannelID;
+      const newId = nextId++;
+      
+      if (oldId !== undefined) {
+        idMap.set(oldId, newId);
+      }
+      
+      const newCh = { ...ch, ChannelId: newId };
+      if (newCh.channelid !== undefined) newCh.channelid = newId;
+      if (newCh.ChannelID !== undefined) newCh.ChannelID = newId;
+      
+      return newCh;
+    });
+    
+    nextConfigs[obPath] = {
+      ...obConfig,
+      cfgOptionBoard: updatedObChannels
+    };
+  }
+
+  // Update the sensor list
+  let nextConfigData = {
+    ...configData,
+    configs: nextConfigs
+  };
+
+  // 3. Update the logger to match new IDs
   const loggerPath = findPath(configData.configs, CFGLOGGER_PATHS);
   if (loggerPath) {
     const loggerConfig = configData.configs[loggerPath];

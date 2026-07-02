@@ -418,6 +418,9 @@ const LoggerSettings = () => {
   const channelIdToCreateTime = {};
   const allChannels = [];
 
+  const obConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const obItems = configData?.configs?.[obConfigPath]?.cfgOptionBoard || [];
+
   sensors.forEach(sensor => {
     (sensor.cfgchannel || []).forEach(ch => {
       // cfgchannel uses "ChannelId" (capital C, capital I) — match against cfglogger's "channelid"
@@ -446,6 +449,34 @@ const LoggerSettings = () => {
         location: locationValue, 
         point: pointValue 
       });
+    });
+  });
+
+  obItems.forEach(item => {
+    const cid = item.ChannelId ?? item.channelid ?? item.ChannelID;
+    const createTimeStr = String(item.CreateTime);
+    if (cid !== undefined) {
+      channelIdToName[cid] = item.ChannelDescription || `CH ${cid}`;
+      channelIdToCreateTime[cid] = createTimeStr;
+    }
+
+    let locationValue = '---', pointValue = '---';
+    if (Array.isArray(locationsArray)) {
+      for (const locObj of locationsArray) {
+        const matched = (locObj.meapoints || []).find(pt =>
+          Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
+        );
+        if (matched) { locationValue = matched.location || '---'; pointValue = matched.meapoint || '---'; break; }
+      }
+    }
+    allChannels.push({ 
+      CreateTime: createTimeStr, 
+      ChannelId: cid,
+      sensorName: item.SensorDescription || 'Option Board',
+      channelName: item.ChannelDescription || t('Unknown Channel'), 
+      unit: item.PreDefineUnit || item.UnitInASCII || '',
+      location: locationValue, 
+      point: pointValue 
     });
   });
 

@@ -5,6 +5,7 @@ import AnalogDigitalModal from './AnalogDigitalModal';
 import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
+import { isChannelUsedInLogger, isChannelUsedInAlarm, isChannelUsedInLayout, remarshalAll } from '../../util/remarshalUtils';
 import './SUTOSensor.css';
 
 const AnalogDigitalInput = () => {
@@ -15,9 +16,16 @@ const AnalogDigitalInput = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingIndex, setEditingIndex] = useState(-1);
   
-  // Delete confirmation state
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [indexToDelete, setIndexToDelete] = useState(-1);
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+    onConfirm: null,
+    showCancel: true
+  });
+
+  const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
   // Load initial data from the correct config file path
   useEffect(() => {
@@ -56,71 +64,26 @@ const AnalogDigitalInput = () => {
       cfgOptionBoard: newItems
     };
 
-    // Rebuild/Sync Option Board sensor in SUTO-SensorList.sutolist
+    // Make sure we remove any Option Board sensor from SUTO-SensorList.sutolist if present
     const configPath = Object.keys(newConfigs).find(p => p.endsWith('SUTO-SensorList.sutolist'));
     if (configPath && newConfigs[configPath]) {
       const sutoConfig = newConfigs[configPath];
       let sensorList = [...(sutoConfig.cfgsensor || [])];
       let obIdx = sensorList.findIndex(s => s.isOptionBoardSensor);
-      
-      if (newItems.length > 0) {
-        let optionBoardSensor = obIdx !== -1 ? { ...sensorList[obIdx] } : {
-          Index: sensorList.length + 1,
-          SensorID: sensorList.length + 1,
-          Name: "Option Board",
-          Description: "Option Board",
-          ConnectType: 9,
-          ProtocolType: 0,
-          Addr: 0,
-          IpAddr: "0.0.0.0",
-          Port: 502,
-          isSuto: false,
-          isOptionBoardSensor: true,
-          isReadMultRegister: false,
-          RegisterNumber: 0,
-          DataStartAddr: 0,
-          UnitStartAddr: 0,
-          ResolutionStartAddr: 0,
-          RelayIndex: 0,
-          SN: "", PN: "", FW: "", HW: "", Location: "", Meapoint: "", ConfigFileName: "",
-          CreateTime: "option-board-sensor-id",
-          cfgchannel: []
+      if (obIdx !== -1) {
+        sensorList.splice(obIdx, 1);
+        newConfigs[configPath] = {
+          ...sutoConfig,
+          cfgsensor: sensorList
         };
-        
-        optionBoardSensor.cfgchannel = newItems.map(item => ({
-          ChannelId: item.ChannelId,
-          ChannelDescription: item.ChannelDescription,
-          UnitInASCII: item.PreDefineUnit || item.DisplayUnit || '',
-          Resolution: item.Resolution,
-          OptionBoardType: item.OptionBoardType,
-          TerminalNo: item.TerminalNo,
-          isOptionBoardChannel: true,
-          Show: true,
-          logger: true,
-          CreateTime: item.CreateTime
-        }));
-        
-        if (obIdx !== -1) {
-          sensorList[obIdx] = optionBoardSensor;
-        } else {
-          sensorList.push(optionBoardSensor);
-        }
-      } else {
-        if (obIdx !== -1) {
-          sensorList.splice(obIdx, 1);
-        }
       }
-      
-      newConfigs[configPath] = {
-        ...sutoConfig,
-        cfgsensor: sensorList
-      };
     }
 
-    setConfigData(prev => ({
-      ...prev,
+    const nextConfigData = {
+      ...configData,
       configs: newConfigs
-    }));
+    };
+    setConfigData(remarshalAll(nextConfigData));
   };
 
   const handleSave = (newItem) => {
@@ -145,17 +108,50 @@ const AnalogDigitalInput = () => {
     setIsModalOpen(false);
   };
 
-  const handleDeleteClick = (index) => {
-    setIndexToDelete(index);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = () => {
-    const newItems = items.filter((_, i) => i !== indexToDelete);
-    setItems(newItems);
-    updateConfig(newItems);
-    setIsDeleteDialogOpen(false);
-    setIndexToDelete(-1);
+  const handleDeleteClick = async (index) => {
+    const channel = items[index];
+    
+    // 1. Check Logger
+    const usedInLogger = isChannelUsedInLogger(configData, channel);
+    // 2. Check Alarm
+    const usedInAlarm = await isChannelUsedInAlarm(configData, channel);
+    // 3. Check Layout
+    const usedInLayout = isChannelUsedInLayout(configData, channel);
+    
+    if (usedInLogger || usedInAlarm || usedInLayout) {
+      let body = '';
+      if (usedInLogger) {
+        body = t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Logger settings. Please remove it from Logger settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription);
+      } else if (usedInAlarm) {
+        body = t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Alarm settings. Please remove it from Alarm settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription);
+      } else {
+        body = t('Cannot delete channel "{channel.ChannelDescription}". it is currently used in Layout settings. Please remove it from Layout settings first.').replaceAll('{channel.ChannelDescription}', channel.ChannelDescription);
+      }
+      
+      setDialogState({
+        isOpen: true,
+        title: t('Delete Restricted'),
+        body: body,
+        type: 'err',
+        showCancel: false,
+        onConfirm: closeDialog
+      });
+      return;
+    }
+    
+    setDialogState({
+      isOpen: true,
+      title: t('Delete Confirmation'),
+      body: t('Are you sure you want to delete this analog & digital input?'),
+      type: 'warn',
+      showCancel: true,
+      onConfirm: () => {
+        const newItems = items.filter((_, i) => i !== index);
+        setItems(newItems);
+        updateConfig(newItems);
+        closeDialog();
+      }
+    });
   };
 
 
@@ -289,14 +285,13 @@ const AnalogDigitalInput = () => {
       />
 
       <CustomDialog
-        isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
-        onConfirm={confirmDelete}
-        title={t('Delete Confirmation')}
-        body={t('Are you sure you want to delete this analog & digital input?')}
-        confirmText={t('Delete')}
-        cancelText={t('Cancel')}
-        type="warn"
+        isOpen={dialogState.isOpen}
+        onClose={closeDialog}
+        onConfirm={dialogState.onConfirm}
+        title={dialogState.title}
+        body={dialogState.body}
+        type={dialogState.type}
+        showCancel={dialogState.showCancel}
       />
     </div>
   );

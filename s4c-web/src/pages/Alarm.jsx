@@ -175,6 +175,9 @@ const Alarm = () => {
     []
   );
 
+  const obConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const obItems = configData?.configs?.[obConfigPath]?.cfgOptionBoard || [];
+
   const allChannelsForSelection = [];
   sensors.forEach(sensor => {
     (sensor.cfgchannel || []).forEach((ch) => {
@@ -192,6 +195,21 @@ const Alarm = () => {
         channelDbId: ch.ChannelId || 0,
         unit: ch.UnitInASCII || '---',
       });
+    });
+  });
+
+  obItems.forEach(item => {
+    const channelId = String(item.CreateTime || '');
+    const sensorId = "option-board-sensor-id";
+    allChannelsForSelection.push({
+      CreateTime: channelId,
+      sensorName: item.SensorDescription || 'Option Board',
+      sensorId: sensorId,
+      sensorDbId: 0,
+      channelName: item.ChannelDescription,
+      channelId: channelId,
+      channelDbId: item.ChannelId || 0,
+      unit: item.PreDefineUnit || item.UnitInASCII || '---',
     });
   });
 

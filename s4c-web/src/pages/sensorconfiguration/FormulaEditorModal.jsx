@@ -28,17 +28,35 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
     []
   );
 
+  const obConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const obItems = configData?.configs?.[obConfigPath]?.cfgOptionBoard || [];
+
   const allChannels = [];
+  let globalId = 0;
   sensors.forEach(sensor => {
-    (sensor.cfgchannel || []).forEach((ch, index) => {
+    (sensor.cfgchannel || []).forEach((ch) => {
+      const cid = ch.ChannelId ?? ch.channelid ?? ch.ChannelID ?? globalId;
       allChannels.push({
-        id: index,
+        id: globalId,
         sensorName: sensor.Name,
         channelName: ch.ChannelDescription,
         displayName: `${sensor.Name}.${ch.ChannelDescription}`,
-        channelId: ch.channelid ?? index
+        channelId: cid
       });
+      globalId++;
     });
+  });
+
+  obItems.forEach((item) => {
+    const cid = item.ChannelId ?? item.channelid ?? item.ChannelID ?? globalId;
+    allChannels.push({
+      id: globalId,
+      sensorName: item.SensorDescription || 'Option Board',
+      channelName: item.ChannelDescription,
+      displayName: `${item.SensorDescription || 'Option Board'}.${item.ChannelDescription}`,
+      channelId: cid
+    });
+    globalId++;
   });
 
   const filteredChannels = allChannels.filter(ch => 
@@ -210,7 +228,7 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
                   <tbody>
                     {filteredChannels.map(ch => (
                       <tr key={`${ch.sensorName}-${ch.channelId}`} onClick={() => handleKeyPressed(`[${ch.channelId}]`)}>
-                        <td>{ch.channelId}</td>
+                        <td>[{ch.channelId}]</td>
                         <td>{ch.sensorName}</td>
                         <td>{ch.channelName}</td>
                       </tr>

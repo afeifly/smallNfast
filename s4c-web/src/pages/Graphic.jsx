@@ -266,6 +266,9 @@ const Graphic = () => {
   const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
   const locationsArray = configData?.configs?.[locationConfigPath]?.Locations || [];
 
+  const obConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const obItems = configData?.configs?.[obConfigPath]?.cfgOptionBoard || [];
+
   sensors.forEach(sensor => {
     if (sensor.cfgchannel) {
       sensor.cfgchannel.forEach(ch => {
@@ -284,6 +287,30 @@ const Graphic = () => {
         allChannels.push({ CreateTime: createTimeStr, sensorCreateTime: String(sensor.CreateTime || ''), sensorName: sensor.Name || sensor.Description, channelName: ch.ChannelDescription, location: locationValue, point: pointValue, unit: ch.UnitInASCII });
       });
     }
+  });
+
+  obItems.forEach(item => {
+    const createTimeStr = String(item.CreateTime);
+    let locationValue = '---';
+    let pointValue = '---';
+    if (Array.isArray(locationsArray)) {
+      for (const locObj of locationsArray) {
+        const meapoints = locObj.meapoints || [];
+        if (Array.isArray(meapoints)) {
+          const matchedPoint = meapoints.find(pointObj => Array.isArray(pointObj.channels) && pointObj.channels.some(cid => String(cid) === createTimeStr));
+          if (matchedPoint) { locationValue = matchedPoint.location || '---'; pointValue = matchedPoint.meapoint || '---'; break; }
+        }
+      }
+    }
+    allChannels.push({ 
+      CreateTime: createTimeStr, 
+      sensorCreateTime: "option-board-sensor-id", 
+      sensorName: item.SensorDescription || 'Option Board', 
+      channelName: item.ChannelDescription, 
+      location: locationValue, 
+      point: pointValue, 
+      unit: item.PreDefineUnit || item.UnitInASCII || '' 
+    });
   });
 
   const handleAddGraphic = () => {

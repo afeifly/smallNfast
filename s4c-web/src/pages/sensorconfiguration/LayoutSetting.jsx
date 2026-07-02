@@ -58,6 +58,9 @@ const LayoutSetting = () => {
   const sensorListPath = findSensorListPath(configData?.configs);
   const sensors = configData?.configs?.[sensorListPath]?.cfgsensor || [];
 
+  const optionBoardConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const optionBoardItems = configData?.configs?.[optionBoardConfigPath]?.cfgOptionBoard || [];
+
   // Build flat channel list from all sensors
   const allChannels = useMemo(() => {
     const result = [];
@@ -85,8 +88,32 @@ const LayoutSetting = () => {
         });
       });
     });
+
+    // Also extract and append Option Board channels
+    optionBoardItems.forEach(item => {
+      let chLocation = '';
+      let chPoint = '';
+      locationsArray.forEach(loc => {
+        (loc.meapoints || []).forEach(mp => {
+          if ((mp.channels || []).some(id => String(id) === String(item.CreateTime))) {
+            chLocation = loc.location;
+            chPoint = mp.meapoint;
+          }
+        });
+      });
+
+      result.push({
+        CreateTime: String(item.CreateTime || ''),
+        sensorName: item.SensorDescription || 'Option Board',
+        channelName: item.ChannelDescription || 'Unknown Channel',
+        unit: item.PreDefineUnit || item.UnitInASCII || '',
+        location: chLocation,
+        point: chPoint
+      });
+    });
+
     return result;
-  }, [sensors, locationsArray]);
+  }, [sensors, optionBoardItems, locationsArray]);
 
   // Currently selected location inside the editor modal
   const selectedLocation = selectedLocationIdx !== null ? locationsArray[selectedLocationIdx] : null;
@@ -101,8 +128,13 @@ const LayoutSetting = () => {
         unit: channel.UnitInASCII || ''
       };
     }
+    const obItem = optionBoardItems.find(ch => String(ch.CreateTime) === String(uid));
+    if (obItem) return {
+      channelName: obItem.ChannelDescription || `CH ${uid}`,
+      unit: obItem.PreDefineUnit || obItem.UnitInASCII || ''
+    };
     return null;
-  }, [sensors]);
+  }, [sensors, optionBoardItems]);
 
   // Helper to get resolved layout info from layout config (the single source of truth for card display/layout)
   const getMeapointLayoutInfo = useCallback((mp, locName) => {

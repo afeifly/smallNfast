@@ -101,7 +101,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
         setSelectedSensorTemplate(content);
         const loadedChannels = (content.cfgchannel || []).map((ch, idx) => ({
           ...ch,
-          CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
+          CreateTime: ch.CreateTime || String(Date.now() + idx)
         }));
         setChannels(loadedChannels);
         if (content.ConnectType) {
@@ -206,7 +206,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       CreateTime: (initialData && initialData.CreateTime) ? String(initialData.CreateTime) : String(baseObj.CreateTime || Date.now()),
       cfgchannel: channels.map((ch, idx) => ({
         ...ch,
-        CreateTime: ch.CreateTime || `${Date.now()}_${idx}`
+        CreateTime: ch.CreateTime || String(Date.now() + idx)
       }))
     };
 
@@ -315,7 +315,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       OutDataType: 0,
       FunctionCode: '3',
       ErrorValue: '0',
-      CreateTime: `${Date.now()}_${Math.floor(Math.random() * 1000)}`
+      CreateTime: String(Date.now() + channels.length)
     };
     const newIndex = channels.length;
     setChannels(prev => [...prev, newChannel]);

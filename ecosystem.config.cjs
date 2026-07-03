@@ -4,17 +4,16 @@ module.exports = {
       name: 's4c-web',
       cwd: './s4c-web',
       script: 'npx',
-      args: 'serve -s dist',
+      args: 'serve -s dist -l tcp://127.0.0.1:9018',
       env: {
-        NODE_ENV: 'production',
-        PORT: 9018
+        NODE_ENV: 'production'
       }
     },
     {
       name: 's4a-web',
       cwd: './s4a-web',
       script: 'npm',
-      args: 'run dev:csd -- --port 9019 --host',
+      args: 'run dev:csd -- --port 9019 --host 127.0.0.1',
       env: {
         NODE_ENV: 'development'
       }
@@ -23,10 +22,9 @@ module.exports = {
       name: 'acbarcode',
       cwd: './acbarcode',
       script: 'npx',
-      args: 'serve -s dist',
+      args: 'serve -s dist -l tcp://127.0.0.1:9016',
       env: {
-        NODE_ENV: 'production',
-        PORT: 9016
+        NODE_ENV: 'production'
       }
     },
     {
@@ -35,14 +33,15 @@ module.exports = {
       script: './.venv/bin/python',
       args: 'run.py',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 8003
       }
     },
     {
       name: 'timesheet-lite-frontend',
       cwd: './timesheet-lite/frontend',
       script: 'npm',
-      args: 'run dev -- --port 9021 --host',
+      args: 'run dev -- --port 9021 --host 127.0.0.1',
       env: {
         NODE_ENV: 'development'
       }
@@ -51,7 +50,7 @@ module.exports = {
       name: 'creatorcenter-backend',
       cwd: './creatorcenter',
       script: './.venv/bin/python',
-      args: '-m uvicorn backend.main:app --host 0.0.0.0 --port 8000',
+      args: '-m uvicorn backend.main:app --host 127.0.0.1 --port 8000',
       env: {
         NODE_ENV: 'production'
       }
@@ -60,7 +59,7 @@ module.exports = {
       name: 'creatorcenter-frontend',
       cwd: './creatorcenter/frontend',
       script: 'npm',
-      args: 'run dev -- --port 9022 --host',
+      args: 'run dev -- --port 9022 --host 127.0.0.1',
       env: {
         NODE_ENV: 'development'
       }

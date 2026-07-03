@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   server: {
+    allowedHosts: ['s4c-lab.suto-portal.com'],
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

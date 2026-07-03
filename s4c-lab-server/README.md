@@ -1,4 +1,4 @@
-# Third-Party Lab Sensor Calibration Server
+# S4C Lab Sensor Calibration Server
 
 Full-stack solution for managing sensor calibrations.
 
@@ -53,7 +53,7 @@ npm run build
 
 # Start the server with PM2 from the server directory
 cd ../server
-pm2 start index.js --name "thirdcali-server"
+pm2 start index.js --name "s4c-lab-backend"
 ```
 
 ### 2. Caddy2 Configuration

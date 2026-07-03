@@ -16,11 +16,11 @@ A **Windows Desktop Application** for automated SMS alerts.
 *   **Purpose**: Monitors a database for alarm triggers and sends SMS alerts via Quectel GSM Modems. Features auto-detection and a system tray interface.
 *   **Location**: `SmsCat/`
 
-### 3. Third-Party Lab Sensor Calibration Server
+### 3. S4C Lab Sensor Calibration Server
 A **Full-stack solution** for managing sensor calibrations in a lab environment.
 *   **Technology**: Node.js (Express, Prisma/SQLite) & Vue 3 (Vite, Pinia).
 *   **Features**: Admin dashboard, company user management, device-bound passcodes, and complex sensor data ingestion.
-*   **Location**: `thirdcali-server/`
+*   **Location**: `s4c-lab-server/`
 
 ### 4. Barcode Label Maker
 A **Static Web Tool** to generate production-ready product labels.

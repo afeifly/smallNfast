@@ -9,6 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '127.0.0.1';
 
 app.use(helmet());
 app.use(cors());
@@ -49,6 +50,6 @@ if (fs.existsSync(frontendPath)) {
     });
 }
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
 });

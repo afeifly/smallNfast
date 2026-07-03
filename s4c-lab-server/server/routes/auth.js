@@ -16,9 +16,10 @@ router.post('/login', async (req, res) => {
         const validPassword = await bcrypt.compare(password, admin.password);
         if (!validPassword) return res.status(401).json({ error: 'Invalid credentials' });
 
-        const token = jwt.sign({ id: admin.id, username: admin.username }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        const token = jwt.sign({ id: admin.id, username: admin.username }, process.env.JWT_SECRET || 's4c-lab-secret-key-keep-it-secret', { expiresIn: '24h' });
         res.json({ token });
     } catch (error) {
+        console.error('Login error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

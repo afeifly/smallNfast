@@ -1,0 +1,179 @@
+[
+  {
+    "name": "S4C Lab Server",
+    "description": "Full-stack solution for managing sensor calibrations. Admin dashboard with JWT auth, company user management, device binding, and sensor data ingestion.",
+    "category": "Backend API",
+    "status": "active",
+    "progress": 72,
+    "start_date": "2026-01-15",
+    "end_date": "2026-08-30",
+    "links": [
+      { "label": "Repository", "url": "https://github.com/user/s4c-lab-server" },
+      { "label": "API Docs", "url": "https://docs.s4c-lab.dev" }
+    ],
+    "tags": ["Node.js", "Express", "Prisma", "SQLite", "Vue 3"],
+    "color_seed": "s4c-lab-server",
+    "preview_images": [
+      "https://picsum.photos/seed/s4clab1/320/120",
+      "https://picsum.photos/seed/s4clab2/320/120",
+      "https://picsum.photos/seed/s4clab3/320/120"
+    ],
+    "tasks": [
+      { "title": "Auth Module (JWT + Passcode)", "status": "completed", "start_date": "2026-01-15", "end_date": "2026-02-28", "sort_order": 0 },
+      { "title": "API Routes & Middleware", "status": "completed", "start_date": "2026-02-15", "end_date": "2026-04-10", "sort_order": 1 },
+      { "title": "Device Binding System", "status": "in-progress", "start_date": "2026-04-01", "end_date": "2026-06-15", "sort_order": 2 },
+      { "title": "Sensor Data Ingestion", "status": "in-progress", "start_date": "2026-05-20", "end_date": "2026-07-30", "sort_order": 3 },
+      { "title": "Admin Dashboard UI", "status": "pending", "start_date": "2026-07-01", "end_date": "2026-08-30", "sort_order": 4 }
+    ],
+    "milestones": [
+      { "title": "v1.0 Backend Deploy", "date": "2026-03-01", "status": "completed", "sort_order": 0 },
+      { "title": "Admin Panel Live", "date": "2026-06-01", "status": "in-progress", "sort_order": 1 },
+      { "title": "v2.0 Full Release", "date": "2026-08-30", "status": "pending", "sort_order": 2 }
+    ]
+  },
+  {
+    "name": "Timesheet Lite",
+    "description": "Lightweight timesheet management application with FastAPI backend, Vue 3 frontend, reporting, and Excel export capabilities.",
+    "category": "Full-Stack App",
+    "status": "active",
+    "progress": 85,
+    "start_date": "2025-10-01",
+    "end_date": "2026-06-30",
+    "links": [
+      { "label": "Live Demo", "url": "https://timesheet.example.com" }
+    ],
+    "tags": ["FastAPI", "Vue 3", "Element Plus", "Chart.js", "Python"],
+    "color_seed": "timesheet-lite",
+    "tasks": [
+      { "title": "FastAPI Backend Setup", "status": "completed", "start_date": "2025-10-01", "end_date": "2025-12-15", "sort_order": 0 },
+      { "title": "Vue 3 Frontend & Pinia Store", "status": "completed", "start_date": "2025-11-15", "end_date": "2026-02-28", "sort_order": 1 },
+      { "title": "Auth System (JWT)", "status": "completed", "start_date": "2026-01-10", "end_date": "2026-02-20", "sort_order": 2 },
+      { "title": "Reporting & Excel Export", "status": "in-progress", "start_date": "2026-03-01", "end_date": "2026-05-30", "sort_order": 3 },
+      { "title": "Dashboard Visualizations", "status": "in-progress", "start_date": "2026-05-01", "end_date": "2026-06-30", "sort_order": 4 }
+    ],
+    "milestones": [
+      { "title": "v1.0 Release", "date": "2026-03-01", "status": "completed", "sort_order": 0 },
+      { "title": "Report Module Complete", "date": "2026-05-15", "status": "in-progress", "sort_order": 1 },
+      { "title": "v1.5 Polish Release", "date": "2026-06-30", "status": "pending", "sort_order": 2 }
+    ]
+  },
+  {
+    "name": "S4C Web",
+    "description": "Web application frontend built with React, Vite, and SQL.js for client-side database capabilities. Includes zip file handling and content hashing.",
+    "category": "Web App",
+    "status": "maintenance",
+    "progress": 95,
+    "start_date": "2025-06-01",
+    "end_date": "2026-03-15",
+    "links": [
+      { "label": "Production", "url": "https://s4c.example.com" }
+    ],
+    "tags": ["React", "Vite", "SQL.js", "zip.js"],
+    "color_seed": "s4c-web",
+    "tasks": [
+      { "title": "Core UI Components", "status": "completed", "start_date": "2025-06-01", "end_date": "2025-09-30", "sort_order": 0 },
+      { "title": "React Router Integration", "status": "completed", "start_date": "2025-08-15", "end_date": "2025-10-30", "sort_order": 1 },
+      { "title": "SQL.js Client-Side DB", "status": "completed", "start_date": "2025-10-01", "end_date": "2025-12-20", "sort_order": 2 },
+      { "title": "Bug Fixes & Maintenance", "status": "in-progress", "start_date": "2026-01-01", "end_date": "2026-03-15", "sort_order": 3 }
+    ],
+    "milestones": [
+      { "title": "Initial Release", "date": "2025-10-01", "status": "completed", "sort_order": 0 },
+      { "title": "Entered Maintenance Mode", "date": "2026-01-01", "status": "completed", "sort_order": 1 }
+    ]
+  },
+  {
+    "name": "SmsCat",
+    "description": "SMS categorization utility for parsing and organizing mobile messages. Features pattern-based category engine and data export.",
+    "category": "Utility",
+    "status": "low-priority",
+    "progress": 40,
+    "start_date": "2026-03-01",
+    "end_date": "2026-10-30",
+    "links": [],
+    "tags": ["JavaScript", "Parser", "CLI"],
+    "color_seed": "SmsCat",
+    "tasks": [
+      { "title": "SMS Parser Engine", "status": "completed", "start_date": "2026-03-01", "end_date": "2026-04-15", "sort_order": 0 },
+      { "title": "Category Rule System", "status": "in-progress", "start_date": "2026-04-10", "end_date": "2026-06-30", "sort_order": 1 },
+      { "title": "UI & Visualization", "status": "pending", "start_date": "2026-07-01", "end_date": "2026-09-15", "sort_order": 2 },
+      { "title": "Data Export Module", "status": "pending", "start_date": "2026-09-01", "end_date": "2026-10-30", "sort_order": 3 }
+    ],
+    "milestones": [
+      { "title": "Prototype Done", "date": "2026-04-15", "status": "completed", "sort_order": 0 },
+      { "title": "Beta Release", "date": "2026-09-01", "status": "pending", "sort_order": 1 }
+    ]
+  },
+  {
+    "name": "AC Barcode",
+    "description": "Barcode scanning and generation tool. Handles multiple barcode formats with a focus on accuracy and performance.",
+    "category": "Tool",
+    "status": "maintenance",
+    "progress": 90,
+    "start_date": "2025-08-01",
+    "end_date": "2026-02-28",
+    "links": [
+      { "label": "Documentation", "url": "https://acbarcode.docs.dev" }
+    ],
+    "tags": ["JavaScript", "Canvas", "Barcode"],
+    "color_seed": "acbarcode",
+    "tasks": [
+      { "title": "Scanner Module", "status": "completed", "start_date": "2025-08-01", "end_date": "2025-10-30", "sort_order": 0 },
+      { "title": "Multi-Format Support", "status": "completed", "start_date": "2025-10-01", "end_date": "2025-12-15", "sort_order": 1 },
+      { "title": "Data Export & Reports", "status": "completed", "start_date": "2025-12-01", "end_date": "2026-01-30", "sort_order": 2 },
+      { "title": "Maintenance & Patches", "status": "in-progress", "start_date": "2026-02-01", "end_date": "2026-02-28", "sort_order": 3 }
+    ],
+    "milestones": [
+      { "title": "v1.0 Shipped", "date": "2026-01-15", "status": "completed", "sort_order": 0 },
+      { "title": "Maintenance Handoff", "date": "2026-02-28", "status": "completed", "sort_order": 1 }
+    ]
+  },
+  {
+    "name": "Creator Center",
+    "description": "Content creator management platform with dashboard, content management tools, and analytics integration.",
+    "category": "Platform",
+    "status": "active",
+    "progress": 55,
+    "start_date": "2026-02-01",
+    "end_date": "2026-11-30",
+    "links": [
+      { "label": "Figma Design", "url": "https://figma.com/file/creatorcenter" }
+    ],
+    "tags": ["React", "Node.js", "Analytics", "CMS"],
+    "color_seed": "creatorcenter",
+    "tasks": [
+      { "title": "Dashboard UI Layout", "status": "completed", "start_date": "2026-02-01", "end_date": "2026-03-30", "sort_order": 0 },
+      { "title": "Content Manager CRUD", "status": "in-progress", "start_date": "2026-03-15", "end_date": "2026-06-15", "sort_order": 1 },
+      { "title": "Analytics Integration", "status": "in-progress", "start_date": "2026-05-01", "end_date": "2026-08-30", "sort_order": 2 },
+      { "title": "User Roles & Permissions", "status": "pending", "start_date": "2026-08-01", "end_date": "2026-10-15", "sort_order": 3 },
+      { "title": "Final Polish & Launch", "status": "pending", "start_date": "2026-10-01", "end_date": "2026-11-30", "sort_order": 4 }
+    ],
+    "milestones": [
+      { "title": "Alpha Launch", "date": "2026-04-01", "status": "completed", "sort_order": 0 },
+      { "title": "Beta Feedback Round", "date": "2026-07-15", "status": "in-progress", "sort_order": 1 },
+      { "title": "Public Launch", "date": "2026-11-30", "status": "pending", "sort_order": 2 }
+    ]
+  },
+  {
+    "name": "WeGame",
+    "description": "Multiplayer web game project with custom game engine, asset pipeline, and real-time multiplayer networking.",
+    "category": "Game",
+    "status": "low-priority",
+    "progress": 30,
+    "start_date": "2026-04-01",
+    "end_date": "2027-03-31",
+    "links": [],
+    "tags": ["Canvas", "WebSocket", "Game Engine"],
+    "color_seed": "wegame",
+    "tasks": [
+      { "title": "Game Engine Core", "status": "in-progress", "start_date": "2026-04-01", "end_date": "2026-07-31", "sort_order": 0 },
+      { "title": "Asset Pipeline & Loader", "status": "pending", "start_date": "2026-07-01", "end_date": "2026-09-30", "sort_order": 1 },
+      { "title": "Multiplayer Networking", "status": "pending", "start_date": "2026-09-01", "end_date": "2026-12-31", "sort_order": 2 },
+      { "title": "Level Design & Content", "status": "pending", "start_date": "2027-01-01", "end_date": "2027-03-31", "sort_order": 3 }
+    ],
+    "milestones": [
+      { "title": "Tech Demo", "date": "2026-07-31", "status": "pending", "sort_order": 0 },
+      { "title": "Multiplayer Alpha", "date": "2026-12-31", "status": "pending", "sort_order": 1 },
+      { "title": "Public Beta", "date": "2027-03-31", "status": "pending", "sort_order": 2 }
+    ]
+  }
+]

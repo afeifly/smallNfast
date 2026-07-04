@@ -87,6 +87,17 @@ module.exports = {
       env: {
         NODE_ENV: 'development'
       }
+    },
+    {
+      name: 'projshow',
+      cwd: './projshow/server',
+      script: 'node',
+      args: 'src/index.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 9023,
+        HOST: '127.0.0.1'
+      }
     }
   ]
 }

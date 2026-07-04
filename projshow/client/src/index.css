@@ -181,6 +181,7 @@ input:focus, select:focus, textarea:focus {
 .status-active { color: var(--cyan); }
 .status-low-priority { color: var(--purple); }
 .status-maintenance { color: var(--emerald); }
+.status-archived { color: var(--text-muted); }
 .status-completed { color: var(--emerald); }
 .status-in-progress { color: var(--cyan); }
 .status-pending { color: var(--text-muted); }

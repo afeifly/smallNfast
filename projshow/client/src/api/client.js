@@ -26,6 +26,24 @@ export const api = {
   deactivateUser: (id) => request(`/auth/users/${id}/deactivate`, { method: 'PATCH' }),
   activateUser: (id) => request(`/auth/users/${id}/activate`, { method: 'PATCH' }),
   impersonateUser: (id) => request(`/auth/impersonate/${id}`, { method: 'POST' }),
+  updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
+
+  // Image upload (multipart/form-data — no JSON header)
+  uploadImage: async (file) => {
+    const token = localStorage.getItem('projshow_token');
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch(`${BASE}/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `Upload failed: ${res.status}`);
+    }
+    return res.json();
+  },
 
   // Projects
   getProjects: (status) => request(status ? `/projects?status=${status}` : '/projects'),

@@ -5,6 +5,7 @@ import projectRoutes from './routes/projects.js';
 import taskRoutes from './routes/tasks.js';
 import milestoneRoutes from './routes/milestones.js';
 import authRoutes from './routes/auth.js';
+import uploadRoutes from './routes/upload.js';
 import { seedDatabase } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api', taskRoutes);
 app.use('/api', milestoneRoutes);
+app.use('/api/upload', uploadRoutes);
+
+// Serve uploaded images
+const uploadsDir = path.join(__dirname, '..', 'data', 'uploads');
+app.use('/uploads', express.static(uploadsDir));
 
 // Serve static files in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

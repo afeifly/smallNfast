@@ -94,6 +94,15 @@ export function ProjectProvider({ children }) {
     setSelectedProject(null);
   };
 
+  // Self-service: update own space_name and/or password
+  const updateMe = async (data) => {
+    const updated = await api.updateMe(data);
+    const merged = { ...currentUser, ...updated };
+    localStorage.setItem('projshow_user', JSON.stringify(merged));
+    setCurrentUser(merged);
+    return merged;
+  };
+
   // Exit sharing mode to view own dashboard
   const exitSharedView = () => {
     const url = new URL(window.location.href);
@@ -204,6 +213,7 @@ export function ProjectProvider({ children }) {
         login,
         logout,
         loginAs,
+        updateMe,
         exitSharedView,
       }}
     >

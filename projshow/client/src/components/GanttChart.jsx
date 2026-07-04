@@ -64,6 +64,12 @@ export default function GanttChart() {
   const [travelDateLabel, setTravelDateLabel] = useState('');
   const [draggedTodayX, setDraggedTodayX] = useState(null);
 
+  // Selected task row state
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+
+  // Hovered milestone state
+  const [hoveredMilestone, setHoveredMilestone] = useState(null);
+
   // Load history snapshots on mount
   useEffect(() => {
     async function loadHistory() {
@@ -394,15 +400,28 @@ export default function GanttChart() {
       <div className="gantt-scroll-wrapper" ref={containerRef}>
         <div className="gantt-labels">
           <div className="gantt-label-header">Project / Task</div>
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              className={`gantt-label-row ${row.type === 'project' ? 'gantt-label-project' : 'gantt-label-task'}`}
-              onClick={() => row.project && setSelectedProject(row.project)}
-            >
-              {row.type === 'project' ? row.project.name : row.task.title}
-            </div>
-          ))}
+          {rows.map((row) => {
+            const isSelected = row.type === 'task' && row.task.id === selectedTaskId;
+            return (
+              <div
+                key={row.id}
+                className={`gantt-label-row ${
+                  row.type === 'project' 
+                    ? 'gantt-label-project' 
+                    : `gantt-label-task ${isSelected ? 'gantt-row-selected' : ''}`
+                }`}
+                onClick={() => {
+                  if (row.type === 'project') {
+                    if (row.project) setSelectedProject(row.project);
+                  } else {
+                    setSelectedTaskId(selectedTaskId === row.task.id ? null : row.task.id);
+                  }
+                }}
+              >
+                {row.type === 'project' ? row.project.name : row.task.title}
+              </div>
+            );
+          })}
         </div>
         <div className="gantt-chart-area" ref={chartAreaRef} style={{ overflowX: 'auto' }}>
           <svg
@@ -422,14 +441,32 @@ export default function GanttChart() {
             {gridLines.labels}
 
             {/* Row stripes */}
+            {rows.map((row, i) => {
+              const isSelected = row.type === 'task' && row.task.id === selectedTaskId;
+              return (
+                <rect
+                  key={`stripe-${row.id}`}
+                  x={0}
+                  y={HEADER_HEIGHT + i * ROW_HEIGHT}
+                  width={chartWidth}
+                  height={ROW_HEIGHT}
+                  fill={isSelected ? 'var(--cyan-glow)' : (row.type === 'project' ? 'var(--gantt-stripe)' : 'transparent')}
+                />
+              );
+            })}
+
+            {/* Row separator — faint dashed horizontal line at the bottom of each row */}
             {rows.map((row, i) => (
-              <rect
-                key={`stripe-${row.id}`}
-                x={0}
-                y={HEADER_HEIGHT + i * ROW_HEIGHT}
-                width={chartWidth}
-                height={ROW_HEIGHT}
-                fill={row.type === 'project' ? 'var(--gantt-stripe)' : 'transparent'}
+              <line
+                key={`sep-${row.id}`}
+                x1={0}
+                y1={HEADER_HEIGHT + (i + 1) * ROW_HEIGHT}
+                x2={chartWidth}
+                y2={HEADER_HEIGHT + (i + 1) * ROW_HEIGHT}
+                stroke="var(--text-muted)"
+                strokeWidth="1"
+                strokeDasharray="3 8"
+                opacity="0.25"
               />
             ))}
 
@@ -477,7 +514,12 @@ export default function GanttChart() {
                   const msColor = ms.status === 'completed' ? 'var(--emerald)'
                     : ms.status === 'in-progress' ? 'var(--cyan)' : 'var(--text-muted)';
                   return (
-                    <g key={`ms-${ms.id}`}>
+                    <g
+                      key={`ms-${ms.id}`}
+                      onMouseEnter={() => setHoveredMilestone({ title: ms.title, date: ms.date, x: mx, y: my })}
+                      onMouseLeave={() => setHoveredMilestone(null)}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <polygon
                         points={`${mx},${my - 8} ${mx + 8},${my} ${mx},${my + 8} ${mx - 8},${my}`}
                         fill={msColor}
@@ -485,7 +527,6 @@ export default function GanttChart() {
                         stroke="rgba(255,255,255,0.2)"
                         strokeWidth="1"
                       />
-                      <title>{ms.title} — {ms.date}</title>
                     </g>
                   );
                 });
@@ -535,21 +576,39 @@ export default function GanttChart() {
                       />
                     </>
                   )}
-                  {/* Label on bar */}
-                  {barWidth > 60 && (
-                    <text
-                      x={barX + 8} y={barY + barH / 2}
-                      dominantBaseline="central"
-                      fill={task.status === 'pending' ? 'var(--text-primary)' : 'white'} fontSize="11" fontWeight="500" fontFamily="var(--font-primary)"
-                      pointerEvents="none"
-                    >
-                      {task.title.length > barWidth / 7 ? task.title.slice(0, Math.floor(barWidth / 7)) + '…' : task.title}
-                    </text>
-                  )}
                 </g>
               );
             })}
           </svg>
+
+          {hoveredMilestone && (
+            <div
+              className="gantt-milestone-tooltip glass-panel animate-scale-in"
+              style={{
+                position: 'absolute',
+                left: hoveredMilestone.x,
+                top: hoveredMilestone.y - 48,
+                transform: 'translateX(-50%)',
+                padding: '6px 12px',
+                fontSize: '0.8rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--glass-border)',
+                boxShadow: 'var(--shadow-md)',
+                pointerEvents: 'none',
+                zIndex: 500,
+                whiteSpace: 'nowrap',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <strong>{hoveredMilestone.title}</strong>
+              {hoveredMilestone.date && (
+                <span style={{ opacity: 0.7, marginLeft: 6 }}>
+                  ({hoveredMilestone.date})
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

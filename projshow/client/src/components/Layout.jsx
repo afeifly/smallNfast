@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Activity, Sun, Moon, Plus, Share2, LogOut, Shield, ChevronRight } from 'lucide-react';
+import { Activity, Sun, Moon, Plus, Share2, LogOut, UserCircle, ChevronRight } from 'lucide-react';
 import { useProjects } from '../context/ProjectContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import ViewToggle from './ViewToggle.jsx';
-import AdminModal from './AdminModal.jsx';
+import SettingsModal from './SettingsModal.jsx';
 
 function MilestoneLogo({ size = 24, className }) {
   return (
@@ -36,7 +36,7 @@ function MilestoneLogo({ size = 24, className }) {
 export default function Layout({ children, view, onToggleView, onAddProject }) {
   const { projects, loading, setSelectedProject, currentUser, isSharedView, sharedSpaceName, logout } = useProjects();
   const { theme, toggleTheme } = useTheme();
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
 
   const activeCount = projects.filter((p) => p.status === 'active').length;
@@ -112,11 +112,14 @@ export default function Layout({ children, view, onToggleView, onAddProject }) {
                 <Share2 size={15} />
                 <span>{shareCopied ? 'Copied!' : 'Share'}</span>
               </button>
-              {currentUser?.role === 'admin' && (
-                <button className="admin-btn" onClick={() => setAdminOpen(true)} title="Admin Settings">
-                  <Shield size={15} />
-                </button>
-              )}
+              {/* User icon — visible to all logged-in users, opens Settings dialog */}
+              <button
+                className="admin-btn"
+                onClick={() => setSettingsOpen(true)}
+                title={`Settings (${currentUser?.space_name})`}
+              >
+                <UserCircle size={18} />
+              </button>
               <button className="logout-btn" onClick={logout} title="Sign out">
                 <LogOut size={15} />
               </button>
@@ -138,7 +141,8 @@ export default function Layout({ children, view, onToggleView, onAddProject }) {
           children
         )}
       </main>
-      <AdminModal isOpen={adminOpen} onClose={() => setAdminOpen(false)} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
+

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, Calendar, Tag, CheckCircle2, Circle, Clock, Trash2, Plus } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, ExternalLink, Calendar, Tag, CheckCircle2, Circle, Clock, Trash2, Plus, Upload, ImagePlus } from 'lucide-react';
 import { useProjects } from '../context/ProjectContext.jsx';
+import { api } from '../api/client.js';
 import MilestoneTimeline from './MilestoneTimeline.jsx';
 import ProjectArt from './ProjectArt.jsx';
 
@@ -8,6 +9,7 @@ const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'low-priority', label: 'Low Priority' },
   { value: 'maintenance', label: 'Maintenance' },
+  { value: 'archived', label: 'Archived' },
 ];
 
 const TASK_STATUS_CYCLE = ['pending', 'in-progress', 'completed'];
@@ -37,10 +39,32 @@ export default function DetailDrawer() {
   const [newImageUrl, setNewImageUrl] = useState('');
   const [activeImgIndex, setActiveImgIndex] = useState(0);
 
+  // Editable project name
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const nameInputRef = useRef(null);
+
+  // Tag management
+  const [newTag, setNewTag] = useState('');
+
+  // Image upload
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     setActiveImgIndex(0);
     setIsEditing(false);
+    setEditingName(false);
+    setNameDraft('');
   }, [project?.id]);
+
+  useEffect(() => {
+    if (editingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [editingName]);
 
   if (!project) return null;
 
@@ -79,6 +103,68 @@ export default function DetailDrawer() {
     }
   };
 
+  // Commit edited name
+  const handleNameSave = () => {
+    if (nameDraft.trim() && nameDraft.trim() !== project.name) {
+      updateProject(project.id, { name: nameDraft.trim() });
+    }
+    setEditingName(false);
+  };
+
+  const handleNameKeyDown = (e) => {
+    if (e.key === 'Enter') handleNameSave();
+    if (e.key === 'Escape') setEditingName(false);
+  };
+
+  // File upload handler
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+
+    if (file.type !== 'image/jpeg') {
+      setUploadError('Only JPEG images are allowed.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 1_000_000) {
+      setUploadError('File size must be less than 1 MB.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { url } = await api.uploadImage(file);
+      const nextImages = [...(project.preview_images || []), url];
+      await updateProject(project.id, { preview_images: nextImages });
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  // Tag handlers
+  const handleAddTag = () => {
+    const trimmed = newTag.trim();
+    if (!trimmed) return;
+    const existingTags = project.tags || [];
+    if (existingTags.includes(trimmed)) { setNewTag(''); return; }
+    updateProject(project.id, { tags: [...existingTags, trimmed] });
+    setNewTag('');
+  };
+
+  const handleRemoveTag = (tagToRemove) => {
+    const nextTags = (project.tags || []).filter((t) => t !== tagToRemove);
+    updateProject(project.id, { tags: nextTags });
+  };
+
+  const handleTagKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); }
+  };
+
   const links = project.links || [];
   const tags = project.tags || [];
   const tasks = project.tasks || [];
@@ -91,7 +177,7 @@ export default function DetailDrawer() {
           {/* Header */}
           <div className="drawer-header">
             {project.preview_images && project.preview_images.length > 0 ? (
-              <div className="drawer-header-preview-container" style={{ height: 540 }}>
+              <div className="drawer-header-preview-container">
                 <img
                   src={project.preview_images[activeImgIndex]}
                   alt={`${project.name} Preview ${activeImgIndex + 1}`}
@@ -156,7 +242,31 @@ export default function DetailDrawer() {
               {/* Left Column: Project Info */}
               <div className="drawer-left-col">
                 <div className="drawer-title-row">
-                  <h2 className="drawer-title">{project.name}</h2>
+                  {/* Editable project name */}
+                  {isEditing && editingName ? (
+                    <input
+                      ref={nameInputRef}
+                      className="drawer-title-input"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onBlur={handleNameSave}
+                      onKeyDown={handleNameKeyDown}
+                    />
+                  ) : (
+                    <h2
+                      className={`drawer-title ${isEditing ? 'drawer-title-editable' : ''}`}
+                      onClick={() => {
+                        if (isEditing) {
+                          setNameDraft(project.name);
+                          setEditingName(true);
+                        }
+                      }}
+                      title={isEditing ? 'Click to edit project name' : undefined}
+                    >
+                      {project.name}
+                      {isEditing && <span className="drawer-title-edit-hint">✎</span>}
+                    </h2>
+                  )}
                   {isEditing ? (
                     <select
                       className={`drawer-status-select status-${project.status}`}
@@ -169,7 +279,10 @@ export default function DetailDrawer() {
                     </select>
                   ) : (
                     <span className={`project-status-badge status-${project.status}`}>
-                      {project.status === 'low-priority' ? 'Low Priority' : project.status === 'maintenance' ? 'Maintenance' : 'Active'}
+                      {project.status === 'low-priority' ? 'Low Priority'
+                        : project.status === 'maintenance' ? 'Maintenance'
+                        : project.status === 'archived' ? 'Archived'
+                        : 'Active'}
                     </span>
                   )}
                 </div>
@@ -205,6 +318,42 @@ export default function DetailDrawer() {
                       <div className="drawer-progress-track">
                         <div className="drawer-progress-fill" style={{ width: `${project.progress}%` }} />
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tags */}
+                <div className="drawer-section">
+                  <h4 className="drawer-section-title">Tags</h4>
+                  <div className="drawer-tags">
+                    {tags.map((tag, i) => (
+                      <span key={i} className={`drawer-tag ${isEditing ? 'drawer-tag-removable' : ''}`}>
+                        {tag}
+                        {isEditing && (
+                          <button
+                            className="drawer-tag-remove"
+                            onClick={() => handleRemoveTag(tag)}
+                            title={`Remove tag "${tag}"`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    {tags.length === 0 && !isEditing && (
+                      <span style={{ opacity: 0.5, fontSize: '0.9rem' }}>No tags.</span>
+                    )}
+                  </div>
+                  {isEditing && (
+                    <div className="drawer-tag-add-row">
+                      <input
+                        placeholder="New tag…"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        onKeyDown={handleTagKeyDown}
+                        className="drawer-tag-input"
+                      />
+                      <button className="milestone-add-btn" onClick={handleAddTag}>+ Add</button>
                     </div>
                   )}
                 </div>
@@ -288,7 +437,7 @@ export default function DetailDrawer() {
                     <div className="drawer-edit-list">
                       {project.preview_images?.map((url, i) => (
                         <div key={i} className="drawer-edit-item">
-                          <span className="drawer-edit-item-text">{url}</span>
+                          <span className="drawer-edit-item-text">{url.startsWith('/uploads/') ? `📁 ${url}` : url}</span>
                           <button
                             className="milestone-delete-btn"
                             onClick={() => {
@@ -308,24 +457,49 @@ export default function DetailDrawer() {
                       ))}
 
                       {(!project.preview_images || project.preview_images.length < 9) ? (
-                        <div className="drawer-add-row-form">
-                          <input
-                            placeholder="Image URL (e.g. https://example.com/screenshot.png)"
-                            value={newImageUrl}
-                            onChange={(e) => setNewImageUrl(e.target.value)}
-                          />
-                          <button
-                            className="milestone-add-btn"
-                            style={{ alignSelf: 'flex-start' }}
-                            onClick={() => {
-                              if (!newImageUrl.trim()) return;
-                              const nextImages = [...(project.preview_images || []), newImageUrl.trim()];
-                              updateProject(project.id, { preview_images: nextImages });
-                              setNewImageUrl('');
-                            }}
-                          >
-                            + Add Image
-                          </button>
+                        <div className="drawer-image-add-section">
+                          {/* Upload file */}
+                          <div className="drawer-image-upload-row">
+                            <button
+                              className="drawer-upload-btn"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={uploading}
+                              title="Upload JPEG image (max 1 MB)"
+                            >
+                              <Upload size={14} />
+                              {uploading ? 'Uploading…' : 'Upload JPEG (≤1MB)'}
+                            </button>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/jpeg"
+                              style={{ display: 'none' }}
+                              onChange={handleFileUpload}
+                            />
+                          </div>
+                          {uploadError && (
+                            <span className="drawer-upload-error">{uploadError}</span>
+                          )}
+                          {/* Or by URL */}
+                          <div className="drawer-add-row-form" style={{ marginTop: 8 }}>
+                            <input
+                              placeholder="…or paste Image URL"
+                              value={newImageUrl}
+                              onChange={(e) => setNewImageUrl(e.target.value)}
+                            />
+                            <button
+                              className="milestone-add-btn"
+                              style={{ alignSelf: 'flex-start' }}
+                              onClick={() => {
+                                if (!newImageUrl.trim()) return;
+                                const nextImages = [...(project.preview_images || []), newImageUrl.trim()];
+                                updateProject(project.id, { preview_images: nextImages });
+                                setNewImageUrl('');
+                              }}
+                            >
+                              + Add URL
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <span className="drawer-limit-text">Max 9 images reached.</span>
@@ -333,18 +507,6 @@ export default function DetailDrawer() {
                     </div>
                   )}
                 </div>
-
-                {/* Tags */}
-                {tags.length > 0 && (
-                  <div className="drawer-section">
-                    <h4 className="drawer-section-title">Tags</h4>
-                    <div className="drawer-tags">
-                      {tags.map((tag, i) => (
-                        <span key={i} className="drawer-tag">{tag}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Danger zone */}
                 {isEditing && (
@@ -400,7 +562,7 @@ export default function DetailDrawer() {
                             className="drawer-task-status-btn"
                             onClick={() => handleTaskStatusToggle(task)}
                             style={{ cursor: isEditing ? 'pointer' : 'default' }}
-                            title={isEditing ? "Toggle status" : undefined}
+                            title={isEditing ? 'Toggle status' : undefined}
                             disabled={!isEditing}
                           >
                             <Icon size={16} color={statusCfg.color} />

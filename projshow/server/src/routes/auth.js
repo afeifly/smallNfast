@@ -143,4 +143,31 @@ router.post('/impersonate/:id', authMiddleware, adminMiddleware, (req, res) => {
   }
 });
 
+// PATCH /api/auth/me — any logged-in user can update their own space_name / password
+router.patch('/me', authMiddleware, (req, res) => {
+  const { space_name, password } = req.body;
+  if (!space_name && !password) {
+    return res.status(400).json({ error: 'Provide space_name and/or password to update' });
+  }
+
+  try {
+    const fields = [];
+    const values = [];
+    if (space_name && space_name.trim()) {
+      fields.push('space_name = ?');
+      values.push(space_name.trim());
+    }
+    if (password && password.trim()) {
+      fields.push('password = ?');
+      values.push(password.trim());
+    }
+    values.push(req.userId);
+    db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    const updated = db.prepare('SELECT id, username, space_name, role FROM users WHERE id = ?').get(req.userId);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

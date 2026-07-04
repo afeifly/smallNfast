@@ -82,6 +82,7 @@ export default function CreateProjectModal({ isOpen, onClose }) {
                 <option value="active">Active</option>
                 <option value="low-priority">Low Priority</option>
                 <option value="maintenance">Maintenance</option>
+                <option value="archived">Archived</option>
               </select>
             </div>
 

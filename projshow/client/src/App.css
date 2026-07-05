@@ -539,9 +539,24 @@
 
 .gantt-labels {
   flex-shrink: 0;
-  width: 220px;
   border-right: 1px solid var(--glass-border);
   background: var(--bg-secondary);
+}
+
+.gantt-label-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.15s;
+}
+
+.gantt-label-resizer:hover,
+.gantt-label-resizer:active {
+  background-color: var(--cyan);
 }
 
 .gantt-label-header {

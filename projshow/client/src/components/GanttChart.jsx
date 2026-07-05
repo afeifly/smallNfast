@@ -50,7 +50,7 @@ function nestSnapshotData(snapshotData) {
 
 export default function GanttChart() {
   const { projects, updateTask, setSelectedProject, isSharedView } = useProjects();
-  const [zoom, setZoom] = useState('month');
+  const [zoom, setZoom] = useState('year');
   const [dragState, setDragState] = useState(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const svgRef = useRef(null);
@@ -69,6 +69,9 @@ export default function GanttChart() {
 
   // Hovered milestone state
   const [hoveredMilestone, setHoveredMilestone] = useState(null);
+
+  // Resizable label column width state
+  const [labelWidth, setLabelWidth] = useState(220);
 
   // Load history snapshots on mount
   useEffect(() => {
@@ -384,6 +387,27 @@ export default function GanttChart() {
     window.addEventListener('pointerup', handleUp);
   }, [pixelsPerDay, updateTask]);
 
+  const handleResizerPointerDown = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = labelWidth;
+
+    const handlePointerMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(120, Math.min(startWidth + deltaX, 450));
+      setLabelWidth(newWidth);
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }, [labelWidth]);
+
   // Tooltip text
   const tooltipText = dragState
     ? `${dragState.currentStart} → ${dragState.currentEnd}`
@@ -425,7 +449,7 @@ export default function GanttChart() {
       )}
 
       <div className="gantt-scroll-wrapper" ref={containerRef}>
-        <div className="gantt-labels">
+        <div className="gantt-labels" style={{ width: `${labelWidth}px`, position: 'relative' }}>
           <div className="gantt-label-header">Project / Task</div>
           {rows.map((row) => {
             const isSelected = row.type === 'task' && row.task.id === selectedTaskId;
@@ -449,6 +473,11 @@ export default function GanttChart() {
               </div>
             );
           })}
+          {/* Resize handle */}
+          <div
+            className="gantt-label-resizer"
+            onPointerDown={handleResizerPointerDown}
+          />
         </div>
         <div className="gantt-chart-area" ref={chartAreaRef} style={{ overflowX: 'auto' }}>
           <svg

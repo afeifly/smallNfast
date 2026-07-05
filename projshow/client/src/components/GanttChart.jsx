@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { Filter, Search, X } from 'lucide-react';
 import { useProjects } from '../context/ProjectContext.jsx';
 import { api } from '../api/client.js';
 
@@ -6,10 +7,13 @@ const ROW_HEIGHT = 40;
 const HEADER_HEIGHT = 50;
 const LABEL_WIDTH = 220;
 const ZOOM_LEVELS = {
-  month: { label: 'Month', daysPerPixel: 0.24 },     // 1 day = 4.16px
-  quarter: { label: 'Quarter', daysPerPixel: 0.3 },   // 1 day = 3.3px
+  month: { label: 'Month', daysPerPixel: 0.16 },     // 1 day ≈ 6.25px → ~188px/month
+  quarter: { label: 'Quarter', daysPerPixel: 0.3 },   // 1 day ≈ 3.33px
   year: { label: 'Year', daysPerPixel: 1.0 },        // 1 day = 1px
 };
+// Status display priority: active → low-priority → maintenance
+const STATUS_PRIORITY = { active: 0, 'low-priority': 1, maintenance: 2 };
+
 const STATUS_COLORS = {
   completed: { fill: 'var(--emerald)', stroke: '#059669' },
   'in-progress': { fill: 'var(--cyan)', stroke: '#0891b2' },
@@ -73,6 +77,22 @@ export default function GanttChart() {
   // Resizable label column width state
   const [labelWidth, setLabelWidth] = useState(220);
 
+  // Filter states (right side of toolbar)
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Live counts for status filter options
+  const statusCounts = useMemo(() => {
+    const raw = activeSnapshot ? nestSnapshotData(activeSnapshot.data) : projects;
+    const nonArchived = raw.filter((p) => p.status !== 'archived');
+    return {
+      all: nonArchived.length,
+      active: nonArchived.filter((p) => p.status === 'active').length,
+      'low-priority': nonArchived.filter((p) => p.status === 'low-priority').length,
+      maintenance: nonArchived.filter((p) => p.status === 'maintenance').length,
+    };
+  }, [projects, activeSnapshot]);
+
   // Load history snapshots on mount
   useEffect(() => {
     async function loadHistory() {
@@ -112,31 +132,48 @@ export default function GanttChart() {
       rawList = projects;
     }
 
-    const active = rawList.filter((p) => p.status === 'active').sort((a, b) => {
-      const getFarthest = (proj) => {
-        const tasks = proj.tasks || [];
-        let maxTime = 0;
-        for (const t of tasks) {
-          if (t.end_date) {
-            const time = new Date(t.end_date).getTime();
-            if (time > maxTime) maxTime = time;
-          }
-          if (t.start_date) {
-            const time = new Date(t.start_date).getTime();
-            if (time > maxTime) maxTime = time;
-          }
-        }
-        return maxTime;
-      };
-      const timeA = getFarthest(a);
-      const timeB = getFarthest(b);
-      if (timeA !== timeB) return timeB - timeA; // Farthest first
+    // Exclude archived projects from Gantt view
+    rawList = rawList.filter((p) => p.status !== 'archived');
+
+    // Filter by status if selected
+    if (statusFilter !== 'all') {
+      rawList = rawList.filter((p) => p.status === statusFilter);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      rawList = rawList.filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q))
+      );
+    }
+
+    // Compute farthest date across tasks AND milestones for a project
+    const getFarthestDate = (proj) => {
+      let maxTime = 0;
+      for (const t of (proj.tasks || [])) {
+        if (t.end_date) maxTime = Math.max(maxTime, new Date(t.end_date).getTime());
+        if (t.start_date) maxTime = Math.max(maxTime, new Date(t.start_date).getTime());
+      }
+      for (const m of (proj.milestones || [])) {
+        if (m.date) maxTime = Math.max(maxTime, new Date(m.date).getTime());
+      }
+      return maxTime;
+    };
+
+    // Sort: status group first (active → low-priority → maintenance),
+    // then within each group by farthest date DESC, fallback to created_at
+    return [...rawList].sort((a, b) => {
+      const groupA = STATUS_PRIORITY[a.status] ?? 99;
+      const groupB = STATUS_PRIORITY[b.status] ?? 99;
+      if (groupA !== groupB) return groupA - groupB;
+      const timeA = getFarthestDate(a);
+      const timeB = getFarthestDate(b);
+      if (timeA !== timeB) return timeB - timeA;
       return new Date(b.created_at) - new Date(a.created_at);
     });
-
-    const others = rawList.filter((p) => p.status !== 'active');
-    return [...active, ...others];
-  }, [projects, activeSnapshot]);
+  }, [projects, activeSnapshot, statusFilter, searchQuery]);
 
   // Flatten into rows: project headers + tasks
   const { rows, globalStart, globalEnd } = useMemo(() => {
@@ -168,14 +205,16 @@ export default function GanttChart() {
       return { rows: rowList, globalStart: addDays(now, -30), globalEnd: addDays(now, 180) };
     }
 
+    const paddingDays = zoom === 'year' ? 365 : zoom === 'quarter' ? 90 : 30;
+
     const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
     const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
     return {
       rows: rowList,
-      globalStart: addDays(minDate, -14),
-      globalEnd: addDays(maxDate, 30),
+      globalStart: addDays(minDate, -paddingDays),
+      globalEnd: addDays(maxDate, paddingDays),
     };
-  }, [displayProjects]);
+  }, [displayProjects, zoom]);
 
   const totalDays = daysBetween(globalStart, globalEnd);
   const basePixelsPerDay = 1 / zoomConfig.daysPerPixel;
@@ -421,25 +460,23 @@ export default function GanttChart() {
 
   const getTooltipStyle = () => {
     if (!hoveredMilestone) return {};
-    let left = hoveredMilestone.x;
-    let transform = 'translateX(-50%)';
 
-    // Flip side if too close to right edge
-    if (chartWidth - hoveredMilestone.x < 150) {
-      left = hoveredMilestone.x - 12;
+    // Compare milestone x (in SVG/scroll coords) against chartWidth right edge.
+    // Tooltip div is absolute inside the scroll container, so left==svgX is correct.
+    // Flip transform when the milestone is within 180px of the chart's right end
+    // so the tooltip text box doesn't exceed the scroll content boundary.
+    let transform = 'translateX(-50%)';
+    if (chartWidth - hoveredMilestone.x < 180) {
       transform = 'translateX(-100%)';
-    } 
-    // Flip side if too close to left edge
-    else if (hoveredMilestone.x < 150) {
-      left = hoveredMilestone.x + 12;
+    } else if (hoveredMilestone.x < 180) {
       transform = 'translateX(0)';
     }
 
     return {
       position: 'absolute',
-      left: left,
+      left: hoveredMilestone.x,
       top: hoveredMilestone.y - 48,
-      transform: transform,
+      transform,
       padding: '6px 12px',
       fontSize: '0.8rem',
       borderRadius: 'var(--radius-sm)',
@@ -467,9 +504,42 @@ export default function GanttChart() {
             </button>
           ))}
         </div>
+
         {dragState && (
           <div className="gantt-drag-tooltip">{tooltipText}</div>
         )}
+
+        <div className="gantt-filter-controls">
+          <div className="gantt-filter-search-wrap">
+            <Search size={13} className="gantt-filter-search-icon" />
+            <input
+              type="text"
+              className="gantt-filter-search-input"
+              placeholder="Filter project name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="gantt-filter-clear-btn" onClick={() => setSearchQuery('')} title="Clear search">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          <div className="gantt-filter-select-wrap">
+            <Filter size={13} className="gantt-filter-icon" />
+            <select
+              className="gantt-filter-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All Projects ({statusCounts.all})</option>
+              <option value="active">Active ({statusCounts.active})</option>
+              <option value="low-priority">Low Priority ({statusCounts['low-priority']})</option>
+              <option value="maintenance">Maintenance ({statusCounts.maintenance})</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {isTimeTraveling && (
@@ -491,14 +561,11 @@ export default function GanttChart() {
           <div className="gantt-label-header">Project / Task</div>
           {rows.map((row) => {
             const isSelected = row.type === 'task' && row.task.id === selectedTaskId;
+            const statusClass = row.type === 'project' ? `gantt-label-project gantt-project-${row.project.status}` : `gantt-label-task ${isSelected ? 'gantt-row-selected' : ''}`;
             return (
               <div
                 key={row.id}
-                className={`gantt-label-row ${
-                  row.type === 'project' 
-                    ? 'gantt-label-project' 
-                    : `gantt-label-task ${isSelected ? 'gantt-row-selected' : ''}`
-                }`}
+                className={`gantt-label-row ${statusClass}`}
                 onClick={() => {
                   if (row.type === 'project') {
                     if (row.project) setSelectedProject(row.project);

@@ -144,7 +144,11 @@ export default function GanttChart() {
     const allDates = [];
 
     for (const project of displayProjects) {
-      const tasks = project.tasks || [];
+      const tasks = [...(project.tasks || [])].sort((a, b) => {
+        if (!a.end_date) return 1;
+        if (!b.end_date) return -1;
+        return new Date(a.end_date) - new Date(b.end_date);
+      });
       const milestones = project.milestones || [];
       if (tasks.length === 0 && milestones.length === 0) continue;
 
@@ -415,6 +419,40 @@ export default function GanttChart() {
 
   const currentTodayX = draggedTodayX !== null ? draggedTodayX : todayX;
 
+  const getTooltipStyle = () => {
+    if (!hoveredMilestone) return {};
+    let left = hoveredMilestone.x;
+    let transform = 'translateX(-50%)';
+
+    // Flip side if too close to right edge
+    if (chartWidth - hoveredMilestone.x < 150) {
+      left = hoveredMilestone.x - 12;
+      transform = 'translateX(-100%)';
+    } 
+    // Flip side if too close to left edge
+    else if (hoveredMilestone.x < 150) {
+      left = hoveredMilestone.x + 12;
+      transform = 'translateX(0)';
+    }
+
+    return {
+      position: 'absolute',
+      left: left,
+      top: hoveredMilestone.y - 48,
+      transform: transform,
+      padding: '6px 12px',
+      fontSize: '0.8rem',
+      borderRadius: 'var(--radius-sm)',
+      background: 'var(--bg-secondary)',
+      border: '1px solid var(--glass-border)',
+      boxShadow: 'var(--shadow-md)',
+      pointerEvents: 'none',
+      zIndex: 500,
+      whiteSpace: 'nowrap',
+      color: 'var(--text-primary)',
+    };
+  };
+
   return (
     <div className="gantt-container animate-fade-in">
       <div className="gantt-toolbar">
@@ -640,22 +678,7 @@ export default function GanttChart() {
           {hoveredMilestone && (
             <div
               className="gantt-milestone-tooltip glass-panel animate-scale-in"
-              style={{
-                position: 'absolute',
-                left: hoveredMilestone.x,
-                top: hoveredMilestone.y - 48,
-                transform: 'translateX(-50%)',
-                padding: '6px 12px',
-                fontSize: '0.8rem',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--glass-border)',
-                boxShadow: 'var(--shadow-md)',
-                pointerEvents: 'none',
-                zIndex: 500,
-                whiteSpace: 'nowrap',
-                color: 'var(--text-primary)',
-              }}
+              style={getTooltipStyle()}
             >
               <strong>{hoveredMilestone.title}</strong>
               {hoveredMilestone.date && (

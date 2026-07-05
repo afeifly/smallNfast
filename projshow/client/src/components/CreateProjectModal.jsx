@@ -43,13 +43,17 @@ export default function CreateProjectModal({ isOpen, onClose }) {
     <>
       <div className="drawer-overlay" onClick={onClose} />
       <div className="detail-drawer glass-panel create-project-modal">
-        <div className="drawer-scroll">
-          <div className="drawer-header">
-            <h2 className="drawer-title" style={{ padding: '20px 20px 0', fontSize: '1.4rem' }}>
-              Create New Project
-            </h2>
-            <button className="drawer-close" onClick={onClose}><X size={20} /></button>
+        {/* Sticky top action bar */}
+        <div className="drawer-action-bar">
+          <span className="drawer-action-bar-title" style={{ fontSize: '1.2rem' }}>Create New Project</span>
+          <div className="drawer-action-bar-actions">
+            <button className="drawer-action-bar-close" onClick={onClose}>
+              <X size={18} />
+            </button>
           </div>
+        </div>
+
+        <div className="drawer-scroll">
           <form className="drawer-body" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="drawer-progress-section">
               <label className="drawer-label">Project Name *</label>

@@ -231,7 +231,11 @@ export default function DetailDrawer() {
 
   const links = project.links || [];
   const tags = project.tags || [];
-  const tasks = project.tasks || [];
+  const tasks = [...(project.tasks || [])].sort((a, b) => {
+    if (!a.end_date) return 1;
+    if (!b.end_date) return -1;
+    return new Date(a.end_date) - new Date(b.end_date);
+  });
 
   // Dynamic project date range calculated from tasks and milestones
   const getProjectDateRange = () => {

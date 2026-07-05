@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ExternalLink, Calendar, Tag, CheckCircle2, Circle, Clock, Trash2, Plus, Upload, ImagePlus } from 'lucide-react';
+import { X, ExternalLink, Calendar, Tag, CheckCircle2, Circle, Clock, Trash2, Plus, Upload, ImagePlus, Pencil, Check } from 'lucide-react';
 import { useProjects } from '../context/ProjectContext.jsx';
 import { api } from '../api/client.js';
 import MilestoneTimeline from './MilestoneTimeline.jsx';
@@ -208,8 +208,9 @@ export default function DetailDrawer() {
               <button
                 className={`drawer-edit-mode-btn ${isEditing ? 'active' : ''}`}
                 onClick={() => setIsEditing(!isEditing)}
+                title={isEditing ? 'Done' : 'Edit Project'}
               >
-                {isEditing ? 'Done' : 'Edit Project'}
+                {isEditing ? <Check size={16} /> : <Pencil size={16} />}
               </button>
             )}
             <button className="drawer-action-bar-close" onClick={handleClose}>
@@ -577,6 +578,11 @@ export default function DetailDrawer() {
 
               {/* Right Column: Tasks & Milestones */}
               <div className="drawer-right-col">
+                {/* Milestone Timeline */}
+                <div className="drawer-section">
+                  <MilestoneTimeline project={project} isEditing={isEditing} />
+                </div>
+
                 {/* Tasks */}
                 <div className="drawer-section">
                   <div className="drawer-section-header">
@@ -645,11 +651,6 @@ export default function DetailDrawer() {
                       );
                     })}
                   </div>
-                </div>
-
-                {/* Milestone Timeline */}
-                <div className="drawer-section">
-                  <MilestoneTimeline project={project} isEditing={isEditing} />
                 </div>
               </div>
             </div>

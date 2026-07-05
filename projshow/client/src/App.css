@@ -643,7 +643,7 @@
 /* Two-column grid layout for dialog contents */
 .drawer-grid {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: 4fr 6fr;
   gap: 28px;
   align-items: start;
 }
@@ -711,11 +711,13 @@
   background: var(--cyan);
   border: none;
   color: var(--bg-primary);
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 6px 14px;
-  border-radius: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all var(--duration-fast) var(--ease-out);
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
 }

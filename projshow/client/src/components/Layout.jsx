@@ -67,8 +67,8 @@ export default function Layout({ children, view, onToggleView, onAddProject }) {
         <div className="layout-brand">
           <MilestoneLogo size={24} className="layout-logo" />
           <h1 className="layout-title">
-            <span className="layout-title-proj">Proj</span>
-            <span className="layout-title-show">Show</span>
+            <span className="layout-title-proj">ProJ</span>
+            <span className="layout-title-show">View</span>
           </h1>
           {spaceName && (
             <div className="layout-space-badge">

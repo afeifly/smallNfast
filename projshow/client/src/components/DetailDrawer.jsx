@@ -200,8 +200,26 @@ export default function DetailDrawer() {
     <>
       <div className="drawer-overlay" onClick={handleClose} />
       <aside className="detail-drawer glass-panel">
+        {/* Sticky top action bar */}
+        <div className="drawer-action-bar">
+          <span className="drawer-action-bar-title">{project.name}</span>
+          <div className="drawer-action-bar-actions">
+            {!isSharedView && (
+              <button
+                className={`drawer-edit-mode-btn ${isEditing ? 'active' : ''}`}
+                onClick={() => setIsEditing(!isEditing)}
+              >
+                {isEditing ? 'Done' : 'Edit Project'}
+              </button>
+            )}
+            <button className="drawer-action-bar-close" onClick={handleClose}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
         <div className="drawer-scroll">
-          {/* Header */}
+          {/* Cover Media Header */}
           <div className="drawer-header">
             {project.preview_images && project.preview_images.length > 0 ? (
               <div className="drawer-header-preview-container">
@@ -251,17 +269,6 @@ export default function DetailDrawer() {
             ) : (
               <ProjectArt seed={project.color_seed || project.name} width={640} height={200} />
             )}
-            <div className="drawer-header-actions">
-              {!isSharedView && (
-                <button
-                  className={`drawer-edit-mode-btn ${isEditing ? 'active' : ''}`}
-                  onClick={() => setIsEditing(!isEditing)}
-                >
-                  {isEditing ? 'Done' : 'Edit Project'}
-                </button>
-              )}
-              <button className="drawer-close" onClick={handleClose}><X size={20} /></button>
-            </div>
           </div>
 
           <div className="drawer-body">

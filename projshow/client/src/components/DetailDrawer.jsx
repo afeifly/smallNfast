@@ -460,6 +460,31 @@ export default function DetailDrawer() {
                   )}
                 </div>
 
+                {/* Project Scale section */}
+                <div className="drawer-progress-section">
+                  <label className="drawer-label">Project Scale: {project.scale ?? 5}/10</label>
+                  {isEditing ? (
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={project.scale ?? 5}
+                      onChange={(e) => updateProject(project.id, { scale: parseInt(e.target.value) })}
+                      className="drawer-progress-slider"
+                    />
+                  ) : (
+                    <div className="project-scale-bar" style={{ padding: '4px 0', background: 'transparent' }}>
+                      {Array.from({ length: 10 }, (_, i) => (
+                        <span
+                          key={i}
+                          className={`project-scale-dash ${i < (project.scale ?? 5) ? 'filled' : ''}`}
+                          style={{ height: '4px' }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Tags */}
                 <div className="drawer-section">
                   <h4 className="drawer-section-title">Tags</h4>

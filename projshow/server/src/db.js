@@ -29,6 +29,7 @@ db.exec(`
     category      TEXT DEFAULT 'other',
     status        TEXT DEFAULT 'active',
     progress      INTEGER DEFAULT 0,
+    scale         INTEGER DEFAULT 5,
     start_date    TEXT,
     end_date      TEXT,
     links         TEXT DEFAULT '[]',
@@ -86,6 +87,10 @@ try {
 
 try {
   db.exec("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1");
+} catch (e) {}
+
+try {
+  db.exec("ALTER TABLE projects ADD COLUMN scale INTEGER DEFAULT 5");
 } catch (e) {}
 
 export function saveHistorySnapshot(userId, label = 'Schedule Update') {

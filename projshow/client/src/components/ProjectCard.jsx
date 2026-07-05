@@ -27,6 +27,16 @@ export default function ProjectCard({ project, onClick }) {
       ) : (
         <ProjectArt seed={project.color_seed || project.name} />
       )}
+
+      {/* Project Scale bar: 10 dashes, filled up to scale value */}
+      <div className="project-scale-bar" title={`Project Scale: ${project.scale ?? 5}/10`}>
+        {Array.from({ length: 10 }, (_, i) => (
+          <span
+            key={i}
+            className={`project-scale-dash ${i < (project.scale ?? 5) ? 'filled' : ''}`}
+          />
+        ))}
+      </div>
       <div className="project-card-body">
         <div className="project-card-header">
           <div className="project-card-info">

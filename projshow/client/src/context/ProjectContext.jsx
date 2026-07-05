@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api/client.js';
 
 const ProjectContext = createContext(null);
@@ -6,6 +6,7 @@ const ProjectContext = createContext(null);
 export function ProjectProvider({ children }) {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
+  const selectedProjectRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -113,14 +114,20 @@ export function ProjectProvider({ children }) {
     setSharedSpaceName('');
   };
 
+  // Keep ref in sync with selectedProject state so refreshProject avoids stale closures
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
+
   // Update a single project in state without full refetch
   const refreshProject = useCallback(async (id) => {
     if (isSharedView) return; // Cannot mutate in shared view
     const updated = await api.getProject(id);
     setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)));
-    if (selectedProject?.id === id) setSelectedProject(updated);
+    // Only update selectedProject if it's still the same one (use ref to avoid stale closure)
+    if (selectedProjectRef.current?.id === id) setSelectedProject(updated);
     return updated;
-  }, [selectedProject, isSharedView]);
+  }, [isSharedView]);
 
   const updateProject = useCallback(async (id, data) => {
     if (isSharedView) return;

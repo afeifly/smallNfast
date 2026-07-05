@@ -8,6 +8,7 @@ export default function CreateProjectModal({ isOpen, onClose }) {
   const [category, setCategory] = useState('Web App');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('active');
+  const [scale, setScale] = useState(5);
 
   if (!isOpen) return null;
 
@@ -21,6 +22,7 @@ export default function CreateProjectModal({ isOpen, onClose }) {
         category: category.trim(),
         description: description.trim(),
         status,
+        scale,
         progress: 0,
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -34,6 +36,7 @@ export default function CreateProjectModal({ isOpen, onClose }) {
       setDescription('');
       setCategory('Web App');
       setStatus('active');
+      setScale(5);
     } catch (err) {
       alert('Error creating project: ' + err.message);
     }
@@ -88,6 +91,18 @@ export default function CreateProjectModal({ isOpen, onClose }) {
                 <option value="maintenance">Maintenance</option>
                 <option value="archived">Archived</option>
               </select>
+            </div>
+
+            <div className="drawer-progress-section">
+              <label className="drawer-label">Project Scale: {scale}/10 <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>(lightweight → large)</span></label>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={scale}
+                onChange={(e) => setScale(parseInt(e.target.value))}
+                className="drawer-progress-slider"
+              />
             </div>
 
             <div className="drawer-progress-section">

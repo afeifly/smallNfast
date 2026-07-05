@@ -1481,6 +1481,39 @@
   transform: scale(1.05);
 }
 
+/* Project Scale Bar */
+.project-scale-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 14px 4px;
+  background: var(--bg-secondary);
+}
+
+.project-scale-dash {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-surface);
+  border: 1px dashed var(--glass-border);
+  transition: background 0.2s var(--ease-out), border-color 0.2s;
+}
+
+.project-scale-dash.filled {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  opacity: 0.75;
+}
+
+.project-scale-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-left: 6px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
 /* Editing Forms & Lists */
 .drawer-edit-list {
   display: flex;

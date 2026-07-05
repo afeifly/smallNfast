@@ -99,7 +99,7 @@ router.patch('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!existing) return res.status(404).json({ error: 'Project not found' });
 
-  const fields = ['name', 'description', 'category', 'status', 'progress', 'start_date', 'end_date', 'color_seed'];
+  const fields = ['name', 'description', 'category', 'status', 'progress', 'scale', 'start_date', 'end_date', 'color_seed'];
   const jsonFields = ['links', 'tags', 'preview_images'];
   const updates = [];
   const values = [];

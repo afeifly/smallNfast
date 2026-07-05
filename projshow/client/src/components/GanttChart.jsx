@@ -81,15 +81,14 @@ export default function GanttChart() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Live counts for status filter options
+  // Live counts for status filter options (only active + low-priority shown in Gantt)
   const statusCounts = useMemo(() => {
     const raw = activeSnapshot ? nestSnapshotData(activeSnapshot.data) : projects;
-    const nonArchived = raw.filter((p) => p.status !== 'archived');
+    const ganttVisible = raw.filter((p) => p.status !== 'archived' && p.status !== 'maintenance');
     return {
-      all: nonArchived.length,
-      active: nonArchived.filter((p) => p.status === 'active').length,
-      'low-priority': nonArchived.filter((p) => p.status === 'low-priority').length,
-      maintenance: nonArchived.filter((p) => p.status === 'maintenance').length,
+      all: ganttVisible.length,
+      active: ganttVisible.filter((p) => p.status === 'active').length,
+      'low-priority': ganttVisible.filter((p) => p.status === 'low-priority').length,
     };
   }, [projects, activeSnapshot]);
 
@@ -132,8 +131,8 @@ export default function GanttChart() {
       rawList = projects;
     }
 
-    // Exclude archived projects from Gantt view
-    rawList = rawList.filter((p) => p.status !== 'archived');
+    // Exclude archived and maintenance projects from Gantt view
+    rawList = rawList.filter((p) => p.status !== 'archived' && p.status !== 'maintenance');
 
     // Filter by status if selected
     if (statusFilter !== 'all') {
@@ -536,7 +535,6 @@ export default function GanttChart() {
               <option value="all">All Projects ({statusCounts.all})</option>
               <option value="active">Active ({statusCounts.active})</option>
               <option value="low-priority">Low Priority ({statusCounts['low-priority']})</option>
-              <option value="maintenance">Maintenance ({statusCounts.maintenance})</option>
             </select>
           </div>
         </div>

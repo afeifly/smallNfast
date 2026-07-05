@@ -777,6 +777,27 @@
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 16px;
+  white-space: pre-wrap;
+}
+
+.drawer-desc-textarea {
+  width: 100%;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.drawer-desc-textarea:focus {
+  border-color: var(--cyan);
 }
 
 .drawer-meta {

@@ -57,6 +57,9 @@ export default function DetailDrawer() {
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Editable project description
+  const [descriptionDraft, setDescriptionDraft] = useState('');
+
   useEffect(() => {
     setActiveImgIndex(0);
     setIsEditing(false);
@@ -64,6 +67,7 @@ export default function DetailDrawer() {
     setNameDraft('');
     setEditingCategory(false);
     setCategoryDraft('');
+    setDescriptionDraft(project?.description || '');
   }, [project?.id]);
 
   useEffect(() => {
@@ -143,6 +147,12 @@ export default function DetailDrawer() {
     if (e.key === 'Escape') setEditingCategory(false);
   };
 
+  const handleDescriptionBlur = () => {
+    if (descriptionDraft !== project.description) {
+      updateProject(project.id, { description: descriptionDraft });
+    }
+  };
+
   // File upload handler
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -195,6 +205,34 @@ export default function DetailDrawer() {
   const links = project.links || [];
   const tags = project.tags || [];
   const tasks = project.tasks || [];
+
+  // Dynamic project date range calculated from tasks and milestones
+  const getProjectDateRange = () => {
+    const dates = [];
+    for (const t of tasks) {
+      if (t.start_date) dates.push(new Date(t.start_date));
+      if (t.end_date) dates.push(new Date(t.end_date));
+    }
+    const milestones = project.milestones || [];
+    for (const m of milestones) {
+      if (m.date) dates.push(new Date(m.date));
+    }
+    if (dates.length === 0) {
+      return {
+        start: project.start_date || '—',
+        end: project.end_date || '—'
+      };
+    }
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    const formatDateLocal = (d) => d.toISOString().split('T')[0];
+    return {
+      start: formatDateLocal(minDate),
+      end: formatDateLocal(maxDate)
+    };
+  };
+
+  const dateRange = getProjectDateRange();
 
   return (
     <>
@@ -322,7 +360,18 @@ export default function DetailDrawer() {
                   )}
                 </div>
 
-                <p className="drawer-desc">{project.description}</p>
+                {isEditing ? (
+                  <textarea
+                    className="drawer-desc-textarea"
+                    value={descriptionDraft}
+                    onChange={(e) => setDescriptionDraft(e.target.value)}
+                    onBlur={handleDescriptionBlur}
+                    placeholder="Enter project description..."
+                    rows={4}
+                  />
+                ) : (
+                  <p className="drawer-desc">{project.description || 'No description.'}</p>
+                )}
 
                 {/* Meta */}
                 <div className="drawer-meta">
@@ -355,7 +404,7 @@ export default function DetailDrawer() {
                   </div>
                   <div className="drawer-meta-item">
                     <Calendar size={14} />
-                    <span>{project.start_date || '—'} → {project.end_date || '—'}</span>
+                    <span>{dateRange.start} → {dateRange.end}</span>
                   </div>
                 </div>
 

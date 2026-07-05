@@ -60,6 +60,9 @@ export default function DetailDrawer() {
   // Editable project description
   const [descriptionDraft, setDescriptionDraft] = useState('');
 
+  // Drag and drop image reordering
+  const [draggedIndex, setDraggedIndex] = useState(null);
+
   useEffect(() => {
     setActiveImgIndex(0);
     setIsEditing(false);
@@ -151,6 +154,30 @@ export default function DetailDrawer() {
     if (descriptionDraft !== project.description) {
       updateProject(project.id, { description: descriptionDraft });
     }
+  };
+
+  // Image drag & drop handlers
+  const handleImageDragStart = (e, index) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleImageDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const nextImages = [...(project.preview_images || [])];
+    const draggedItem = nextImages[draggedIndex];
+
+    nextImages.splice(draggedIndex, 1);
+    nextImages.splice(index, 0, draggedItem);
+
+    setDraggedIndex(index);
+    updateProject(project.id, { preview_images: nextImages });
+  };
+
+  const handleImageDragEnd = () => {
+    setDraggedIndex(null);
   };
 
   // File upload handler
@@ -543,8 +570,17 @@ export default function DetailDrawer() {
                   {isEditing && (
                     <div className="drawer-edit-list">
                       {project.preview_images?.map((url, i) => (
-                        <div key={i} className="drawer-edit-item">
-                          <span className="drawer-edit-item-text">{url.startsWith('/uploads/') ? `📁 ${url}` : url}</span>
+                        <div
+                          key={i}
+                          className={`drawer-edit-item ${draggedIndex === i ? 'dragging' : ''}`}
+                          draggable={true}
+                          onDragStart={(e) => handleImageDragStart(e, i)}
+                          onDragOver={(e) => handleImageDragOver(e, i)}
+                          onDragEnd={handleImageDragEnd}
+                          title="Drag to rearrange order"
+                        >
+                          <div className="drawer-edit-item-drag-handle">⋮⋮</div>
+                          <span className="drawer-edit-item-text">{url.startsWith('/uploads/') ? `📁 ${url.replace('/uploads/', '')}` : url}</span>
                           <button
                             className="milestone-delete-btn"
                             onClick={() => {

@@ -1408,6 +1408,33 @@
   background: var(--bg-surface);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
+  cursor: grab;
+  user-select: none;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.drawer-edit-item:active {
+  cursor: grabbing;
+}
+
+.drawer-edit-item.dragging {
+  opacity: 0.4;
+  border: 1px dashed var(--cyan);
+  background: var(--glass-bg);
+}
+
+.drawer-edit-item-drag-handle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: bold;
+  padding: 0 4px;
+  cursor: grab;
+  opacity: 0.6;
+}
+
+.drawer-edit-item:hover .drawer-edit-item-drag-handle {
+  color: var(--cyan);
+  opacity: 1;
 }
 
 .drawer-edit-item-text {

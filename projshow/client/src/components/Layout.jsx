@@ -5,34 +5,6 @@ import { useTheme } from '../context/ThemeContext.jsx';
 import ViewToggle from './ViewToggle.jsx';
 import SettingsModal from './SettingsModal.jsx';
 
-function MilestoneLogo({ size = 24, className }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-    >
-      <defs>
-        <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="var(--cyan)" />
-          <stop offset="100%" stopColor="var(--indigo)" />
-        </linearGradient>
-      </defs>
-      {/* Base stand */}
-      <path d="M6 21H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
-      {/* Post */}
-      <path d="M12 21V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
-      {/* Milestone diamond at top */}
-      <path d="M12 4L18 7L12 10L6 7L12 4Z" fill="url(#logoGrad)" />
-      {/* Signboard pointing right */}
-      <path d="M12 11L19 13.5L12 16V11Z" fill="url(#logoGrad)" opacity="0.95" />
-    </svg>
-  );
-}
-
 export default function Layout({ children, view, onToggleView, onAddProject }) {
   const { projects, loading, setSelectedProject, currentUser, isSharedView, sharedSpaceName, logout } = useProjects();
   const { theme, toggleTheme } = useTheme();
@@ -65,7 +37,18 @@ export default function Layout({ children, view, onToggleView, onAddProject }) {
     <div className="layout">
       <header className="layout-header glass-panel">
         <div className="layout-brand">
-          <MilestoneLogo size={24} className="layout-logo" />
+          <div className="layout-logo-wrapper">
+            <div className="logo-icon-milestone">
+              <div className="logo-signpost-post" />
+              <div className="logo-signpost-arm right">
+                <span>ProJ</span>
+              </div>
+              <div className="logo-signpost-arm left">
+                <span>View</span>
+              </div>
+              <div className="logo-signpost-foundation" />
+            </div>
+          </div>
           <h1 className="layout-title">
             <span className="layout-title-proj">ProJ</span>
             <span className="layout-title-show">View</span>

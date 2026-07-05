@@ -32,16 +32,16 @@ export default function Login() {
           <div className="logo-icon-milestone">
             <div className="logo-signpost-post" />
             <div className="logo-signpost-arm right">
-              <span>Proj</span>
+              <span>ProJ</span>
             </div>
             <div className="logo-signpost-arm left">
-              <span>Show</span>
+              <span>View</span>
             </div>
             <div className="logo-signpost-foundation" />
           </div>
           <h2 className="login-title">
-            <span className="layout-title-proj">Proj</span>
-            <span className="layout-title-show">Show</span>
+            <span className="layout-title-proj">ProJ</span>
+            <span className="layout-title-show">View</span>
           </h2>
           <p className="login-subtitle">Workspace Management Dashboard</p>
         </div>
@@ -79,10 +79,6 @@ export default function Login() {
             {loading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
-
-        <div className="login-footer">
-          <p>Default Admin: <strong>admin</strong> / <strong>12345</strong></p>
-        </div>
       </div>
     </div>
   );

@@ -142,6 +142,22 @@ function LaneSection({ lane, laneProjects, userId, isOwner, onSelect }) {
   );
 }
 
+function getFarthestTaskTimestamp(project) {
+  const tasks = project.tasks || [];
+  let maxTime = 0;
+  for (const t of tasks) {
+    if (t.end_date) {
+      const time = new Date(t.end_date).getTime();
+      if (time > maxTime) maxTime = time;
+    }
+    if (t.start_date) {
+      const time = new Date(t.start_date).getTime();
+      if (time > maxTime) maxTime = time;
+    }
+  }
+  return maxTime;
+}
+
 // ── Main BoardView ─────────────────────────────────────────────────────────
 export default function BoardView() {
   const { projects, setSelectedProject, currentUser, isSharedView } = useProjects();
@@ -151,8 +167,18 @@ export default function BoardView() {
   return (
     <div className="board-view">
       {LANES.map((lane) => {
-        const laneProjects = projects.filter((p) => p.status === lane.key);
+        let laneProjects = projects.filter((p) => p.status === lane.key);
         if (laneProjects.length === 0) return null;
+
+        if (lane.key === 'active') {
+          laneProjects = [...laneProjects].sort((a, b) => {
+            const timeA = getFarthestTaskTimestamp(a);
+            const timeB = getFarthestTaskTimestamp(b);
+            if (timeA !== timeB) return timeB - timeA; // Farthest first
+            return new Date(b.created_at) - new Date(a.created_at);
+          });
+        }
+
         return (
           <LaneSection
             key={lane.key}

@@ -102,10 +102,37 @@ export default function GanttChart() {
   const zoomConfig = ZOOM_LEVELS[zoom];
 
   const displayProjects = useMemo(() => {
+    let rawList = [];
     if (activeSnapshot) {
-      return nestSnapshotData(activeSnapshot.data);
+      rawList = nestSnapshotData(activeSnapshot.data);
+    } else {
+      rawList = projects;
     }
-    return projects;
+
+    const active = rawList.filter((p) => p.status === 'active').sort((a, b) => {
+      const getFarthest = (proj) => {
+        const tasks = proj.tasks || [];
+        let maxTime = 0;
+        for (const t of tasks) {
+          if (t.end_date) {
+            const time = new Date(t.end_date).getTime();
+            if (time > maxTime) maxTime = time;
+          }
+          if (t.start_date) {
+            const time = new Date(t.start_date).getTime();
+            if (time > maxTime) maxTime = time;
+          }
+        }
+        return maxTime;
+      };
+      const timeA = getFarthest(a);
+      const timeB = getFarthest(b);
+      if (timeA !== timeB) return timeB - timeA; // Farthest first
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    const others = rawList.filter((p) => p.status !== 'active');
+    return [...active, ...others];
   }, [projects, activeSnapshot]);
 
   // Flatten into rows: project headers + tasks

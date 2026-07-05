@@ -12,7 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
+  padding: 8px 24px;
   border-radius: 0;
   border-bottom: 1px solid var(--glass-border);
   gap: 24px;
@@ -24,8 +24,21 @@
   gap: 10px;
 }
 
-.layout-logo {
-  color: var(--cyan);
+.layout-logo-wrapper {
+  width: 16px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.layout-logo-wrapper .logo-icon-milestone {
+  transform: scale(0.28);
+  transform-origin: center;
+  margin: 0 !important;
+  position: absolute;
 }
 
 .layout-title {

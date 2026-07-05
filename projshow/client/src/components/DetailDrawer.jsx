@@ -44,6 +44,11 @@ export default function DetailDrawer() {
   const [nameDraft, setNameDraft] = useState('');
   const nameInputRef = useRef(null);
 
+  // Editable project category (type)
+  const [editingCategory, setEditingCategory] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const categoryInputRef = useRef(null);
+
   // Tag management
   const [newTag, setNewTag] = useState('');
 
@@ -57,6 +62,8 @@ export default function DetailDrawer() {
     setIsEditing(false);
     setEditingName(false);
     setNameDraft('');
+    setEditingCategory(false);
+    setCategoryDraft('');
   }, [project?.id]);
 
   useEffect(() => {
@@ -65,6 +72,13 @@ export default function DetailDrawer() {
       nameInputRef.current.select();
     }
   }, [editingName]);
+
+  useEffect(() => {
+    if (editingCategory && categoryInputRef.current) {
+      categoryInputRef.current.focus();
+      categoryInputRef.current.select();
+    }
+  }, [editingCategory]);
 
   if (!project) return null;
 
@@ -114,6 +128,19 @@ export default function DetailDrawer() {
   const handleNameKeyDown = (e) => {
     if (e.key === 'Enter') handleNameSave();
     if (e.key === 'Escape') setEditingName(false);
+  };
+
+  // Commit edited category
+  const handleCategorySave = () => {
+    if (categoryDraft.trim() && categoryDraft.trim() !== project.category) {
+      updateProject(project.id, { category: categoryDraft.trim() });
+    }
+    setEditingCategory(false);
+  };
+
+  const handleCategoryKeyDown = (e) => {
+    if (e.key === 'Enter') handleCategorySave();
+    if (e.key === 'Escape') setEditingCategory(false);
   };
 
   // File upload handler
@@ -222,7 +249,7 @@ export default function DetailDrawer() {
                 )}
               </div>
             ) : (
-              <ProjectArt seed={project.color_seed || project.name} height={540} />
+              <ProjectArt seed={project.color_seed || project.name} width={640} height={200} />
             )}
             <div className="drawer-header-actions">
               {!isSharedView && (
@@ -293,7 +320,30 @@ export default function DetailDrawer() {
                 <div className="drawer-meta">
                   <div className="drawer-meta-item">
                     <Tag size={14} />
-                    <span>{project.category}</span>
+                    {isEditing && editingCategory ? (
+                      <input
+                        ref={categoryInputRef}
+                        className="drawer-category-input"
+                        value={categoryDraft}
+                        onChange={(e) => setCategoryDraft(e.target.value)}
+                        onBlur={handleCategorySave}
+                        onKeyDown={handleCategoryKeyDown}
+                      />
+                    ) : (
+                      <span
+                        className={isEditing ? 'drawer-category-editable' : ''}
+                        onClick={() => {
+                          if (isEditing) {
+                            setCategoryDraft(project.category);
+                            setEditingCategory(true);
+                          }
+                        }}
+                        title={isEditing ? 'Click to edit category' : undefined}
+                      >
+                        {project.category}
+                        {isEditing && <span className="drawer-category-edit-hint"> ✎</span>}
+                      </span>
+                    )}
                   </div>
                   <div className="drawer-meta-item">
                     <Calendar size={14} />

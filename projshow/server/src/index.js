@@ -6,6 +6,7 @@ import taskRoutes from './routes/tasks.js';
 import milestoneRoutes from './routes/milestones.js';
 import authRoutes from './routes/auth.js';
 import uploadRoutes from './routes/upload.js';
+import archiveRoutes from './routes/archive.js';
 import { seedDatabase } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,6 +22,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api', taskRoutes);
 app.use('/api', milestoneRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/archive', archiveRoutes);
 
 // Serve uploaded images
 const uploadsDir = path.join(__dirname, '..', 'data', 'uploads');

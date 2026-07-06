@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client.js';
 import { useProjects } from '../context/ProjectContext.jsx';
 import {
   X, User, ShieldAlert, UserPlus, Users,
-  UserX, UserCheck, LogIn, Eye, EyeOff, KeyRound, Save
+  UserX, UserCheck, LogIn, Eye, EyeOff, KeyRound, Save,
+  ArchiveIcon, UploadCloud
 } from 'lucide-react';
 
 // ───────────── Profile Tab (all users) ─────────────
-function ProfileTab({ currentUser, updateMe, onClose }) {
+function ProfileTab({ currentUser, updateMe, fetchProjects, onClose }) {
   const [spaceName, setSpaceName] = useState(currentUser?.space_name || '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -15,6 +16,17 @@ function ProfileTab({ currentUser, updateMe, onClose }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
+
+  // Import state
+  const importInputRef = useRef(null);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState(null);
+  const [importSuccess, setImportSuccess] = useState(null); // { projects, tasks, milestones, images }
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -48,6 +60,43 @@ function ProfileTab({ currentUser, updateMe, onClose }) {
       setError(err.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExportError(null);
+    setExporting(true);
+    try {
+      await api.exportSpace();
+    } catch (err) {
+      setExportError(err.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFileChange = (e) => {
+    setImportFile(e.target.files[0] || null);
+    setImportError(null);
+    setImportSuccess(null);
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImportError(null);
+    setImportSuccess(null);
+    setImporting(true);
+    try {
+      const result = await api.importSpace(importFile);
+      setImportSuccess(result.imported);
+      setImportFile(null);
+      if (importInputRef.current) importInputRef.current.value = '';
+      await fetchProjects();
+      setTimeout(() => setImportSuccess(null), 6000);
+    } catch (err) {
+      setImportError(err.message || 'Import failed');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -112,6 +161,84 @@ function ProfileTab({ currentUser, updateMe, onClose }) {
           <Save size={15} />
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
+      </div>
+
+      {/* ── Space Backup ── */}
+      <div className="settings-divider"><span>Space Backup</span></div>
+
+      <div className="space-backup-section">
+        {/* Export */}
+        <div className="space-backup-row">
+          <div className="space-backup-row-info">
+            <ArchiveIcon size={15} className="space-backup-icon export-icon" />
+            <div>
+              <div className="space-backup-row-title">Export Space</div>
+              <div className="space-backup-row-desc">Download all projects, tasks, milestones &amp; images as a .zip file.</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="space-backup-btn export-btn"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            {exporting ? (
+              <><span className="space-backup-spinner" />Exporting…</>
+            ) : (
+              <><ArchiveIcon size={13} />Export Space</>
+            )}
+          </button>
+        </div>
+        {exportError && <div className="space-backup-error">{exportError}</div>}
+
+        {/* Import */}
+        <div className="space-backup-row" style={{ marginTop: 10 }}>
+          <div className="space-backup-row-info">
+            <UploadCloud size={15} className="space-backup-icon import-icon" />
+            <div>
+              <div className="space-backup-row-title">Import Space</div>
+              <div className="space-backup-row-desc">Restore from a .zip backup. Existing projects are kept — new ones are added.</div>
+            </div>
+          </div>
+          <div className="space-backup-import-controls">
+            <label className="space-backup-file-label" htmlFor="import-zip-input">
+              {importFile ? (
+                <span className="space-backup-file-chip">📦 {importFile.name}</span>
+              ) : (
+                <span className="space-backup-file-chip empty">Choose .zip…</span>
+              )}
+            </label>
+            <input
+              id="import-zip-input"
+              ref={importInputRef}
+              type="file"
+              accept=".zip,application/zip,application/x-zip-compressed"
+              style={{ display: 'none' }}
+              onChange={handleImportFileChange}
+            />
+            <button
+              type="button"
+              className="space-backup-btn import-btn"
+              onClick={handleImport}
+              disabled={!importFile || importing}
+            >
+              {importing ? (
+                <><span className="space-backup-spinner" />Importing…</>
+              ) : (
+                <><UploadCloud size={13} />Import &amp; Restore</>
+              )}
+            </button>
+          </div>
+        </div>
+        {importError && <div className="space-backup-error">{importError}</div>}
+        {importSuccess && (
+          <div className="space-backup-success">
+            ✓ Imported {importSuccess.projects} project{importSuccess.projects !== 1 ? 's' : ''},
+            {' '}{importSuccess.tasks} task{importSuccess.tasks !== 1 ? 's' : ''},
+            {' '}{importSuccess.milestones} milestone{importSuccess.milestones !== 1 ? 's' : ''},
+            {' '}{importSuccess.images} image{importSuccess.images !== 1 ? 's' : ''}
+          </div>
+        )}
       </div>
     </form>
   );
@@ -298,7 +425,7 @@ function AddUserTab() {
 
 // ───────────── Main SettingsModal ─────────────
 export default function SettingsModal({ isOpen, onClose }) {
-  const { currentUser, loginAs, updateMe } = useProjects();
+  const { currentUser, loginAs, updateMe, fetchProjects } = useProjects();
   const isAdmin = currentUser?.role === 'admin';
 
   const TABS = [
@@ -351,7 +478,7 @@ export default function SettingsModal({ isOpen, onClose }) {
         {/* Tab content */}
         {tab === 'profile' && (
           <div className="admin-tab-content">
-            <ProfileTab currentUser={currentUser} updateMe={updateMe} onClose={onClose} />
+            <ProfileTab currentUser={currentUser} updateMe={updateMe} fetchProjects={fetchProjects} onClose={onClose} />
           </div>
         )}
         {tab === 'users' && isAdmin && (

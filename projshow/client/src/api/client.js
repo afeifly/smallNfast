@@ -17,6 +17,30 @@ async function request(url, options = {}) {
   return res.json();
 }
 
+// Download a response as a file without parsing JSON
+async function downloadBlob(url, defaultFilename) {
+  const token = localStorage.getItem('projshow_token');
+  const res = await fetch(`${BASE}${url}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Request failed: ${res.status}`);
+  }
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+  const filename = filenameMatch ? filenameMatch[1] : defaultFilename;
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
+
 export const api = {
   // Auth
   login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -27,6 +51,24 @@ export const api = {
   activateUser: (id) => request(`/auth/users/${id}/activate`, { method: 'PATCH' }),
   impersonateUser: (id) => request(`/auth/impersonate/${id}`, { method: 'POST' }),
   updateMe: (data) => request('/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
+
+  // Space backup
+  exportSpace: () => downloadBlob('/archive/export', 'projshow-space.zip'),
+  importSpace: async (file) => {
+    const token = localStorage.getItem('projshow_token');
+    const formData = new FormData();
+    formData.append('archive', file);
+    const res = await fetch(`${BASE}/archive/import`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `Import failed: ${res.status}`);
+    }
+    return res.json();
+  },
 
   // Image upload (multipart/form-data — no JSON header)
   uploadImage: async (file) => {

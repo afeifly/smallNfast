@@ -7,9 +7,11 @@
     "start": "node src/index.js"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "better-sqlite3": "^11.7.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "unzipper": "^0.12.5"
   }
 }

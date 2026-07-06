@@ -60,6 +60,10 @@ export default function DetailDrawer() {
   // Editable project description
   const [descriptionDraft, setDescriptionDraft] = useState('');
 
+  // Local draft states for sliders (instant visual feedback, persist only on mouse-up)
+  const [progressDraft, setProgressDraft] = useState(0);
+  const [scaleDraft, setScaleDraft] = useState(5);
+
   // Drag and drop image reordering
   const [draggedIndex, setDraggedIndex] = useState(null);
 
@@ -71,6 +75,8 @@ export default function DetailDrawer() {
     setEditingCategory(false);
     setCategoryDraft('');
     setDescriptionDraft(project?.description || '');
+    setProgressDraft(project?.progress ?? 0);
+    setScaleDraft(project?.scale ?? 5);
   }, [project?.id]);
 
   useEffect(() => {
@@ -93,10 +99,6 @@ export default function DetailDrawer() {
 
   const handleStatusChange = (e) => {
     updateProject(project.id, { status: e.target.value });
-  };
-
-  const handleProgressChange = (e) => {
-    updateProject(project.id, { progress: parseInt(e.target.value) });
   };
 
   const handleTaskStatusToggle = (task) => {
@@ -441,14 +443,15 @@ export default function DetailDrawer() {
 
                 {/* Progress section */}
                 <div className="drawer-progress-section">
-                  <label className="drawer-label">Progress: {project.progress}%</label>
+                  <label className="drawer-label">Progress: {progressDraft}%</label>
                   {isEditing ? (
                     <input
                       type="range"
                       min="0"
                       max="100"
-                      value={project.progress}
-                      onChange={handleProgressChange}
+                      value={progressDraft}
+                      onChange={(e) => setProgressDraft(parseInt(e.target.value))}
+                      onMouseUp={(e) => updateProject(project.id, { progress: parseInt(e.target.value) })}
                       className="drawer-progress-slider"
                     />
                   ) : (
@@ -462,14 +465,15 @@ export default function DetailDrawer() {
 
                 {/* Project Scale section */}
                 <div className="drawer-progress-section">
-                  <label className="drawer-label">Project Scale: {project.scale ?? 5}/10</label>
+                  <label className="drawer-label">Project Scale: {scaleDraft}/10</label>
                   {isEditing ? (
                     <input
                       type="range"
                       min="1"
                       max="10"
-                      value={project.scale ?? 5}
-                      onChange={(e) => updateProject(project.id, { scale: parseInt(e.target.value) })}
+                      value={scaleDraft}
+                      onChange={(e) => setScaleDraft(parseInt(e.target.value))}
+                      onMouseUp={(e) => updateProject(project.id, { scale: parseInt(e.target.value) })}
                       className="drawer-progress-slider"
                     />
                   ) : (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"smallNfast/internal/config"
 	"smallNfast/internal/db"
 	"smallNfast/internal/logger"
@@ -176,6 +177,55 @@ func (a *App) SetLanguage(lang string) string {
 	return "Monitor not ready"
 }
 
+// SendTestSMS sends a one-off test SMS to the given number.
+// Returns "" on success, or an error message string on failure.
+func (a *App) SendTestSMS(number string, text string) string {
+	number = strings.TrimSpace(number)
+	text = strings.TrimSpace(text)
+	if number == "" || text == "" {
+		return "Number and message must not be empty"
+	}
+
+	a.AddLog(fmt.Sprintf("Test SMS → %s : \"%s\"", number, text))
+
+	// Use the monitor's active modem if available
+	if a.Monitor != nil && a.Monitor.Modem != nil {
+		err := a.Monitor.Modem.SendSMS(number, text)
+		if err != nil {
+			a.AddLog(fmt.Sprintf("Test SMS FAILED: %v", err))
+			return fmt.Sprintf("Failed: %v", err)
+		}
+		a.AddLog("Test SMS sent successfully.")
+		return ""
+	}
+
+	// Modem not initialised yet — try a quick one-shot connect
+	a.AddLog("Modem not running. Attempting one-shot connect for test SMS...")
+	port, err := serial.FindModemPort()
+	if err != nil {
+		msg := fmt.Sprintf("No modem found: %v", err)
+		a.AddLog("Test SMS FAILED: " + msg)
+		return msg
+	}
+
+	modem := serial.NewGSMModem(port, func(msg string, _ bool) { a.AddLog(msg) })
+	if err := modem.Connect(); err != nil {
+		msg := fmt.Sprintf("Modem connect failed: %v", err)
+		a.AddLog("Test SMS FAILED: " + msg)
+		return msg
+	}
+	defer modem.Close()
+
+	if err := modem.SendSMS(number, text); err != nil {
+		msg := fmt.Sprintf("Send failed: %v", err)
+		a.AddLog("Test SMS FAILED: " + msg)
+		return msg
+	}
+
+	a.AddLog("Test SMS sent successfully.")
+	return ""
+}
+
 func (a *App) ExitApp() {
 	a.AddLog("Exiting SMSCat...")
 	a.IsQuitting = true // Set flag to allow actual exit
@@ -187,3 +237,4 @@ func (a *App) ExitApp() {
 		os.Exit(0)
 	}
 }
+

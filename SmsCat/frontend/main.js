@@ -35,7 +35,18 @@ const i18n = {
             <li><strong>Auto-Start:</strong> Supports starting automatically with Windows (Enable via checkbox).</li>
             <li><strong>Auto-Detection</strong>: Program automatically scans for 4G/GSM modem devices.</li>
         </ul >
-        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.1.0</p>`
+        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.3.0</p>`,
+        tabGuide: "Guide",
+        tabTestSms: "Quick Test SMS",
+        testSmsTitle: "Send a Test Message",
+        testSmsDesc: "Use the modem to send a one-off test SMS immediately.",
+        testSmsNumber: "Recipient Number",
+        testSmsNumberPlaceholder: "+60123456789",
+        testSmsText: "Message",
+        testSmsTextPlaceholder: "Test message from SMSCat...",
+        testSmsSend: "Send Test SMS",
+        testSmsSending: "Sending...",
+        testSmsOk: "✓ Sent successfully!",
     },
     cn: {
         monitorService: "SMSCat 服务:",
@@ -63,7 +74,18 @@ const i18n = {
         <li><strong>自动启动</strong>: 勾选 "开机自动启动" 可随 Windows 启动.</li>
         <li><strong>自动检测</strong>: 程序自动扫描 4G/GSM Modem 设备.</li>
         </ul>
-        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">版本: 1.0.0</p>`
+        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">版本: 1.3.0</p>`,
+        tabGuide: "使用说明",
+        tabTestSms: "快速测试短信",
+        testSmsTitle: "发送测试短信",
+        testSmsDesc: "通过 Modem 立即发送一条测试短信。",
+        testSmsNumber: "收件人号码",
+        testSmsNumberPlaceholder: "+60123456789",
+        testSmsText: "消息内容",
+        testSmsTextPlaceholder: "SMSCat 测试消息...",
+        testSmsSend: "发送测试短信",
+        testSmsSending: "发送中...",
+        testSmsOk: "✓ 发送成功!",
     }
 };
 let currentLang = "en";
@@ -338,16 +360,86 @@ function updateLanguageUI() {
 }
 
 
-// Help Page Logic
+// Help / About Modal with tabs
 function openHelp() {
     const t = i18n[currentLang];
+    // Update tab labels
+    document.getElementById('about-tab-guide').innerText = t.tabGuide;
+    document.getElementById('about-tab-test').innerText = t.tabTestSms;
+    // Update guide content
     document.getElementById('help-title').innerText = t.helpTitle;
     document.getElementById('help-body').innerHTML = t.helpBody;
+    // Update test SMS labels
+    document.getElementById('lbl-test-number').innerText = t.testSmsNumber;
+    document.getElementById('lbl-test-text').innerText = t.testSmsText;
+    document.getElementById('input-test-number').placeholder = t.testSmsNumberPlaceholder;
+    document.getElementById('input-test-text').placeholder = t.testSmsTextPlaceholder;
+    document.getElementById('btn-send-test').innerText = t.testSmsSend;
+    // Always start on Guide tab
+    switchAboutTab('guide');
     document.getElementById('help-modal').style.display = 'flex';
 }
 
 function closeHelp() {
     document.getElementById('help-modal').style.display = 'none';
+    // Reset test SMS state
+    document.getElementById('input-test-number').value = '';
+    document.getElementById('input-test-text').value = '';
+    document.getElementById('test-sms-result').style.display = 'none';
+}
+
+function switchAboutTab(tab) {
+    const isGuide = tab === 'guide';
+    document.getElementById('about-panel-guide').style.display = isGuide ? 'block' : 'none';
+    document.getElementById('about-panel-test').style.display = isGuide ? 'none' : 'block';
+    document.getElementById('about-tab-guide').classList.toggle('about-tab-active', isGuide);
+    document.getElementById('about-tab-test').classList.toggle('about-tab-active', !isGuide);
+}
+
+async function sendTestSms() {
+    const number = document.getElementById('input-test-number').value.trim();
+    const text   = document.getElementById('input-test-text').value.trim();
+    const t = i18n[currentLang];
+    const btn    = document.getElementById('btn-send-test');
+    const result = document.getElementById('test-sms-result');
+
+    if (!number || !text) {
+        result.style.display = 'block';
+        result.style.color = '#dc3545';
+        result.style.background = '#fff0f0';
+        result.style.borderColor = '#f5c6cb';
+        result.innerText = 'Please fill in both number and message.';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerText = t.testSmsSending;
+    result.style.display = 'none';
+
+    try {
+        const errMsg = await callBackend('SendTestSMS', number, text);
+        result.style.display = 'block';
+        if (errMsg === '' || errMsg === null) {
+            result.style.color = '#155724';
+            result.style.background = '#d4edda';
+            result.style.borderColor = '#c3e6cb';
+            result.innerText = t.testSmsOk;
+        } else {
+            result.style.color = '#721c24';
+            result.style.background = '#f8d7da';
+            result.style.borderColor = '#f5c6cb';
+            result.innerText = '✗ ' + errMsg;
+        }
+    } catch (e) {
+        result.style.display = 'block';
+        result.style.color = '#721c24';
+        result.style.background = '#f8d7da';
+        result.style.borderColor = '#f5c6cb';
+        result.innerText = '✗ ' + e;
+    } finally {
+        btn.disabled = false;
+        btn.innerText = t.testSmsSend;
+    }
 }
 
 // Make functions global for onclick
@@ -359,3 +451,5 @@ window.restartService = restartService;
 window.toggleLanguage = toggleLanguage;
 window.openHelp = openHelp;
 window.closeHelp = closeHelp;
+window.switchAboutTab = switchAboutTab;
+window.sendTestSms = sendTestSms;

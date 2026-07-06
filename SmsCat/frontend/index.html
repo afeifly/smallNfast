@@ -321,19 +321,53 @@
         SUTO-iTEC &copy; All rights reserved 2026
     </div>
 
-    <!-- Wails Runtime (Loaded automatically in build, mocked here) -->
-    <script src="/wails/runtime.js"></script>
-    <!-- Help Modal -->
+    <!-- About / Help Modal with tabs -->
     <div id="help-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content">
-            <h2 id="help-title">SMSCat Guide</h2>
-            <div id="help-body" style="text-align: left; line-height: 1.6; margin: 20px 0;">
-                <!-- Content injected by JS -->
+        <div class="modal-content" style="max-width:520px; padding:0; overflow:hidden;">
+            <!-- Tab Bar -->
+            <div class="about-tab-bar">
+                <button id="about-tab-guide" class="about-tab about-tab-active" onclick="switchAboutTab('guide')">Guide</button>
+                <button id="about-tab-test" class="about-tab" onclick="switchAboutTab('test')">Quick Test SMS</button>
+                <button onclick="closeHelp()" style="margin-left:auto; background:none; border:none; cursor:pointer; color:#aaa; font-size:1.3rem; padding:0 16px; width:auto;">&times;</button>
             </div>
-            <button onclick="closeHelp()"
-                style="background:#00AB84; color:white; border:none; padding:10px 25px; border-radius:5px; cursor:pointer; font-size:1rem;">OK</button>
+
+            <!-- Guide Panel -->
+            <div id="about-panel-guide" style="padding:24px;">
+                <h2 id="help-title" style="margin-top:0;">SMSCat Guide</h2>
+                <div id="help-body" style="text-align:left; line-height:1.6; margin:16px 0;"></div>
+                <button onclick="closeHelp()" style="background:#00AB84; color:white; border:none; padding:10px 25px; border-radius:5px; cursor:pointer; font-size:1rem;">OK</button>
+            </div>
+
+            <!-- Quick Test SMS Panel -->
+            <div id="about-panel-test" style="padding:24px; display:none;">
+                <h2 style="margin-top:0; color:#333;">&#x1F4F1; Quick Test SMS</h2>
+                <p style="color:#666; font-size:0.88rem; margin-bottom:18px;">Send a one-off test message directly via the GSM modem.</p>
+
+                <div class="form-group">
+                    <label id="lbl-test-number" style="font-weight:600;">Recipient Number</label>
+                    <input id="input-test-number" type="tel" placeholder="+60123456789"
+                        style="margin-top:4px; border:1.5px solid #ddd; border-radius:5px; padding:9px 10px; font-size:0.95rem;">
+                </div>
+
+                <div class="form-group">
+                    <label id="lbl-test-text" style="font-weight:600;">Message</label>
+                    <textarea id="input-test-text" rows="3" placeholder="Test message from SMSCat..."
+                        style="width:100%; margin-top:4px; border:1.5px solid #ddd; border-radius:5px; padding:9px 10px; font-size:0.95rem; box-sizing:border-box; resize:vertical; font-family:inherit;"></textarea>
+                </div>
+
+                <button id="btn-send-test" onclick="sendTestSms()"
+                    style="background:linear-gradient(135deg,#00AB84,#007bff); color:white; border:none; padding:11px 0; border-radius:5px; cursor:pointer; font-size:0.95rem; font-weight:600; width:100%; transition:opacity 0.2s;">
+                    &#x2709;&#xFE0F; Send Test SMS
+                </button>
+
+                <div id="test-sms-result"
+                    style="display:none; margin-top:14px; padding:10px 14px; border-radius:5px; border:1px solid; font-size:0.88rem; font-weight:500;"></div>
+            </div>
         </div>
     </div>
+
+    <!-- Wails Runtime (Loaded automatically in build, mocked here) -->
+    <script src="/wails/runtime.js"></script>
 
     <style>
         .modal-overlay {
@@ -351,12 +385,12 @@
 
         .modal-content {
             background: white;
-            padding: 30px;
             border-radius: 12px;
             width: 90%;
             max-width: 500px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
             text-align: center;
+            overflow: hidden;
         }
 
         .modal-content h2 {
@@ -373,6 +407,36 @@
 
         .modal-content li {
             margin-bottom: 10px;
+        }
+
+        /* About Tab Bar */
+        .about-tab-bar {
+            display: flex;
+            align-items: stretch;
+            background: #f8f8f8;
+            border-bottom: 2px solid #e8e8e8;
+        }
+        .about-tab {
+            background: none;
+            border: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: #777;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: color 0.15s, border-color 0.15s;
+            width: auto;
+        }
+        .about-tab:hover {
+            color: #00AB84;
+            background: rgba(0,171,132,0.06);
+        }
+        .about-tab-active {
+            color: #00AB84 !important;
+            border-bottom-color: #00AB84 !important;
+            background: white;
         }
     </style>
 

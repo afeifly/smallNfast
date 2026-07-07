@@ -118,11 +118,11 @@ func (s *Service) SetLanguage(lang string) {
 }
 
 func (s *Service) log(msg string, verbose bool) {
-	if verbose {
-		// Verbose logs only go to File Logger, NOT UI
-		logger.Write(msg)
-	} else {
-		// Non-verbose logs go to UI (which implies File Logger too usually via App.AddLog)
+	// Always write to file log so alarm SMS events are always persisted
+	logger.Write(msg)
+
+	if !verbose {
+		// Non-verbose logs ALSO go to the UI
 		if s.LogFunc != nil {
 			s.LogFunc(msg)
 		} else {

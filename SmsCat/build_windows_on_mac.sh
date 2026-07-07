@@ -1,7 +1,19 @@
 #!/bin/bash
 # Cross-compile script to build Windows EXE on macOS
 
-OUTPUT_NAME="SMSCat.exe"
+# 0. Read version from .env file
+RAW_VERSION="1.3.0"
+if [ -f ".env" ]; then
+    # Extract VERSION=x.y.z and strip quotes
+    RAW_VERSION=$(grep -E '^VERSION=' .env | cut -d= -f2 | tr -d '"' | tr -d "'")
+    if [ -z "$RAW_VERSION" ]; then
+        RAW_VERSION="1.3.0"
+    fi
+fi
+
+# Convert dots to underscores (e.g. 1.3.0 -> 1_3_0)
+VERSION_UNDERSCORES=$(echo "$RAW_VERSION" | tr '.' '_')
+OUTPUT_NAME="smscat_${VERSION_UNDERSCORES}.exe"
 WEBVIEW_ZIP="internal/webview_runtime/WebView2.zip"
 
 # Parse arguments

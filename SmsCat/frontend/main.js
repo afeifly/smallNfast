@@ -34,8 +34,7 @@ const i18n = {
             <li><strong>Monitoring:</strong> The service automatically monitors alarms and sends SMS to all active recipients.</li>
             <li><strong>Auto-Start:</strong> Supports starting automatically with Windows (Enable via checkbox).</li>
             <li><strong>Auto-Detection</strong>: Program automatically scans for 4G/GSM modem devices.</li>
-        </ul >
-        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">Version: 1.3.0</p>`,
+        </ul >`,
         tabGuide: "Guide",
         tabTestSms: "Quick Test SMS",
         testSmsTitle: "Send a Test Message",
@@ -73,8 +72,7 @@ const i18n = {
         <li><strong>报警监控</strong>: 自动读取数据库报警, 并向所有接收人发送短信.</li>
         <li><strong>自动启动</strong>: 勾选 "开机自动启动" 可随 Windows 启动.</li>
         <li><strong>自动检测</strong>: 程序自动扫描 4G/GSM Modem 设备.</li>
-        </ul>
-        <p style="margin-top:15px; font-size:0.8rem; color:#888; text-align:center;">版本: 1.3.0</p>`,
+        </ul>`,
         tabGuide: "使用说明",
         tabTestSms: "快速测试短信",
         testSmsTitle: "发送测试短信",
@@ -361,7 +359,7 @@ function updateLanguageUI() {
 
 
 // Help / About Modal with tabs
-function openHelp() {
+async function openHelp() {
     const t = i18n[currentLang];
     // Update tab labels
     document.getElementById('about-tab-guide').innerText = t.tabGuide;
@@ -369,6 +367,24 @@ function openHelp() {
     // Update guide content
     document.getElementById('help-title').innerText = t.helpTitle;
     document.getElementById('help-body').innerHTML = t.helpBody;
+    
+    // Fetch version from backend dynamically
+    const verEl = document.getElementById('app-version');
+    if (verEl) {
+        try {
+            const ver = await callBackend('GetVersion');
+            if (ver) {
+                const label = currentLang === 'cn' ? '版本' : 'Version';
+                verEl.innerText = `${label}: ${ver}`;
+            } else {
+                verEl.innerText = '';
+            }
+        } catch (e) {
+            console.error("Failed to fetch version from backend:", e);
+            verEl.innerText = '';
+        }
+    }
+
     // Update test SMS labels
     document.getElementById('lbl-test-number').innerText = t.testSmsNumber;
     document.getElementById('lbl-test-text').innerText = t.testSmsText;

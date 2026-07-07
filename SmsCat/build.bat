@@ -1,6 +1,22 @@
 @echo off
 setlocal
 
+REM Read version from .env file
+set "RAW_VERSION=1.3.0"
+if exist ".env" (
+    for /f "tokens=2 delims==" %%I in ('findstr "VERSION" .env') do (
+        set "RAW_VERSION=%%I"
+    )
+)
+REM Strip quotes and spaces if any
+set "RAW_VERSION=%RAW_VERSION:"=%"
+set "RAW_VERSION=%RAW_VERSION:'=%"
+set "RAW_VERSION=%RAW_VERSION: =%"
+
+REM Replace dots with underscores (e.g. 1.3.0 -> 1_3_0)
+set "VERSION_UNDERSCORES=%RAW_VERSION:.=_%"
+set "OUTPUT_NAME=smscat_%VERSION_UNDERSCORES%.exe"
+
 REM Win7 Build Option
 set "BUILD_MODE=normal"
 set /P BUILD_INPUT=Do you want to build for Windows 7 with Embedded WebView2? (Y/N): 
@@ -45,14 +61,14 @@ if exist "SMSLogo.ico" (
 REM Build the application
 echo Building executable...
 if "%EMBED_TAGS%"=="" (
-    go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o SMSCat.exe
+    go build -tags desktop,production -ldflags "-s -w -H windowsgui" -o %OUTPUT_NAME%
 ) else (
-    go build -tags "desktop,production,%EMBED_TAGS%" -ldflags "-s -w -H windowsgui" -o SMSCat.exe
+    go build -tags "desktop,production,%EMBED_TAGS%" -ldflags "-s -w -H windowsgui" -o %OUTPUT_NAME%
 )
 
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo Build successful! SMSCat.exe created.
+    echo Build successful! %OUTPUT_NAME% created.
     if "%BUILD_MODE%"=="win7" (
         echo NOTE: This build contains the embedded WebView2 runtime.
     ) else (

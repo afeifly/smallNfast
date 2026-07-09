@@ -1,0 +1,26 @@
+{
+  "LayoutList": [
+    {
+      "location": "Location 1",
+      "meapoint": "Point 1",
+      "measurepoint": "Point 1",
+      "index": 0,
+      "is2Height": false,
+      "channels": [
+        "1783589010177",
+        "1783589010178"
+      ]
+    },
+    {
+      "location": "Location 1",
+      "meapoint": "Point 2",
+      "measurepoint": "Point 2",
+      "index": 1,
+      "is2Height": false,
+      "channels": [
+        "1783589010180",
+        "1783589010181"
+      ]
+    }
+  ]
+}

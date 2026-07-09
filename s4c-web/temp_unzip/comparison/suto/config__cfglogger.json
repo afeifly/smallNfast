@@ -1,0 +1,17 @@
+{
+  "logger": {
+    "filename": "",
+    "starttime": 0,
+    "stoptime": 0,
+    "samplingcount": 0,
+    "channels": 0,
+    "channelArray": null,
+    "samplerate": 1,
+    "recordstatus": 0,
+    "mode": 0,
+    "status": 0,
+    "startfile": "",
+    "stopfile": "",
+    "filecnt": 0
+  }
+}

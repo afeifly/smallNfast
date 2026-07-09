@@ -1,0 +1,52 @@
+{
+    "cfgOptionBoard": [
+        {
+            "OptionBoardType": 0,
+            "shown": true,
+            "OptionBoardID": 4236,
+            "ChannelId": 2006,
+            "TerminalNo": 6,
+            "OptionBoardAddress": 3,
+            "SensorDescription": "Voltage",
+            "ChannelDescription": "545",
+            "Location": "",
+            "Meapoint": "",
+            "CreateTime": "1783071450000",
+            "ChannelValid": false,
+            "AnalogSignalType": 2,
+            "UintType": 0,
+            "PreDefineUnit": "V",
+            "Resolution": 0,
+            "MinScale": 0,
+            "MaxScale": 0,
+            "DigitalType": 0,
+            "DisplayUnit": "",
+            "Status0Value": 0,
+            "Status1Value": 1
+        },
+        {
+            "OptionBoardType": 0,
+            "shown": true,
+            "OptionBoardID": 4235,
+            "ChannelId": 2004,
+            "TerminalNo": 4,
+            "OptionBoardAddress": 2,
+            "SensorDescription": "Current",
+            "ChannelDescription": "020",
+            "Location": "",
+            "Meapoint": "",
+            "CreateTime": "1783071416543",
+            "ChannelValid": false,
+            "AnalogSignalType": 0,
+            "UintType": 0,
+            "PreDefineUnit": "mA",
+            "Resolution": 0,
+            "MinScale": 0,
+            "MaxScale": 0,
+            "DigitalType": 0,
+            "DisplayUnit": "",
+            "Status0Value": 0,
+            "Status1Value": 1
+        }
+    ]
+}

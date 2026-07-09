@@ -166,6 +166,11 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       Meapoint: '',
       ConfigFileName: isSuto ? `${selectedSensor}.sutoch` : '',
       CreateTime: String(Date.now()),
+      subdevicename: '',
+      unitauto: false,
+      MaxThreshold: 0,
+      MaxHysteresis: 0,
+      Direction: 0,
       ...templateObj,
       ...(initialData || {})
     };

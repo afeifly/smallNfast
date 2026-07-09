@@ -510,13 +510,21 @@ const LoggerSettings = () => {
         [loggerPath]: {
           ...configData.configs[loggerPath],
           logger: {
-            ...existingLogger,
-            mode: updatedForm.mode,
-            filename: updatedForm.filename,
-            starttime: updatedForm.starttime,
-            samplerate: updatedForm.samplerate,
-            channels: updatedForm.channelArray.length,
-            channelArray: updatedForm.channelArray,
+            // Preserve any fields already on the device's logger object
+            stoptime:      existingLogger.stoptime      ?? 0,
+            samplingcount: existingLogger.samplingcount ?? 0,
+            recordstatus:  existingLogger.recordstatus  ?? 0,
+            status:        existingLogger.status        ?? 0,
+            startfile:     existingLogger.startfile     ?? '',
+            stopfile:      existingLogger.stopfile      ?? '',
+            filecnt:       existingLogger.filecnt       ?? 0,
+            // User-edited fields
+            mode:          updatedForm.mode,
+            filename:      updatedForm.filename,
+            starttime:     updatedForm.starttime,
+            samplerate:    updatedForm.samplerate,
+            channels:      updatedForm.channelArray.length,
+            channelArray:  updatedForm.channelArray,
           },
         },
       },

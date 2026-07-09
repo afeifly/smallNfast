@@ -1,0 +1,26 @@
+{
+  "logger": {
+    "mode": 0,
+    "filename": "cr",
+    "starttime": 0,
+    "samplerate": 5,
+    "channels": 3,
+    "channelArray": [
+      {
+        "channelid": 4,
+        "meapoint": "Point 2",
+        "location": "Location 1"
+      },
+      {
+        "channelid": 3,
+        "meapoint": "Point 2",
+        "location": "Location 1"
+      },
+      {
+        "channelid": 5,
+        "meapoint": "---",
+        "location": "---"
+      }
+    ]
+  }
+}

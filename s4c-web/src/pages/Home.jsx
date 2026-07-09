@@ -76,7 +76,7 @@ const Home = () => {
   // Process layout into cards
   const unknownText = t('Unknown');
   const cards = layoutList.map((group, idx) => {
-    const title = `${group.location || unknownText} / ${group.meapoint || group.measurepoint || unknownText}`;
+    const title = `${group.location || unknownText} / ${group.meapoint || unknownText}`;
     const items = (group.channels || []).map(uid => {
       const info = findChannelInfo(uid);
       return {

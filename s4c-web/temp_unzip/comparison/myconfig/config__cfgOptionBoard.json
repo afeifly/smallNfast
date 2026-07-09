@@ -1,0 +1,48 @@
+{
+  "cfgOptionBoard": [
+    {
+      "shown": true,
+      "ChannelValid": false,
+      "Location": "",
+      "Meapoint": "",
+      "CreateTime": "1783589084810",
+      "OptionBoardType": 1,
+      "TerminalNo": 9,
+      "SensorDescription": "s1",
+      "ChannelDescription": "c2",
+      "AnalogSignalType": 0,
+      "UintType": 0,
+      "PreDefineUnit": "",
+      "DisplayUnit": "",
+      "Resolution": 1,
+      "MinScale": 0,
+      "MaxScale": 10,
+      "DigitalType": 0,
+      "ChannelId": 24,
+      "OptionBoardAddress": 2,
+      "OptionBoardID": 4237
+    },
+    {
+      "shown": true,
+      "ChannelValid": false,
+      "Location": "",
+      "Meapoint": "",
+      "CreateTime": "1783589091784",
+      "OptionBoardType": 0,
+      "TerminalNo": 9,
+      "SensorDescription": "s1",
+      "ChannelDescription": "c2",
+      "AnalogSignalType": 0,
+      "UintType": 0,
+      "PreDefineUnit": "",
+      "DisplayUnit": "",
+      "Resolution": 1,
+      "MinScale": 0,
+      "MaxScale": 10,
+      "DigitalType": 0,
+      "ChannelId": 25,
+      "OptionBoardAddress": 2,
+      "OptionBoardID": 4235
+    }
+  ]
+}

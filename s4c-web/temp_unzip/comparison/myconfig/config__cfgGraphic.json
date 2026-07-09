@@ -1,0 +1,87 @@
+[
+  {
+    "tableName": "Graphic chart name",
+    "graphicChannels": [
+      {
+        "isShow": true,
+        "channelIndex": 0,
+        "channelId": 0,
+        "channelSensorId": 0,
+        "sensorCreateTime": "1783589013003",
+        "channelCreateTime": "1783589010179",
+        "channelSensorName": "SUTO-S111-3P3W",
+        "channelName": "U3_U1 Voltage",
+        "channelUnitInASCII": "V",
+        "isAutomaticScale": true,
+        "yMin": 0,
+        "yMax": 100,
+        "color": "#019A68"
+      },
+      {
+        "isShow": true,
+        "channelIndex": 1,
+        "channelId": 1,
+        "channelSensorId": 0,
+        "sensorCreateTime": "1783589013003",
+        "channelCreateTime": "1783589010180",
+        "channelSensorName": "SUTO-S111-3P3W",
+        "channelName": "Phase 1 Current",
+        "channelUnitInASCII": "A",
+        "isAutomaticScale": true,
+        "yMin": 0,
+        "yMax": 100,
+        "color": "#04CD94"
+      },
+      {
+        "isShow": true,
+        "channelIndex": 2,
+        "channelId": 2,
+        "channelSensorId": 0,
+        "sensorCreateTime": "1783589013003",
+        "channelCreateTime": "1783589010183",
+        "channelSensorName": "SUTO-S111-3P3W",
+        "channelName": "Total frequency",
+        "channelUnitInASCII": "Hz",
+        "isAutomaticScale": true,
+        "yMin": 0,
+        "yMax": 100,
+        "color": "#6FB996"
+      }
+    ]
+  },
+  {
+    "tableName": "Graphic chart name",
+    "graphicChannels": [
+      {
+        "isShow": true,
+        "channelIndex": 0,
+        "channelId": 0,
+        "channelSensorId": 0,
+        "sensorCreateTime": "1783589013003",
+        "channelCreateTime": "1783589010179",
+        "channelSensorName": "SUTO-S111-3P3W",
+        "channelName": "U3_U1 Voltage",
+        "channelUnitInASCII": "V",
+        "isAutomaticScale": true,
+        "yMin": 0,
+        "yMax": 100,
+        "color": "#019A68"
+      },
+      {
+        "isShow": true,
+        "channelIndex": 1,
+        "channelId": 1,
+        "channelSensorId": 0,
+        "sensorCreateTime": "1783589013003",
+        "channelCreateTime": "1783589010180",
+        "channelSensorName": "SUTO-S111-3P3W",
+        "channelName": "Phase 1 Current",
+        "channelUnitInASCII": "A",
+        "isAutomaticScale": true,
+        "yMin": 0,
+        "yMax": 100,
+        "color": "#04CD94"
+      }
+    ]
+  }
+]

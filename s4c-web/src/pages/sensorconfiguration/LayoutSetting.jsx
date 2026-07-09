@@ -143,7 +143,7 @@ const LayoutSetting = () => {
     const match = layoutList.find(item => {
       const itemLoc = (item.location || '').trim().toLowerCase();
       const mpLoc = (locName || '').trim().toLowerCase();
-      const itemMp = (item.meapoint || item.measurepoint || '').trim().toLowerCase();
+      const itemMp = (item.meapoint || '').trim().toLowerCase();
       const mpName = (mp.meapoint || '').trim().toLowerCase();
       return itemLoc === mpLoc && itemMp === mpName;
     });
@@ -361,7 +361,6 @@ const LayoutSetting = () => {
         layoutList.push({
           location: loc.location,
           meapoint: mp.meapoint,
-          measurepoint: mp.meapoint,
           index: savedIndex,
           is2Height,
           channels: mp.channels || []

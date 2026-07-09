@@ -1,0 +1,16 @@
+{
+  "rs485m0": {
+    "baudrate": 19200,
+    "parityFrameIndex": 3,
+    "responseTimeout": 10
+  },
+  "rs485s0": {
+    "baudrate": 19200,
+    "parityFrameIndex": 3,
+    "responseTimeout": 10,
+    "address": 1
+  },
+  "retcp": {
+    "protocol": 3
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "Locations": [
+    {
+      "location": "Location 1",
+      "meapoints": [
+        {
+          "index": 0,
+          "is2Height": false,
+          "location": "Location 1",
+          "meapoint": "Point 1",
+          "channels": [
+            "1783589010177",
+            "1783589010178"
+          ]
+        },
+        {
+          "index": 1,
+          "is2Height": false,
+          "location": "Location 1",
+          "meapoint": "Point 2",
+          "channels": [
+            "1783589010180",
+            "1783589010181"
+          ]
+        }
+      ]
+    }
+  ]
+}

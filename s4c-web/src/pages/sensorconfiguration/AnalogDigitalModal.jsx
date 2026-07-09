@@ -147,8 +147,8 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave }) => {
       }
     }
 
-    let s0Val = undefined;
-    let s1Val = undefined;
+    let s0Val = 0;
+    let s1Val = 1;
     if (isDigital) {
       if (Number(digitalType) === 1) {
         s0Val = digitalState0 === 'Off' ? 0 : 1;

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useConfig } from '../context/ConfigContext';
 import { useLanguage } from '../context/LanguageContext';
+import appConfig from '../config/appConfig.json';
 
 // Import PNG Icons
 import iconHomeL from '../assets/images/icon_home_l.png';
@@ -120,6 +121,20 @@ const Sidebar = () => {
   const { t } = useLanguage();
   const hasConfig = !!activeConfigId;
 
+  // Track if sidebar is collapsed
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const saved = localStorage.getItem('s4c_sidebar_collapsed');
+    return saved === 'true';
+  });
+
+  const toggleCollapse = () => {
+    setIsCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('s4c_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   // Determine which group is initially open based on current path
   const initialOpen = NAV.reduce((acc, item) => {
     if (item.children) {
@@ -131,10 +146,19 @@ const Sidebar = () => {
 
   const [openMenus, setOpenMenus] = useState(initialOpen);
 
-  const toggle = (key) => setOpenMenus(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggle = (key) => {
+    if (isCollapsed) {
+      // Expand the sidebar and open the clicked menu
+      setIsCollapsed(false);
+      localStorage.setItem('s4c_sidebar_collapsed', 'false');
+      setOpenMenus(prev => ({ ...prev, [key]: true }));
+    } else {
+      setOpenMenus(prev => ({ ...prev, [key]: !prev[key] }));
+    }
+  };
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* Logo */}
       <div className="sidebar-header">
         <img src={mainLogo} alt="S4C Logo" className="main-logo" />
@@ -148,9 +172,10 @@ const Sidebar = () => {
             ? currentPath === '/'
             : item.to && currentPath.startsWith(item.to);
 
+          const isChildActive = item.children && item.children.some(c => currentPath === c.to || currentPath.startsWith(c.to + '/'));
           const hasChildren = !!item.children;
           const isParentDisabled = !hasConfig && item.key !== 'system' && item.key !== 'home' && item.key !== 'file-verification';
-          const isActive = isLeafActive && !isParentDisabled;
+          const isActive = (isLeafActive || isChildActive) && !isParentDisabled;
           const isOpen = !isParentDisabled && !!openMenus[item.key];
 
           const iconSrc = isActive ? item.icons.active : item.icons.inactive;
@@ -208,7 +233,7 @@ const Sidebar = () => {
                   </div>
                 ) : (
                   <div
-                    className="nav-item"
+                    className={`nav-item ${isActive ? 'active' : ''}`}
                     onClick={() => toggle(item.key)}
                   >
                     <div className="nav-icon">
@@ -263,9 +288,10 @@ const Sidebar = () => {
 
       {/* Footer */}
       <div className="sidebar-footer">
-        <div className="sidebar-footer-icon">
+        <div className="sidebar-footer-icon" onClick={toggleCollapse}>
           <img src={btnItems} alt="Items" style={{ width: 32, height: 32 }} />
         </div>
+        <span className="sidebar-version">Version: {appConfig.version}</span>
       </div>
     </aside>
   );

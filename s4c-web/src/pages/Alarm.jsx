@@ -178,13 +178,31 @@ const Alarm = () => {
   const obConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
   const obItems = configData?.configs?.[obConfigPath]?.cfgOptionBoard || [];
 
+  const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
+  const locationsArray = configData?.configs?.[locationConfigPath]?.Locations || [];
+
   const allChannelsForSelection = [];
   sensors.forEach(sensor => {
     (sensor.cfgchannel || []).forEach((ch) => {
+      if (ch.Show === false) return; // Skip unshown channels!
       // ch.CreateTime is the channel_identify_id stored in Alarm.db
       // sensor.CreateTime is the sensor_identify_id stored in Alarm.db
       const channelId = String(ch.CreateTime || '');
       const sensorId = String(sensor.CreateTime || '');
+
+      let locationValue = '---';
+      let pointValue = '---';
+      if (Array.isArray(locationsArray)) {
+        locationsArray.forEach(loc => {
+          (loc.meapoints || []).forEach(mp => {
+            if ((mp.channels || []).some(id => String(id) === channelId)) {
+              locationValue = loc.location;
+              pointValue = mp.meapoint;
+            }
+          });
+        });
+      }
+
       allChannelsForSelection.push({
         CreateTime: channelId,          // used by ChannelSelectModal as row key
         sensorName: sensor.Name || sensor.Description || sensorId,
@@ -194,6 +212,8 @@ const Alarm = () => {
         channelId: channelId,
         channelDbId: ch.ChannelId || 0,
         unit: ch.UnitInASCII || '---',
+        location: locationValue,
+        point: pointValue,
       });
     });
   });
@@ -201,6 +221,20 @@ const Alarm = () => {
   obItems.forEach(item => {
     const channelId = String(item.CreateTime || '');
     const sensorId = "option-board-sensor-id";
+
+    let locationValue = '---';
+    let pointValue = '---';
+    if (Array.isArray(locationsArray)) {
+      locationsArray.forEach(loc => {
+        (loc.meapoints || []).forEach(mp => {
+          if ((mp.channels || []).some(id => String(id) === channelId)) {
+            locationValue = loc.location;
+            pointValue = mp.meapoint;
+          }
+        });
+      });
+    }
+
     allChannelsForSelection.push({
       CreateTime: channelId,
       sensorName: item.SensorDescription || 'Option Board',
@@ -210,11 +244,30 @@ const Alarm = () => {
       channelId: channelId,
       channelDbId: item.ChannelId || 0,
       unit: item.PreDefineUnit || item.UnitInASCII || '---',
+      location: locationValue,
+      point: pointValue,
     });
   });
 
   // channel_identify_id in DB === CreateTime (used as row key in modal)
   const currentlySelectedIds = alarms.map(a => String(a.channel_identify_id));
+
+  // Set of shown channels to filter active alarms list
+  const shownChannelIds = new Set();
+  sensors.forEach(sensor => {
+    (sensor.cfgchannel || []).forEach(ch => {
+      if (ch.Show !== false) {
+        shownChannelIds.add(String(ch.CreateTime));
+      }
+    });
+  });
+  obItems.forEach(item => {
+    if (item.shown !== false) {
+      shownChannelIds.add(String(item.CreateTime));
+    }
+  });
+
+  const visibleAlarms = alarms.filter(alarm => shownChannelIds.has(String(alarm.channel_identify_id)));
 
   /* ─────────────────────────────────────────────────────────────────────────
      When the user confirms channel selection → INSERT into DB
@@ -296,9 +349,9 @@ const Alarm = () => {
     Location: 'location',
   };
 
-  const updateAlarm = (index, field, value) => {
+  const updateAlarm = (configId, field, value) => {
     // ── 1. Write to DB first, outside any state updater ──────────────────
-    const alarm = alarms[index];
+    const alarm = alarms.find(a => a.config_id === configId);
     const dbField = DB_FIELD_MAP[field];
 
     if (dbRef.current && dbField && alarm?.config_id != null) {
@@ -310,23 +363,26 @@ const Alarm = () => {
 
     // ── 2. Update React state ─────────────────────────────────────────────
     setAlarms(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
+      return prev.map(a => {
+        if (a.config_id === configId) {
+          return { ...a, [field]: value };
+        }
+        return a;
+      });
     });
   };
 
   /* ─────────────────────────────────────────────────────────────────────────
      Delete → soft-delete in DB, remove from state
      ───────────────────────────────────────────────────────────────────────── */
-  const handleDelete = (index) => {
-    const alarm = alarms[index];
-    if (dbRef.current && alarm.config_id != null) {
+  const handleDelete = (configId) => {
+    const alarm = alarms.find(a => a.config_id === configId);
+    if (dbRef.current && alarm?.config_id != null) {
       deleteAlarmConfig(dbRef.current, alarm.config_id);
       logAlarmTable(dbRef.current, `DELETE — config_id=${alarm.config_id} (soft-deleted)`);
       persistDb();
     }
-    setAlarms(prev => prev.filter((_, i) => i !== index));
+    setAlarms(prev => prev.filter(a => a.config_id !== configId));
   };
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -409,9 +465,9 @@ const Alarm = () => {
                 </tr>
               </thead>
               <tbody>
-                {alarms.length > 0 ? (
-                  alarms.map((alarm, index) => (
-                    <tr key={alarm.config_id ?? index}>
+                {visibleAlarms.length > 0 ? (
+                  visibleAlarms.map((alarm, idx) => (
+                    <tr key={alarm.config_id ?? idx}>
                       <td>{alarm.Sensor}</td>
                       <td>{alarm.Channel}</td>
                       <td>{alarm.Unit}</td>
@@ -423,7 +479,7 @@ const Alarm = () => {
                           step="0.01"
                           className="alarm-inline-input"
                           value={alarm.Threshold}
-                          onChange={(e) => updateAlarm(index, 'Threshold', e.target.value)}
+                          onChange={(e) => updateAlarm(alarm.config_id, 'Threshold', e.target.value)}
                         />
                       </td>
 
@@ -434,7 +490,7 @@ const Alarm = () => {
                           step="0.01"
                           className="alarm-inline-input"
                           value={alarm.Hysteresis}
-                          onChange={(e) => updateAlarm(index, 'Hysteresis', e.target.value)}
+                          onChange={(e) => updateAlarm(alarm.config_id, 'Hysteresis', e.target.value)}
                         />
                       </td>
 
@@ -443,7 +499,7 @@ const Alarm = () => {
                         <select
                           className="alarm-inline-input"
                           value={alarm.Direction}
-                          onChange={(e) => updateAlarm(index, 'Direction', e.target.value)}
+                          onChange={(e) => updateAlarm(alarm.config_id, 'Direction', e.target.value)}
                         >
                           <option value="UP">{t('UP')}</option>
                           <option value="Down">{t('Down')}</option>
@@ -458,7 +514,7 @@ const Alarm = () => {
                           min="0"
                           className="alarm-inline-input"
                           value={alarm.Delay}
-                          onChange={(e) => updateAlarm(index, 'Delay', e.target.value)}
+                          onChange={(e) => updateAlarm(alarm.config_id, 'Delay', e.target.value)}
                         />
                       </td>
 
@@ -467,7 +523,7 @@ const Alarm = () => {
                         <select
                           className="alarm-inline-input"
                           value={alarm.RelayId}
-                          onChange={(e) => updateAlarm(index, 'RelayId', e.target.value)}
+                          onChange={(e) => updateAlarm(alarm.config_id, 'RelayId', e.target.value)}
                         >
                           <option value="0">{t('None')}</option>
                           <option value="1">{t('Relay')} 1</option>
@@ -481,7 +537,7 @@ const Alarm = () => {
                       <td>
                         <div
                           className={`alarm-switch ${alarm.RelayFlag ? 'on' : 'off'}`}
-                          onClick={() => updateAlarm(index, 'RelayFlag', alarm.RelayFlag ? 0 : 1)}
+                          onClick={() => updateAlarm(alarm.config_id, 'RelayFlag', alarm.RelayFlag ? 0 : 1)}
                         >
                           <div className="switch-knob" />
                         </div>
@@ -493,7 +549,7 @@ const Alarm = () => {
                           <button
                             className="btn-icon-img"
                             title={t('Delete')}
-                            onClick={() => handleDelete(index)}
+                            onClick={() => handleDelete(alarm.config_id)}
                           >
                             <img src={iconBtnDelete} alt={t('Delete')} style={{ width: 18, height: 18 }} />
                           </button>

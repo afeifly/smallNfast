@@ -104,9 +104,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
           CreateTime: ch.CreateTime || String(Date.now() + idx)
         }));
         setChannels(loadedChannels);
-        if (content.ConnectType) {
-          setProtocol(content.ConnectType);
-        }
+        // Keep the user's currently selected protocol instead of reverting to the template's default ConnectType
         if (content.Addr !== undefined) {
           setAddress(String(content.Addr));
         }

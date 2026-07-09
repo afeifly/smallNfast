@@ -262,6 +262,43 @@ const Graphic = () => {
   const graphicList = configData?.configs?.[graphicConfigPath] || [];
   const currentGraphic = graphicList[selectedGraphicIndex] || graphicList[0] || {};
 
+  // Auto-initialize with a default graphic chart if empty
+  React.useEffect(() => {
+    if (configData && configData.configs) {
+      const path = graphicConfigPath || 'config/cfgGraphic.json';
+      const list = configData.configs[path];
+      if (!list || list.length === 0) {
+        const defaultGraphic = {
+          tableName: 'Graphic chart name',
+          graphicChannels: []
+        };
+        setConfigData(prev => {
+          if (!prev || !prev.configs) return prev;
+          return {
+            ...prev,
+            configs: {
+              ...prev.configs,
+              [path]: [defaultGraphic]
+            }
+          };
+        });
+      }
+    }
+  }, [configData, graphicConfigPath, setConfigData]);
+
+  // Scroll the selected chart into view when returning from grid view
+  React.useEffect(() => {
+    if (!isGridView) {
+      const element = document.getElementById(`graphic-card-${selectedGraphicIndex}`);
+      if (element) {
+        const timer = setTimeout(() => {
+          element.scrollIntoView({ behavior: 'auto', block: 'start' });
+        }, 50);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isGridView, selectedGraphicIndex]);
+
   const allChannels = [];
   const locationConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgLocation.json'));
   const locationsArray = configData?.configs?.[locationConfigPath]?.Locations || [];
@@ -272,17 +309,19 @@ const Graphic = () => {
   sensors.forEach(sensor => {
     if (sensor.cfgchannel) {
       sensor.cfgchannel.forEach(ch => {
+        if (ch.Show === false) return;
         const createTimeStr = String(ch.CreateTime);
         let locationValue = '---';
         let pointValue = '---';
         if (Array.isArray(locationsArray)) {
-          for (const locObj of locationsArray) {
-            const meapoints = locObj.meapoints || [];
-            if (Array.isArray(meapoints)) {
-              const matchedPoint = meapoints.find(pointObj => Array.isArray(pointObj.channels) && pointObj.channels.some(cid => String(cid) === createTimeStr));
-              if (matchedPoint) { locationValue = matchedPoint.location || '---'; pointValue = matchedPoint.meapoint || '---'; break; }
-            }
-          }
+          locationsArray.forEach(loc => {
+            (loc.meapoints || []).forEach(mp => {
+              if ((mp.channels || []).some(id => String(id) === createTimeStr)) {
+                locationValue = loc.location;
+                pointValue = mp.meapoint;
+              }
+            });
+          });
         }
         allChannels.push({ CreateTime: createTimeStr, sensorCreateTime: String(sensor.CreateTime || ''), sensorName: sensor.Name || sensor.Description, channelName: ch.ChannelDescription, location: locationValue, point: pointValue, unit: ch.UnitInASCII });
       });
@@ -294,13 +333,14 @@ const Graphic = () => {
     let locationValue = '---';
     let pointValue = '---';
     if (Array.isArray(locationsArray)) {
-      for (const locObj of locationsArray) {
-        const meapoints = locObj.meapoints || [];
-        if (Array.isArray(meapoints)) {
-          const matchedPoint = meapoints.find(pointObj => Array.isArray(pointObj.channels) && pointObj.channels.some(cid => String(cid) === createTimeStr));
-          if (matchedPoint) { locationValue = matchedPoint.location || '---'; pointValue = matchedPoint.meapoint || '---'; break; }
-        }
-      }
+      locationsArray.forEach(loc => {
+        (loc.meapoints || []).forEach(mp => {
+          if ((mp.channels || []).some(id => String(id) === createTimeStr)) {
+            locationValue = loc.location;
+            pointValue = mp.meapoint;
+          }
+        });
+      });
     }
     allChannels.push({ 
       CreateTime: createTimeStr, 
@@ -314,11 +354,12 @@ const Graphic = () => {
   });
 
   const handleAddGraphic = () => {
-    if (!graphicConfigPath) return;
+    const path = graphicConfigPath || 'config/cfgGraphic.json';
+    if (!path) return;
     if (graphicList.length >= 5) return;
     const newIndex = graphicList.length;
     const newGraphic = {
-      tableName: 'Graphic chart name',
+      tableName: t('Graphic chart name'),
       graphicChannels: []
     };
     const updatedList = [...graphicList, newGraphic];
@@ -326,7 +367,7 @@ const Graphic = () => {
       ...configData,
       configs: {
         ...configData.configs,
-        [graphicConfigPath]: updatedList
+        [path]: updatedList
       }
     });
     setSelectedGraphicIndex(newIndex);
@@ -334,13 +375,14 @@ const Graphic = () => {
   };
 
   const handleRemoveGraphic = (indexToRemove) => {
-    if (!graphicConfigPath || graphicList.length <= 1) return;
+    const path = graphicConfigPath || 'config/cfgGraphic.json';
+    if (!path || graphicList.length <= 1) return;
     const updatedList = graphicList.filter((_, idx) => idx !== indexToRemove);
     setConfigData({
       ...configData,
       configs: {
         ...configData.configs,
-        [graphicConfigPath]: updatedList
+        [path]: updatedList
       }
     });
     if (selectedGraphicIndex >= updatedList.length) {
@@ -357,7 +399,8 @@ const Graphic = () => {
   };
 
   const handleChannelConfirm = (selectedIds) => {
-    if (!graphicConfigPath || graphicList.length === 0) { setIsModalOpen(false); return; }
+    const path = graphicConfigPath || 'config/cfgGraphic.json';
+    if (!path || graphicList.length === 0) { setIsModalOpen(false); return; }
     const updatedList = [...graphicList];
     const targetGraphic = { ...updatedList[selectedGraphicIndex] };
 
@@ -386,9 +429,11 @@ const Graphic = () => {
 
     targetGraphic.graphicChannels = updatedGraphicChannels;
     updatedList[selectedGraphicIndex] = targetGraphic;
-    setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } });
+    setConfigData({ ...configData, configs: { ...configData.configs, [path]: updatedList } });
     setIsModalOpen(false);
   };
+
+
 
   if (isGridView) {
     return (
@@ -448,7 +493,7 @@ const Graphic = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', height: '100%', overflowY: 'auto', scrollSnapType: 'y mandatory' }}>
       {graphicList.map((graphic, idx) => (
-        <div className="content-card graphic-view" key={idx} style={{ height: '100%', display: 'flex', flexDirection: 'column', flexShrink: 0, scrollSnapAlign: 'start' }}>
+        <div id={`graphic-card-${idx}`} className="content-card graphic-view" key={idx} style={{ height: '100%', display: 'flex', flexDirection: 'column', flexShrink: 0, scrollSnapAlign: 'start' }}>
           <header className="card-header">
             <div className="graphic-title" onClick={() => { setSelectedGraphicIndex(idx); setIsNameModalOpen(true); }} style={{ cursor: 'pointer' }}>
               <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{graphic.tableName || t('create chart name')}</span>
@@ -473,9 +518,9 @@ const Graphic = () => {
           <GraphicView graphic={graphic} sensors={sensors} onAddChannel={() => { setSelectedGraphicIndex(idx); setIsModalOpen(true); }} />
         </div>
       ))}
-      <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={graphicList[selectedGraphicIndex]?.tableName} onSave={(newName) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex], tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); }} />
+      <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={graphicList[selectedGraphicIndex]?.tableName} onSave={(newName) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex], tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; const path = graphicConfigPath || 'config/cfgGraphic.json'; setConfigData({ ...configData, configs: { ...configData.configs, [path]: updatedList } }); }} />
       <ChannelSelectModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} allChannels={allChannels} initialSelectedIds={(graphicList[selectedGraphicIndex]?.graphicChannels || []).filter(c => c.isShow === true).map(c => String(c.channelCreateTime))} onConfirm={handleChannelConfirm} onSettingClick={(ch) => { const existing = (graphicList[selectedGraphicIndex]?.graphicChannels || []).find(gc => String(gc.channelCreateTime) === String(ch.CreateTime)); setEditingChannel(existing ? { ...ch, ...existing } : ch); setIsSettingsOpen(true); }} />
-      <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex] }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; setConfigData({ ...configData, configs: { ...configData.configs, [graphicConfigPath]: updatedList } }); setIsSettingsOpen(false); }} />
+      <ChannelSettingsDrawer isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} channel={editingChannel} onSave={(settings) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex] }; const updatedChannels = (updatedGraphic.graphicChannels || []).map(gc => { if (String(gc.channelCreateTime) === String(editingChannel.CreateTime)) return { ...gc, ...settings }; return gc; }); updatedGraphic.graphicChannels = updatedChannels; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; const path = graphicConfigPath || 'config/cfgGraphic.json'; setConfigData({ ...configData, configs: { ...configData.configs, [path]: updatedList } }); setIsSettingsOpen(false); }} />
       <CustomDialog
         isOpen={showDeleteConfirm}
         onClose={() => {

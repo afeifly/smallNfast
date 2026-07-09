@@ -9,6 +9,23 @@ import iconBtnDelete from '../assets/images/icon_btn_delete.png';
 import CustomDialog from '../components/CustomDialog';
 import './sensorconfiguration/SUTOSensor.css'; // Reuse table styles
 
+const formatDateTime = (val) => {
+  if (!val) return '—';
+  const str = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(str)) {
+    return str;
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return str;
+  const yyyy = d.getFullYear();
+  const MM = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const HH = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${yyyy}-${MM}-${dd} ${HH}:${mm}:${ss}`;
+};
+
 const ConfigManager = () => {
   const { t } = useLanguage();
   const { 
@@ -70,7 +87,7 @@ const ConfigManager = () => {
         fileMap: fileMap,
         fileName: file.name,
         fileSize: (file.size / 1024).toFixed(1) + ' KB',
-        importTime: new Date().toLocaleString()
+        importTime: new Date().toISOString()
       };
 
       addConfig(newConfig);
@@ -160,7 +177,7 @@ const ConfigManager = () => {
         fileMap: fileMap,
         fileName: `new_config_${new Date().getTime()}.cfgf`,
         fileSize: '0.1 KB',
-        importTime: new Date().toLocaleString()
+        importTime: new Date().toISOString()
       });
     } catch (err) {
       console.error(err);
@@ -315,7 +332,7 @@ const ConfigManager = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <PropertyRow label={t('File Name')} value={config.fileName} />
                   <PropertyRow label={t('File Size')} value={config.fileSize} />
-                  <PropertyRow label={t('Imported')} value={config.importTime} />
+                  <PropertyRow label={t('Imported')} value={formatDateTime(config.importTime)} />
                 </div>
               </div>
               <div style={{ background: '#F8F9FA', padding: '20px', borderRadius: '8px' }}>
@@ -378,8 +395,8 @@ const ConfigManager = () => {
                 <th>{t('File name')}</th>
                 <th style={{ width: '120px' }}>{t('Version')}</th>
                 <th style={{ width: '180px' }}>{t('Create time')}</th>
-                <th style={{ width: '100px' }}>{t('Status')}</th>
-                <th style={{ width: '180px' }} className="col-operate">{t('Action')}</th>
+                <th style={{ width: '120px' }}>{t('Status')}</th>
+                <th style={{ width: '180px', textAlign: 'center' }} className="col-operate">{t('Action')}</th>
               </tr>
             </thead>
             <tbody>
@@ -398,7 +415,7 @@ const ConfigManager = () => {
                       {cfg.id === activeConfigId && <span style={{ marginLeft: '8px', color: '#00AB84', fontSize: '12px' }}>{t('[Loaded]')}</span>}
                     </td>
                     <td>{cfg.summary?.['Config-Version'] || cfg.summary?.['version'] || '1.0.0'}</td>
-                    <td>{cfg.summary?.['Config-Date'] || cfg.summary?.['date'] || cfg.importTime}</td>
+                    <td>{formatDateTime(cfg.summary?.['Config-Date'] || cfg.summary?.['date'] || cfg.importTime)}</td>
                     <td>
                       <span style={{ 
                         color: cfg.id === activeConfigId ? '#00AB84' : '#86909C',
@@ -412,26 +429,25 @@ const ConfigManager = () => {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                        {cfg.id === activeConfigId ? (
+                        {cfg.id !== activeConfigId ? (
+                          <button 
+                            className="btn-modbus-save" 
+                            style={{ padding: '2px 12px', fontSize: '12px', height: '28px' }}
+                            onClick={() => setActiveConfigId(cfg.id)}
+                          >
+                            {t('Load')}
+                          </button>
+                        ) : (
                           <button 
                             className="btn-modbus-save" 
                             style={{ 
                               padding: '2px 12px', 
                               fontSize: '12px', 
-                              height: '28px', 
-                              background: '#FFF7E8', 
-                              color: '#E6A23C', 
-                              border: '1px solid #FFE4BA' 
+                              height: '28px',
+                              visibility: 'hidden',
+                              pointerEvents: 'none'
                             }}
-                            onClick={() => setActiveConfigId(null)}
-                          >
-                            {t('Clear')}
-                          </button>
-                        ) : (
-                          <button 
-                            className="btn-modbus-save" 
-                            style={{ padding: '2px 12px', fontSize: '12px', height: '28px' }}
-                            onClick={() => setActiveConfigId(cfg.id)}
+                            tabIndex="-1"
                           >
                             {t('Load')}
                           </button>

@@ -23,7 +23,7 @@ const CFGLOGGER_PATHS = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function msToLocalParts(ms) {
-  if (!ms) return { year: '', month: '', day: '', hour: 0, minute: 0 };
+  if (!ms) return { year: '', month: '', day: '', hour: 0, minute: 0, second: 0 };
   const d = new Date(ms);
   return {
     year:   d.getFullYear(),
@@ -31,12 +31,13 @@ function msToLocalParts(ms) {
     day:    d.getDate(),
     hour:   d.getHours(),
     minute: d.getMinutes(),
+    second: d.getSeconds(),
   };
 }
 
-function partsToMs({ year, month, day, hour, minute }) {
+function partsToMs({ year, month, day, hour, minute, second = 0 }) {
   if (!year || !month || !day) return 0;
-  return new Date(year, month - 1, day, hour, minute, 0).getTime();
+  return new Date(year, month - 1, day, hour, minute, second).getTime();
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -64,7 +65,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  const { year, month, day, hour, minute } = msToLocalParts(value);
+  const { year, month, day, hour, minute, second } = msToLocalParts(value);
 
   // Close when clicking outside
   useEffect(() => {
@@ -77,14 +78,15 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
 
   const handleDateChange = (e) => {
     const [y, mo, d] = e.target.value.split('-').map(Number);
-    onChange(partsToMs({ year: y, month: mo, day: d, hour, minute }));
+    onChange(partsToMs({ year: y, month: mo, day: d, hour, minute, second }));
   };
 
-  const handleHour   = (h)  => onChange(partsToMs({ year, month, day, hour: h,      minute }));
-  const handleMinute = (m)  => onChange(partsToMs({ year, month, day, hour,         minute: m }));
+  const handleHour   = (h)  => onChange(partsToMs({ year, month, day, hour: h,      minute, second }));
+  const handleMinute = (m)  => onChange(partsToMs({ year, month, day, hour,         minute: m, second }));
+  const handleSecond = (s)  => onChange(partsToMs({ year, month, day, hour,         minute, second: s }));
 
   const displayLabel = value
-    ? `${dateStr}  ${pad2(hour)}:${pad2(minute)}`
+    ? `${dateStr}  ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`
     : t('— Select date & time —');
 
   return (
@@ -168,6 +170,14 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
                 max={59}
                 onChange={handleMinute}
                 label="MM"
+              />
+              <span style={{ fontSize: 20, fontWeight: 700, color: '#191919', lineHeight: 1 }}>:</span>
+              <ScrollWheel
+                value={second}
+                min={0}
+                max={59}
+                onChange={handleSecond}
+                label="SS"
               />
             </div>
           </div>
@@ -287,10 +297,12 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
         filename: rawLogger.filename ?? '',
         starttime: rawLogger.starttime ?? 0,
         samplerate: rawLogger.samplerate ?? 1,
-        channelArray: rawLogger.channelArray ? [...rawLogger.channelArray] : [],
+        channelArray: rawLogger.channelArray
+          ? rawLogger.channelArray.filter(ch => channelIdToCreateTime[ch.channelid] !== undefined)
+          : [],
       });
     }
-  }, [isOpen, rawLogger]);
+  }, [isOpen, rawLogger, channelIdToCreateTime]);
 
   const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -423,6 +435,7 @@ const LoggerSettings = () => {
 
   sensors.forEach(sensor => {
     (sensor.cfgchannel || []).forEach(ch => {
+      if (ch.Show === false) return;
       // cfgchannel uses "ChannelId" (capital C, capital I) — match against cfglogger's "channelid"
       const cid = ch.ChannelId ?? ch.channelid ?? ch.ChannelID;
       const createTimeStr = String(ch.CreateTime);
@@ -433,12 +446,14 @@ const LoggerSettings = () => {
 
       let locationValue = '---', pointValue = '---';
       if (Array.isArray(locationsArray)) {
-        for (const locObj of locationsArray) {
-          const matched = (locObj.meapoints || []).find(pt =>
-            Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
-          );
-          if (matched) { locationValue = matched.location || '---'; pointValue = matched.meapoint || '---'; break; }
-        }
+        locationsArray.forEach(loc => {
+          (loc.meapoints || []).forEach(mp => {
+            if ((mp.channels || []).some(id => String(id) === createTimeStr)) {
+              locationValue = loc.location;
+              pointValue = mp.meapoint;
+            }
+          });
+        });
       }
       allChannels.push({ 
         CreateTime: createTimeStr, 
@@ -462,12 +477,14 @@ const LoggerSettings = () => {
 
     let locationValue = '---', pointValue = '---';
     if (Array.isArray(locationsArray)) {
-      for (const locObj of locationsArray) {
-        const matched = (locObj.meapoints || []).find(pt =>
-          Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
-        );
-        if (matched) { locationValue = matched.location || '---'; pointValue = matched.meapoint || '---'; break; }
-      }
+      locationsArray.forEach(loc => {
+        (loc.meapoints || []).forEach(mp => {
+          if ((mp.channels || []).some(id => String(id) === createTimeStr)) {
+            locationValue = loc.location;
+            pointValue = mp.meapoint;
+          }
+        });
+      });
     }
     allChannels.push({ 
       CreateTime: createTimeStr, 
@@ -479,6 +496,8 @@ const LoggerSettings = () => {
       point: pointValue 
     });
   });
+
+  const displayedChannels = channelArray.filter(ch => channelIdToName[ch.channelid] !== undefined);
 
   const handleSave = (updatedForm) => {
     const loggerPath = findLoggerPath(configData?.configs);
@@ -551,8 +570,8 @@ const LoggerSettings = () => {
               <div className="logger-display-value">
                 {rawLogger?.starttime ? (
                   (() => {
-                    const { year, month, day, hour, minute } = msToLocalParts(rawLogger.starttime);
-                    return `${year}-${pad2(month)}-${pad2(day)}  ${pad2(hour)}:${pad2(minute)}`;
+                    const { year, month, day, hour, minute, second } = msToLocalParts(rawLogger.starttime);
+                    return `${year}-${pad2(month)}-${pad2(day)}  ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
                   })()
                 ) : '—'}
               </div>
@@ -568,7 +587,7 @@ const LoggerSettings = () => {
 
         {/* Channel table */}
         <div className="logger-table-header">
-          <span className="logger-table-title">{t('Channel list')} ({channelArray.length})</span>
+          <span className="logger-table-title">{t('Channel list')} ({displayedChannels.length})</span>
         </div>
 
         <div className="logger-table-container">
@@ -580,8 +599,8 @@ const LoggerSettings = () => {
               </tr>
             </thead>
             <tbody>
-              {channelArray.length > 0 ? (
-                channelArray.map((ch, idx) => (
+              {displayedChannels.length > 0 ? (
+                displayedChannels.map((ch, idx) => (
                   <tr key={idx}>
                     <td>{channelIdToName[ch.channelid] ?? `CH ${ch.channelid}`}</td>
                     <td className="td-location">{ch.location} / {ch.meapoint}</td>

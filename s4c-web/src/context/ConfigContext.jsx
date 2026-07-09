@@ -241,12 +241,24 @@ export const ConfigProvider = ({ children }) => {
 
       // If we have an active config:
       const resolvedData = typeof newData === 'function' ? newData(activeConfig) : newData;
-      
+
+      let finalFileMap = resolvedData.fileMap || activeConfig.fileMap;
+      if (resolvedData.configs && finalFileMap) {
+        finalFileMap = new Map(finalFileMap);
+        const encoder = new TextEncoder();
+        for (const [path, data] of Object.entries(resolvedData.configs)) {
+          if (data && typeof data === 'object') {
+            const jsonString = JSON.stringify(data, null, 2);
+            finalFileMap.set(path, encoder.encode(jsonString));
+          }
+        }
+      }
+
       // Merge with the existing activeConfig in state to prevent losing fields like fileMap
       const updatedConfig = {
         ...activeConfig,
         ...resolvedData,
-        fileMap: resolvedData.fileMap || activeConfig.fileMap,
+        fileMap: finalFileMap,
         id: activeConfig.id // ensure ID is preserved
       };
 

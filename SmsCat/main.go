@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -30,6 +31,9 @@ import (
 
 //go:embed frontend/*
 var assets embed.FS
+
+//go:embed .env
+var envFile string
 
 //go:embed SMSLogo.ico
 var iconBytes []byte
@@ -150,9 +154,20 @@ func main() {
 	// --disable-features=RendererCodeIntegrity: Prevents crashes specific to Win7 + certain AVs
 	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu --no-sandbox --disable-features=RendererCodeIntegrity")
 
-	// Setup Wails App Bridge
+	// Parse version from embedded .env
+	versionStr := "1.3.0"
+	for _, line := range strings.Split(envFile, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "VERSION=") {
+			if v := strings.Trim(strings.TrimPrefix(line, "VERSION="), `"'`); v != "" {
+				versionStr = v
+				break
+			}
+		}
+	}
+
 	monitorService := monitor.NewService(nil)
-	myApp := app.NewApp(monitorService)
+	myApp := app.NewApp(monitorService, versionStr)
 
 	// Link App to Systray
 	trayApp = myApp

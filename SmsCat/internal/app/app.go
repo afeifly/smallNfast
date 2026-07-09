@@ -22,14 +22,34 @@ type App struct {
 	LogStore   []string
 	logMu      sync.Mutex
 	IsQuitting bool // Flag to distinguish between Window Close and App Exit
+	Version    string
 }
 
 // NewApp creates a new App application struct
-func NewApp(monitor *monitor.Service) *App {
+func NewApp(monitor *monitor.Service, version string) *App {
 	return &App{
 		Monitor:  monitor,
 		LogStore: make([]string, 0),
+		Version:  version,
 	}
+}
+
+// GetVersion returns the application version.
+// It first attempts to read a local .env file in the working directory (so editing .env at runtime works),
+// and falls back to the embedded version.
+func (a *App) GetVersion() string {
+	if data, err := os.ReadFile(".env"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "VERSION=") {
+				ver := strings.Trim(strings.TrimPrefix(line, "VERSION="), `"'`)
+				if ver != "" {
+					return ver
+				}
+			}
+		}
+	}
+	return a.Version
 }
 
 // Startup is called when the app starts. The context is saved

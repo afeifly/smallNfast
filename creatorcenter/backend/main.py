@@ -42,7 +42,7 @@ app.include_router(segments_router, prefix="/api", dependencies=[Depends(verify_
 app.include_router(translations_router, prefix="/api", dependencies=[Depends(verify_session)])
 app.include_router(export_router, prefix="/api", dependencies=[Depends(verify_session)])
 app.include_router(keys_router, prefix="/api", dependencies=[Depends(verify_session)])
-app.include_router(images_router, prefix="/api", dependencies=[Depends(verify_session)])
+app.include_router(images_router, prefix="/api")
 
 
 # Serve frontend static files in production

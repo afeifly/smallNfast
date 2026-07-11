@@ -1,8 +1,9 @@
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
 from backend.config import UPLOADS_DIR
+from backend.router_auth import verify_session
 
 IMAGES_DIR = UPLOADS_DIR / "images"
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -13,7 +14,7 @@ ALLOWED_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/sv
 
 
 @router.post("/upload")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(file: UploadFile = File(...), _=Depends(verify_session)):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, f"Unsupported image type: {file.content_type}")
 

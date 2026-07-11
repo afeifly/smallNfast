@@ -19,11 +19,8 @@ router.get('/public/projects/:projectId/milestones', (req, res) => {
   }
 });
 
-// Protect all following routes with authentication
-router.use(authMiddleware);
-
 // GET /api/projects/:projectId/milestones
-router.get('/projects/:projectId/milestones', (req, res) => {
+router.get('/projects/:projectId/milestones', authMiddleware, (req, res) => {
   if (!verifyProjectOwner(req.params.projectId, req.userId)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -32,7 +29,7 @@ router.get('/projects/:projectId/milestones', (req, res) => {
 });
 
 // POST /api/projects/:projectId/milestones
-router.post('/projects/:projectId/milestones', (req, res) => {
+router.post('/projects/:projectId/milestones', authMiddleware, (req, res) => {
   if (!verifyProjectOwner(req.params.projectId, req.userId)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -57,7 +54,7 @@ router.post('/projects/:projectId/milestones', (req, res) => {
 });
 
 // PATCH /api/milestones/:id
-router.patch('/milestones/:id', (req, res) => {
+router.patch('/milestones/:id', authMiddleware, (req, res) => {
   const existing = db.prepare('SELECT * FROM milestones WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Milestone not found' });
 
@@ -88,7 +85,7 @@ router.patch('/milestones/:id', (req, res) => {
 });
 
 // DELETE /api/milestones/:id
-router.delete('/milestones/:id', (req, res) => {
+router.delete('/milestones/:id', authMiddleware, (req, res) => {
   const existing = db.prepare('SELECT * FROM milestones WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Milestone not found' });
 

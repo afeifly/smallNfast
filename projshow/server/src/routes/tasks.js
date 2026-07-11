@@ -19,11 +19,8 @@ router.get('/public/projects/:projectId/tasks', (req, res) => {
   }
 });
 
-// Protect all following routes with authentication
-router.use(authMiddleware);
-
 // GET /api/projects/:projectId/tasks
-router.get('/projects/:projectId/tasks', (req, res) => {
+router.get('/projects/:projectId/tasks', authMiddleware, (req, res) => {
   if (!verifyProjectOwner(req.params.projectId, req.userId)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -32,7 +29,7 @@ router.get('/projects/:projectId/tasks', (req, res) => {
 });
 
 // POST /api/projects/:projectId/tasks
-router.post('/projects/:projectId/tasks', (req, res) => {
+router.post('/projects/:projectId/tasks', authMiddleware, (req, res) => {
   if (!verifyProjectOwner(req.params.projectId, req.userId)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -58,7 +55,7 @@ router.post('/projects/:projectId/tasks', (req, res) => {
 });
 
 // PATCH /api/tasks/:id
-router.patch('/tasks/:id', (req, res) => {
+router.patch('/tasks/:id', authMiddleware, (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Task not found' });
 
@@ -89,7 +86,7 @@ router.patch('/tasks/:id', (req, res) => {
 });
 
 // DELETE /api/tasks/:id
-router.delete('/tasks/:id', (req, res) => {
+router.delete('/tasks/:id', authMiddleware, (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Task not found' });
 

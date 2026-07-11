@@ -150,7 +150,7 @@ router.post('/import', upload.single('archive'), async (req, res) => {
 
   try {
     const user = db
-      .prepare('SELECT username FROM users WHERE id = ?')
+      .prepare('SELECT username, space_name FROM users WHERE id = ?')
       .get(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -175,10 +175,31 @@ router.post('/import', upload.single('archive'), async (req, res) => {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    const userUploadsDir = path.join(uploadsDir, user.username);
-    if (!fs.existsSync(userUploadsDir)) {
-      fs.mkdirSync(userUploadsDir, { recursive: true });
+    // Determine target username and space name from backup
+    const originalUsername = user.username;
+    const backupUsername = spaceData.user?.username;
+    const backupSpaceName = spaceData.user?.space_name || user.space_name;
+
+    let targetUsername = originalUsername;
+    if (backupUsername && backupUsername !== originalUsername) {
+      const conflict = db.prepare('SELECT id FROM users WHERE username = ?').get(backupUsername);
+      if (!conflict) {
+        targetUsername = backupUsername;
+      }
     }
+
+    // Delete existing uploads on disk for the old username
+    const oldUserUploadsDir = path.join(uploadsDir, originalUsername);
+    if (fs.existsSync(oldUserUploadsDir)) {
+      fs.rmSync(oldUserUploadsDir, { recursive: true, force: true });
+    }
+
+    // Create / ensure the target uploads folder exists
+    const userUploadsDir = path.join(uploadsDir, targetUsername);
+    if (fs.existsSync(userUploadsDir)) {
+      fs.rmSync(userUploadsDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(userUploadsDir, { recursive: true });
 
     // Save images — build a filename → new filename map
     const imageMap = {}; // old relative path → new /uploads/<username>/<newname>
@@ -194,8 +215,8 @@ router.post('/import', upload.single('archive'), async (req, res) => {
       const destPath = path.join(userUploadsDir, newFilename);
       const buf = await entry.buffer();
       fs.writeFileSync(destPath, buf);
-      imageMap[`/uploads/${oldFilename}`] = `/uploads/${user.username}/${newFilename}`;
-      imageMap[oldFilename] = `/uploads/${user.username}/${newFilename}`; // handle bare name too
+      imageMap[`/uploads/${oldFilename}`] = `/uploads/${targetUsername}/${newFilename}`;
+      imageMap[oldFilename] = `/uploads/${targetUsername}/${newFilename}`; // handle bare name too
       imagesImported++;
     }
 
@@ -204,6 +225,13 @@ router.post('/import', upload.single('archive'), async (req, res) => {
     let projectsImported = 0;
     let tasksImported = 0;
     let milestonesImported = 0;
+
+    const deleteTasks = db.prepare('DELETE FROM tasks WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)');
+    const deleteMilestones = db.prepare('DELETE FROM milestones WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)');
+    const deleteProjects = db.prepare('DELETE FROM projects WHERE user_id = ?');
+    const deleteSnapshots = db.prepare('DELETE FROM history_snapshots WHERE user_id = ?');
+
+    const updateUserDetails = db.prepare('UPDATE users SET username = ?, space_name = ? WHERE id = ?');
 
     const insertProject = db.prepare(`
       INSERT INTO projects
@@ -225,8 +253,17 @@ router.post('/import', upload.single('archive'), async (req, res) => {
     `);
 
     const doImport = db.transaction(() => {
+      // 1. Clean slate for database tables associated with this user
+      deleteTasks.run(req.userId);
+      deleteMilestones.run(req.userId);
+      deleteProjects.run(req.userId);
+      deleteSnapshots.run(req.userId);
+
+      // 2. Update user profile details
+      updateUserDetails.run(targetUsername, backupSpaceName, req.userId);
+
+      // 3. Insert new projects
       for (const project of spaceData.projects) {
-        // Remap preview_images URLs
         const remappedImages = (project.preview_images || []).map(
           (url) => imageMap[url] || imageMap[path.basename(url)] || url
         );
@@ -254,7 +291,7 @@ router.post('/import', upload.single('archive'), async (req, res) => {
         projectsImported++;
       }
 
-      // Insert tasks
+      // 4. Insert new tasks
       for (const task of spaceData.tasks || []) {
         const newProjectId = projectIdMap[task.project_id];
         if (!newProjectId) continue;
@@ -271,7 +308,7 @@ router.post('/import', upload.single('archive'), async (req, res) => {
         tasksImported++;
       }
 
-      // Insert milestones
+      // 5. Insert new milestones
       for (const ms of spaceData.milestones || []) {
         const newProjectId = projectIdMap[ms.project_id];
         if (!newProjectId) continue;

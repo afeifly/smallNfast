@@ -4,17 +4,32 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { authMiddleware } from '../middleware/auth.js';
+import db from '../db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, '..', '..', 'data', 'uploads');
 
-// Ensure the directory exists
+// Ensure the main directory exists
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  destination: (req, _file, cb) => {
+    try {
+      const user = db.prepare('SELECT username FROM users WHERE id = ?').get(req.userId);
+      if (!user) {
+        return cb(new Error('User not found'));
+      }
+      const userUploadsDir = path.join(uploadsDir, user.username);
+      if (!fs.existsSync(userUploadsDir)) {
+        fs.mkdirSync(userUploadsDir, { recursive: true });
+      }
+      cb(null, userUploadsDir);
+    } catch (err) {
+      cb(err);
+    }
+  },
   filename: (_req, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     cb(null, `${unique}.jpg`);
@@ -44,7 +59,11 @@ router.post('/', authMiddleware, (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
     }
-    res.json({ url: `/uploads/${req.file.filename}` });
+    const user = db.prepare('SELECT username FROM users WHERE id = ?').get(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ url: `/uploads/${user.username}/${req.file.filename}` });
   });
 });
 

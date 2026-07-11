@@ -119,7 +119,10 @@ router.get('/export', (req, res) => {
 
     // Add each image file (skip missing ones silently)
     for (const filename of imageFilenames) {
-      const filePath = path.join(uploadsDir, filename);
+      let filePath = path.join(uploadsDir, user.username, filename);
+      if (!fs.existsSync(filePath)) {
+        filePath = path.join(uploadsDir, filename);
+      }
       if (fs.existsSync(filePath)) {
         archive.file(filePath, { name: `uploads/${filename}` });
       }
@@ -146,6 +149,11 @@ router.post('/import', upload.single('archive'), async (req, res) => {
   }
 
   try {
+    const user = db
+      .prepare('SELECT username FROM users WHERE id = ?')
+      .get(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
     // Parse the zip from the in-memory buffer
     const zipBuffer = req.file.buffer;
     const directory = await unzipper.Open.buffer(zipBuffer);
@@ -167,8 +175,13 @@ router.post('/import', upload.single('archive'), async (req, res) => {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
+    const userUploadsDir = path.join(uploadsDir, user.username);
+    if (!fs.existsSync(userUploadsDir)) {
+      fs.mkdirSync(userUploadsDir, { recursive: true });
+    }
+
     // Save images — build a filename → new filename map
-    const imageMap = {}; // old relative path → new /uploads/<newname>
+    const imageMap = {}; // old relative path → new /uploads/<username>/<newname>
     const imageEntries = directory.files.filter(
       (f) => f.path.startsWith('uploads/') && !f.type.includes('Directory')
     );
@@ -178,11 +191,11 @@ router.post('/import', upload.single('archive'), async (req, res) => {
       const oldFilename = path.basename(entry.path);
       const ext = path.extname(oldFilename) || '.jpg';
       const newFilename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-      const destPath = path.join(uploadsDir, newFilename);
+      const destPath = path.join(userUploadsDir, newFilename);
       const buf = await entry.buffer();
       fs.writeFileSync(destPath, buf);
-      imageMap[`/uploads/${oldFilename}`] = `/uploads/${newFilename}`;
-      imageMap[oldFilename] = `/uploads/${newFilename}`; // handle bare name too
+      imageMap[`/uploads/${oldFilename}`] = `/uploads/${user.username}/${newFilename}`;
+      imageMap[oldFilename] = `/uploads/${user.username}/${newFilename}`; // handle bare name too
       imagesImported++;
     }
 

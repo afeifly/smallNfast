@@ -23,8 +23,7 @@ module.exports = {
     {
       name: 'acbarcode',
       cwd: './acbarcode',
-      script: 'node',
-      args: 'server/index.js',
+      script: 'server/index.js',
       env: {
         NODE_ENV: 'production',
         PORT: 9016

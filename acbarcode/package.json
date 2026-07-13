@@ -4,9 +4,10 @@
   "description": "Vue 3 barcode label generator",
   "main": "index.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/index.js & vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js"
   },
   "keywords": [
     "vue",
@@ -17,6 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "html2canvas": "^1.4.1",
     "jsbarcode": "^3.11.5",
     "jspdf": "^2.5.1",

@@ -23,10 +23,11 @@ module.exports = {
     {
       name: 'acbarcode',
       cwd: './acbarcode',
-      script: 'npx',
-      args: 'serve -s dist -l tcp://127.0.0.1:9016',
+      script: 'node',
+      args: 'server/index.js',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 9016
       }
     },
     {

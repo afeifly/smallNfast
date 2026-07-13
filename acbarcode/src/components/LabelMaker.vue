@@ -1,70 +1,182 @@
 <template>
   <div class="label-maker">
     <h1>Product Label Generator</h1>
-    <form @submit.prevent="generateLabels">
-      <div class="form-group">
-        <label>Item Number</label>
-        <div class="custom-dropdown">
-          <div class="dropdown-selected" @click="toggleDropdown">
-            <span>{{ selectedItemNumber }}</span>
-            <span class="dropdown-arrow" :class="{ 'open': isDropdownOpen }">▼</span>
-          </div>
-          <div v-if="isDropdownOpen" class="dropdown-options">
-            <div class="search-box">
-              <input 
-                type="text" 
-                v-model="searchQuery" 
-                placeholder="Search item number..." 
-                @click.stop
-              />
+    
+    <!-- Admin Navigation Tabs -->
+    <div v-if="isAdmin" class="admin-tabs">
+      <button :class="{ active: activeTab === 'maker' }" @click="activeTab = 'maker'">Label Maker</button>
+      <button :class="{ active: activeTab === 'products' }" @click="activeTab = 'products'">Manage Products</button>
+    </div>
+
+    <!-- TAB 1: Label Maker -->
+    <div v-if="activeTab === 'maker'">
+      <form @submit.prevent="generateLabels">
+        <div class="form-group">
+          <label>Item Number</label>
+          <div class="custom-dropdown">
+            <div class="dropdown-selected" @click="toggleDropdown">
+              <span>{{ selectedItemNumber || 'Select a product...' }}</span>
+              <span class="dropdown-arrow" :class="{ 'open': isDropdownOpen }">▼</span>
             </div>
-            <div class="chips-container">
-              <div 
-                v-for="product in filteredProducts" 
-                :key="product.item"
-                class="chip"
-                :class="{ 'selected': product.item === selectedItemNumber }"
-                @click="selectItem(product.item)"
-              >
-                {{ product.item }}
+            <div v-if="isDropdownOpen" class="dropdown-options">
+              <div class="search-box">
+                <input 
+                  type="text" 
+                  v-model="searchQuery" 
+                  placeholder="Search item number..." 
+                  @click.stop
+                />
+              </div>
+              <div class="chips-container">
+                <div 
+                  v-for="product in filteredProducts" 
+                  :key="product.item"
+                  class="chip"
+                  :class="{ 'selected': product.item === selectedItemNumber }"
+                  @click="selectItem(product.item)"
+                >
+                  {{ product.item }}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="form-group">
-        <label>Product Name</label>
-        <input type="text" v-model="productName" readonly />
-      </div>
-      <div class="form-group">
-        <label>Serial Numbers (one per line, max 10)</label>
-        <textarea v-model="serialNumbersInput" rows="5" placeholder="Enter up to 10 serial numbers, one per line"></textarea>
-      </div>
-      <button type="submit">Generate Labels</button>
-    </form>
+        <div class="form-group">
+          <label>Product Name</label>
+          <input type="text" v-model="productName" readonly />
+        </div>
+        
+        <!-- Band & Logo Selection (Read-only on maker page, editable in Manage Products) -->
+        <div class="form-group">
+          <label>Logo / Band</label>
+          <input 
+            type="text" 
+            :value="selectedBand === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco'" 
+            readonly 
+          />
+        </div>
 
-    <div v-if="labels.length" class="labels-preview">
-      <h2>Preview</h2>
-             <div class="labels-list">
-         <div v-for="(label, idx) in labels" :key="label.serial" class="label-card clickable-card" @click="downloadSinglePDF(idx)">
-           <div class="label-content">
-             <div class="label-title">{{ productName }}</div>
-             <div class="label-subtitle">Item No.: {{ selectedItemNumber }}</div>
-             <div class="label-serial">       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; SN: {{ label.serial }}</div>
-             <div class="barcode-container">
-               <svg :id="'barcode-' + idx" class="barcode-svg"></svg>
-             </div>
-             <div class="label-footer">
-               <span class="website">www.atlascopco.com</span>
-               <img src="/logo.png" alt="Logo" class="logo" />
-             </div>
-           </div>
-           <div class="download-hint">Click to download PDF</div>
-         </div>
-       </div>
-       <div class="download-buttons">
-         <button @click="downloadPDF">Download All</button>
-       </div>
+        <div class="form-group">
+          <label>Serial Numbers (one per line, max 10)</label>
+          <textarea v-model="serialNumbersInput" rows="5" placeholder="Enter up to 10 serial numbers, one per line"></textarea>
+        </div>
+        <button type="submit" :disabled="!selectedItemNumber">Generate Labels</button>
+      </form>
+
+      <div v-if="labels.length" class="labels-preview">
+        <h2>Preview</h2>
+        <div class="labels-list">
+          <div v-for="(label, idx) in labels" :key="label.serial" class="label-card clickable-card" @click="downloadSinglePDF(idx)">
+            <div class="label-content">
+              <div class="label-title">{{ productName }}</div>
+              <div class="label-subtitle">Item No.: {{ selectedItemNumber }}</div>
+              <div class="label-serial">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; SN: {{ label.serial }}</div>
+              <div class="barcode-container">
+                <svg :id="'barcode-' + idx" class="barcode-svg"></svg>
+              </div>
+              <div class="label-footer">
+                <span class="website">{{ websiteMap[selectedBand] || 'www.atlascopco.com' }}</span>
+                <img :src="logoMap[selectedBand] || '/logo.png'" alt="Logo" class="logo" />
+              </div>
+            </div>
+            <div class="download-hint">Click to download PDF</div>
+          </div>
+        </div>
+        <div class="download-buttons">
+          <button @click="downloadPDF">Download All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Manage Products (Admin Only) -->
+    <div v-else-if="activeTab === 'products' && isAdmin" class="products-management">
+      <div class="management-header">
+        <h2>Products Directory</h2>
+        <button class="add-btn" @click="openAddModal">Add New Product</button>
+      </div>
+      
+      <div class="search-bar">
+        <input 
+          type="text" 
+          v-model="productSearchQuery" 
+          placeholder="Search by item number or name..."
+        />
+      </div>
+      
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Item Number</th>
+              <th>Product Name</th>
+              <th>Default Band / Logo</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="product in searchedProducts" :key="product.item">
+              <td>{{ product.item }}</td>
+              <td>{{ product.name }}</td>
+              <td>
+                <span class="band-tag" :class="product.band || 'atlascopco'">
+                  {{ product.band === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco' }}
+                </span>
+              </td>
+              <td class="actions-cell">
+                <button class="edit-action" @click="openEditModal(product)">Edit</button>
+                <button class="delete-action" @click="deleteProduct(product.item)">Delete</button>
+              </td>
+            </tr>
+            <tr v-if="searchedProducts.length === 0">
+              <td colspan="4" class="no-data">No products found</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Product Modal (Add/Edit) -->
+    <div v-if="showProductModal" class="modal-overlay" @click="showProductModal = false">
+      <div class="modal-card" @click.stop>
+        <h3>{{ modalMode === 'add' ? 'Add Product' : 'Edit Product' }}</h3>
+        <form @submit.prevent="submitProduct">
+          <div class="form-group">
+            <label>Item Number</label>
+            <input 
+              type="text" 
+              v-model="productForm.item" 
+              placeholder="e.g. 1830174222"
+              :readonly="modalMode === 'edit'"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Product Name</label>
+            <input 
+              type="text" 
+              v-model="productForm.name" 
+              placeholder="e.g. FL S93 T"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Default Band / Logo</label>
+            <select v-model="productForm.band">
+              <option value="atlascopco">Atlas Copco</option>
+              <option value="pneumatech">Pneumatech</option>
+            </select>
+          </div>
+          
+          <p v-if="productFormError" class="modal-error">{{ productFormError }}</p>
+          
+          <div class="modal-actions">
+            <button type="button" class="cancel-btn" @click="showProductModal = false">Cancel</button>
+            <button type="submit" :disabled="isSubmittingProduct">
+              {{ isSubmittingProduct ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </template>
@@ -75,264 +187,74 @@ import JsBarcode from 'jsbarcode';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
-const products = [
-  { item: '1830174222', name: 'FL S93 T' },
-  { item: '1830174237', name: 'FL S93 T' },
-  { item: '1830174221', name: 'FL S93 T' },
-  { item: '1830174236', name: 'FL S93 T' },
-  { item: '1830174223', name: 'FL S93 T' },
-  { item: '1830174238', name: 'FL S93 T' },
-
-  { item: '1830138002', name: 'FL S185 T' },
-  { item: '1830138003', name: 'FL S185 T' },
-  { item: '1830174224', name: 'FL S185 T' },
-  { item: '1830174226', name: 'FL S185 T' },
-  { item: '1830174239', name: 'FL S185 T' },
-
-  { item: '1830138004', name: 'FL S224 T' },
-  { item: '1830138005', name: 'FL S224 T' },
-  { item: '1830174229', name: 'FL S224 T' },
-  { item: '1830174240', name: 'FL S224 T' },
-
-  { item: '1830174232', name: 'FL S200 P' },
-  { item: '1830174219', name: 'FL S200 P' },
-  { item: '1830174235', name: 'FL S260 P' },
-  { item: '1830174220', name: 'FL S260 P' },
-
-  { item: '1830138006', name: 'FL S200 P' },
-  { item: '1830138007', name: 'FL S200 P' },
-  { item: '1830138008', name: 'FL S260 P' },
-  { item: '1830138009', name: 'FL S260 P' },
-  { item: '1830138010', name: 'FLI D08 C' },
-  { item: '1830138011', name: 'FLI D08 C' },
-  { item: '1830138012', name: 'FLI D08 C' },
-  { item: '1830138013', name: 'FLI D08 C' },
-
-  { item: '1830174204', name: 'FLI D15 A' },
-  { item: '1830174207', name: 'FLI D20 A' },
-  { item: '1830174210', name: 'FLI D25 A' },
-  { item: '1830174213', name: 'FLI D32 A' },
-
-
-  { item: '1830174203', name: 'FLI D15 A' },
-  { item: '1830174206', name: 'FLI D20 A' },
-  { item: '1830174209', name: 'FLI D25 A' },
-  { item: '1830174212', name: 'FLI D32 A' },
-
-
-  { item: '1830174205', name: 'FLI D15 A' },
-  { item: '1830174208', name: 'FLI D20 A' },
-  { item: '1830174211', name: 'FLI D25 A' },
-  { item: '1830174214', name: 'FLI D32 A' },
-
-  { item: '1830174215', name: 'FLI D40 A' },
-  { item: '1830174216', name: 'FLI D50 A' },
-  { item: '1830174217', name: 'FLI D65 A' },
-  { item: '1830174218', name: 'FLI D80 A' },
-
-  { item: '1830174188', name: 'FLI D15 A' },
-  { item: '1830174191', name: 'FLI D20 A' },
-  { item: '1830174194', name: 'FLI D25 A' },
-  { item: '1830174197', name: 'FLI D32 A' },
-
-  { item: '1830174187', name: 'FLI D15 A' },
-  { item: '1830174190', name: 'FLI D20 A' },
-  { item: '1830174193', name: 'FLI D25 A' },
-  { item: '1830174196', name: 'FLI D32 A' },
-
-  { item: '1830174189', name: 'FLI D15 A' },
-  { item: '1830174192', name: 'FLI D20 A' },
-  { item: '1830174195', name: 'FLI D25 A' },
-  { item: '1830174198', name: 'FLI D32 A' },
-
-  { item: '1830174199', name: 'FLI D40 A' },
-  { item: '1830174200', name: 'FLI D50 A' },
-  { item: '1830174201', name: 'FLI D65 A' },
-  { item: '1830174202', name: 'FLI D80 A' },
-
-  { item: '1830138014', name: 'FLI D15 C' },
-  { item: '1830138015', name: 'FLI D15 C' },
-  { item: '1830138016', name: 'FLI D15 C' },
-  { item: '1830138017', name: 'FLI D15 C' },
-  { item: '1830138018', name: 'FLI D20 C' },
-  { item: '1830138019', name: 'FLI D20 C' },
-  { item: '1830138020', name: 'FLI D20 C' },
-  { item: '1830138021', name: 'FLI D20 C' },
-  { item: '1830138022', name: 'FLI D25 C' },
-  { item: '1830138023', name: 'FLI D25 C' },
-  { item: '1830138024', name: 'FLI D25 C' },
-  { item: '1830138025', name: 'FLI D25 C' },
-  { item: '1830138026', name: 'FLI D32 C' },
-  { item: '1830138027', name: 'FLI D32 C' },
-  { item: '1830138028', name: 'FLI D32 C' },
-  { item: '1830138029', name: 'FLI D32 C' },
-  { item: '1830138030', name: 'FLI D40 A' },
-  { item: '1830138031', name: 'FLI D40 A' },
-  { item: '1830138032', name: 'FLI D40 A' },
-  { item: '1830138033', name: 'FLI D40 A' },
-  { item: '1830138034', name: 'FLI D50 A' },
-  { item: '1830138035', name: 'FLI D50 A' },
-  { item: '1830138036', name: 'FLI D50 A' },
-  { item: '1830138037', name: 'FLI D50 A' },
-  { item: '1830138038', name: 'FLI D65 A' },
-  { item: '1830138039', name: 'FLI D65 A' },
-  { item: '1830138040', name: 'FLI D65 A' },
-  { item: '1830138041', name: 'FLI D65 A' },
-  { item: '1830138042', name: 'FLI D80 A' },
-  { item: '1830138043', name: 'FLI D80 A' },
-  { item: '1830138044', name: 'FLI D80 A' },
-  { item: '1830138045', name: 'FLI D80 A' },
-  { item: '1830154911', name: 'DP T20' },
-  { item: '1830154913', name: 'DP T60' },
-  { item: '1830154915', name: 'DP T100' },
-  { item: '1830154912', name: 'DP T20 P' },
-  { item: '1830154914', name: 'DP T60 P' },
-  { item: '1830154916', name: 'DP T100 P' },
-  { item: '1830013233', name: 'AQA' },
-  { item: '1830013234', name: 'AQA Ex.' },
-  { item: '1830013236', name: 'ISD' },
-  { item: '1830013237', name: 'ISD Ex.' },
-  { item: '1830013238', name: 'AOS' },
-  { item: '1830013239', name: 'AOS Ex.' },
-  { item: '1830023295', name: 'WAF' },
-  { item: '1830070888', name: 'AQM' },
-  { item: '1830070889', name: 'AQM Ex.' },
-  { item: '1830071656', name: 'WAF Ex.' },
-  { item: '1830147340', name: 'DL P50' },
-  { item: '1830174225', name: 'FL S185 T' },
-  { item: '1830174227', name: 'FL S224 T' },
-  { item: '1830174228', name: 'FL S224 T' },
-  { item: '1830174230', name: 'FL S200 P' },
-  { item: '1830174231', name: 'FL S200 P' },
-  { item: '1830174233', name: 'FL S260 P' },
-  { item: '1830174234', name: 'FL S260 P' },
-  { item: '1830177965', name: 'FC D15 A N A' },
-  { item: '1830177966', name: 'FC D15 A N M' },
-  { item: '1830177967', name: 'FC D15 A N MT' },
-  { item: '1830177968', name: 'FC D20 A N A' },
-  { item: '1830177969', name: 'FC D20 A N M' },
-  { item: '1830177970', name: 'FC D20 A N MT' },
-  { item: '1830177971', name: 'FC D25 A N A' },
-  { item: '1830177972', name: 'FC D25 A N M' },
-  { item: '1830177973', name: 'FC D25 A N MT' },
-  { item: '1830177974', name: 'FC D32 A N A' },
-  { item: '1830177975', name: 'FC D32 A N M' },
-  { item: '1830177976', name: 'FC D32 A N MT' },
-  { item: '1830177977', name: 'FC D40 A N A' },
-  { item: '1830177978', name: 'FC D40 A N M' },
-  { item: '1830177979', name: 'FC D40 A N MT' },
-  { item: '1830177980', name: 'FC D50 A N A' },
-  { item: '1830177981', name: 'FC D50 A N M' },
-  { item: '1830177982', name: 'FC D50 A N MT' },
-  { item: '1830177983', name: 'FC D65 A N A' },
-  { item: '1830177984', name: 'FC D65 A N M' },
-  { item: '1830177985', name: 'FC D65 A N MT' },
-  { item: '1830177986', name: 'FC D80 A N A' },
-  { item: '1830177987', name: 'FC D80 A N M' },
-  { item: '1830177988', name: 'FC D80 A N MT' },
-  { item: '1830177989', name: 'FC D15 A R A' },
-  { item: '1830177990', name: 'FC D15 A R M' },
-  { item: '1830177991', name: 'FC D15 A R MT' },
-  { item: '1830177994', name: 'FC D20 A R MT' },
-  { item: '1830177995', name: 'FC D25 A R A' },
-  { item: '1830177996', name: 'FC D25 A R M' },
-  { item: '1830177997', name: 'FC D25 A R MT' },
-  { item: '1830177998', name: 'FC D32 A R A' },
-  { item: '1830177999', name: 'FC D32 A R M' },
-  { item: '1830178000', name: 'FC D32 A R MT' },
-  { item: '1830178001', name: 'FC D40 A R A' },
-  { item: '1830178002', name: 'FC D40 A R M' },
-  { item: '1830178003', name: 'FC D40 A R MT' },
-  { item: '1830178004', name: 'FC D50 A R A' },
-  { item: '1830178005', name: 'FC D50 A R M' },
-  { item: '1830178006', name: 'FC D50 A R MT' },
-  { item: '1830178007', name: 'FC D65 A R A' },
-  { item: '1830178008', name: 'FC D65 A R M' },
-  { item: '1830178009', name: 'FC D65 A R MT' },
-  { item: '1830178010', name: 'FC D80 A R A' },
-  { item: '1830178011', name: 'FC D80 A R M' },
-  { item: '1830178012', name: 'FC D80 A R MT' },
-  { item: '1830178013', name: 'FC D08 C G A' },
-  { item: '1830178014', name: 'FC D08 C N A' },
-  { item: '1830178015', name: 'FC D08 C G M' },
-  { item: '1830178016', name: 'FC D08 C N M' },
-  { item: '1830178017', name: 'FC D15 C G A' },
-  { item: '1830178018', name: 'FC D15 C N A' },
-  { item: '1830178019', name: 'FC D15 C G M' },
-  { item: '1830178020', name: 'FC D15 C N M' },
-  { item: '1830178021', name: 'FC D20 C G A' },
-  { item: '1830178022', name: 'FC D20 C N A' },
-  { item: '1830178023', name: 'FC D20 C G M' },
-  { item: '1830178024', name: 'FC D20 C N M' },
-  { item: '1830178025', name: 'FC D25 C G A' },
-  { item: '1830178026', name: 'FC D25 C N A' },
-  { item: '1830178027', name: 'FC D25 C G M' },
-  { item: '1830178028', name: 'FC D25 C N M' },
-  { item: '1830178029', name: 'FC D32 C G A' },
-  { item: '1830178030', name: 'FC D32 C N A' },
-  { item: '1830178031', name: 'FC D32 C G M' },
-  { item: '1830178032', name: 'FC D32 C N M' },
-  { item: '1830178033', name: 'FC S200 W A' },
-  { item: '1830178034', name: 'FC S200 W M' },
-  { item: '1830178035', name: 'FC S200 W MT' },
-  { item: '1830178036', name: 'FC S260 W A' },
-  { item: '1830178037', name: 'FC S260 W M' },
-  { item: '1830178038', name: 'FC S260 W MT' },
-  { item: '1830178039', name: 'FC S200 W A' },
-  { item: '1830178040', name: 'FC S200 W M' },
-  { item: '1830178041', name: 'FC S200 W MT' },
-  { item: '1830178042', name: 'FC S260 W A' },
-  { item: '1830178043', name: 'FC S260 W M' },
-  { item: '1830178044', name: 'FC S260 W MT' },
-  { item: '1830178045', name: 'FC S93  A' },
-  { item: '1830178046', name: 'FC S93  M' },
-  { item: '1830178047', name: 'FC S93  MT' },
-  { item: '1830178048', name: 'FC S185  A' },
-  { item: '1830178049', name: 'FC S185  M' },
-  { item: '1830178050', name: 'FC S185  MT' },
-  { item: '1830178051', name: 'FC S224  A' },
-  { item: '1830178052', name: 'FC S224  M' },
-  { item: '1830178053', name: 'FC S224  MT' },
-  { item: '1830178054', name: 'FC S93  A' },
-  { item: '1830178055', name: 'FC S93  M' },
-  { item: '1830178056', name: 'FC S93  MT' },
-  { item: '1830178057', name: 'FC S185  A' },
-  { item: '1830178058', name: 'FC S185  M' },
-  { item: '1830178059', name: 'FC S185  MT' },
-  { item: '1830178060', name: 'FC S224  A' },
-  { item: '1830178061', name: 'FC S224  M' },
-  { item: '1830178062', name: 'FC S224  MT' },
-  { item: '1830178063', name: 'PDP SENS. T60 P' },
-  { item: '1830178064', name: 'PDP SENS. T100' },
-  { item: '1830178065', name: 'PDP SENS. T100 P' },
-  { item: '1830178066', name: 'Check Box S18' },
-  { item: '1830178088', name: 'PDP SENS. T20' },
-  { item: '1830178089', name: 'PDP SENS. T20 P' },
-  { item: '1830178090', name: 'PDP SENS. T60' },
-
-  { item: '1830203005', name: 'EM A05' },
-  { item: '1830203006', name: 'Rogowski 3PH 100A RJ12' },
-  { item: '1830203007', name: 'Rogowski 3PH 1000A RJ12' },
-  { item: '1830203008', name: 'Rogowski 3PH 3000A RJ12' },
-  { item: '1830203009', name: 'Rogowski 1PH 100A RJ12' },
-  { item: '1830203010', name: 'Rogowski 1PH 1000A RJ12' },
-
-  { item: '1837085795', name: 'PDP SENSOR+CABLE' },
-  { item: '1830203741', name: 'PDP SENSOR' },
-  { item: '06653011', name: 'PDP SENSOR' },
-];
-
-const selectedItemNumber = ref(products[0].item);
-const productName = ref(products[0].name);
+// State Management
+const products = ref([]);
+const selectedItemNumber = ref('');
+const productName = ref('');
+const selectedBand = ref('atlascopco');
 const serialNumbersInput = ref('');
 const labels = ref([]);
-const labelCards = ref([]);
 const isDropdownOpen = ref(false);
 const searchQuery = ref('');
 
+// Admin Role State
+const isAdmin = ref(sessionStorage.getItem('acbarcode_role') === 'admin');
+const activeTab = ref('maker');
+
+// Products CRUD State
+const productSearchQuery = ref('');
+const showProductModal = ref(false);
+const modalMode = ref('add');
+const productFormError = ref('');
+const isSubmittingProduct = ref(false);
+const productForm = ref({
+  item: '',
+  name: '',
+  band: 'atlascopco'
+});
+
+// Brand Logos Configuration
+const logoMap = {
+  atlascopco: '/logo.png',
+  pneumatech: '/pneumatech_logo.png'
+};
+
+const websiteMap = {
+  atlascopco: 'www.atlascopco.com',
+  pneumatech: 'www.pneumatech.com'
+};
+
+const bandOptions = [
+  { value: 'atlascopco', label: 'Atlas Copco' },
+  { value: 'pneumatech', label: 'Pneumatech' }
+];
+
+// Fetch Products from Backend
+async function fetchProducts() {
+  try {
+    const res = await fetch('/api/products');
+    if (!res.ok) throw new Error('Failed to fetch products');
+    const data = await res.json();
+    products.value = data;
+    
+    // Auto-select first product if none selected
+    if (products.value.length > 0) {
+      const match = products.value.find(p => p.item === selectedItemNumber.value);
+      if (!match) {
+        selectedItemNumber.value = products.value[0].item;
+        productName.value = products.value[0].name;
+        selectedBand.value = products.value[0].band || 'atlascopco';
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching products list:', error);
+  }
+}
+
 function onItemNumberChange() {
-  const prod = products.find(p => p.item === selectedItemNumber.value);
+  const prod = products.value.find(p => p.item === selectedItemNumber.value);
   productName.value = prod ? prod.name : '';
+  selectedBand.value = prod ? (prod.band || 'atlascopco') : 'atlascopco';
 }
 
 function toggleDropdown() {
@@ -351,9 +273,9 @@ function selectItem(itemNumber) {
 
 const filteredProducts = computed(() => {
   if (!searchQuery.value) {
-    return products;
+    return products.value;
   }
-  return products.filter(product => 
+  return products.value.filter(product => 
     product.item.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
     product.name.toLowerCase().includes(searchQuery.value.toLowerCase())
   );
@@ -368,6 +290,7 @@ function handleClickOutside(event) {
 }
 
 onMounted(() => {
+  fetchProducts();
   document.addEventListener('click', handleClickOutside);
 });
 
@@ -411,6 +334,27 @@ function generateLabels() {
   });
 }
 
+// Generate image as base64 helper
+async function getLogoBase64() {
+  const logoImg = new Image();
+  logoImg.crossOrigin = 'anonymous';
+  
+  const logoPromise = new Promise((resolve) => {
+    logoImg.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = logoImg.width;
+      canvas.height = logoImg.height;
+      ctx.drawImage(logoImg, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    logoImg.onerror = () => resolve(null);
+    logoImg.src = logoMap[selectedBand.value] || '/logo.png';
+  });
+  
+  return await logoPromise;
+}
+
 async function downloadSinglePDF(index) {
   try {
     const pdf = new jsPDF({ unit: 'mm', format: [100, 60], orientation: 'landscape' });
@@ -420,24 +364,8 @@ async function downloadSinglePDF(index) {
     
     const label = labels.value[index];
     
-    // Load logo as base64 first
-    const logoImg = new Image();
-    logoImg.crossOrigin = 'anonymous';
-    
-    const logoPromise = new Promise((resolve, reject) => {
-      logoImg.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = logoImg.width;
-        canvas.height = logoImg.height;
-        ctx.drawImage(logoImg, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      logoImg.onerror = () => resolve(null);
-      logoImg.src = '/logo.png';
-    });
-    
-    const logoBase64 = await logoPromise;
+    // Load appropriate logo as base64
+    const logoBase64 = await getLogoBase64();
     
     // Product Name (Left side, top)
     pdf.setFont('helvetica', 'bold');
@@ -487,7 +415,7 @@ async function downloadSinglePDF(index) {
     
     // Website (Bottom left)
     pdf.setFontSize(11);
-    pdf.text('www.atlascopco.com', x + 5, y + cardHeight - 4);
+    pdf.text(websiteMap[selectedBand.value] || 'www.atlascopco.com', x + 5, y + cardHeight - 4);
     
     // Logo (Bottom right)
     if (logoBase64) {
@@ -513,23 +441,7 @@ async function downloadPDF() {
     let x = 0, y = 0;
     
     // Load logo as base64 first
-    const logoImg = new Image();
-    logoImg.crossOrigin = 'anonymous';
-    
-    const logoPromise = new Promise((resolve, reject) => {
-      logoImg.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = logoImg.width;
-        canvas.height = logoImg.height;
-        ctx.drawImage(logoImg, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      logoImg.onerror = () => resolve(null); // Continue without logo if it fails
-      logoImg.src = '/logo.png';
-    });
-    
-    const logoBase64 = await logoPromise;
+    const logoBase64 = await getLogoBase64();
     
     for (let idx = 0; idx < labels.value.length; idx++) {
       const label = labels.value[idx];
@@ -539,64 +451,60 @@ async function downloadPDF() {
         pdf.addPage();
       }
       
-       // Product Name (Left side, top)
-       pdf.setFont('helvetica', 'bold');
-       pdf.setFontSize(16);
-       pdf.text(productName.value, x + 5, y + 10);
-       
-    // Item Number (Left side, under product name)
-    pdf.setFont('courier', 'bold');
-    pdf.setFontSize(12);
-    pdf.text("Item No.: " + selectedItemNumber.value, x + 5, y + 15);
-    
-    // Serial Number (Right side)
-    pdf.setFont('courier', 'bold');
-    pdf.setFontSize(12);
-    pdf.text(`      SN: ${label.serial}`, x + 5, y + 20);
-    
-
-       
+      // Product Name (Left side, top)
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(16);
+      pdf.text(productName.value, x + 5, y + 10);
       
-             // Barcode (convert SVG to canvas first)
-       const svg = document.getElementById(`barcode-${idx}`);
-       if (svg) {
-         try {
-           const canvas = document.createElement('canvas');
-           const ctx = canvas.getContext('2d');
-           const svgData = new XMLSerializer().serializeToString(svg);
-           const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-           const url = URL.createObjectURL(svgBlob);
-           
-           const img = new Image();
-           await new Promise((resolve) => {
-             img.onload = () => {
-               canvas.width = img.width || 300;
-               canvas.height = img.height || 70;
-               ctx.fillStyle = 'white';
-               ctx.fillRect(0, 0, canvas.width, canvas.height);
-               ctx.drawImage(img, 0, 0);
-               const barcodeDataUrl = canvas.toDataURL('image/png');
-               // Barcode positioned in center
-               pdf.addImage(barcodeDataUrl, 'PNG', x + 5, y + 23, 70, 16);
-               URL.revokeObjectURL(url);
-               resolve();
-             };
-             img.onerror = () => resolve(); // Continue without barcode if it fails
-             img.src = url;
-           });
-         } catch (e) {
-           console.warn('Could not add barcode to PDF:', e);
-         }
-       }
+      // Item Number (Left side, under product name)
+      pdf.setFont('courier', 'bold');
+      pdf.setFontSize(12);
+      pdf.text("Item No.: " + selectedItemNumber.value, x + 5, y + 15);
+      
+      // Serial Number (Right side)
+      pdf.setFont('courier', 'bold');
+      pdf.setFontSize(12);
+      pdf.text(`      SN: ${label.serial}`, x + 5, y + 20);
+      
+      // Barcode (convert SVG to canvas first)
+      const svg = document.getElementById(`barcode-${idx}`);
+      if (svg) {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const svgData = new XMLSerializer().serializeToString(svg);
+          const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(svgBlob);
+          
+          const img = new Image();
+          await new Promise((resolve) => {
+            img.onload = () => {
+              canvas.width = img.width || 300;
+              canvas.height = img.height || 70;
+              ctx.fillStyle = 'white';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0);
+              const barcodeDataUrl = canvas.toDataURL('image/png');
+              pdf.addImage(barcodeDataUrl, 'PNG', x + 5, y + 23, 70, 16);
+              URL.revokeObjectURL(url);
+              resolve();
+            };
+            img.onerror = () => resolve();
+            img.src = url;
+          });
+        } catch (e) {
+          console.warn('Could not add barcode to PDF:', e);
+        }
+      }
       
       // Website (Bottom left)
       pdf.setFontSize(11);
-      pdf.text('www.atlascopco.com', x + 5, y + cardHeight - 4);
+      pdf.text(websiteMap[selectedBand.value] || 'www.atlascopco.com', x + 5, y + cardHeight - 4);
       
       // Logo (Bottom right)
       if (logoBase64) {
         try {
-              pdf.addImage(logoBase64, 'PNG', x + cardWidth - 31, y + cardHeight - 17, 30, 15);
+          pdf.addImage(logoBase64, 'PNG', x + cardWidth - 31, y + cardHeight - 17, 30, 15);
         } catch (e) {
           console.warn('Could not add logo to PDF:', e);
         }
@@ -607,6 +515,108 @@ async function downloadPDF() {
   } catch (error) {
     console.error('Error generating PDF:', error);
     alert('Error generating PDF. Please try again.');
+  }
+}
+
+// Product Management computed & functions (Admin Only)
+const searchedProducts = computed(() => {
+  if (!productSearchQuery.value) {
+    return products.value;
+  }
+  const q = productSearchQuery.value.toLowerCase();
+  return products.value.filter(p => 
+    p.item.toLowerCase().includes(q) || 
+    p.name.toLowerCase().includes(q)
+  );
+});
+
+function openAddModal() {
+  modalMode.value = 'add';
+  productForm.value = {
+    item: '',
+    name: '',
+    band: 'atlascopco'
+  };
+  productFormError.value = '';
+  showProductModal.value = true;
+}
+
+function openEditModal(product) {
+  modalMode.value = 'edit';
+  productForm.value = {
+    item: product.item,
+    name: product.name,
+    band: product.band || 'atlascopco'
+  };
+  productFormError.value = '';
+  showProductModal.value = true;
+}
+
+async function submitProduct() {
+  productFormError.value = '';
+  if (!productForm.value.item.trim() || !productForm.value.name.trim()) {
+    productFormError.value = 'Item number and name are required';
+    return;
+  }
+  
+  isSubmittingProduct.value = true;
+  const adminPassword = sessionStorage.getItem('acbarcode_role') === 'admin' ? 'SUTOadmin1234' : '';
+  
+  try {
+    const url = modalMode.value === 'add' 
+      ? '/api/products' 
+      : `/api/products/${encodeURIComponent(productForm.value.item)}`;
+      
+    const method = modalMode.value === 'add' ? 'POST' : 'PUT';
+    
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Password': adminPassword
+      },
+      body: JSON.stringify(productForm.value)
+    });
+    
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to save product');
+    }
+    
+    await fetchProducts();
+    showProductModal.value = false;
+  } catch (err) {
+    console.error(err);
+    productFormError.value = err.message;
+  } finally {
+    isSubmittingProduct.value = false;
+  }
+}
+
+async function deleteProduct(itemNumber) {
+  if (!confirm(`Are you sure you want to delete product ${itemNumber}?`)) {
+    return;
+  }
+  
+  const adminPassword = sessionStorage.getItem('acbarcode_role') === 'admin' ? 'SUTOadmin1234' : '';
+  
+  try {
+    const res = await fetch(`/api/products/${encodeURIComponent(itemNumber)}`, {
+      method: 'DELETE',
+      headers: {
+        'X-Admin-Password': adminPassword
+      }
+    });
+    
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to delete product');
+    }
+    
+    await fetchProducts();
+  } catch (err) {
+    console.error(err);
+    alert(err.message);
   }
 }
 </script>
@@ -641,6 +651,39 @@ h2 {
   margin-bottom: 1.5rem;
 }
 
+/* Admin Tabs Navigation */
+.admin-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-tabs button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 30px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: none;
+}
+
+.admin-tabs button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: none;
+}
+
+.admin-tabs button.active {
+  background: white;
+  color: #764ba2;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
 form {
   background: white;
   padding: 32px;
@@ -669,6 +712,30 @@ select, input, textarea {
   font-size: 1rem;
   transition: all 0.3s ease;
   font-family: inherit;
+}
+
+/* Radio buttons band selector */
+.radio-group {
+  display: flex;
+  gap: 24px;
+  padding: 8px 0;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: normal !important;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.radio-label input[type="radio"] {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #667eea;
 }
 
 .custom-dropdown {
@@ -794,13 +861,18 @@ button {
   box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
-button:hover {
+button:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
-button:active {
+button:active:not(:disabled) {
   transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .labels-preview {
@@ -858,6 +930,7 @@ button:active {
   border-radius: 4px;
   opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 .label-card:hover .download-hint {
@@ -930,8 +1003,9 @@ button:active {
 }
 
 .logo {
-  height: 20px;
-  width: 35px;
+  height: 22px;
+  width: auto;
+  max-width: 60px;
   object-fit: contain;
 }
 
@@ -946,6 +1020,197 @@ button:active {
   min-width: 180px;
 }
 
+/* Products Management Admin Section */
+.products-management {
+  background: white;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  margin-bottom: 2rem;
+}
+
+.management-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.add-btn {
+  padding: 10px 20px;
+  font-size: 0.95rem;
+}
+
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.95rem;
+}
+
+th, td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr:hover td {
+  background-color: #fdfdfd;
+}
+
+.band-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.band-tag.atlascopco {
+  background-color: #fff9db;
+  color: #f59f00;
+  border: 1px solid #ffe3e3;
+}
+
+/* Let's style Atlas Copco yellow-like or clean blue */
+.band-tag.atlascopco {
+  background-color: #e3f2fd;
+  color: #0d47a1;
+}
+
+.band-tag.pneumatech {
+  background-color: #e8f5e9;
+  color: #1b5e20;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-action, .delete-action {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  min-height: unset;
+  width: auto;
+  box-shadow: none;
+}
+
+.edit-action {
+  background: #eaeaea;
+  color: #333;
+}
+
+.edit-action:hover {
+  background: #ddd;
+  transform: none;
+  box-shadow: none;
+}
+
+.delete-action {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.delete-action:hover {
+  background: #fecaca;
+  transform: none;
+  box-shadow: none;
+}
+
+.no-data {
+  text-align: center;
+  color: #888;
+  padding: 24px;
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-card {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  padding: 32px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  animation: scaleUp 0.25s ease-out;
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-card h3 {
+  margin-bottom: 20px;
+  font-size: 1.4rem;
+  color: #333;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.modal-actions button {
+  min-width: 100px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+}
+
+.cancel-btn {
+  background: #eaeaea;
+  color: #333;
+  box-shadow: none;
+}
+
+.cancel-btn:hover {
+  background: #ddd;
+  transform: none;
+  box-shadow: none;
+}
+
+.modal-error {
+  color: #b91c1c;
+  background: #fee2e2;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-top: 12px;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .label-maker {
@@ -956,7 +1221,7 @@ button:active {
     font-size: 2rem;
   }
   
-  form, .labels-preview {
+  form, .labels-preview, .products-management {
     padding: 24px;
   }
   
@@ -976,23 +1241,10 @@ button:active {
   .download-buttons button {
     width: 100%;
   }
+  
+  .radio-group {
+    flex-direction: column;
+    gap: 12px;
+  }
 }
-
-/* Loading animation for barcodes */
-svg {
-  transition: opacity 0.3s ease;
-}
-
-/* Material elevation classes */
-.elevation-1 {
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.elevation-2 {
-  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
-}
-
-.elevation-3 {
-  box-shadow: 0 8px 16px rgba(0,0,0,0.14);
-}
-</style> 
+</style>

@@ -2,6 +2,7 @@ import React from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
 import exportPdfIcon from '../../assets/images/export_pdf_icon.png';
+import XLSX from 'xlsx-js-style';
 import './HoldingRegister.css';
 
 const HoldingRegister = () => {
@@ -17,6 +18,11 @@ const HoldingRegister = () => {
   // Extract option board (analog sensor) configuration
   const optionBoardConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
   const optionBoardItems = configData?.configs?.[optionBoardConfigPath]?.cfgOptionBoard || [];
+
+  // Extract communication settings
+  const commConfigPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
+  const commConfig = configData?.configs?.[commConfigPath];
+  const slaveConfig = commConfig?.rs485s0 || {};
 
   // Intermediate lists to collect channels by category
   const sutoChannels = [];
@@ -126,6 +132,167 @@ const HoldingRegister = () => {
     return 4;
   };
 
+  const handleExportFile = () => {
+    const configName = configData?.fileName ? configData.fileName.replace(/\.[^/.]+$/, "") : "SUTO";
+    const titleText = `${configName} holding register table`;
+
+    const aoa = [
+      [titleText, "", "", "", "", "", "", "", ""],
+      ["", "", "", "", "", "", "", "", ""],
+      ["Communication:", "[RS485]", "", "", "", "", "", "", ""],
+      ["Protocol:", "[Modbus]", "", "", "", "", "", "", ""],
+      ["Slave address:", `[${slaveConfig.address ?? 3}]`, "", "", "", "", "", "", ""],
+      ["Baud rate:", `[${slaveConfig.baudrate ?? 19200}]`, "", "", "", "", "", "", ""],
+      ["Interframe spacing char:", "[7]", "", "", "", "", "", "", ""],
+      ["Interframe spacing US:", "[2005]", "", "", "", "", "", "", ""],
+      ["Response delay:", "[3]", "", "", "", "", "", "", ""],
+      ["Response timeout(s):", `[${slaveConfig.responseTimeout ?? 10}]`, "", "", "", "", "", "", ""],
+      ["Return error value:", "[-9999.0]", "", "", "", "", "", "", ""],
+      ["", "", "", "", "", "", "", "", ""],
+      [
+        "Measurement point",
+        "Sensor",
+        "Channel",
+        "Address",
+        "Data type",
+        "No. of byte",
+        "Unit",
+        "Resolution",
+        "Func code"
+      ]
+    ];
+
+    allChannels.forEach(ch => {
+      aoa.push([
+        ch.location,
+        ch.sensorDescription,
+        ch.channelDescription,
+        String(ch.address),
+        getDataTypeName(ch.type),
+        String(getByteCount(ch.type)),
+        ch.unit || "",
+        String(getResolutionText(ch.resolution)),
+        "3"
+      ]);
+    });
+
+    // Add empty row and info description row at bottom to match exact reference format
+    aoa.push(["", "", "", "", "", "", "", "", ""]);
+    aoa.push([`Info: Use this holding register table to read data from the ${configName} via Modbus/RTU or Modbus/TCP`, "", "", "", "", "", "", "", ""]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Set Column Widths (A is 25, B to I is 20)
+    ws['!cols'] = [
+      { wch: 25 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 }
+    ];
+
+    // Set Merges: A1:I1, and bottom description row
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+      { s: { r: aoa.length - 2, c: 0 }, e: { r: aoa.length - 2, c: 8 } },
+      { s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 8 } }
+    ];
+
+    // Style elements matching the reference sheet style properties
+    const thinBorder = {
+      top: { style: "thin", color: { rgb: "DCDCDC" } },
+      bottom: { style: "thin", color: { rgb: "DCDCDC" } },
+      left: { style: "thin", color: { rgb: "DCDCDC" } },
+      right: { style: "thin", color: { rgb: "DCDCDC" } }
+    };
+
+    const titleStyle = {
+      font: { name: "Calibri", sz: 15, bold: true },
+      alignment: { vertical: "center", horizontal: "left" }
+    };
+
+    const commLabelStyle = {
+      font: { name: "Calibri", sz: 11, bold: true },
+      border: thinBorder,
+      alignment: { vertical: "center", horizontal: "left" }
+    };
+
+    const commValueStyle = {
+      font: { name: "Calibri", sz: 11, bold: false },
+      border: thinBorder,
+      alignment: { vertical: "center", horizontal: "left" }
+    };
+
+    const commEmptyStyle = {
+      border: thinBorder
+    };
+
+    const headerStyle = {
+      font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "4E5969" } },
+      border: thinBorder,
+      fill: { fgColor: { rgb: "F3F3F3" } },
+      alignment: { vertical: "center", horizontal: "left" }
+    };
+
+    const dataStyle = {
+      font: { name: "Calibri", sz: 11, color: { rgb: "191919" } },
+      border: thinBorder,
+      alignment: { vertical: "center", horizontal: "left" }
+    };
+
+    const infoStyle = {
+      font: { name: "Calibri", sz: 11, color: { rgb: "FF7200" } },
+      alignment: { vertical: "center", horizontal: "left" }
+    };
+
+    // Traverse and apply styles to all cells (including empty grid cells)
+    for (let r = 0; r < aoa.length; r++) {
+      for (let c = 0; c < 9; c++) {
+        const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
+        if (!ws[cellRef]) {
+          ws[cellRef] = { t: 's', v: '' };
+        }
+
+        if (r === 0) {
+          ws[cellRef].s = titleStyle;
+        } else if (r >= 1 && r <= 11) {
+          if (c === 0) {
+            ws[cellRef].s = commLabelStyle;
+          } else if (c === 1) {
+            ws[cellRef].s = commValueStyle;
+          } else {
+            ws[cellRef].s = commEmptyStyle;
+          }
+        } else if (r === 12) {
+          ws[cellRef].s = headerStyle;
+        } else if (r >= 13 && r < aoa.length - 2) {
+          ws[cellRef].s = dataStyle;
+        } else if (r === aoa.length - 1) {
+          ws[cellRef].s = infoStyle;
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    
+    // Write and trigger download
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${configName}_holding_register.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="content-card holding-register-page">
       {/* Header - RESTORED STYLE */}
@@ -136,9 +303,9 @@ const HoldingRegister = () => {
             {t('Use this holding register table to read data via Modbus/RTU or Modbus/TCP.')}
           </p>
         </div>
-        <button className="btn-export-pdf">
-          <img src={exportPdfIcon} alt={t('Export PDF')} style={{ width: 16, height: 16 }} />
-          <span>{t('Export PDF')}</span>
+        <button className="btn-export-file" onClick={handleExportFile}>
+          <img src={exportPdfIcon} alt={t('Export File')} style={{ width: 16, height: 16 }} />
+          <span>{t('Export File')}</span>
         </button>
       </header>
 
@@ -152,7 +319,7 @@ const HoldingRegister = () => {
             </div>
             <div className="summary-item">
               <label>{t('Baud rate')}</label>
-              <span>19200</span>
+              <span>{slaveConfig.baudrate ?? 19200}</span>
             </div>
             <div className="summary-item">
               <label>{t('Response delay')}</label>
@@ -171,14 +338,14 @@ const HoldingRegister = () => {
             </div>
             <div className="summary-item">
               <label>{t('Response timeout(s)')}</label>
-              <span>10</span>
+              <span>{slaveConfig.responseTimeout ?? 10}</span>
             </div>
           </div>
 
           <div className="summary-column">
             <div className="summary-item">
               <label>{t('Slave address')}</label>
-              <span>3</span>
+              <span>{slaveConfig.address ?? 3}</span>
             </div>
             <div className="summary-item">
               <label>{t('Interframe spacing us')}</label>

@@ -43,7 +43,7 @@
   line-height: 22px;
 }
 
-.btn-export-pdf {
+.btn-export-file {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -59,7 +59,7 @@
   margin-top: 4px;
 }
 
-.btn-export-pdf:hover {
+.btn-export-file:hover {
   background: #009070;
 }
 

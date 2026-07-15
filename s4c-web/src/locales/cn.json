@@ -106,6 +106,7 @@
   "Error Value": "错误值",
   "Export (Shift+Click to view JSON)": "导出 (Shift+点击查看 JSON)",
   "Export Failed": "导出失败",
+  "Export File": "导出文件",
   "Export PDF": "导出 PDF",
   "Failed to create alarm": "创建报警失败",
   "Failed to create new configuration.": "创建新配置失败。",

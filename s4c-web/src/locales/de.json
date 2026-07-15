@@ -106,6 +106,7 @@
   "Error Value": "Fehlerwert",
   "Export (Shift+Click to view JSON)": "Exportieren (Shift+Klick zum Anzeigen von JSON)",
   "Export Failed": "Export fehlgeschlagen",
+  "Export File": "Datei exportieren",
   "Export PDF": "PDF exportieren",
   "Failed to create alarm": "Fehler beim Erstellen des Alarms",
   "Failed to create new configuration.": "Fehler beim Erstellen der neuen Konfiguration.",

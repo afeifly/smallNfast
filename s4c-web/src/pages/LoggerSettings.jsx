@@ -344,10 +344,17 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
           <div className="drawer-form-row">
             <label className="drawer-label"><span className="required">*</span>{t('Startup mode')}</label>
-            <select className="drawer-input" value={form.mode} onChange={e => handleChange('mode', Number(e.target.value))}>
-              <option value={0}>{t('Key start')}</option>
-              <option value={1}>{t('Time start')}</option>
-            </select>
+            <div className="drawer-input-wrapper">
+              <select
+                className="drawer-select"
+                style={{ appearance: 'auto', paddingRight: '10px' }}
+                value={form.mode}
+                onChange={e => handleChange('mode', Number(e.target.value))}
+              >
+                <option value={0}>{t('Key start')}</option>
+                <option value={1}>{t('Time start')}</option>
+              </select>
+            </div>
           </div>
           <div className="drawer-form-row">
             <label className="drawer-label"><span className="required">*</span>{t('Recorded file name')}</label>
@@ -359,9 +366,16 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
           </div>
           <div className="drawer-form-row">
             <label className="drawer-label"><span className="required">*</span>{t('Logger rate (s)')}</label>
-            <select className="drawer-input" value={form.samplerate} onChange={e => handleChange('samplerate', Number(e.target.value))}>
-              {RATE_OPTIONS.map(r => <option key={r} value={r}>{r}s</option>)}
-            </select>
+            <div className="drawer-input-wrapper">
+              <select
+                className="drawer-select"
+                style={{ appearance: 'auto', paddingRight: '10px' }}
+                value={form.samplerate}
+                onChange={e => handleChange('samplerate', Number(e.target.value))}
+              >
+                {RATE_OPTIONS.map(r => <option key={r} value={r}>{r}s</option>)}
+              </select>
+            </div>
           </div>
           <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 18, fontFamily: 'PingFang SC, sans-serif', fontWeight: 600, color: '#191919' }}>{t('Selected Channels')} ({form.channelArray.length})</span>

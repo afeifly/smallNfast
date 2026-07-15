@@ -458,6 +458,24 @@ const Graphic = () => {
               <div className="mini-chart-wrapper" onClick={() => { setSelectedGraphicIndex(i); setIsGridView(false); }}>
                 <GraphicView graphic={graphic} sensors={sensors} isMini={true} />
               </div>
+              {/* Floating page indicator for grid view */}
+              <div style={{
+                position: 'absolute',
+                bottom: '8px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#4E5969',
+                fontFamily: 'PingFang SC, sans-serif',
+                background: 'rgba(255, 255, 255, 0.8)',
+                padding: '1px 6px',
+                borderRadius: '8px',
+                pointerEvents: 'none',
+                zIndex: 10
+              }}>
+                {i + 1} / {graphicList.length}
+              </div>
             </div>
           ))}
           {/* Empty slot for adding new graphic */}
@@ -493,7 +511,7 @@ const Graphic = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%', height: '100%', overflowY: 'auto', scrollSnapType: 'y mandatory' }}>
       {graphicList.map((graphic, idx) => (
-        <div id={`graphic-card-${idx}`} className="content-card graphic-view" key={idx} style={{ height: '100%', display: 'flex', flexDirection: 'column', flexShrink: 0, scrollSnapAlign: 'start' }}>
+        <div id={`graphic-card-${idx}`} className="content-card graphic-view" key={idx} style={{ height: '100%', display: 'flex', flexDirection: 'column', flexShrink: 0, scrollSnapAlign: 'start', position: 'relative' }}>
           <header className="card-header">
             <div className="graphic-title" onClick={() => { setSelectedGraphicIndex(idx); setIsNameModalOpen(true); }} style={{ cursor: 'pointer' }}>
               <span style={{ fontSize: 18, fontWeight: 700, color: '#191919', textTransform: 'capitalize' }}>{graphic.tableName || t('create chart name')}</span>
@@ -516,6 +534,23 @@ const Graphic = () => {
             />
           </header>
           <GraphicView graphic={graphic} sensors={sensors} onAddChannel={() => { setSelectedGraphicIndex(idx); setIsModalOpen(true); }} />
+          <div style={{
+            position: 'absolute',
+            bottom: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: '13px',
+            fontWeight: '600',
+            color: '#4E5969',
+            fontFamily: 'PingFang SC, sans-serif',
+            background: 'rgba(255, 255, 255, 0.8)',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            pointerEvents: 'none',
+            zIndex: 10
+          }}>
+            {idx + 1} / {graphicList.length}
+          </div>
         </div>
       ))}
       <ChartNameModal isOpen={isNameModalOpen} onClose={() => setIsNameModalOpen(false)} initialName={graphicList[selectedGraphicIndex]?.tableName} onSave={(newName) => { const updatedGraphic = { ...graphicList[selectedGraphicIndex], tableName: newName }; const updatedList = [...graphicList]; updatedList[selectedGraphicIndex] = updatedGraphic; const path = graphicConfigPath || 'config/cfgGraphic.json'; setConfigData({ ...configData, configs: { ...configData.configs, [path]: updatedList } }); }} />

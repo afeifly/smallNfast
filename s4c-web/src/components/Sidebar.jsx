@@ -175,7 +175,7 @@ const Sidebar = () => {
           const isChildActive = item.children && item.children.some(c => currentPath === c.to || currentPath.startsWith(c.to + '/'));
           const hasChildren = !!item.children;
           const isParentDisabled = !hasConfig && item.key !== 'system' && item.key !== 'home' && item.key !== 'file-verification';
-          const isActive = (isLeafActive || isChildActive) && !isParentDisabled;
+          const isActive = !hasChildren && isLeafActive && !isParentDisabled;
           const isOpen = !isParentDisabled && !!openMenus[item.key];
 
           const iconSrc = isActive ? item.icons.active : item.icons.inactive;

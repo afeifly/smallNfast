@@ -1,6 +1,7 @@
 import React from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
+import exportPdfIcon from '../../assets/images/export_pdf_icon.png';
 import './HoldingRegister.css';
 
 const HoldingRegister = () => {
@@ -136,9 +137,7 @@ const HoldingRegister = () => {
           </p>
         </div>
         <button className="btn-export-pdf">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M12 10V12H4V10H2V12C2 13.1 2.9 14 4 14H12C13.1 14 14 13.1 14 12V10H12ZM9 7H11L8 11L5 7H7V2H9V7Z" fill="white" />
-          </svg>
+          <img src={exportPdfIcon} alt={t('Export PDF')} style={{ width: 16, height: 16 }} />
           <span>{t('Export PDF')}</span>
         </button>
       </header>

@@ -458,7 +458,7 @@ const Alarm = () => {
                   <th style={{ width: '100px' }}>{t('Threshold')}</th>
                   <th style={{ width: '100px' }}>{t('Hysteresis')}</th>
                   <th style={{ width: '100px' }}>{t('Direction')}</th>
-                  <th style={{ width: '90px' }}>{t('Delay (s)')}</th>
+                  <th style={{ width: '100px' }}>{t('Delay (s)')}</th>
                   <th style={{ width: '110px' }}>{t('Relay')}</th>
                   <th style={{ width: '120px' }}>{t('Relay Active')}</th>
                   <th style={{ width: '60px' }} className="col-operate">{t('Action')}</th>

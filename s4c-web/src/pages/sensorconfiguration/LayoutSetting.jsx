@@ -66,6 +66,7 @@ const LayoutSetting = () => {
     const result = [];
     sensors.forEach(sensor => {
       (sensor.cfgchannel || []).forEach(ch => {
+        if (ch.Show === false) return;
         // Find if this channel is assigned to any location / meapoint
         let chLocation = '';
         let chPoint = '';

@@ -450,7 +450,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
               className="btn-add-channel"
               onClick={addChannel}
               style={{
-                background: '#00AB84',
+                background: 'var(--accent-color)',
                 color: 'white',
                 border: 'none',
                 padding: '8px 12px',

@@ -125,7 +125,7 @@
 
 .layout-list-item.active {
   background: rgba(0, 171, 132, 0.08);
-  border-left: 3px solid #00AB84;
+  border-left: 3px solid var(--accent-color);
 }
 
 .layout-list-item .item-name {
@@ -138,7 +138,7 @@
 }
 
 .layout-list-item.active .item-name {
-  color: #00AB84;
+  color: var(--accent-color);
   font-weight: 600;
 }
 
@@ -182,7 +182,7 @@
 }
 
 .layout-add-row input:focus {
-  border-color: #00AB84;
+  border-color: var(--accent-color);
   background: white;
 }
 
@@ -194,7 +194,7 @@
 .btn-layout-action {
   height: 32px;
   padding: 0 12px;
-  background: #00AB84;
+  background: var(--accent-color);
   border: none;
   border-radius: 4px;
   color: white;
@@ -292,7 +292,7 @@
 }
 
 .layout-context-bar .ctx-label {
-  color: #00AB84;
+  color: var(--accent-color);
   font-weight: 600;
 }
 
@@ -305,7 +305,7 @@
   width: 100%;
   height: 30px;
   background: #F8F9FA;
-  border: 1px solid #00AB84;
+  border: 1px solid var(--accent-color);
   border-radius: 4px;
   padding: 0 8px;
   font-size: 13px;

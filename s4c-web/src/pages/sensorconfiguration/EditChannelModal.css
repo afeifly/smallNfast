@@ -89,8 +89,8 @@
 }
 
 .edit-form-input-wrapper.active {
-  border: 1px solid #00AB84;
-  outline: 1px solid #00AB84;
+  border: 1px solid var(--accent-color);
+  outline: 1px solid var(--accent-color);
 }
 
 .edit-form-input {
@@ -142,7 +142,7 @@
 
 .btn-edit-confirm {
   padding: 6px 32px;
-  background: #00AB84;
+  background: var(--accent-color);
   border-radius: 3px;
   font-size: 14px;
   color: white;

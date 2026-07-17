@@ -621,7 +621,7 @@ const LayoutSetting = () => {
             setIsEditingLayout(true);
           }}
           style={{
-            background: '#00AB84',
+            background: 'var(--accent-color)',
             color: 'white',
             border: 'none',
             padding: '8px 16px',
@@ -757,7 +757,7 @@ const LayoutSetting = () => {
                     <span className="card-title">{t('Locations')}</span>
                     <span className="card-count">({locationsArray.length})</span>
                   </span>
-                  <button className="btn-layout-icon" title={t('Add Location')} onClick={handleAddLocation} style={{ background: '#00AB84', borderRadius: '4px' }}>
+                  <button className="btn-layout-icon" title={t('Add Location')} onClick={handleAddLocation} style={{ background: 'var(--accent-color)', borderRadius: '4px' }}>
                     <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
                       <path d="M8 3V13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                       <path d="M3 8H13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
@@ -819,7 +819,7 @@ const LayoutSetting = () => {
                     {selectedLocation && <span className="card-count">({meapoints.length})</span>}
                   </span>
                   {selectedLocation && (
-                    <button className="btn-layout-icon" title={t('Add Point')} onClick={handleAddMeapoint} style={{ background: '#00AB84', borderRadius: '4px' }}>
+                    <button className="btn-layout-icon" title={t('Add Point')} onClick={handleAddMeapoint} style={{ background: 'var(--accent-color)', borderRadius: '4px' }}>
                       <svg viewBox="0 0 16 16" fill="none" width="16" height="16">
                         <path d="M8 3V13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                         <path d="M3 8H13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
@@ -925,8 +925,8 @@ const LayoutSetting = () => {
                           width: '16px',
                           height: '16px',
                           borderRadius: '3px',
-                          border: '1.5px solid ' + (getMeapointIs2Height(selectedMeapoint, selectedLocation.location) ? '#00AB84' : '#D9D9D9'),
-                          background: getMeapointIs2Height(selectedMeapoint, selectedLocation.location) ? '#00AB84' : '#FFF',
+                          border: '1.5px solid ' + (getMeapointIs2Height(selectedMeapoint, selectedLocation.location) ? 'var(--accent-color)' : '#D9D9D9'),
+                          background: getMeapointIs2Height(selectedMeapoint, selectedLocation.location) ? 'var(--accent-color)' : '#FFF',
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',

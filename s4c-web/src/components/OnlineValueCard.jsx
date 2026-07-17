@@ -15,7 +15,7 @@ const OnlineValueCard = ({ title = '1S461-energy 1S461-energy', items = [], styl
       ...style 
     }}>
       {/* Header */}
-      <div style={{ width: '100%', height: 40, left: 0, top: 0, position: 'absolute', background: '#00AE86' }}>
+      <div style={{ width: '100%', height: 40, left: 0, top: 0, position: 'absolute', background: 'var(--accent-color)' }}>
         <div style={{ left: 16, top: 9, position: 'absolute', justifyContent: 'center', display: 'flex', flexDirection: 'column', color: 'white', fontSize: 16, fontFamily: 'PingFang SC', fontWeight: '600', textTransform: 'capitalize', wordWrap: 'break-word' }}>
           {title}
         </div>

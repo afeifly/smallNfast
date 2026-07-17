@@ -187,7 +187,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
             type="button"
             onClick={() => setOpen(false)}
             style={{
-              background: '#00AB84',
+              background: 'var(--accent-color)',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -263,7 +263,7 @@ const ScrollWheel = ({ value, min, max, onChange, label }) => {
               scrollSnapAlign: 'center',
               fontSize: 16,
               fontWeight: n === value ? 700 : 400,
-              color: n === value ? '#00AB84' : 'rgba(0,0,0,0.6)',
+              color: n === value ? 'var(--accent-color)' : 'rgba(0,0,0,0.6)',
               cursor: 'pointer',
               userSelect: 'none',
               transition: 'color 0.15s',
@@ -403,7 +403,7 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
           </div>
         </div>
         <div style={{ height: 72, borderTop: '1px solid #E7E7E7', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 8, flexShrink: 0 }}>
-          <button onClick={handleSubmit} style={{ padding: '5px 16px', background: '#00AB84', border: 'none', borderRadius: 3, color: 'rgba(255,255,255,0.9)', fontSize: 14, cursor: 'pointer' }}>{t('Submit')}</button>
+          <button onClick={handleSubmit} style={{ padding: '5px 16px', background: 'var(--accent-color)', border: 'none', borderRadius: 3, color: 'rgba(255,255,255,0.9)', fontSize: 14, cursor: 'pointer' }}>{t('Submit')}</button>
           <button onClick={onClose} style={{ padding: '5px 16px', background: '#E7E7E7', border: 'none', borderRadius: 3, color: 'rgba(0,0,0,0.9)', fontSize: 14, cursor: 'pointer' }}>{t('Cancel')}</button>
         </div>
       </div>

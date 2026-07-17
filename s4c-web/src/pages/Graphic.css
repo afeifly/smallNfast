@@ -253,7 +253,7 @@
 
 .btn-drawer-confirm {
   padding: 8px 24px;
-  background: #00AB84;
+  background: var(--accent-color);
   border-radius: 3px;
   cursor: pointer;
   color: white;
@@ -342,7 +342,7 @@
   width: auto;
   height: 32px;
   padding: 0 12px;
-  background: #FFE000;
+  background: var(--primary-color);
   border-radius: 3.2px;
   border: none;
   display: flex;
@@ -362,7 +362,7 @@
 .btn-icon-square {
   width: 32px;
   height: 32px;
-  background: #FFE000;
+  background: var(--primary-color);
   border-radius: 3.2px;
   display: flex;
   align-items: center;
@@ -626,12 +626,12 @@
 }
 
 .custom-checkbox:hover {
-  border-color: #00AB84;
+  border-color: var(--accent-color);
 }
 
 .custom-checkbox.checked {
-  background: #00AB84;
-  border-color: #00AB84;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 .custom-checkbox.checked::after {
@@ -647,7 +647,7 @@
 .btn-graphic-remove {
   width: 32px;
   height: 32px;
-  background: #FFE000;
+  background: var(--primary-color);
   border: none;
   border-radius: 3.2px;
   display: flex;

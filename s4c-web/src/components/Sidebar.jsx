@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useConfig } from '../context/ConfigContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext';
 import appConfig from '../config/appConfig.json';
 
 // Import PNG Icons
@@ -39,7 +40,7 @@ const Icons = {
   ),
 };
 
-export const NAV = [
+const RAW_NAV = [
   {
     key: 'home',
     label: 'Home',
@@ -114,11 +115,31 @@ export const NAV = [
   },
 ];
 
+const hideFileVerification = import.meta.env.VITE_OEM_HIDE_FILE_VERIFICATION === 'true';
+const hideDataAnalysis = import.meta.env.VITE_OEM_HIDE_DATA_ANALYSIS === 'true';
+const hideSupport = import.meta.env.VITE_OEM_HIDE_SUPPORT === 'true';
+
+export const NAV = RAW_NAV.map(item => {
+  if (item.children) {
+    let children = item.children;
+    if (hideSupport) {
+      children = children.filter(c => c.to !== '/system/support');
+    }
+    return { ...item, children };
+  }
+  return item;
+}).filter(item => {
+  if (item.key === 'file-verification' && hideFileVerification) return false;
+  if (item.key === 'analysis' && hideDataAnalysis) return false;
+  return true;
+});
+
 const Sidebar = () => {
   const location = useLocation();
   const currentPath = location.pathname;
   const { activeConfigId } = useConfig();
   const { t } = useLanguage();
+  const { appName, appLogo, logoHeight } = useTheme();
   const hasConfig = !!activeConfigId;
 
   // Track if sidebar is collapsed
@@ -161,7 +182,7 @@ const Sidebar = () => {
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* Logo */}
       <div className="sidebar-header">
-        <img src={mainLogo} alt="S4C Logo" className="main-logo" />
+        <img src={appLogo} alt={`${appName} Logo`} className="main-logo" style={{ height: logoHeight }} />
         <div className="logo-text">S4C-Web</div>
       </div>
 

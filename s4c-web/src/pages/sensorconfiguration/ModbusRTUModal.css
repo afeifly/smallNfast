@@ -180,7 +180,7 @@
 .btn-modbus-save {
   min-width: 78px;
   padding: 5px 24px;
-  background: #00AB84;
+  background: var(--accent-color);
   /* Standard green instead of the 0.38 alpha one in snippet */
   border: none;
   border-radius: 3px;

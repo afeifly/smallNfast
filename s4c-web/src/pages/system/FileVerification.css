@@ -97,7 +97,7 @@
 
 .upload-zone:hover,
 .upload-zone.dragging {
-  border-color: #00AB84;
+  border-color: var(--accent-color);
   background: #F0FBF9;
 }
 
@@ -110,7 +110,7 @@
 
 .upload-zone:hover .upload-icon,
 .upload-zone.dragging .upload-icon {
-  color: #00AB84;
+  color: var(--accent-color);
 }
 
 .upload-text {
@@ -204,7 +204,7 @@
 .result-box.success {
   background: #F0FBF9;
   border-color: #B2E5D9;
-  color: #00AB84;
+  color: var(--accent-color);
   font-weight: bold;
 }
 

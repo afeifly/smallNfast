@@ -6,7 +6,9 @@
   "scripts": {
     "postinstall": "node -e \"require('fs').copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm','public/sql-wasm.wasm')\"",
     "dev": "vite",
+    "dev:atlascopco": "vite --mode atlascopco",
     "build": "vite build",
+    "build:atlascopco": "vite build --mode atlascopco",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -33,7 +33,7 @@
   gap: 6px;
   height: 32px;
   padding: 0 16px;
-  background: #00AB84;
+  background: var(--accent-color);
   border: none;
   border-radius: 3.2px;
   color: white;
@@ -257,7 +257,7 @@
 }
 
 .alarm-inline-input:focus {
-  border-color: #00AB84;
+  border-color: var(--accent-color);
   background: white;
 }
 
@@ -275,7 +275,7 @@
 }
 
 .alarm-switch.on {
-  background: #00AB84;
+  background: var(--accent-color);
 }
 
 .alarm-switch .switch-knob {

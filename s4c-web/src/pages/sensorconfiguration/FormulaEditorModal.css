@@ -121,7 +121,7 @@
 .formula-builder-box {
   width: 586px;
   height: 200px;
-  border: 2px solid #00AB84;
+  border: 2px solid var(--accent-color);
   border-radius: 4px;
   padding: 16px;
   display: flex;
@@ -199,7 +199,7 @@
 
 .key-btn.operator-btn {
   background: #F7F8FA;
-  color: #00AB84;
+  color: var(--accent-color);
   font-weight: 600;
 }
 
@@ -301,7 +301,7 @@
 .btn-formula-confirm {
   height: 36px;
   padding: 0 32px;
-  background: #00AB84;
+  background: var(--accent-color);
   border: none;
   border-radius: 3px;
   font-size: 14px;

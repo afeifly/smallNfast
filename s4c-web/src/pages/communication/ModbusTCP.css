@@ -101,7 +101,7 @@
 }
 
 .modbus-switch.on {
-  background: #00AB84;
+  background: var(--accent-color);
 }
 
 .modbus-switch .switch-knob {
@@ -147,7 +147,7 @@
 .btn-modbus-save {
   min-width: 78px;
   padding: 8px 24px;
-  background: #00AB84;
+  background: var(--accent-color);
   border: none;
   border-radius: 3px;
   font-size: 14px;

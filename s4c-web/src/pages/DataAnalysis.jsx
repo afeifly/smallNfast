@@ -28,7 +28,7 @@ const DataAnalysis = () => {
             fontWeight: '600',
             borderRadius: '4px',
             color: '#191919',
-            background: '#FFE000', // Matches --primary-color: #FFE000
+            background: 'var(--primary-color)', // Matches --primary-color: var(--primary-color)
             border: 'none',
             cursor: 'pointer',
             marginTop: '12px',

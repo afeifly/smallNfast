@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #00AB84;
+  background: var(--accent-color);
   color: white;
   border: none;
   border-radius: 3.2px;
@@ -144,7 +144,7 @@
 
 .logger-field-item select:focus,
 .logger-field-item input:focus {
-  border-bottom-color: #00AB84;
+  border-bottom-color: var(--accent-color);
 }
 
 /* ── Table ── */
@@ -207,7 +207,7 @@
 
 .btn-select-channels {
   padding: 4px 12px;
-  background: #00AB84;
+  background: var(--accent-color);
   border: none;
   border-radius: 3px;
   color: rgba(255, 255, 255, 0.9);
@@ -259,7 +259,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #00AB84;
+  background: var(--accent-color);
   color: white;
   border: none;
   border-radius: 4px;
@@ -314,7 +314,7 @@
 .btn-header-save {
   display: flex;
   align-items: center;
-  background: #00AB84;
+  background: var(--accent-color);
   color: white;
   border: none;
   border-radius: 4px;

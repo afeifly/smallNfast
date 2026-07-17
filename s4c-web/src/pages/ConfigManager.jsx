@@ -412,13 +412,13 @@ const ConfigManager = () => {
                       style={{ cursor: 'pointer', fontWeight: cfg.id === activeConfigId ? 'bold' : 'normal' }}
                     >
                       {cfg.fileName}
-                      {cfg.id === activeConfigId && <span style={{ marginLeft: '8px', color: '#00AB84', fontSize: '12px' }}>{t('[Loaded]')}</span>}
+                      {cfg.id === activeConfigId && <span style={{ marginLeft: '8px', color: 'var(--accent-color)', fontSize: '12px' }}>{t('[Loaded]')}</span>}
                     </td>
                     <td>{cfg.summary?.['Config-Version'] || cfg.summary?.['version'] || '1.0.0'}</td>
                     <td>{formatDateTime(cfg.summary?.['Config-Date'] || cfg.summary?.['date'] || cfg.importTime)}</td>
                     <td>
                       <span style={{ 
-                        color: cfg.id === activeConfigId ? '#00AB84' : '#86909C',
+                        color: cfg.id === activeConfigId ? 'var(--accent-color)' : '#86909C',
                         background: cfg.id === activeConfigId ? '#E6F6F2' : '#F2F3F5',
                         padding: '2px 8px',
                         borderRadius: '10px',
@@ -536,7 +536,7 @@ const CopyButton = ({ text }) => {
       onClick={handleCopy}
       style={{
         background: copied ? '#E6F6F2' : '#FFFFFF',
-        color: copied ? '#00AB84' : '#4E5969',
+        color: copied ? 'var(--accent-color)' : '#4E5969',
         border: `1px solid ${copied ? '#B2E5D9' : '#DCDCDC'}`,
         borderRadius: '4px',
         padding: '2px 8px',

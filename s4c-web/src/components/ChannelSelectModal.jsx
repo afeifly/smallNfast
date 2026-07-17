@@ -171,7 +171,7 @@ const ChannelSelectModal = ({
                         <td>
                           {!isBlocked && (
                             <span
-                              style={{ color: '#00AB84', cursor: 'pointer', textDecoration: 'underline' }}
+                              style={{ color: 'var(--accent-color)', cursor: 'pointer', textDecoration: 'underline' }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (onSettingClick) onSettingClick(ch);

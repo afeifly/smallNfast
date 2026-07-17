@@ -43,13 +43,13 @@ describe('OnlineValueCard', () => {
     expect(rows.length).toBe(3);
   });
 
-  it('renders with a green header', () => {
+  it('renders with a themed accent header', () => {
     const { container } = render(<OnlineValueCard title="Green" items={[]} />);
-    // Check for the green background on the header div
+    // Check for the dynamic accent background on the header div
     const headerDivs = container.querySelectorAll('div');
-    const greenHeader = Array.from(headerDivs).find(
-      (div) => div.style.background === 'rgb(0, 174, 134)'
+    const themedHeader = Array.from(headerDivs).find(
+      (div) => div.style.background === 'var(--accent-color)'
     );
-    expect(greenHeader).toBeTruthy();
+    expect(themedHeader).toBeTruthy();
   });
 });

@@ -197,7 +197,7 @@
   width: 16px;
   height: 16px;
   border-radius: 3px;
-  border: 1px solid #00AB84;
+  border: 1px solid var(--accent-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,7 +205,7 @@
 }
 
 .checkbox-custom.checked {
-  background: #00AB84;
+  background: var(--accent-color);
 }
 
 .checkbox-custom svg {
@@ -215,7 +215,7 @@
 }
 
 .checkbox-custom.indeterminate {
-  background: #00AB84;
+  background: var(--accent-color);
 }
 
 .checkbox-custom.indeterminate::after {
@@ -266,7 +266,7 @@
 
 .btn-confirm {
   padding: 5px 16px;
-  background: #00AB84;
+  background: var(--accent-color);
   border-radius: 3px;
   font-size: 14px;
   color: white;

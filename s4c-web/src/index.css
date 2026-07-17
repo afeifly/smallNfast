@@ -10,6 +10,14 @@
   --sidebar-width: 256px;
   --topbar-height: 56px;
   --transition-speed: 0.25s;
+
+  /* OEM additions */
+  --btn-primary-text: #191919;
+  --nav-active-bg: #00AB84;
+  --nav-text: #333333;
+  --nav-active-text: #FFFFFF;
+  --topbar-text: rgba(0, 0, 0, 0.9);
+  --btn-radius: 4px;
 }
 
 * {

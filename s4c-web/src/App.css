@@ -95,7 +95,7 @@
 }
 
 .nav-item.active {
-  background: #00AB84;
+  background: var(--accent-color);
   color: white;
   width: 100%;
   margin: 0;
@@ -148,7 +148,7 @@
 }
 
 .submenu-item.active {
-  background: #00AB84;
+  background: var(--accent-color);
   color: white;
   width: 100%;
   margin: 0;
@@ -252,7 +252,7 @@
 .sidebar .logo-text {
   transition: opacity 0.15s ease, max-width 0.15s ease, margin 0.15s ease;
   opacity: 1;
-  max-width: 150px;
+  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -808,7 +808,7 @@
   gap: 6px;
   height: 32px;
   padding: 0 16px;
-  background: #00AB84;
+  background: var(--accent-color);
   border: none;
   border-radius: 3.2px;
   color: white;
@@ -940,7 +940,7 @@
 }
 
 .drawer-input-wrapper:focus-within {
-  border-color: #00AB84;
+  border-color: var(--accent-color);
 }
 
 .drawer-select {
@@ -962,7 +962,7 @@
 }
 
 .drawer-input:focus {
-  border-color: #00AB84;
+  border-color: var(--accent-color);
 }
 
 /* Disabled navigation items */

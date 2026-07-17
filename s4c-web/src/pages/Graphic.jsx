@@ -42,7 +42,7 @@ const ChannelSettingsDrawer = ({ isOpen, onClose, channel, onSave }) => {
         </div>
 
         <div className="auto-scale-section" onClick={() => setAutoScale(!autoScale)}>
-          <div className="checkbox-rect" style={{ background: autoScale ? '#00AB84' : '#E7E7E7' }}>
+          <div className="checkbox-rect" style={{ background: autoScale ? 'var(--accent-color)' : '#E7E7E7' }}>
             {autoScale && (
               <div style={{ width: 14.85, height: 11.02, background: 'rgba(255, 255, 255, 0.90)', maskImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 15 11\'%3E%3Cpath d=\'M1 5.5L5.5 10L14 1\' stroke=\'black\' stroke-width=\'2.5\'/%3E%3C/svg%3E")', WebkitMaskImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 15 11\'%3E%3Cpath d=\'M1 5.5L5.5 10L14 1\' stroke=\'black\' stroke-width=\'2.5\'/%3E%3C/svg%3E")' }} />
             )}
@@ -165,7 +165,7 @@ const HeaderControls = ({ isMini, onAddGraphic, onToggleGrid, addDisabled, onRem
 
 const PlusCircleLarge = () => (
   <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="#FFE000" stroke="#FFE000" />
+    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="var(--primary-color)" stroke="var(--primary-color)" />
     <line x1="28" y1="16" x2="28" y2="40" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
     <line x1="16" y1="28" x2="40" y2="28" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
   </svg>

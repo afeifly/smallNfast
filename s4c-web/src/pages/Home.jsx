@@ -7,7 +7,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 const PlusCircleLarge = () => (
   <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="#FFE000" stroke="#FFE000" />
+    <rect x="0.5" y="0.5" width="55" height="55" rx="27.5" fill="var(--primary-color)" stroke="var(--primary-color)" />
     <line x1="28" y1="16" x2="28" y2="40" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
     <line x1="16" y1="28" x2="40" y2="28" stroke="#191919" strokeWidth="3" strokeLinecap="round" />
   </svg>
@@ -39,7 +39,7 @@ const Home = () => {
               fontWeight: '600', 
               borderRadius: '4px',
               color: '#191919',
-              background: '#FFE000', // Matches --primary-color: #FFE000
+              background: 'var(--primary-color)', // Matches --primary-color: var(--primary-color)
               border: 'none',
               cursor: 'pointer',
               marginTop: '12px',

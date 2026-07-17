@@ -47,7 +47,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #00AB84;
+  background: var(--accent-color);
   color: white;
   border: none;
   border-radius: 3.2px;
@@ -156,7 +156,7 @@
 .addr-font {
   font-family: 'Courier New', Courier, monospace;
   font-weight: 600;
-  color: #00AB84;
+  color: var(--accent-color);
 }
 
 .holding-info-text {

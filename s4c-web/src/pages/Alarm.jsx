@@ -449,7 +449,7 @@ const Alarm = () => {
         <button
           className="add-sensor-btn"
           style={{
-            background: isDbReady ? '#00AB84' : '#C2C9D1',
+            background: isDbReady ? 'var(--accent-color)' : '#C2C9D1',
             color: isDbReady ? 'white' : '#86909C',
             cursor: 'pointer'
           }}

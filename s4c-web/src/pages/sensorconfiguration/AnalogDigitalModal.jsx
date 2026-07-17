@@ -217,10 +217,7 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave, existingTerm
     });
   };
 
-  // Filter terminals to exclude already used ones, but keep the current terminal in edit mode
-  const filteredTerminals = TERMINAL_TYPES.filter(
-    t => t.value !== 0 && (!existingTerminalNos.includes(t.value) || (initialData && initialData.TerminalNo === t.value))
-  );
+
 
   return (
     <div className="edit-channel-modal-overlay">
@@ -263,9 +260,21 @@ const AnalogDigitalModal = ({ isOpen, onClose, initialData, onSave, existingTerm
                 value={terminalNo}
                 onChange={(e) => setTerminalNo(Number(e.target.value))}
               >
-                {filteredTerminals.map(term => (
-                  <option key={term.value} value={term.value}>{term.label}</option>
-                ))}
+                {TERMINAL_TYPES.filter(t => t.value !== 0).map(term => {
+                  const isUsed = existingTerminalNos.includes(term.value);
+                  const isCurrent = initialData && initialData.TerminalNo === term.value;
+                  const isDisabled = isUsed && !isCurrent;
+                  return (
+                    <option 
+                      key={term.value} 
+                      value={term.value} 
+                      disabled={isDisabled}
+                      style={isDisabled ? { color: '#888888', backgroundColor: '#F0F0F0' } : {}}
+                    >
+                      {term.label}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>

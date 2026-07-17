@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { unzipConfigFile } from './configFileUtils';
 
-const OUT_DIR = 'temp_unzip/comparison';
+const OUT_DIR = 'reference/temp_unzip/comparison';
 
 async function extractCfgf(filePath, label) {
   const fileBuffer = fs.readFileSync(filePath);
@@ -25,7 +25,7 @@ async function extractCfgf(filePath, label) {
 describe('cfgf comparison', () => {
   it('extracts both cfgf files', async () => {
     fs.mkdirSync(OUT_DIR, { recursive: true });
-    await extractCfgf('temp_unzip/myconfig.cfgf', 'myconfig');
-    await extractCfgf('temp_unzip/SUTO_config_20260703174644.cfgf', 'suto');
+    await extractCfgf('reference/temp_unzip/myconfig.cfgf', 'myconfig');
+    await extractCfgf('reference/temp_unzip/SUTO_config_20260703174644.cfgf', 'suto');
   });
 });

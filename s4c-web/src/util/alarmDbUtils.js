@@ -154,6 +154,7 @@ export function updateAlarmConfig(db, configId, fields) {
     'threshold', 'hysteresis', 'direction', 'delay',
     'relay_id', 'relay_flag', 'measurement_point', 'location',
     'is_relay_permanent_off',
+    'relay_address', 'relay_ch_id',
   ];
   const sets = allowed
     .filter(k => k in fields)

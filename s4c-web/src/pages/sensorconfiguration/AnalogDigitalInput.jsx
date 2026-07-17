@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
 import AnalogDigitalModal from './AnalogDigitalModal';
+import { TERMINAL_TYPES, ANALOG_SIGNAL_TYPES, DIGITAL_SIGNAL_TYPES } from './optionBoardConstants';
 import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
 import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
@@ -39,22 +40,18 @@ const AnalogDigitalInput = () => {
   };
 
   const formatTerminal = (item) => {
-    if (!item.TerminalNo) return '---';
-    return `x${item.TerminalNo}`;
+    if (item.TerminalNo === undefined || item.TerminalNo === null) return '---';
+    const found = TERMINAL_TYPES.find(t => t.value === item.TerminalNo);
+    return found ? found.label : '---';
   };
 
   const formatSignal = (item) => {
     if (item.OptionBoardType === 0) {
-      // Mapping based on common analog signal types
-      const types = { 0: '4-20mA', 1: '0-20mA', 2: '0-1V', 3: '0-10V' };
-      return types[item.AnalogSignalType] || t('Analog');
+      const found = ANALOG_SIGNAL_TYPES.find(s => s.value === item.AnalogSignalType);
+      return found ? found.label : t('Analog');
     }
-    const types = { 
-      0: t('Counter'), 
-      1: t('Runtime'), 
-      2: t('Status') 
-    };
-    return types[item.DigitalType] || t('Digital');
+    const found = DIGITAL_SIGNAL_TYPES.find(s => s.value === item.DigitalType);
+    return found ? found.label : t('Digital');
   };
 
   const updateConfig = (newItems) => {
@@ -282,6 +279,7 @@ const AnalogDigitalInput = () => {
         onClose={() => setIsModalOpen(false)}
         initialData={editingItem}
         onSave={handleSave}
+        existingTerminalNos={items.filter((_, i) => i !== editingIndex).map(item => item.TerminalNo)}
       />
 
       <CustomDialog

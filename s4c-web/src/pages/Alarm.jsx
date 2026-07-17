@@ -18,6 +18,23 @@ import iconBtnDelete from '../assets/images/icon_btn_delete.png';
 import './sensorconfiguration/SUTOSensor.css';
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Relay Mapping Table (relay_id -> relay_address, relay_ch_id)
+   ───────────────────────────────────────────────────────────────────────────── */
+const RELAY_MAPPING = {
+  0: { label: 'None', address: 0, chId: 0 },
+  1: { label: 'Relay 1', address: 1, chId: 2 },
+  2: { label: 'Relay 2', address: 1, chId: 1 },
+  9: { label: 'Relay X9', address: 2, chId: 4 },
+  10: { label: 'Relay X10', address: 2, chId: 3 },
+  11: { label: 'Relay X11', address: 2, chId: 2 },
+  12: { label: 'Relay X12', address: 2, chId: 1 },
+  13: { label: 'Relay X13', address: 3, chId: 4 },
+  14: { label: 'Relay X14', address: 3, chId: 3 },
+  15: { label: 'Relay X15', address: 3, chId: 2 },
+  16: { label: 'Relay X16', address: 3, chId: 1 },
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Helper: map a raw alarm_config DB row → React state alarm object
    ───────────────────────────────────────────────────────────────────────────── */
 function rowToAlarm(row) {
@@ -352,13 +369,30 @@ const Alarm = () => {
   const updateAlarm = (configId, field, value) => {
     // ── 1. Write to DB first, outside any state updater ──────────────────
     const alarm = alarms.find(a => a.config_id === configId);
-    const dbField = DB_FIELD_MAP[field];
 
-    if (dbRef.current && dbField && alarm?.config_id != null) {
-      const dbValue = field === 'Direction' ? value.toLowerCase() : value;
-      updateAlarmConfig(dbRef.current, alarm.config_id, { [dbField]: dbValue });
-      logAlarmTable(dbRef.current, `UPDATE — config_id=${alarm.config_id} set ${dbField}=${dbValue}`);
-      persistDb(); // safe here — not inside a state updater
+    if (dbRef.current && alarm?.config_id != null) {
+      let dbFields = {};
+      if (field === 'RelayId') {
+        const relayVal = Number(value);
+        const mapping = RELAY_MAPPING[relayVal] || { address: 0, chId: 0 };
+        dbFields = {
+          relay_id: relayVal,
+          relay_address: mapping.address,
+          relay_ch_id: mapping.chId
+        };
+      } else {
+        const dbField = DB_FIELD_MAP[field];
+        if (dbField) {
+          const dbValue = field === 'Direction' ? value.toLowerCase() : value;
+          dbFields = { [dbField]: dbValue };
+        }
+      }
+
+      if (Object.keys(dbFields).length > 0) {
+        updateAlarmConfig(dbRef.current, alarm.config_id, dbFields);
+        logAlarmTable(dbRef.current, `UPDATE — config_id=${alarm.config_id} set fields: ${JSON.stringify(dbFields)}`);
+        persistDb(); // safe here — not inside a state updater
+      }
     }
 
     // ── 2. Update React state ─────────────────────────────────────────────
@@ -528,8 +562,14 @@ const Alarm = () => {
                           <option value="0">{t('None')}</option>
                           <option value="1">{t('Relay')} 1</option>
                           <option value="2">{t('Relay')} 2</option>
-                          <option value="3">{t('Relay')} 3</option>
-                          <option value="4">{t('Relay')} 4</option>
+                          <option value="9">{t('Relay')} X9</option>
+                          <option value="10">{t('Relay')} X10</option>
+                          <option value="11">{t('Relay')} X11</option>
+                          <option value="12">{t('Relay')} X12</option>
+                          <option value="13">{t('Relay')} X13</option>
+                          <option value="14">{t('Relay')} X14</option>
+                          <option value="15">{t('Relay')} X15</option>
+                          <option value="16">{t('Relay')} X16</option>
                         </select>
                       </td>
 

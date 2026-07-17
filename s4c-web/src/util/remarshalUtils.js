@@ -194,15 +194,15 @@ export function remarshalAll(configData) {
     const obChannels = obConfig.cfgOptionBoard || [];
     const updatedObChannels = obChannels.map(ch => {
       const oldId = ch.ChannelId ?? ch.channelid ?? ch.ChannelID;
-      const newId = nextId++;
+      const correctId = 2000 + (ch.TerminalNo || 0);
       
       if (oldId !== undefined) {
-        idMap.set(oldId, newId);
+        idMap.set(oldId, correctId);
       }
       
-      const newCh = { ...ch, ChannelId: newId };
-      if (newCh.channelid !== undefined) newCh.channelid = newId;
-      if (newCh.ChannelID !== undefined) newCh.ChannelID = newId;
+      const newCh = { ...ch, ChannelId: correctId };
+      if (newCh.channelid !== undefined) newCh.channelid = correctId;
+      if (newCh.ChannelID !== undefined) newCh.ChannelID = correctId;
       
       return newCh;
     });

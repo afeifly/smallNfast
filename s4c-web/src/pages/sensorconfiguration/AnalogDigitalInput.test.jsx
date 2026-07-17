@@ -26,10 +26,10 @@ describe('AnalogDigitalInput', () => {
       'config/cfgOptionBoard.json': {
         cfgOptionBoard: [
           {
-            ChannelId: 2009,
+            ChannelId: 2004,
             ChannelDescription: 'Analog Input 1',
             OptionBoardType: 0,
-            TerminalNo: 9,
+            TerminalNo: 4,
             Resolution: 1,
             CreateTime: 'ab-create-time-1'
           }

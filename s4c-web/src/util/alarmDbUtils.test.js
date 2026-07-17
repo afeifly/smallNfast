@@ -107,6 +107,15 @@ describe('updateAlarmConfig', () => {
     expect(sql).toContain('direction');
     expect(sql).toContain('WHERE config_id');
   });
+
+  it('updates relay_address and relay_ch_id fields', () => {
+    mockDb.run.mockClear();
+    updateAlarmConfig(mockDb, 1, { relay_address: 2, relay_ch_id: 4 });
+    expect(mockDb.run).toHaveBeenCalled();
+    const sql = mockDb.run.mock.calls[0][0];
+    expect(sql).toContain('relay_address');
+    expect(sql).toContain('relay_ch_id');
+  });
 });
 
 describe('deleteAlarmConfig', () => {

@@ -191,7 +191,7 @@ describe('remarshalAll', () => {
       },
       'config/cfgOptionBoard.json': {
         cfgOptionBoard: [
-          { ChannelId: 50 }
+          { ChannelId: 50, TerminalNo: 4 }
         ]
       }
     });
@@ -202,9 +202,9 @@ describe('remarshalAll', () => {
     const loggerArray = result.configs['config/cfglogger.json'].logger.channelArray;
 
     expect(sensorChannel.ChannelId).toBe(0);
-    expect(obChannel.ChannelId).toBe(1);
+    expect(obChannel.ChannelId).toBe(2004);
     expect(loggerArray[0].channelid).toBe(0);
-    expect(loggerArray[1].channelid).toBe(1);
+    expect(loggerArray[1].channelid).toBe(2004);
   });
 
   it('handles sensors with no channels', () => {

@@ -38,7 +38,7 @@ const HoldingRegister = () => {
           Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
         );
         if (matchedPoint) {
-          locationText = `${matchedPoint.meapoint || '---'}/${matchedPoint.location || '---'}`;
+          locationText = `${matchedPoint.location}/${matchedPoint.meapoint}`;
           break;
         }
       }
@@ -170,8 +170,17 @@ const HoldingRegister = () => {
         const numericRes = Number(resVal);
         const resolutionValue = isNaN(numericRes) ? resVal : numericRes;
 
+        // Swap Location/MeasurementPoint to MeasurementPoint/Location for the Excel file
+        let excelLocationVal = ch.location;
+        if (ch.location && ch.location.includes('/')) {
+          const parts = ch.location.split('/');
+          if (parts.length === 2) {
+            excelLocationVal = `${parts[1]}/${parts[0]}`;
+          }
+        }
+
         aoa.push([
-          ch.location,
+          excelLocationVal,
           ch.sensorDescription,
           ch.channelDescription,
           ch.address,

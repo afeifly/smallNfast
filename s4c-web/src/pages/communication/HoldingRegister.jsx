@@ -38,7 +38,7 @@ const HoldingRegister = () => {
           Array.isArray(pt.channels) && pt.channels.some(id => String(id) === createTimeStr)
         );
         if (matchedPoint) {
-          locationText = `${matchedPoint.location}/${matchedPoint.meapoint}`;
+          locationText = `${matchedPoint.meapoint || '---'}/${matchedPoint.location || '---'}`;
           break;
         }
       }
@@ -138,17 +138,17 @@ const HoldingRegister = () => {
 
     const aoa = [
       [titleText, "", "", "", "", "", "", "", ""],
-      ["", "", "", "", "", "", "", "", ""],
-      ["Communication:", "[RS485]", "", "", "", "", "", "", ""],
-      ["Protocol:", "[Modbus]", "", "", "", "", "", "", ""],
-      ["Slave address:", `[${slaveConfig.address ?? 3}]`, "", "", "", "", "", "", ""],
-      ["Baud rate:", `[${slaveConfig.baudrate ?? 19200}]`, "", "", "", "", "", "", ""],
-      ["Interframe spacing char:", "[7]", "", "", "", "", "", "", ""],
-      ["Interframe spacing US:", "[2005]", "", "", "", "", "", "", ""],
-      ["Response delay:", "[3]", "", "", "", "", "", "", ""],
-      ["Response timeout(s):", `[${slaveConfig.responseTimeout ?? 10}]`, "", "", "", "", "", "", ""],
-      ["Return error value:", "[-9999.0]", "", "", "", "", "", "", ""],
-      ["", "", "", "", "", "", "", "", ""],
+      [""],
+      ["Communication:", "[RS485]"],
+      ["Protocol:", "[Modbus]"],
+      ["Slave address:", `[${slaveConfig.address ?? 3}]`],
+      ["Baud rate:", `[${slaveConfig.baudrate ?? 19200}]`],
+      ["Interframe spacing char:", "[7]"],
+      ["Interframe spacing US:", "[2005]"],
+      ["Response delay:", "[3]"],
+      ["Response timeout(s):", `[${slaveConfig.responseTimeout ?? 10}]`],
+      ["Return error value:", "[-9999.0]"],
+      [""],
       [
         "Measurement point",
         "Sensor",
@@ -162,19 +162,27 @@ const HoldingRegister = () => {
       ]
     ];
 
-    allChannels.forEach(ch => {
-      aoa.push([
-        ch.location,
-        ch.sensorDescription,
-        ch.channelDescription,
-        String(ch.address),
-        getDataTypeName(ch.type),
-        String(getByteCount(ch.type)),
-        ch.unit || "",
-        String(getResolutionText(ch.resolution)),
-        "3"
-      ]);
-    });
+    if (allChannels.length === 0) {
+      aoa.push(["No channels configured", "", "", "", "", "", "", "", ""]);
+    } else {
+      allChannels.forEach(ch => {
+        const resVal = getResolutionText(ch.resolution);
+        const numericRes = Number(resVal);
+        const resolutionValue = isNaN(numericRes) ? resVal : numericRes;
+
+        aoa.push([
+          ch.location,
+          ch.sensorDescription,
+          ch.channelDescription,
+          ch.address,
+          getDataTypeName(ch.type),
+          getByteCount(ch.type),
+          ch.unit || "",
+          resolutionValue,
+          3
+        ]);
+      });
+    }
 
     // Add empty row and info description row at bottom to match exact reference format
     aoa.push(["", "", "", "", "", "", "", "", ""]);
@@ -196,80 +204,100 @@ const HoldingRegister = () => {
       { wch: 20 }
     ];
 
+    // Set Row Heights matching the Go code
+    const rowsHeights = [];
+    rowsHeights[0] = { hpt: 30 }; // Row 1 (Title)
+    for (let r = 1; r < 12; r++) {
+      rowsHeights[r] = { hpt: 20 }; // Basic communication block rows
+    }
+    rowsHeights[12] = { hpt: 25 }; // Header row
+    if (allChannels.length === 0) {
+      rowsHeights[13] = { hpt: 30 }; // Empty data row
+      rowsHeights[14] = { hpt: 20 };
+      rowsHeights[15] = { hpt: 20 };
+    } else {
+      for (let r = 13; r < aoa.length; r++) {
+        rowsHeights[r] = { hpt: 20 }; // Data and bottom rows
+      }
+    }
+    ws['!rows'] = rowsHeights;
+
     // Set Merges: A1:I1, and bottom description row
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
-      { s: { r: aoa.length - 2, c: 0 }, e: { r: aoa.length - 2, c: 8 } },
-      { s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 8 } }
+    const merges = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }
     ];
+    if (allChannels.length === 0) {
+      merges.push({ s: { r: 13, c: 0 }, e: { r: 13, c: 8 } });
+    }
+    merges.push({ s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 8 } });
+    ws['!merges'] = merges;
 
     // Style elements matching the reference sheet style properties
     const thinBorder = {
-      top: { style: "thin", color: { rgb: "DCDCDC" } },
-      bottom: { style: "thin", color: { rgb: "DCDCDC" } },
-      left: { style: "thin", color: { rgb: "DCDCDC" } },
-      right: { style: "thin", color: { rgb: "DCDCDC" } }
+      top: { style: "thin", color: { rgb: "CCCCCC" } },
+      bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+      left: { style: "thin", color: { rgb: "CCCCCC" } },
+      right: { style: "thin", color: { rgb: "CCCCCC" } }
     };
 
     const titleStyle = {
       font: { name: "Calibri", sz: 15, bold: true },
-      alignment: { vertical: "center", horizontal: "left" }
+      fill: { fgColor: { rgb: "FFFFFF" } },
+      alignment: { vertical: "center", horizontal: "center" }
     };
 
-    const commLabelStyle = {
-      font: { name: "Calibri", sz: 11, bold: true },
-      border: thinBorder,
+    const settingsStyle = {
+      font: { name: "Calibri", sz: 11 },
+      fill: { fgColor: { rgb: "FFFFFF" } },
       alignment: { vertical: "center", horizontal: "left" }
-    };
-
-    const commValueStyle = {
-      font: { name: "Calibri", sz: 11, bold: false },
-      border: thinBorder,
-      alignment: { vertical: "center", horizontal: "left" }
-    };
-
-    const commEmptyStyle = {
-      border: thinBorder
     };
 
     const headerStyle = {
-      font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "4E5969" } },
+      font: { name: "Calibri", sz: 12, bold: true, color: { rgb: "999999" } },
       border: thinBorder,
-      fill: { fgColor: { rgb: "F3F3F3" } },
-      alignment: { vertical: "center", horizontal: "left" }
+      alignment: { vertical: "center", horizontal: "center" }
     };
 
     const dataStyle = {
-      font: { name: "Calibri", sz: 11, color: { rgb: "191919" } },
+      font: { name: "Calibri", sz: 12, color: { rgb: "999999" } },
       border: thinBorder,
-      alignment: { vertical: "center", horizontal: "left" }
+      alignment: { vertical: "center", horizontal: "center" }
+    };
+
+    const emptyStyle = {
+      font: { name: "Calibri", sz: 14, italic: true, color: { rgb: "888888" } },
+      border: thinBorder,
+      alignment: { vertical: "center", horizontal: "center" }
     };
 
     const infoStyle = {
-      font: { name: "Calibri", sz: 11, color: { rgb: "FF7200" } },
+      font: { name: "Calibri", sz: 11 },
       alignment: { vertical: "center", horizontal: "left" }
     };
 
     // Traverse and apply styles to all cells (including empty grid cells)
     for (let r = 0; r < aoa.length; r++) {
+      const isTableArea = (r === 12 || (r >= 13 && r < aoa.length - 2));
+      const isTopArea = (r >= 0 && r <= 11);
+      
       for (let c = 0; c < 9; c++) {
         const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
-        if (!ws[cellRef]) {
+        
+        // Ensure cells exist for top area (to apply white fill) and table area (to apply borders)
+        if ((isTopArea || isTableArea) && !ws[cellRef]) {
           ws[cellRef] = { t: 's', v: '' };
         }
+
+        if (!ws[cellRef]) continue;
 
         if (r === 0) {
           ws[cellRef].s = titleStyle;
         } else if (r >= 1 && r <= 11) {
-          if (c === 0) {
-            ws[cellRef].s = commLabelStyle;
-          } else if (c === 1) {
-            ws[cellRef].s = commValueStyle;
-          } else {
-            ws[cellRef].s = commEmptyStyle;
-          }
+          ws[cellRef].s = settingsStyle;
         } else if (r === 12) {
           ws[cellRef].s = headerStyle;
+        } else if (allChannels.length === 0 && r === 13) {
+          ws[cellRef].s = emptyStyle;
         } else if (r >= 13 && r < aoa.length - 2) {
           ws[cellRef].s = dataStyle;
         } else if (r === aoa.length - 1) {
@@ -278,7 +306,9 @@ const HoldingRegister = () => {
       }
     }
 
-    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    ws['!views'] = [{ showGridLines: true }];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Slave address");
     
     // Write and trigger download
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

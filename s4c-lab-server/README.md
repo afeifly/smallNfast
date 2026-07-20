@@ -23,7 +23,7 @@ Full-stack solution for managing sensor calibrations.
 cd server
 npm install
 npx prisma migrate dev --name init
-node prisma/seed.js # Creates admin/Password123!
+node prisma/seed.js # Creates admin/SUTOuser1234
 npm start # Runs on http://localhost:3001
 ```
 

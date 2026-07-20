@@ -13,6 +13,7 @@ export const useAppStore = defineStore('app', {
     }),
     actions: {
         async login(username, password) {
+            this.error = null
             try {
                 // Use bare axios for login — no auth header needed here
                 const res = await axios.post(`${API_URL}/auth/login`, { username, password })
@@ -27,9 +28,11 @@ export const useAppStore = defineStore('app', {
         logout() {
             this.token = null
             localStorage.removeItem('admin_token')
+            this.error = null
         },
         async fetchUsers() {
             this.loading = true
+            this.error = null
             try {
                 const res = await api.get(`${API_URL}/company-users`)
                 this.companyUsers = res.data
@@ -40,6 +43,7 @@ export const useAppStore = defineStore('app', {
             }
         },
         async createUser(userData) {
+            this.error = null
             try {
                 await api.post(`${API_URL}/company-users`, userData)
                 await this.fetchUsers()
@@ -50,6 +54,7 @@ export const useAppStore = defineStore('app', {
             }
         },
         async updateStatus(userId, status) {
+            this.error = null
             try {
                 await api.patch(`${API_URL}/company-users/${userId}/status`, { status })
                 await this.fetchUsers()
@@ -60,6 +65,7 @@ export const useAppStore = defineStore('app', {
             }
         },
         async updateUser(userId, userData) {
+            this.error = null
             try {
                 await api.put(`${API_URL}/company-users/${userId}`, userData)
                 await this.fetchUsers()

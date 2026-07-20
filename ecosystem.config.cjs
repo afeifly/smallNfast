@@ -12,6 +12,15 @@ module.exports = {
       }
     },
     {
+      name: 's4c-web-ac',
+      cwd: './s4c-web',
+      script: 'npx',
+      args: 'serve -s dist-ac -l tcp://127.0.0.1:9024',
+      env: {
+        NODE_ENV: 'production'
+      }
+    },
+    {
       name: 's4a-web',
       cwd: './s4a-web',
       script: 'npm',

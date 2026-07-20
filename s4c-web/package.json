@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:atlascopco": "vite --mode atlascopco",
     "build": "vite build",
-    "build:atlascopco": "vite build --mode atlascopco",
+    "build:atlascopco": "vite build --mode atlascopco --outDir dist-ac",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

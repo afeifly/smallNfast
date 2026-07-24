@@ -12,6 +12,20 @@ import './SensorConfigModal.css';
 // Dynamically import all .sutoch files from the sensordata directory as raw text
 const sensorFiles = import.meta.glob('../../sensordata/*.sutoch', { query: '?raw', import: 'default', eager: true });
 
+const formatResolution = (res) => {
+  if (res === undefined || res === null || res === '') return '---';
+  const resMap = {
+    0: '1',
+    1: '0.1',
+    2: '0.01',
+    3: '0.001',
+    4: '0.0001',
+    5: '0.00001',
+    6: '0.000001'
+  };
+  return resMap[res] !== undefined ? resMap[res] : String(res);
+};
+
 const formatSN = (value) => {
   if (!value) return '';
   const clean = String(value).replace(/\s+/g, '');
@@ -207,15 +221,66 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       Location: String(baseObj.Location ?? ''),
       Meapoint: String(baseObj.Meapoint ?? ''),
       CreateTime: (initialData && initialData.CreateTime) ? String(initialData.CreateTime) : String(baseObj.CreateTime || Date.now()),
-      cfgchannel: channels.map((ch, idx) => ({
-        ...ch,
-        CreateTime: ch.CreateTime || String(Date.now() + idx)
-      }))
+      cfgchannel: channels.map((ch, idx) => {
+        const numAddr = Number(ch.MBValueAddr ?? ch.Address ?? 0);
+        const numInType = Number(ch.InputValueType ?? ch.InDataType ?? 8);
+        const numOutType = Number(ch.OutputValueType ?? ch.OutDataType ?? 8);
+        const numFuncCode = Number(ch.MBAccessFuncCode ?? ch.FunctionCode ?? 3);
+        const numErrVal = isNaN(Number(ch.ErrorValue)) ? -9999 : Number(ch.ErrorValue);
+        const chId = Number(ch.ChannelId ?? ch.Id ?? idx);
+
+        return {
+          Id: chId,
+          ChannelId: chId,
+          ChannelDescription: ch.ChannelDescription || 'New Channel',
+          DeviceID: ch.DeviceID ?? 0,
+          ErrorValue: numErrVal,
+          InputValueType: numInType,
+          MBAccessFuncCode: numFuncCode,
+          MBValueAddr: numAddr,
+          MBValueByteOrder: ch.MBValueByteOrder ?? 0,
+          MBValueLength: ch.MBValueLength ?? 4,
+          ValueOffset: ch.ValueOffset ?? 0,
+          UnitOffset: ch.UnitOffset ?? 0,
+          ResolutionOffset: ch.ResolutionOffset ?? 0,
+          Maximum: ch.Maximum ?? 0,
+          MeasureType: ch.MeasureType ?? 0,
+          Minimum: ch.Minimum ?? 0,
+          Output: Boolean(ch.Output ?? false),
+          OutputValueType: numOutType,
+          Resolution: Number(ch.Resolution ?? 1),
+          Show: ch.Show !== undefined ? Boolean(ch.Show) : true,
+          SlaverInnerChannelNo: ch.SlaverInnerChannelNo ?? 0,
+          SubDeviceID: ch.SubDeviceID ?? 0,
+          UnitInASCII: ch.UnitInASCII || '---',
+          UnitIndex: ch.UnitIndex ?? 0,
+          UseMinMax: Boolean(ch.UseMinMax ?? false),
+          Logger: Boolean(ch.Logger ?? false),
+          isVirtualSensor: Boolean(ch.isVirtualSensor ?? false),
+          Formula: ch.Formula || '',
+          UseErrorValue: Boolean(ch.UseErrorValue ?? true),
+          EnableAlarm: Boolean(ch.EnableAlarm ?? false),
+          MinThreshold: ch.MinThreshold ?? 0,
+          MaxThreshold: ch.MaxThreshold ?? 0,
+          MinHysteresis: ch.MinHysteresis ?? 0,
+          MaxHysteresis: ch.MaxHysteresis ?? 0,
+          Direction: ch.Direction ?? 0,
+          RelayIndex: ch.RelayIndex ?? 0,
+          Location: ch.Location || '',
+          Meapoint: ch.Meapoint || '',
+          CreateTime: ch.CreateTime || String(Date.now() + idx),
+          // Backward-compatible properties:
+          Address: String(numAddr),
+          InDataType: numInType,
+          OutDataType: numOutType,
+          FunctionCode: String(numFuncCode)
+        };
+      })
     };
 
     // Duplicate Address check for channels in one sensor (3-party only)
     if (!isSuto) {
-      const addresses = channels.map(ch => String(ch.Address || '').trim());
+      const addresses = channels.map(ch => String(ch.MBValueAddr ?? ch.Address ?? '').trim());
       const duplicates = addresses.filter((addr, index) => addr !== '' && addresses.indexOf(addr) !== index);
       if (duplicates.length > 0) {
         setDialogState({
@@ -327,16 +392,51 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
   };
 
   const addChannel = () => {
+    const nextChannelId = channels.length > 0 ? Math.max(...channels.map(c => Number(c.ChannelId ?? c.Id ?? 0))) + 1 : 0;
     const newChannel = {
+      Id: nextChannelId,
+      ChannelId: nextChannelId,
       ChannelDescription: 'New Channel',
-      UnitInASCII: '---',
-      Resolution: 0.1,
+      DeviceID: 0,
+      ErrorValue: -9999,
+      InputValueType: 8,
+      MBAccessFuncCode: 3,
+      MBValueAddr: 0,
+      MBValueByteOrder: 0,
+      MBValueLength: 4,
+      ValueOffset: 0,
+      UnitOffset: 0,
+      ResolutionOffset: 0,
+      Maximum: 0,
+      MeasureType: 0,
+      Minimum: 0,
+      Output: false,
+      OutputValueType: 8,
+      Resolution: 1,
       Show: true,
+      SlaverInnerChannelNo: 0,
+      SubDeviceID: 0,
+      UnitInASCII: '---',
+      UnitIndex: 0,
+      UseMinMax: false,
+      Logger: false,
+      isVirtualSensor: false,
+      Formula: '',
+      UseErrorValue: true,
+      EnableAlarm: false,
+      MinThreshold: 0,
+      MaxThreshold: 0,
+      MinHysteresis: 0,
+      MaxHysteresis: 0,
+      Direction: 0,
+      RelayIndex: 0,
+      Location: '',
+      Meapoint: '',
+      // Backward-compatible properties:
       Address: '0',
       InDataType: 8,
       OutDataType: 8,
       FunctionCode: '3',
-      ErrorValue: '0',
       CreateTime: String(Date.now() + channels.length)
     };
     const newIndex = channels.length;
@@ -598,7 +698,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                       </td>
                       <td>{ch.ChannelDescription}</td>
                       <td>{ch.UnitInASCII}</td>
-                      <td>{ch.Resolution}</td>
+                      <td>{formatResolution(ch.Resolution)}</td>
                       <td>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button

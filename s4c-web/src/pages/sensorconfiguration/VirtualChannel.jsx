@@ -8,6 +8,20 @@ import iconBtnDelete from '../../assets/images/icon_btn_delete.png';
 import { isChannelUsedInLogger, isChannelUsedInAlarm, isChannelUsedInLayout, remarshalAll } from '../../util/remarshalUtils';
 import './SUTOSensor.css';
 
+const formatResolution = (res) => {
+  if (res === undefined || res === null || res === '') return '---';
+  const resMap = {
+    0: '1',
+    1: '0.1',
+    2: '0.01',
+    3: '0.001',
+    4: '0.0001',
+    5: '0.00001',
+    6: '0.000001'
+  };
+  return resMap[res] !== undefined ? resMap[res] : String(res);
+};
+
 const VirtualChannel = () => {
   const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
@@ -236,7 +250,7 @@ const VirtualChannel = () => {
                     </td>
                     <td>{item.ChannelDescription || '---'}</td>
                     <td>{item.UnitInASCII || '---'}</td>
-                    <td>{item.Resolution || '---'}</td>
+                    <td>{formatResolution(item.Resolution)}</td>
                     <td>{item.Formula || '---'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>

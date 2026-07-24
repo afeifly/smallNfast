@@ -17,9 +17,9 @@ const VirtualChannelModal = ({ isOpen, onClose, initialData, onSave }) => {
 
   useEffect(() => {
     if (initialData) {
-      setName(initialData.Name || '');
-      setUnit(initialData.Unit || '');
-      setResolution(initialData.Resolution?.toString() || '1');
+      setName(initialData.Name || initialData.ChannelDescription || '');
+      setUnit(initialData.Unit || initialData.UnitInASCII || '');
+      setResolution(initialData.Resolution !== undefined && initialData.Resolution !== null ? initialData.Resolution.toString() : '1');
       setFormula(initialData.Formula || '');
     } else {
       setName('');

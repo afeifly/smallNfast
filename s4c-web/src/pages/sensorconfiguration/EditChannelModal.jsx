@@ -18,28 +18,42 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
     if (channelData) {
       setName(channelData.ChannelDescription || '');
       setUnit(channelData.UnitInASCII || '');
-      setResolution(channelData.Resolution?.toString() || '1');
-      setAddress(channelData.Address?.toString() || '');
-      setInputValueType(channelData.InDataType?.toString() || '8');
-      setOutputValueType(channelData.OutDataType?.toString() || '8');
-      setFunctionCode(channelData.FunctionCode?.toString() || '');
-      setErrorValue(channelData.ErrorValue?.toString() || '');
+      setResolution(channelData.Resolution !== undefined && channelData.Resolution !== null ? channelData.Resolution.toString() : '1');
+      setAddress((channelData.MBValueAddr ?? channelData.Address ?? '')?.toString());
+      setInputValueType((channelData.InputValueType ?? channelData.InDataType ?? 8)?.toString());
+      setOutputValueType((channelData.OutputValueType ?? channelData.OutDataType ?? 8)?.toString());
+      setFunctionCode((channelData.MBAccessFuncCode ?? channelData.FunctionCode ?? 3)?.toString());
+      setErrorValue((channelData.ErrorValue ?? channelData.errorValue ?? -9999)?.toString());
     }
   }, [channelData, isOpen]);
 
   if (!isOpen) return null;
 
   const handleConfirm = () => {
+    const numAddress = Number(address) || 0;
+    const numInDataType = Number(inputValueType) || 8;
+    const numOutDataType = Number(outputValueType) || 8;
+    const numFunctionCode = Number(functionCode) || 3;
+    const numErrorValue = isNaN(Number(errorValue)) ? -9999 : Number(errorValue);
+
     onSave({
+      ...channelData,
       ChannelDescription: name,
       UnitInASCII: unit,
       Resolution: Number(resolution),
+      // Standard schema properties:
+      MBValueAddr: numAddress,
+      InputValueType: numInDataType,
+      OutputValueType: numOutDataType,
+      MBAccessFuncCode: numFunctionCode,
+      ErrorValue: numErrorValue,
+      // Backward-compatible properties:
       Address: address,
-      InDataType: Number(inputValueType),
-      OutDataType: Number(outputValueType),
-      FunctionCode: functionCode,
-      ErrorValue: errorValue
+      InDataType: numInDataType,
+      OutDataType: numOutDataType,
+      FunctionCode: functionCode
     });
+    onClose();
   };
 
   return (

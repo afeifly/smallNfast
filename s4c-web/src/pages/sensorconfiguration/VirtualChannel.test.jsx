@@ -105,4 +105,21 @@ describe('VirtualChannel', () => {
     const updatedChannels = updatedConfig.configs['config/SUTO-SensorList.sutolist'].cfgsensor[0].cfgchannel;
     expect(updatedChannels.length).toBe(0);
   });
+
+  it('populates channel name and unit in edit virtual channel modal', async () => {
+    render(
+      <LanguageProvider>
+        <VirtualChannel />
+      </LanguageProvider>
+    );
+
+    const editBtn = screen.getByTitle('Edit');
+    fireEvent.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit virtual channel')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Virtual CH 1')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('kW')).toBeInTheDocument();
+    });
+  });
 });

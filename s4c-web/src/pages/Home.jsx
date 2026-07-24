@@ -59,7 +59,10 @@ const Home = () => {
   const sensorListFile = configs['/config/SUTO-SensorList.sutolist'] || configs['config/SUTO-SensorList.sutolist'] || {};
   const sensors = sensorListFile.cfgsensor || [];
 
-  // Helper to find channel info by UID (matching CreateTime) across all sensors
+  const obConfigPath = Object.keys(configs || {}).find(p => p.endsWith('cfgOptionBoard.json'));
+  const obItems = configs?.[obConfigPath]?.cfgOptionBoard || [];
+
+  // Helper to find channel info by UID (matching CreateTime) across all sensors & option board
   const findChannelInfo = (uid) => {
     for (const sensor of sensors) {
       if (!sensor.cfgchannel) continue;
@@ -69,6 +72,11 @@ const Home = () => {
         unit: channel.UnitInASCII
       };
     }
+    const obItem = obItems.find(ch => String(ch.CreateTime) === String(uid));
+    if (obItem) return {
+      description: obItem.ChannelDescription,
+      unit: obItem.PreDefineUnit || obItem.UnitInASCII || ''
+    };
     return null;
   };
 

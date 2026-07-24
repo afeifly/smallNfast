@@ -60,8 +60,8 @@ const FormulaEditorModal = ({ isOpen, onClose, initialFormula, onConfirm }) => {
   });
 
   const filteredChannels = allChannels.filter(ch => 
-    ch.sensorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ch.channelName.toLowerCase().includes(searchQuery.toLowerCase())
+    (ch.sensorName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (ch.channelName || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (!isOpen) return null;

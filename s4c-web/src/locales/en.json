@@ -84,7 +84,7 @@
   "Delete measurement point \"{mp.meapoint}\" and unlink its channels?": "Delete measurement point \"{mp.meapoint}\" and unlink its channels?",
   "Description": "Description",
   "Digital": "Digital",
-  "Direction": "Trigger direction",
+  "Direction": "Trigger Direction",
   "Display unit": "Display unit",
   "Done": "Done",
   "Down": "Below",

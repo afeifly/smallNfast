@@ -15,6 +15,7 @@ import {
   ensureChannelExists,
 } from '../util/alarmDbUtils';
 import iconBtnDelete from '../assets/images/icon_btn_delete.png';
+import { remarshalAll } from '../util/remarshalUtils';
 import './sensorconfiguration/SUTOSensor.css';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -164,10 +165,7 @@ const Alarm = () => {
     return () => { cancelled = true; };
   }, [configData?.fileMap]);
 
-  /* ─────────────────────────────────────────────────────────────────────────
-     Flush DB bytes back into the fileMap and persist to context
-     ───────────────────────────────────────────────────────────────────────── */
-  const persistDb = useCallback(() => {
+  const persistDb = useCallback((updatedAlarms) => {
     if (!dbRef.current || !dbKey.current || !configData?.fileMap) return;
     flushAlarmDb(dbRef.current, dbKey.current, configData.fileMap);
     // Save updated Alarm.db bytes directly to IndexedDB (fire-and-forget).
@@ -179,9 +177,10 @@ const Alarm = () => {
         console.error('[Alarm.jsx] persistDb: Failed to save fileMap:', e)
       );
     }
-    // Also trigger ConfigContext update so export captures the changes
-    setConfigData(prev => ({ ...prev }));
-  }, [configData, setConfigData, activeConfigId]);
+    // Also trigger ConfigContext update and sync EnableAlarm/thresholds to sensor list
+    const currentAlarms = updatedAlarms || alarms;
+    setConfigData(prev => remarshalAll(prev, currentAlarms));
+  }, [configData, setConfigData, activeConfigId, alarms]);
 
   /* ─────────────────────────────────────────────────────────────────────────
      Build channel list for the selection modal from the sensor list JSON
@@ -345,8 +344,9 @@ const Alarm = () => {
     }
 
     logAlarmTable(dbRef.current, `ADD ALARM — inserted ${newAlarms.length} row(s)`);
-    persistDb();
-    setAlarms(prev => [...prev, ...newAlarms]);
+    const nextAlarms = [...alarms, ...newAlarms];
+    setAlarms(nextAlarms);
+    persistDb(nextAlarms);
     setIsModalOpen(false);
   };
 
@@ -369,6 +369,7 @@ const Alarm = () => {
   const updateAlarm = (configId, field, value) => {
     // ── 1. Write to DB first, outside any state updater ──────────────────
     const alarm = alarms.find(a => a.config_id === configId);
+    let nextAlarms = alarms.map(a => (a.config_id === configId ? { ...a, [field]: value } : a));
 
     if (dbRef.current && alarm?.config_id != null) {
       let dbFields = {};
@@ -391,19 +392,14 @@ const Alarm = () => {
       if (Object.keys(dbFields).length > 0) {
         updateAlarmConfig(dbRef.current, alarm.config_id, dbFields);
         logAlarmTable(dbRef.current, `UPDATE — config_id=${alarm.config_id} set fields: ${JSON.stringify(dbFields)}`);
-        persistDb(); // safe here — not inside a state updater
+        persistDb(nextAlarms); // safe here — not inside a state updater
       }
+    } else {
+      persistDb(nextAlarms);
     }
 
     // ── 2. Update React state ─────────────────────────────────────────────
-    setAlarms(prev => {
-      return prev.map(a => {
-        if (a.config_id === configId) {
-          return { ...a, [field]: value };
-        }
-        return a;
-      });
-    });
+    setAlarms(nextAlarms);
   };
 
   /* ─────────────────────────────────────────────────────────────────────────
@@ -411,12 +407,15 @@ const Alarm = () => {
      ───────────────────────────────────────────────────────────────────────── */
   const handleDelete = (configId) => {
     const alarm = alarms.find(a => a.config_id === configId);
+    const nextAlarms = alarms.filter(a => a.config_id !== configId);
     if (dbRef.current && alarm?.config_id != null) {
       deleteAlarmConfig(dbRef.current, alarm.config_id);
       logAlarmTable(dbRef.current, `DELETE — config_id=${alarm.config_id} (soft-deleted)`);
-      persistDb();
+      persistDb(nextAlarms);
+    } else {
+      persistDb(nextAlarms);
     }
-    setAlarms(prev => prev.filter(a => a.config_id !== configId));
+    setAlarms(nextAlarms);
   };
 
   /* ─────────────────────────────────────────────────────────────────────────

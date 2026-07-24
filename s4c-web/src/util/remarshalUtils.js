@@ -141,11 +141,27 @@ export function isChannelUsedInLayout(configData, channel) {
  * Remarshal all ChannelIds across all sensors starting from 0.
  * Also updates the logger's channelid values to keep them in sync.
  */
-export function remarshalAll(configData) {
+export function remarshalAll(configData, activeAlarms) {
   if (!configData?.configs) return configData;
 
   const listPath = findPath(configData.configs, SUTOLIST_PATHS);
   if (!listPath) return configData;
+
+  const loggerPath = findPath(configData.configs, CFGLOGGER_PATHS);
+  const currentLogger = loggerPath ? configData.configs[loggerPath]?.logger : null;
+  const loggedChannelIds = new Set((currentLogger?.channelArray || []).map(ch => ch.channelid));
+
+  // Build alarm map if activeAlarms array is provided
+  let alarmMap = null;
+  if (Array.isArray(activeAlarms)) {
+    alarmMap = new Map();
+    activeAlarms.forEach(alarm => {
+      const key = String(alarm.channel_identify_id || alarm.channelId || alarm.channelid || alarm.CreateTime || '');
+      if (key) {
+        alarmMap.set(key, alarm);
+      }
+    });
+  }
 
   const currentList = configData.configs[listPath];
   const sensors = [...(currentList.cfgsensor || [])];
@@ -163,11 +179,30 @@ export function remarshalAll(configData) {
         idMap.set(oldId, newId);
       }
       
-      // Preserve the field name that was already there, but update the value
-      // We'll standardize to ChannelId as requested, but keep other variants if they exist
-      const newCh = { ...ch, ChannelId: newId };
+      const isLogged = (oldId !== undefined && loggedChannelIds.has(oldId)) || loggedChannelIds.has(newId);
+      const createTimeStr = String(ch.CreateTime || '');
+      const channelIdStr = String(oldId !== undefined ? oldId : newId);
+
+      let newCh = { ...ch, ChannelId: newId, Logger: isLogged };
       if (newCh.channelid !== undefined) newCh.channelid = newId;
       if (newCh.ChannelID !== undefined) newCh.ChannelID = newId;
+
+      if (alarmMap) {
+        const alarm = alarmMap.get(createTimeStr) || alarmMap.get(channelIdStr);
+        const enableAlarm = !!alarm;
+        const dirNum = alarm ? ((alarm.direction === 'down' || alarm.Direction === 'DOWN' || alarm.direction === 1) ? 1 : 0) : (ch.Direction ?? 0);
+        const thresh = alarm ? Number(alarm.threshold ?? alarm.Threshold ?? 0) : (ch.MaxThreshold ?? ch.MinThreshold ?? 0);
+        const hyst = alarm ? Number(alarm.hysteresis ?? alarm.Hysteresis ?? 0) : (ch.MaxHysteresis ?? ch.MinHysteresis ?? 0);
+        const relayIdx = alarm ? Number(alarm.relay_id ?? alarm.RelayId ?? 0) : (ch.RelayIndex ?? 0);
+
+        newCh.EnableAlarm = enableAlarm;
+        newCh.Direction = dirNum;
+        newCh.MaxThreshold = thresh;
+        newCh.MinThreshold = thresh;
+        newCh.MaxHysteresis = hyst;
+        newCh.MinHysteresis = hyst;
+        newCh.RelayIndex = relayIdx;
+      }
       
       return newCh;
     });
@@ -200,9 +235,30 @@ export function remarshalAll(configData) {
         idMap.set(oldId, correctId);
       }
       
-      const newCh = { ...ch, ChannelId: correctId };
+      const isLogged = (oldId !== undefined && loggedChannelIds.has(oldId)) || loggedChannelIds.has(correctId);
+      const createTimeStr = String(ch.CreateTime || '');
+      const channelIdStr = String(oldId !== undefined ? oldId : correctId);
+
+      let newCh = { ...ch, ChannelId: correctId, Logger: isLogged };
       if (newCh.channelid !== undefined) newCh.channelid = correctId;
       if (newCh.ChannelID !== undefined) newCh.ChannelID = correctId;
+
+      if (alarmMap) {
+        const alarm = alarmMap.get(createTimeStr) || alarmMap.get(channelIdStr);
+        const enableAlarm = !!alarm;
+        const dirNum = alarm ? ((alarm.direction === 'down' || alarm.Direction === 'DOWN' || alarm.direction === 1) ? 1 : 0) : (ch.Direction ?? 0);
+        const thresh = alarm ? Number(alarm.threshold ?? alarm.Threshold ?? 0) : (ch.MaxThreshold ?? ch.MinThreshold ?? 0);
+        const hyst = alarm ? Number(alarm.hysteresis ?? alarm.Hysteresis ?? 0) : (ch.MaxHysteresis ?? ch.MinHysteresis ?? 0);
+        const relayIdx = alarm ? Number(alarm.relay_id ?? alarm.RelayId ?? 0) : (ch.RelayIndex ?? 0);
+
+        newCh.EnableAlarm = enableAlarm;
+        newCh.Direction = dirNum;
+        newCh.MaxThreshold = thresh;
+        newCh.MinThreshold = thresh;
+        newCh.MaxHysteresis = hyst;
+        newCh.MinHysteresis = hyst;
+        newCh.RelayIndex = relayIdx;
+      }
       
       return newCh;
     });
@@ -219,22 +275,29 @@ export function remarshalAll(configData) {
     configs: nextConfigs
   };
 
-  // 3. Update the logger to match new IDs
-  const loggerPath = findPath(configData.configs, CFGLOGGER_PATHS);
+  // 3. Update the logger to match new IDs & ensure starttime is in seconds
   if (loggerPath) {
     const loggerConfig = configData.configs[loggerPath];
-    const logger = loggerConfig.logger;
-    if (logger?.channelArray) {
-      const updatedChannelArray = logger.channelArray.map(ch => {
-        const oldId = ch.channelid;
-        const newId = idMap.has(oldId) ? idMap.get(oldId) : oldId;
-        return { ...ch, channelid: newId };
-      });
+    const logger = loggerConfig?.logger;
+    if (logger) {
+      let updatedChannelArray = logger.channelArray;
+      if (logger.channelArray) {
+        updatedChannelArray = logger.channelArray.map(ch => {
+          const oldId = ch.channelid;
+          const newId = idMap.has(oldId) ? idMap.get(oldId) : oldId;
+          return { ...ch, channelid: newId };
+        });
+      }
+
+      const rawStartTime = logger.starttime || 0;
+      const starttimeSec = rawStartTime > 1e11 ? Math.floor(rawStartTime / 1000) : rawStartTime;
       
       nextConfigData.configs[loggerPath] = {
         ...loggerConfig,
         logger: {
           ...logger,
+          starttime: starttimeSec,
+          channels: updatedChannelArray ? updatedChannelArray.length : (logger.channels || 0),
           channelArray: updatedChannelArray
         }
       };

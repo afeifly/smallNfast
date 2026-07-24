@@ -3,6 +3,7 @@ import { useConfig } from '../context/ConfigContext';
 import { useLanguage } from '../context/LanguageContext';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
 import ChannelSelectModal from '../components/ChannelSelectModal';
+import { remarshalAll } from '../util/remarshalUtils';
 import './LoggerSettings.css';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ const ScrollWheel = ({ value, min, max, onChange, label }) => {
 // ── Edit Logger Drawer ────────────────────────────────────────────────────────
 const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdToCreateTime, onSave }) => {
   const { t } = useLanguage();
-  const [form, setForm] = useState({ mode: 0, filename: '', starttime: 0, samplerate: 1, channelArray: [] });
+  const [form, setForm] = useState({ mode: 0, filename: '', starttime: 0, samplerate: 10, channelArray: [] });
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Sync drawer form state when drawer opens or rawLogger changes
@@ -296,7 +297,7 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
         mode: rawLogger.mode ?? 0,
         filename: rawLogger.filename ?? '',
         starttime: rawLogger.starttime ?? 0,
-        samplerate: rawLogger.samplerate ?? 1,
+        samplerate: rawLogger.samplerate ?? 10,
         channelArray: rawLogger.channelArray
           ? rawLogger.channelArray.filter(ch => channelIdToCreateTime[ch.channelid] !== undefined)
           : [],
@@ -517,7 +518,12 @@ const LoggerSettings = () => {
     const loggerPath = findLoggerPath(configData?.configs);
     if (!loggerPath) return;
     const existingLogger = configData.configs[loggerPath]?.logger || {};
-    setConfigData({
+    
+    // Ensure starttime is stored in SECONDS (10-digit Unix timestamp)
+    const rawStartTime = updatedForm.starttime || 0;
+    const starttimeSec = rawStartTime > 1e11 ? Math.floor(rawStartTime / 1000) : rawStartTime;
+
+    const nextConfigData = {
       ...configData,
       configs: {
         ...configData.configs,
@@ -535,14 +541,15 @@ const LoggerSettings = () => {
             // User-edited fields
             mode:          updatedForm.mode,
             filename:      updatedForm.filename,
-            starttime:     updatedForm.starttime,
+            starttime:     starttimeSec,
             samplerate:    updatedForm.samplerate,
             channels:      updatedForm.channelArray.length,
             channelArray:  updatedForm.channelArray,
           },
         },
       },
-    });
+    };
+    setConfigData(remarshalAll(nextConfigData));
     setIsDrawerOpen(false);
   };
 

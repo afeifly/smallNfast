@@ -207,6 +207,71 @@ describe('remarshalAll', () => {
     expect(loggerArray[1].channelid).toBe(2004);
   });
 
+  it('syncs Logger boolean flag on channels and converts starttime to seconds', () => {
+    const configData = makeConfigData({
+      'config/cfglogger.json': {
+        logger: {
+          starttime: 1784822400000,
+          channelArray: [{ channelid: 0 }]
+        },
+      },
+      'config/SUTO-SensorList.sutolist': {
+        cfgsensor: [
+          {
+            cfgchannel: [
+              { ChannelId: 0, Logger: false },
+              { ChannelId: 1, Logger: true }
+            ]
+          }
+        ],
+      }
+    });
+
+    const result = remarshalAll(configData);
+    const channels = result.configs['config/SUTO-SensorList.sutolist'].cfgsensor[0].cfgchannel;
+    const logger = result.configs['config/cfglogger.json'].logger;
+
+    expect(channels[0].Logger).toBe(true);
+    expect(channels[1].Logger).toBe(false);
+    expect(logger.starttime).toBe(1784822400);
+  });
+
+  it('syncs EnableAlarm and alarm threshold parameters when activeAlarms array is passed', () => {
+    const configData = makeConfigData({
+      'config/SUTO-SensorList.sutolist': {
+        cfgsensor: [
+          {
+            cfgchannel: [
+              { ChannelId: 0, CreateTime: '10001', EnableAlarm: false },
+              { ChannelId: 1, CreateTime: '10002', EnableAlarm: true }
+            ]
+          }
+        ],
+      }
+    });
+
+    const activeAlarms = [
+      {
+        channel_identify_id: '10001',
+        threshold: 100.5,
+        hysteresis: 2.5,
+        direction: 'up',
+        relay_id: 2
+      }
+    ];
+
+    const result = remarshalAll(configData, activeAlarms);
+    const channels = result.configs['config/SUTO-SensorList.sutolist'].cfgsensor[0].cfgchannel;
+
+    expect(channels[0].EnableAlarm).toBe(true);
+    expect(channels[0].MaxThreshold).toBe(100.5);
+    expect(channels[0].MaxHysteresis).toBe(2.5);
+    expect(channels[0].Direction).toBe(0); // up -> 0
+    expect(channels[0].RelayIndex).toBe(2);
+
+    expect(channels[1].EnableAlarm).toBe(false);
+  });
+
   it('handles sensors with no channels', () => {
     const configData = makeConfigData({
       'config/SUTO-SensorList.sutolist': {

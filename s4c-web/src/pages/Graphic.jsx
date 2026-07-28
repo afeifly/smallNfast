@@ -344,7 +344,7 @@ const Graphic = () => {
     }
     allChannels.push({ 
       CreateTime: createTimeStr, 
-      sensorCreateTime: "option-board-sensor-id", 
+      sensorCreateTime: createTimeStr, 
       sensorName: item.SensorDescription || 'Option Board', 
       channelName: item.ChannelDescription, 
       location: locationValue, 

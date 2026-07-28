@@ -53,7 +53,7 @@ function rowToAlarm(row) {
     Direction: (row.direction ?? 'up').toLowerCase() === 'up' ? 'UP' : 'Down',
     Delay: String(row.delay ?? 0),
     RelayId: String(row.relay_id ?? 0),
-    RelayFlag: Number(row.relay_flag ?? 1),
+    IsRelayPermanentOff: Number(row.is_relay_permanent_off ?? 0),
   };
 }
 
@@ -236,7 +236,7 @@ const Alarm = () => {
 
   obItems.forEach(item => {
     const channelId = String(item.CreateTime || '');
-    const sensorId = "option-board-sensor-id";
+    const sensorId = channelId;
 
     let locationValue = '---';
     let pointValue = '---';
@@ -313,7 +313,8 @@ const Alarm = () => {
           direction: 'up',
           delay: 0,
           relay_id: 0,
-          relay_flag: 0,
+          relay_flag: 1,
+          is_relay_permanent_off: 0,
         });
 
         newAlarms.push({
@@ -330,7 +331,7 @@ const Alarm = () => {
           Direction: 'UP',
           Delay: '0',
           RelayId: '0',
-          RelayFlag: 0,
+          IsRelayPermanentOff: 0,
         });
       }
     } catch (err) {
@@ -362,6 +363,7 @@ const Alarm = () => {
     Delay: 'delay',
     RelayId: 'relay_id',
     RelayFlag: 'relay_flag',
+    IsRelayPermanentOff: 'is_relay_permanent_off',
     MeasurementPoint: 'measurement_point',
     Location: 'location',
   };
@@ -572,11 +574,11 @@ const Alarm = () => {
                         </select>
                       </td>
 
-                      {/* Relay Flag (active toggle) */}
+                      {/* Relay Permanent Off / Pending toggle (1 = pending / on, 0 = not pending / off) */}
                       <td>
                         <div
-                          className={`alarm-switch ${alarm.RelayFlag ? 'on' : 'off'}`}
-                          onClick={() => updateAlarm(alarm.config_id, 'RelayFlag', alarm.RelayFlag ? 0 : 1)}
+                          className={`alarm-switch ${alarm.IsRelayPermanentOff ? 'on' : 'off'}`}
+                          onClick={() => updateAlarm(alarm.config_id, 'IsRelayPermanentOff', alarm.IsRelayPermanentOff ? 0 : 1)}
                         >
                           <div className="switch-knob" />
                         </div>

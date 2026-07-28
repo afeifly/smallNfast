@@ -410,7 +410,7 @@ const HoldingRegister = () => {
                 <th>{t('No. of byte')}</th>
                 <th>{t('Unit')}</th>
                 <th>{t('Resolution')}</th>
-                <th>{t('Read/Write')}</th>
+                <th>{t('Function code')}</th>
               </tr>
             </thead>
             <tbody>
@@ -424,7 +424,7 @@ const HoldingRegister = () => {
                   <td>{getByteCount(ch.type)}</td>
                   <td>{ch.unit}</td>
                   <td>{getResolutionText(ch.resolution)}</td>
-                  <td>{getRWText(ch.rw)}</td>
+                  <td>3</td>
                 </tr>
               ))}
             </tbody>

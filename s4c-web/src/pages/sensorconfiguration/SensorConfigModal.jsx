@@ -119,11 +119,15 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
         }));
         setChannels(loadedChannels);
         // Keep the user's currently selected protocol instead of reverting to the template's default ConnectType
-        if (content.Addr !== undefined) {
+        if (content.Addr !== undefined && Number(content.Addr) !== 0) {
           setAddress(String(content.Addr));
+        } else if (!initialData) {
+          setAddress('1');
         }
-        if (content.Port !== undefined) {
+        if (content.Port !== undefined && Number(content.Port) !== 0) {
           setPort(String(content.Port));
+        } else if (!initialData) {
+          setPort('502');
         }
         // Copy sensor name to description as requested
         setDescription(name);

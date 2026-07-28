@@ -122,20 +122,21 @@ export function insertAlarmConfig(db, alarm) {
     VALUES
       (:sensor_identify_id, :channel_identify_id, :measurement_point, :location,
        :threshold, :hysteresis, :direction, :delay, :relay_id, :relay_flag,
-       0, 0, :update_time, 0, 0)
+       :is_relay_permanent_off, 0, :update_time, 0, 0)
   `;
   db.run(sql, {
-    ':sensor_identify_id':  alarm.sensor_identify_id,
-    ':channel_identify_id': alarm.channel_identify_id,
-    ':measurement_point':   alarm.measurement_point  ?? '',
-    ':location':            alarm.location            ?? '',
-    ':threshold':           alarm.threshold           ?? 0,
-    ':hysteresis':          alarm.hysteresis          ?? 0,
-    ':direction':           alarm.direction           ?? 'up',
-    ':delay':               alarm.delay               ?? 0,
-    ':relay_id':            alarm.relay_id            ?? 0,
-    ':relay_flag':          alarm.relay_flag          ?? 1,
-    ':update_time':         now,
+    ':sensor_identify_id':     alarm.sensor_identify_id,
+    ':channel_identify_id':    alarm.channel_identify_id,
+    ':measurement_point':      alarm.measurement_point       ?? '',
+    ':location':               alarm.location                 ?? '',
+    ':threshold':              alarm.threshold                ?? 0,
+    ':hysteresis':             alarm.hysteresis               ?? 0,
+    ':direction':              alarm.direction                ?? 'up',
+    ':delay':                  alarm.delay                    ?? 0,
+    ':relay_id':               alarm.relay_id                 ?? 0,
+    ':relay_flag':             alarm.relay_flag               ?? 1,
+    ':is_relay_permanent_off': alarm.is_relay_permanent_off  ?? 0,
+    ':update_time':            now,
   });
   // Return the new row id
   return db.exec('SELECT last_insert_rowid() AS id')[0]?.values?.[0]?.[0];

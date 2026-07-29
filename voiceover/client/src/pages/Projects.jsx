@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Folder, Trash2, ArrowRight, LogOut, Video, Music, Calendar } from 'lucide-react';
 import { getProjects, createNewProject, deleteProject } from '../utils/storage';
+import { deleteProjectStorage } from '../utils/idbStorage';
 
 export default function Projects({ onSelectProject, onLogout }) {
   const [projects, setProjects] = useState([]);
@@ -20,11 +21,12 @@ export default function Projects({ onSelectProject, onLogout }) {
     onSelectProject(proj);
   };
 
-  const handleDelete = (e, id) => {
+  const handleDelete = (e, proj) => {
     e.stopPropagation();
     if (window.confirm('Are you sure you want to delete this project?')) {
-      const updated = deleteProject(id);
+      const updated = deleteProject(proj.id);
       setProjects(updated);
+      deleteProjectStorage(proj.id, (proj.tracks || []).map(t => t.id));
     }
   };
 
@@ -116,7 +118,7 @@ export default function Projects({ onSelectProject, onLogout }) {
                     {proj.name}
                   </h3>
                   <button 
-                    onClick={(e) => handleDelete(e, proj.id)}
+                    onClick={(e) => handleDelete(e, proj)}
                     style={{
                       background: 'none',
                       border: 'none',

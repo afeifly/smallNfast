@@ -7,6 +7,7 @@ import Timeline from '../components/Timeline';
 import { fetchTTSAudio, VOICE_OPTIONS } from '../utils/ttsClient';
 import { exportCompositeVideo } from '../utils/videoExporter';
 import { updateProject } from '../utils/storage';
+import { saveVideoFile, getVideoFile, saveAudioBuffer, getAudioBuffer, deleteProjectStorage } from '../utils/idbStorage';
 
 export default function Editor({ project, onBack }) {
   const [videoFile, setVideoFile] = useState(null);
@@ -53,6 +54,47 @@ export default function Editor({ project, onBack }) {
     });
   }, [tracks, duration]);
 
+  // Restore persisted Video & Audio buffers from IndexedDB on mount / refresh
+  useEffect(() => {
+    let isMounted = true;
+
+    async function restorePersistedData() {
+      // 1. Restore Video File
+      const savedVideo = await getVideoFile(project.id);
+      if (savedVideo && isMounted) {
+        setVideoFile(savedVideo);
+        const url = URL.createObjectURL(savedVideo);
+        setVideoUrl(url);
+      }
+
+      // 2. Restore Audio Buffers for all tracks
+      const loadedBuffers = {};
+      const audioCtx = getAudioContext();
+
+      for (const track of project.tracks || []) {
+        const arrayBuf = await getAudioBuffer(track.id);
+        if (arrayBuf && isMounted) {
+          try {
+            const decoded = await audioCtx.decodeAudioData(arrayBuf.slice(0));
+            loadedBuffers[track.id] = decoded;
+          } catch (e) {
+            console.error('Error decoding saved audio buffer for track:', track.id, e);
+          }
+        }
+      }
+
+      if (isMounted && Object.keys(loadedBuffers).length > 0) {
+        setAudioBuffers(prev => ({ ...prev, ...loadedBuffers }));
+      }
+    }
+
+    restorePersistedData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [project.id]);
+
   // Video metadata loaded handler
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
@@ -67,6 +109,7 @@ export default function Editor({ project, onBack }) {
       setVideoFile(file);
       const url = URL.createObjectURL(file);
       setVideoUrl(url);
+      saveVideoFile(project.id, file);
     }
   };
 
@@ -149,6 +192,7 @@ export default function Editor({ project, onBack }) {
     const newBuffers = { ...audioBuffers };
     delete newBuffers[id];
     setAudioBuffers(newBuffers);
+    deleteProjectStorage(null, [id]);
   };
 
   // TTS Voice Generation Handler
@@ -163,8 +207,11 @@ export default function Editor({ project, onBack }) {
         voiceId: track.voiceId
       });
 
+      // Persist raw MP3 ArrayBuffer to IndexedDB
+      await saveAudioBuffer(track.id, arrayBuffer);
+
       const audioCtx = getAudioContext();
-      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 
       setAudioBuffers(prev => ({
         ...prev,

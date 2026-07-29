@@ -1,0 +1,15 @@
+# Environment variables containing secret API keys
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+client/dist/
+
+# Logs
+*.log

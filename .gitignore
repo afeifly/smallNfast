@@ -1,3 +1,7 @@
+# Environment & Secrets
+.env
+*.env
+
 # Binaries
 *.exe
 *.dll
@@ -14,7 +18,8 @@ jsutousbIo/target/
 .vscode/
 .idea/
 
-# Wails
+# Wails & Build
 frontend/dist/
 build/bin/
 */dist/
+

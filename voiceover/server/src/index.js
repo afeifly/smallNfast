@@ -14,7 +14,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 9025;
 
 app.use(cors());
 app.use(express.json());
@@ -29,24 +29,27 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Serve frontend static build if available
+// Serve frontend static files dynamically
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
-if (fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(clientDistPath, 'index.html'));
-  });
-} else {
-  app.get('/', (req, res) => {
+app.use(express.static(clientDistPath));
+
+// Fallback for SPA routing
+app.get('*', (req, res) => {
+  const indexPath = path.join(clientDistPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
     res.send(`
       <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #090d16; color: #fff; min-height: 100vh;">
-        <h2>SUTO VoiceOver TTS Server is Running! 🚀</h2>
-        <p style="color: #94a3b8;">For development, please open the React app at: <a href="http://localhost:5173" style="color: #6366f1; font-weight: bold;">http://localhost:5173</a></p>
-        <p style="color: #64748b; font-size: 0.9rem;">(Or run <code>npm run build</code> inside the client directory to serve production build from this port)</p>
+        <h2>SUTO VoiceOver Studio 🚀</h2>
+        <p style="color: #94a3b8; margin-top: 12px;">Frontend bundle not found. Please build the UI by running:</p>
+        <div style="margin: 20px 0;">
+          <code style="background: rgba(255,255,255,0.1); padding: 10px 18px; border-radius: 8px; color: #8b5cf6; font-size: 1rem;">cd voiceover && npm run build</code>
+        </div>
       </div>
     `);
-  });
-}
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`[TTS Server] Running on http://localhost:${PORT}`);

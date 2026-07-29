@@ -107,6 +107,16 @@ module.exports = {
         PORT: 9023,
         HOST: '127.0.0.1'
       }
+    },
+    {
+      name: 'voiceover',
+      cwd: './voiceover/server',
+      script: 'node',
+      args: 'src/index.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 9025
+      }
     }
   ]
 }

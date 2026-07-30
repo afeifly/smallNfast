@@ -50,11 +50,12 @@ const HoldingRegister = () => {
   (currentConfig?.cfgsensor || []).forEach(sensor => {
     (sensor.cfgchannel || []).forEach((ch) => {
       const locationText = getChannelLocation(String(ch.CreateTime));
+      const rawType = ch.ValueType || ch.OutputValueType || ch.InputValueType || 8;
       const channelData = {
         location: locationText,
         sensorDescription: sensor.Description || sensor.Name || '---',
         channelDescription: ch.ChannelDescription || '---',
-        type: ch.ValueType || 8,
+        type: rawType,
         unit: ch.UnitInASCII,
         resolution: ch.Resolution,
         rw: ch.rw || 0
@@ -73,11 +74,12 @@ const HoldingRegister = () => {
   // Extract Option Board channels (analog sensor)
   optionBoardItems.forEach(item => {
     const locationText = getChannelLocation(String(item.CreateTime));
+    const rawType = item.ValueType || item.OutputValueType || item.InputValueType || 8;
     analogChannels.push({
       location: locationText,
       sensorDescription: item.SensorDescription || '---',
       channelDescription: item.ChannelDescription || '---',
-      type: item.ValueType || 8,
+      type: rawType,
       unit: item.PreDefineUnit || item.UnitInASCII || '---',
       resolution: item.Resolution,
       rw: item.rw || 0
@@ -112,12 +114,13 @@ const HoldingRegister = () => {
   };
 
   const getDataTypeName = (type) => {
+    const num = Number(type);
     const types = {
       1: 'INT16', 2: 'UINT16', 3: 'INT32_B', 4: 'INT32_L',
       5: 'UINT32_B', 6: 'UINT32_L', 7: 'FLOAT_B', 8: 'FLOAT_L',
       9: 'UINT64_B', 10: 'UINT64_L'
     };
-    return types[type] || t('Unknown');
+    return types[num] || t('Unknown');
   };
 
   const getRWText = (rw) => {
@@ -126,9 +129,10 @@ const HoldingRegister = () => {
   };
 
   const getByteCount = (type) => {
-    if ([1, 2].includes(type)) return 2;
-    if ([3, 4, 5, 6, 7, 8].includes(type)) return 4;
-    if ([9, 10].includes(type)) return 8;
+    const num = Number(type);
+    if ([1, 2].includes(num)) return 2;
+    if ([3, 4, 5, 6, 7, 8].includes(num)) return 4;
+    if ([9, 10].includes(num)) return 8;
     return 4;
   };
 

@@ -290,13 +290,17 @@ export function remarshalAll(configData, activeAlarms) {
       }
 
       const rawStartTime = logger.starttime || 0;
-      const starttimeSec = rawStartTime > 1e11 ? Math.floor(rawStartTime / 1000) : rawStartTime;
+      const starttimeMs = rawStartTime > 0 && rawStartTime < 1e11 ? rawStartTime * 1000 : rawStartTime;
+
+      const rawStopTime = logger.stoptime || 0;
+      const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
       
       nextConfigData.configs[loggerPath] = {
         ...loggerConfig,
         logger: {
           ...logger,
-          starttime: starttimeSec,
+          starttime: starttimeMs,
+          stoptime: stoptimeMs,
           channels: updatedChannelArray ? updatedChannelArray.length : (logger.channels || 0),
           channelArray: updatedChannelArray
         }

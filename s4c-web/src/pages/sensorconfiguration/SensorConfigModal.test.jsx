@@ -329,4 +329,63 @@ describe('SensorConfigModal', () => {
     const selectElemSuto = document.querySelectorAll('.form-select-hidden')[0];
     expect(selectElemSuto.value).toBe('4');
   });
+
+  it('strips "SUTO-" prefix and auto-numbers duplicate sensors (#1, #2)', async () => {
+    mockConfigs = {
+      'config/SUTO-SensorList.sutolist': {
+        cfgsensor: [
+          { Name: 'S400', Description: 'S400' },
+          { Name: 'S400', Description: 'S400#1' }
+        ]
+      }
+    };
+
+    render(
+      <LanguageProvider>
+        <SensorConfigModal
+          isOpen={true}
+          onClose={vi.fn()}
+          initialData={null}
+          isSuto={true}
+          selectedSensor="SUTO-S400.sutoch"
+        />
+      </LanguageProvider>
+    );
+
+    const sensorConfirmBtn = document.querySelector('.btn-confirm');
+    fireEvent.click(sensorConfirmBtn);
+
+    expect(mockSetConfigData).toHaveBeenCalled();
+    const updatedConfig = mockSetConfigData.mock.calls[0][0];
+    const newSensor = updatedConfig.configs['config/SUTO-SensorList.sutolist'].cfgsensor[2];
+    expect(newSensor.Name).toBe('S400');
+    expect(newSensor.Description).toBe('S400#2');
+  });
+
+  it('disables the sensor dropdown in edit mode when initialData is provided', () => {
+    const existingSensor = {
+      Index: 0,
+      SensorID: 1,
+      Name: 'S400',
+      Description: 'S400',
+      ConfigFileName: 'SUTO-S400.sutoch',
+      isSuto: true,
+      cfgchannel: []
+    };
+
+    render(
+      <LanguageProvider>
+        <SensorConfigModal
+          isOpen={true}
+          onClose={vi.fn()}
+          initialData={existingSensor}
+          isSuto={true}
+          selectedSensor=""
+        />
+      </LanguageProvider>
+    );
+
+    const sensorSelect = document.querySelectorAll('.form-select-hidden')[1];
+    expect(sensorSelect).toBeDisabled();
+  });
 });

@@ -47,7 +47,7 @@ describe('LoggerSettings Page', () => {
         logger: {
           mode: 0,
           filename: 'testlog',
-          starttime: 1784822400, // 10-digit seconds
+          starttime: 1784822400000, // 13-digit milliseconds
           samplerate: 10,
           channels: 1,
           channelArray: [
@@ -87,7 +87,7 @@ describe('LoggerSettings Page', () => {
     expect(screen.getByDisplayValue('10s')).toBeInTheDocument();
   });
 
-  it('converts millisecond timestamps to seconds and syncs channel Logger flags on save', () => {
+  it('stores millisecond timestamps (13 digits) and syncs channel Logger flags on save', () => {
     render(
       <LanguageProvider>
         <LoggerSettings />
@@ -107,11 +107,65 @@ describe('LoggerSettings Page', () => {
     const logger = updatedConfigData.configs['config/cfglogger.json'].logger;
     const channels = updatedConfigData.configs['config/SUTO-SensorList.sutolist'].cfgsensor[0].cfgchannel;
 
-    // Verify starttime is in seconds (<= 1e11)
-    expect(logger.starttime).toBeLessThan(1e11);
     // Verify channel 0 (which is in channelArray) has Logger: true
     expect(channels[0].Logger).toBe(true);
     // Verify channel 1 (not in channelArray) has Logger: false
     expect(channels[1].Logger).toBe(false);
+  });
+
+  it('supports selecting Scheduled Start (mode 1) and enabling Stop time (mode 2)', () => {
+    render(
+      <LanguageProvider>
+        <LoggerSettings />
+      </LanguageProvider>
+    );
+
+    const editBtn = document.querySelector('.btn-header-edit');
+    fireEvent.click(editBtn);
+
+    // Select Scheduled Start (value 1)
+    const select = screen.getByDisplayValue('Manual Start');
+    fireEvent.change(select, { target: { value: '1' } });
+
+    // Enable Stop time switch
+    const switchEl = document.querySelector('.logger-switch');
+    fireEvent.click(switchEl);
+
+    // Click Submit
+    const saveBtn = screen.getByText('Submit');
+    fireEvent.click(saveBtn);
+
+    expect(mockSetConfigData).toHaveBeenCalled();
+    const logger = mockSetConfigData.mock.calls[0][0].configs['config/cfglogger.json'].logger;
+
+    // Mode 2 expected when Stop time is enabled
+    expect(logger.mode).toBe(2);
+  });
+
+  it('shows a warning dialog if stop time is earlier than or equal to start time', () => {
+    mockConfigs['config/cfglogger.json'].logger = {
+      mode: 2,
+      filename: 'testlog',
+      starttime: 1784822400000,
+      stoptime: 1784800000000, // stoptime < starttime
+      samplerate: 10,
+      channels: 1,
+      channelArray: [{ channelid: 0 }]
+    };
+
+    render(
+      <LanguageProvider>
+        <LoggerSettings />
+      </LanguageProvider>
+    );
+
+    const editBtn = document.querySelector('.btn-header-edit');
+    fireEvent.click(editBtn);
+
+    const saveBtn = screen.getByText('Submit');
+    fireEvent.click(saveBtn);
+
+    expect(screen.getByText('Stop time cannot be earlier than or equal to start time.')).toBeInTheDocument();
+    expect(mockSetConfigData).not.toHaveBeenCalled();
   });
 });

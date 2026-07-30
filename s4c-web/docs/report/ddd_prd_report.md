@@ -205,7 +205,7 @@ classDiagram
 
 1. **Device Remarshaling & Firmware Synchronization Invariants (`remarshalAll`)**:
    - **Logger Flag Sync**: Every channel in `SUTO-SensorList.sutolist` and `cfgOptionBoard.json` must have `"Logger": true` if present in `cfglogger.json::channelArray`, and `"Logger": false` if unselected.
-   - **Logger Starttime Format**: `starttime` in `cfglogger.json` must be stored as a **10-digit Unix timestamp in seconds** (e.g., `1784822400`). 13-digit millisecond timestamps cause integer overflow on embedded C device firmware.
+   - **Logger Starttime Format**: `starttime` in `cfglogger.json` is stored as a **13-digit Unix timestamp in milliseconds**.
    - **Alarm Flag & Threshold Sync**: Channel objects in `SUTO-SensorList.sutolist` and `cfgOptionBoard.json` must have `"EnableAlarm": true/false`, `Direction`, `MaxThreshold`/`MinThreshold`, `MaxHysteresis`/`MinHysteresis`, and `RelayIndex` synchronized with active rules in `Alarm.db`. Embedded C hardware checks `"EnableAlarm"` on sensor channels before reading `Alarm.db`.
 2. **Sensor Channel Deletion Restriction Invariant**:
    - A sensor channel cannot be deleted from `SUTO-SensorList.sutolist` if any row in `Alarm.db` references `channel_identify_id` matching the channel's `CreateTime`.
@@ -238,7 +238,7 @@ sequenceDiagram
     JS->>UI: Patch missing fields & parse JSON
     Note over UI: User edits Alarms / Logger / Sensors
     UI->>R: Export Package Triggered
-    R->>R: Sync Logger: true/false & 10-digit starttime
+    R->>R: Sync Logger: true/false & 13-digit starttime
     R->>R: Sync EnableAlarm: true/false & thresholds
     R->>JS: Pass remarshaled JSON & fileMap
     JS->>IDB: Read binary files Map

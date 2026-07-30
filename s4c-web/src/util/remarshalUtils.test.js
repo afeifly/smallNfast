@@ -207,7 +207,7 @@ describe('remarshalAll', () => {
     expect(loggerArray[1].channelid).toBe(2004);
   });
 
-  it('syncs Logger boolean flag on channels and converts starttime to seconds', () => {
+  it('syncs Logger boolean flag on channels and preserves millisecond starttime', () => {
     const configData = makeConfigData({
       'config/cfglogger.json': {
         logger: {
@@ -233,7 +233,7 @@ describe('remarshalAll', () => {
 
     expect(channels[0].Logger).toBe(true);
     expect(channels[1].Logger).toBe(false);
-    expect(logger.starttime).toBe(1784822400);
+    expect(logger.starttime).toBe(1784822400000);
   });
 
   it('syncs EnableAlarm and alarm threshold parameters when activeAlarms array is passed', () => {

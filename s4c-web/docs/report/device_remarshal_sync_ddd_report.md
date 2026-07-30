@@ -16,7 +16,7 @@ sequenceDiagram
     participant Logger as cfglogger.json
 
     Editor->>Remarshal: remarshalAll(configData, activeAlarms)
-    Remarshal->>Logger: Convert starttime to seconds (10-digit)
+    Remarshal->>Logger: Keep starttime in milliseconds (13-digit)
     Remarshal->>SensorList: Sync "Logger": true/false
     Remarshal->>OptionBoard: Sync "Logger": true/false
     Remarshal->>SensorList: Sync "EnableAlarm", Direction, Thresholds, RelayIndex
@@ -25,6 +25,6 @@ sequenceDiagram
 ```
 
 ## 3. Domain Invariants
-1. **Timestamp Invariant**: `starttime` > 1e11 (milliseconds) must be converted to seconds by dividing by 1000 before packaging.
+1. **Timestamp Invariant**: `starttime` is stored as a 13-digit Unix timestamp in milliseconds. Legacy 10-digit second timestamps are converted to milliseconds.
 2. **Channel Flag Invariant**: Every active channel in `Alarm.db` must have `"EnableAlarm": true` in `SUTO-SensorList.sutolist`. Channels without active alarm rules must have `"EnableAlarm": false`.
 3. **Logger Flag Invariant**: Channels present in `cfglogger.json::channelArray` must have `"Logger": true`.

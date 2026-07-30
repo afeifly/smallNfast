@@ -8,7 +8,7 @@ Centralized synchronization logic is implemented in [remarshalUtils.js](file:///
 
 ### 2.1 Logger Flag & Timestamp Synchronization
 - `"Logger": true / false`: Synchronized across every channel in `SUTO-SensorList.sutolist` and `cfgOptionBoard.json` based on `cfglogger.json::channelArray`.
-- **10-Digit Starttime Seconds**: `starttime` in `cfglogger.json` must be stored as a **10-digit Unix timestamp in seconds** (`time_t`). 13-digit millisecond values cause integer overflow in embedded C firmware.
+- **13-Digit Starttime Milliseconds**: `starttime` in `cfglogger.json` is stored as a **13-digit Unix timestamp in milliseconds**.
 
 ### 2.2 Alarm Flag & Threshold Synchronization
 - `"EnableAlarm": true / false`: Physical devices check `"EnableAlarm"` on channel objects before querying `Alarm.db`.

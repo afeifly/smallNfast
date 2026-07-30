@@ -337,6 +337,36 @@
   transform: translateY(0);
 }
 
+/* Toggle switch for Stop Time */
+.logger-switch {
+  width: 44px;
+  height: 24px;
+  background: #C9CDD4;
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease-in-out;
+}
+
+.logger-switch.on {
+  background: var(--accent-color);
+}
+
+.logger-switch .switch-knob {
+  width: 20px;
+  height: 20px;
+  background: #FFFFFF;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s ease-in-out;
+}
+
+.logger-switch.on .switch-knob {
+  transform: translateX(20px);
+}
+
 
 
 

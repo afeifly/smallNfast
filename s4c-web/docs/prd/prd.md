@@ -44,7 +44,7 @@ A valid `.cfgf` configuration package contains:
   - `cfgOptionBoard.json` (Option board setup details, terminal assignments X9–X16, signal types, unit types, and resolution scales).
   - `cfgLayout.json` (Screen layout configurations).
   - `cfgGraphic.json` (Graphics/Chart representation configurations, chart lists, channel assignments).
-  - `cfglogger.json` (Data logging sample rate, 10-digit Unix starttime timestamp in seconds, channelArray).
+  - `cfglogger.json` (Data logging sample rate, 13-digit Unix starttime timestamp in milliseconds, channelArray).
   - `Alarm.db` (SQLite database containing alarm thresholds, relay channels, limits, hysteresis, and delay settings).
 - `system/`
   - `backlight.json` (LCD backlight timeout, brightness, lock settings).
@@ -69,7 +69,7 @@ A valid `.cfgf` configuration package contains:
   - Populates default settings for communication ports, system info, backlight options, layout lists, graphic configurations, and sensor lists.
 - **Export Configuration & Device Remarshaling**:
   - Automatically runs `remarshalAll()` (see [remarshalUtils.js](file:///Users/ex/project/smallNfast/s4c-web/src/util/remarshalUtils.js)) prior to export:
-    1. **Logger Synchronization**: Updates `"Logger": true/false` on all channel objects in `SUTO-SensorList.sutolist` and `cfgOptionBoard.json` matching `cfglogger.json`. Converts `starttime` to a 10-digit Unix timestamp in seconds (preventing C firmware overflow).
+    1. **Logger Synchronization**: Updates `"Logger": true/false` on all channel objects in `SUTO-SensorList.sutolist` and `cfgOptionBoard.json` matching `cfglogger.json`. Preserves `starttime` as a 13-digit Unix timestamp in milliseconds.
     2. **Alarm Synchronization**: Updates `"EnableAlarm": true/false`, `Direction` (`0` for UP/Above, `1` for DOWN/Below), `MaxThreshold`/`MinThreshold`, `MaxHysteresis`/`MinHysteresis`, and `RelayIndex` on channel objects based on active `Alarm.db` rules.
   - Repackages and computes the two-level MD5 payload checksum.
   - Writes metadata and hash into a newly formatted `summary.yml` file.

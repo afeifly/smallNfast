@@ -35,7 +35,14 @@ const formatSN = (value) => {
   return clean;
 };
 
-const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
+const extractBaseModelName = (fileName) => {
+  if (!fileName) return '';
+  const fileNameNoExt = String(fileName).replace(/\.sutoch$/i, '');
+  const dashIndex = fileNameNoExt.indexOf('-');
+  return (dashIndex !== -1 ? fileNameNoExt.substring(dashIndex + 1) : fileNameNoExt).trim();
+};
+
+const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true, selectedSensor: propSelectedSensor }) => {
   const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -98,15 +105,29 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
       setPort('502');
       setSn(formatSN('00000000'));
       if (isSuto && names.length > 0) {
-        handleSensorSelect(names[0]);
+        const cleanProp = propSelectedSensor ? propSelectedSensor.replace('.sutoch', '') : '';
+        const defaultSensor = (cleanProp && names.includes(cleanProp)) ? cleanProp : names[0];
+        handleSensorSelect(defaultSensor);
       } else {
         setChannels([]);
       }
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, propSelectedSensor]);
 
   const handleSensorSelect = (name) => {
     setSelectedSensor(name);
+    const baseNamePart = extractBaseModelName(name);
+
+    // Find existing sensors to compute auto-numbering (#1, #2)
+    const listPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('SUTO-SensorList.sutolist'));
+    const existingSensors = listPath ? (configData?.configs?.[listPath]?.cfgsensor || []) : [];
+    const otherSensors = initialData ? existingSensors.filter(s => s !== initialData) : existingSensors;
+
+    const escaped = baseNamePart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const reg = new RegExp('^' + escaped + '(?:#\\d+)?$');
+    const sameBaseCount = otherSensors.filter(s => s.Name && reg.test(s.Name)).length;
+    const finalDescription = sameBaseCount === 0 ? baseNamePart : `${baseNamePart}#${sameBaseCount}`;
+
     // Find the corresponding file content (matching the key which includes ?raw)
     const path = Object.keys(sensorFiles).find(p => p.includes(`${name}.sutoch`));
     if (path && sensorFiles[path]) {
@@ -129,8 +150,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
         } else if (!initialData) {
           setPort('502');
         }
-        // Copy sensor name to description as requested
-        setDescription(name);
+        setDescription(initialData ? (initialData.Description || finalDescription) : finalDescription);
       } catch (err) {
         console.error('Failed to parse .sutoch file:', path, err);
         setChannels([]);
@@ -157,11 +177,15 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     // Determine the base template or object to inherit properties from
     const templateObj = isSuto ? { ...selectedSensorTemplate } : {};
     delete templateObj.SN;
+    delete templateObj.Name;
+    delete templateObj.Description;
+
+    const baseNamePart = extractBaseModelName(selectedSensor);
 
     const baseObj = {
       Index: 0,
       SensorID: 0,
-      Name: isSuto ? selectedSensor : (description || ''),
+      Name: isSuto ? baseNamePart : (description || ''),
       Description: description || '',
       ConnectType: protocol,
       ProtocolType: 0,
@@ -201,7 +225,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
     const updatedSensor = {
       ...baseObj,
       // User-editable/system fields
-      Name: isSuto ? selectedSensor : (description || ''),
+      Name: isSuto ? baseNamePart : (description || ''),
       Description: description || '',
       Addr: parsedAddr,
       IpAddr: ipAddress || baseObj.IpAddr || '',
@@ -601,13 +625,17 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true }) => {
                     className="form-select-hidden"
                     value={selectedSensor}
                     onChange={(e) => handleSensorSelect(e.target.value)}
+                    disabled={Boolean(initialData)}
                   >
                     {sensorNames.map(name => (
                       <option key={name} value={name}>{name}</option>
                     ))}
                   </select>
-                  <div className="form-control">
-                    <span>{selectedSensor || t('Select Sensor')}</span>
+                  <div
+                    className={`form-control ${initialData ? 'disabled' : ''}`}
+                    style={initialData ? { opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#F5F5F5' } : {}}
+                  >
+                    <span>{selectedSensor ? extractBaseModelName(selectedSensor) : t('Select Sensor')}</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M6 9l6 6 6-6" />
                     </svg>

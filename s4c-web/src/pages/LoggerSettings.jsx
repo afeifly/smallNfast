@@ -3,14 +3,15 @@ import { useConfig } from '../context/ConfigContext';
 import { useLanguage } from '../context/LanguageContext';
 import iconBtnClose from '../assets/images/icon_btn_close.png';
 import ChannelSelectModal from '../components/ChannelSelectModal';
+import CustomDialog from '../components/CustomDialog';
 import { remarshalAll } from '../util/remarshalUtils';
 import './LoggerSettings.css';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MODE_OPTIONS = [
-  { value: 0, label: 'Key start' },
-  { value: 1, label: 'Time start' },
+  { value: 0, label: 'Manual Start' },
+  { value: 1, label: 'Scheduled Start' },
 ];
 
 const RATE_OPTIONS = [1, 5, 10, 30, 60, 300];
@@ -39,6 +40,29 @@ function msToLocalParts(ms) {
 function partsToMs({ year, month, day, hour, minute, second = 0 }) {
   if (!year || !month || !day) return 0;
   return new Date(year, month - 1, day, hour, minute, second).getTime();
+}
+
+function getNextHourMs() {
+  const d = new Date();
+  d.setHours(d.getHours() + 1, 0, 0, 0);
+  return d.getTime();
+}
+
+function getDefaultStopTimeMs(baseMs) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  let targetDate;
+  if (baseMs && baseMs > 0) {
+    const baseDate = new Date(baseMs);
+    const baseDayStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate()).getTime();
+    targetDate = baseDayStart > todayStart ? baseDate : now;
+  } else {
+    targetDate = now;
+  }
+
+  const d = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1, 0, 0, 0, 0);
+  return d.getTime();
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -88,7 +112,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
 
   const displayLabel = value
     ? `${dateStr}  ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`
-    : t('— Select date & time —');
+    : (disabled ? '—' : t('— Select date & time —'));
 
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%' }}>
@@ -102,7 +126,7 @@ const DateTimePicker = ({ value, onChange, disabled }) => {
           textAlign: 'right',
           background: 'transparent',
           border: 'none',
-          borderBottom: '1px solid #E7E7E7',
+          borderBottom: disabled ? '1px solid transparent' : '1px solid #E7E7E7',
           padding: '2px 4px',
           fontSize: 14,
           fontFamily: 'PingFang SC, sans-serif',
@@ -287,16 +311,35 @@ const ScrollWheel = ({ value, min, max, onChange, label }) => {
 // ── Edit Logger Drawer ────────────────────────────────────────────────────────
 const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdToCreateTime, onSave }) => {
   const { t } = useLanguage();
-  const [form, setForm] = useState({ mode: 0, filename: '', starttime: 0, samplerate: 10, channelArray: [] });
+  const [form, setForm] = useState({
+    startupType: 0,
+    enableStopTime: false,
+    filename: '',
+    starttime: 0,
+    stoptime: 0,
+    samplerate: 10,
+    channelArray: [],
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Sync drawer form state when drawer opens or rawLogger changes
   useEffect(() => {
     if (isOpen && rawLogger) {
+      const mode = rawLogger.mode ?? 0;
+      const rawStart = rawLogger.starttime ?? 0;
+      const rawStop = rawLogger.stoptime ?? 0;
+      const startMs = rawStart > 0 && rawStart < 1e11 ? rawStart * 1000 : (rawStart || getNextHourMs());
+      const stopMs = rawStop > 0 && rawStop < 1e11 ? rawStop * 1000 : (rawStop || getDefaultStopTimeMs(startMs));
+
+      const enableStopTime = (mode === 2);
+      const startupType = (mode === 1 || (mode === 2 && (rawLogger.starttime ?? 0) > 0)) ? 1 : 0;
+
       setForm({
-        mode: rawLogger.mode ?? 0,
+        startupType,
+        enableStopTime,
         filename: rawLogger.filename ?? '',
-        starttime: rawLogger.starttime ?? 0,
+        starttime: startMs,
+        stoptime: stopMs,
         samplerate: rawLogger.samplerate ?? 10,
         channelArray: rawLogger.channelArray
           ? rawLogger.channelArray.filter(ch => channelIdToCreateTime[ch.channelid] !== undefined)
@@ -306,6 +349,25 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
   }, [isOpen, rawLogger, channelIdToCreateTime]);
 
   const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+
+  const handleStartupTypeChange = (type) => {
+    setForm(prev => ({
+      ...prev,
+      startupType: type,
+      starttime: (type === 1 && !prev.starttime) ? getNextHourMs() : prev.starttime,
+    }));
+  };
+
+  const handleEnableStopTimeToggle = () => {
+    setForm(prev => {
+      const nextEnable = !prev.enableStopTime;
+      return {
+        ...prev,
+        enableStopTime: nextEnable,
+        stoptime: (nextEnable && !prev.stoptime) ? getDefaultStopTimeMs(prev.starttime) : prev.stoptime,
+      };
+    });
+  };
 
   // Selected CreateTime IDs for the channel selector modal
   const selectedIds = form.channelArray
@@ -327,8 +389,28 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
 
   const selectedChannels = allChannels.filter(ch => selectedIds.includes(ch.CreateTime));
 
+  const [dialogConfig, setDialogConfig] = useState({
+    isOpen: false,
+    title: '',
+    body: '',
+    type: 'warn',
+    confirmText: 'OK',
+    showCancel: false,
+  });
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (form.enableStopTime && form.startupType === 1 && form.starttime > 0 && form.stoptime > 0 && form.stoptime <= form.starttime) {
+      setDialogConfig({
+        isOpen: true,
+        title: t('Warning'),
+        body: t('Stop time cannot be earlier than or equal to start time.'),
+        type: 'warn',
+        showCancel: false,
+        confirmText: t('OK'),
+      });
+      return;
+    }
     onSave(form);
   };
 
@@ -349,22 +431,52 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
               <select
                 className="drawer-select"
                 style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={form.mode}
-                onChange={e => handleChange('mode', Number(e.target.value))}
+                value={form.startupType}
+                onChange={e => handleStartupTypeChange(Number(e.target.value))}
               >
-                <option value={0}>{t('Key start')}</option>
-                <option value={1}>{t('Time start')}</option>
+                <option value={0}>{t('Manual Start')}</option>
+                <option value={1}>{t('Scheduled Start')}</option>
               </select>
             </div>
           </div>
+
           <div className="drawer-form-row">
             <label className="drawer-label"><span className="required">*</span>{t('Recorded file name')}</label>
             <input className="drawer-input" type="text" placeholder={t('Max 30 characters')} maxLength={30} value={form.filename} onChange={e => handleChange('filename', e.target.value)} />
           </div>
-          <div className="drawer-form-row">
-            <label className="drawer-label"><span className="required">*</span>{t('Start time')}</label>
-            <DateTimePicker value={form.starttime} onChange={v => handleChange('starttime', v)} />
+
+          {/* Start time row: Label | Placeholder | Time picker */}
+          <div className="drawer-form-row" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label className="drawer-label">{t('Start time')}</label>
+            <div style={{ width: 44, height: 24, flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <DateTimePicker
+                value={form.startupType === 1 ? form.starttime : 0}
+                onChange={v => handleChange('starttime', v)}
+                disabled={form.startupType !== 1}
+              />
+            </div>
           </div>
+
+          {/* Stop time row: Label | Switch Controller | Time picker */}
+          <div className="drawer-form-row" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label className="drawer-label">{t('Stop time')}</label>
+            <div
+              className={`logger-switch ${form.enableStopTime ? 'on' : ''}`}
+              onClick={handleEnableStopTimeToggle}
+              style={{ flexShrink: 0 }}
+            >
+              <div className="switch-knob" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <DateTimePicker
+                value={form.enableStopTime ? form.stoptime : 0}
+                onChange={v => handleChange('stoptime', v)}
+                disabled={!form.enableStopTime}
+              />
+            </div>
+          </div>
+
           <div className="drawer-form-row">
             <label className="drawer-label"><span className="required">*</span>{t('Logger rate (s)')}</label>
             <div className="drawer-input-wrapper">
@@ -408,6 +520,17 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
           <button onClick={onClose} style={{ padding: '5px 16px', background: '#E7E7E7', border: 'none', borderRadius: 3, color: 'rgba(0,0,0,0.9)', fontSize: 14, cursor: 'pointer' }}>{t('Cancel')}</button>
         </div>
       </div>
+
+      <CustomDialog
+        isOpen={dialogConfig.isOpen}
+        onClose={() => setDialogConfig(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={() => setDialogConfig(prev => ({ ...prev, isOpen: false }))}
+        title={dialogConfig.title}
+        body={dialogConfig.body}
+        type={dialogConfig.type}
+        showCancel={dialogConfig.showCancel}
+        confirmText={dialogConfig.confirmText}
+      />
 
       <ChannelSelectModal
         isOpen={isModalOpen}
@@ -519,9 +642,24 @@ const LoggerSettings = () => {
     if (!loggerPath) return;
     const existingLogger = configData.configs[loggerPath]?.logger || {};
     
-    // Ensure starttime is stored in SECONDS (10-digit Unix timestamp)
-    const rawStartTime = updatedForm.starttime || 0;
-    const starttimeSec = rawStartTime > 1e11 ? Math.floor(rawStartTime / 1000) : rawStartTime;
+    // Mode logic:
+    // Mode 0: Manual Start (no stoptime)
+    // Mode 1: Scheduled Start (no stoptime)
+    // Mode 2: Stop time enabled (can be manual or scheduled start)
+    let mode = 0;
+    if (updatedForm.enableStopTime) {
+      mode = 2;
+    } else if (updatedForm.startupType === 1) {
+      mode = 1;
+    } else {
+      mode = 0;
+    }
+
+    const rawStartTime = (updatedForm.startupType === 1 && updatedForm.starttime) ? updatedForm.starttime : 0;
+    const starttimeMs = rawStartTime > 0 && rawStartTime < 1e11 ? rawStartTime * 1000 : rawStartTime;
+
+    const rawStopTime = (updatedForm.enableStopTime && updatedForm.stoptime) ? updatedForm.stoptime : 0;
+    const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
 
     const nextConfigData = {
       ...configData,
@@ -530,18 +668,11 @@ const LoggerSettings = () => {
         [loggerPath]: {
           ...configData.configs[loggerPath],
           logger: {
-            // Preserve any fields already on the device's logger object
-            stoptime:      existingLogger.stoptime      ?? 0,
-            samplingcount: existingLogger.samplingcount ?? 0,
-            recordstatus:  existingLogger.recordstatus  ?? 0,
-            status:        existingLogger.status        ?? 0,
-            startfile:     existingLogger.startfile     ?? '',
-            stopfile:      existingLogger.stopfile      ?? '',
-            filecnt:       existingLogger.filecnt       ?? 0,
-            // User-edited fields
-            mode:          updatedForm.mode,
+            ...existingLogger,
+            mode:          mode,
             filename:      updatedForm.filename,
-            starttime:     starttimeSec,
+            starttime:     starttimeMs,
+            stoptime:      stoptimeMs,
             samplerate:    updatedForm.samplerate,
             channels:      updatedForm.channelArray.length,
             channelArray:  updatedForm.channelArray,
@@ -576,12 +707,18 @@ const LoggerSettings = () => {
         {/* Fields card */}
         <div className="logger-fields-card">
 
-          {/* Column 1: Startup mode + Recorded file name */}
+          {/* Column 1: Startup mode + Recorded file name + Logger rate */}
           <div className="logger-fields-column">
             <div className="logger-field-item">
               <label>{t('Startup mode')}</label>
               <div className="logger-display-value">
-                {rawLogger?.mode === 1 ? t('Time start') : t('Key start')}
+                {(() => {
+                  if (rawLogger?.mode === 1) return t('Scheduled Start');
+                  if (rawLogger?.mode === 2) {
+                    return rawLogger?.starttime ? t('Scheduled Start (Stop time enabled)') : t('Manual Start (Stop time enabled)');
+                  }
+                  return t('Manual Start');
+                })()}
               </div>
             </div>
             <div className="logger-field-item">
@@ -590,25 +727,38 @@ const LoggerSettings = () => {
                 {rawLogger?.filename || '—'}
               </div>
             </div>
+            <div className="logger-field-item">
+              <label>{t('Logger rate (s)')}</label>
+              <div className="logger-display-value">
+                {rawLogger?.samplerate !== undefined ? `${rawLogger.samplerate}s` : '—'}
+              </div>
+            </div>
           </div>
 
-          {/* Column 2: Start time + Logger rate */}
+          {/* Column 2: Start time + Stop time */}
           <div className="logger-fields-column">
             <div className="logger-field-item">
               <label>{t('Start time')}</label>
               <div className="logger-display-value">
                 {rawLogger?.starttime ? (
                   (() => {
-                    const { year, month, day, hour, minute, second } = msToLocalParts(rawLogger.starttime);
+                    const startMs = rawLogger.starttime < 1e11 ? rawLogger.starttime * 1000 : rawLogger.starttime;
+                    const { year, month, day, hour, minute, second } = msToLocalParts(startMs);
                     return `${year}-${pad2(month)}-${pad2(day)}  ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
                   })()
                 ) : '—'}
               </div>
             </div>
             <div className="logger-field-item">
-              <label>{t('Logger rate (s)')}</label>
+              <label>{t('Stop time')}</label>
               <div className="logger-display-value">
-                {rawLogger?.samplerate !== undefined ? `${rawLogger.samplerate}s` : '—'}
+                {rawLogger?.mode === 2 && rawLogger?.stoptime ? (
+                  (() => {
+                    const stopMs = rawLogger.stoptime < 1e11 ? rawLogger.stoptime * 1000 : rawLogger.stoptime;
+                    const { year, month, day, hour, minute, second } = msToLocalParts(stopMs);
+                    return `${year}-${pad2(month)}-${pad2(day)}  ${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
+                  })()
+                ) : '—'}
               </div>
             </div>
           </div>

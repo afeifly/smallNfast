@@ -675,6 +675,7 @@ const LoggerSettings = () => {
             stoptime:      stoptimeMs,
             samplerate:    updatedForm.samplerate,
             channels:      updatedForm.channelArray.length,
+            status:        updatedForm.channelArray.length > 0 ? 1 : 0,
             channelArray:  updatedForm.channelArray,
           },
         },

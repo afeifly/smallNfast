@@ -173,10 +173,27 @@ describe('remarshalAll', () => {
     });
 
     const result = remarshalAll(configData);
-    const channelArray = result.configs['config/cfglogger.json'].logger.channelArray;
+    const logger = result.configs['config/cfglogger.json'].logger;
 
-    expect(channelArray[0].channelid).toBe(0);
-    expect(channelArray[1].channelid).toBe(1);
+    expect(logger.channelArray[0].channelid).toBe(0);
+    expect(logger.channelArray[1].channelid).toBe(1);
+    expect(logger.status).toBe(1);
+  });
+
+  it('sets logger status to 0 when channelArray is empty', () => {
+    const configData = makeConfigData({
+      'config/cfglogger.json': {
+        logger: { channelArray: [] },
+      },
+      'config/SUTO-SensorList.sutolist': {
+        cfgsensor: [],
+      },
+    });
+
+    const result = remarshalAll(configData);
+    const logger = result.configs['config/cfglogger.json'].logger;
+
+    expect(logger.status).toBe(0);
   });
 
   it('remarshals option board channels in cfgOptionBoard.json', () => {

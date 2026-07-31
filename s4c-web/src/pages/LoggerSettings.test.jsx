@@ -111,6 +111,8 @@ describe('LoggerSettings Page', () => {
     expect(channels[0].Logger).toBe(true);
     // Verify channel 1 (not in channelArray) has Logger: false
     expect(channels[1].Logger).toBe(false);
+    // Verify status is 1 when channel size > 0
+    expect(logger.status).toBe(1);
   });
 
   it('supports selecting Scheduled Start (mode 1) and enabling Stop time (mode 2)', () => {

@@ -295,13 +295,16 @@ export function remarshalAll(configData, activeAlarms) {
       const rawStopTime = logger.stoptime || 0;
       const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
       
+      const channelCount = updatedChannelArray ? updatedChannelArray.length : (logger.channels || 0);
+
       nextConfigData.configs[loggerPath] = {
         ...loggerConfig,
         logger: {
           ...logger,
           starttime: starttimeMs,
           stoptime: stoptimeMs,
-          channels: updatedChannelArray ? updatedChannelArray.length : (logger.channels || 0),
+          channels: channelCount,
+          status: channelCount > 0 ? 1 : 0,
           channelArray: updatedChannelArray
         }
       };

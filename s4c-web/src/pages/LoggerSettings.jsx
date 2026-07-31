@@ -329,7 +329,7 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
       const rawStart = rawLogger.starttime ?? 0;
       const rawStop = rawLogger.stoptime ?? 0;
       const startMs = rawStart > 0 && rawStart < 1e11 ? rawStart * 1000 : (rawStart || getNextHourMs());
-      const stopMs = rawStop > 0 && rawStop < 1e11 ? rawStop * 1000 : (rawStop || getDefaultStopTimeMs(startMs));
+      const stopMs = rawStop > 0 && rawStop < 1e11 ? rawStop * 1000 : ((rawStop && rawStop !== 40971867110000) ? rawStop : getDefaultStopTimeMs(startMs));
 
       const enableStopTime = (mode === 2);
       const startupType = (mode === 1 || (mode === 2 && (rawLogger.starttime ?? 0) > 0)) ? 1 : 0;
@@ -658,7 +658,9 @@ const LoggerSettings = () => {
     const rawStartTime = (updatedForm.startupType === 1 && updatedForm.starttime) ? updatedForm.starttime : 0;
     const starttimeMs = rawStartTime > 0 && rawStartTime < 1e11 ? rawStartTime * 1000 : rawStartTime;
 
-    const rawStopTime = (updatedForm.enableStopTime && updatedForm.stoptime) ? updatedForm.stoptime : 0;
+    const rawStopTime = (updatedForm.enableStopTime && updatedForm.stoptime)
+      ? updatedForm.stoptime
+      : (mode === 1 ? 40971867110000 : 0);
     const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
 
     const nextConfigData = {

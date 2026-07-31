@@ -144,6 +144,31 @@ describe('LoggerSettings Page', () => {
     expect(logger.mode).toBe(2);
   });
 
+  it('sets stoptime to 40971867110000 when selecting Scheduled Start (mode 1) without stop time enabled', () => {
+    render(
+      <LanguageProvider>
+        <LoggerSettings />
+      </LanguageProvider>
+    );
+
+    const editBtn = document.querySelector('.btn-header-edit');
+    fireEvent.click(editBtn);
+
+    // Select Scheduled Start (value 1)
+    const select = screen.getByDisplayValue('Manual Start');
+    fireEvent.change(select, { target: { value: '1' } });
+
+    // Click Submit
+    const saveBtn = screen.getByText('Submit');
+    fireEvent.click(saveBtn);
+
+    expect(mockSetConfigData).toHaveBeenCalled();
+    const logger = mockSetConfigData.mock.calls[0][0].configs['config/cfglogger.json'].logger;
+
+    expect(logger.mode).toBe(1);
+    expect(logger.stoptime).toBe(40971867110000);
+  });
+
   it('shows a warning dialog if stop time is earlier than or equal to start time', () => {
     mockConfigs['config/cfglogger.json'].logger = {
       mode: 2,

@@ -292,7 +292,10 @@ export function remarshalAll(configData, activeAlarms) {
       const rawStartTime = logger.starttime || 0;
       const starttimeMs = rawStartTime > 0 && rawStartTime < 1e11 ? rawStartTime * 1000 : rawStartTime;
 
-      const rawStopTime = logger.stoptime || 0;
+      let rawStopTime = logger.stoptime || 0;
+      if (logger.mode === 1 && (!rawStopTime || rawStopTime === 0)) {
+        rawStopTime = 40971867110000;
+      }
       const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
       
       const channelCount = updatedChannelArray ? updatedChannelArray.length : (logger.channels || 0);

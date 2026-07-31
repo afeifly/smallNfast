@@ -180,20 +180,29 @@ describe('remarshalAll', () => {
     expect(logger.status).toBe(1);
   });
 
-  it('sets logger status to 0 when channelArray is empty', () => {
-    const configData = makeConfigData({
+  it('sets logger status to 1 only when mode is 0 and channel size > 0', () => {
+    const configDataMode0WithCh = makeConfigData({
       'config/cfglogger.json': {
-        logger: { channelArray: [] },
+        logger: { mode: 0, channelArray: [{ channelid: 0 }] },
       },
-      'config/SUTO-SensorList.sutolist': {
-        cfgsensor: [],
+      'config/SUTO-SensorList.sutolist': { cfgsensor: [] },
+    });
+    const configDataMode0Empty = makeConfigData({
+      'config/cfglogger.json': {
+        logger: { mode: 0, channelArray: [] },
       },
+      'config/SUTO-SensorList.sutolist': { cfgsensor: [] },
+    });
+    const configDataMode1WithCh = makeConfigData({
+      'config/cfglogger.json': {
+        logger: { mode: 1, channelArray: [{ channelid: 0 }] },
+      },
+      'config/SUTO-SensorList.sutolist': { cfgsensor: [] },
     });
 
-    const result = remarshalAll(configData);
-    const logger = result.configs['config/cfglogger.json'].logger;
-
-    expect(logger.status).toBe(0);
+    expect(remarshalAll(configDataMode0WithCh).configs['config/cfglogger.json'].logger.status).toBe(1);
+    expect(remarshalAll(configDataMode0Empty).configs['config/cfglogger.json'].logger.status).toBe(0);
+    expect(remarshalAll(configDataMode1WithCh).configs['config/cfglogger.json'].logger.status).toBe(0);
   });
 
   it('remarshals option board channels in cfgOptionBoard.json', () => {

@@ -167,6 +167,7 @@ describe('LoggerSettings Page', () => {
 
     expect(logger.mode).toBe(1);
     expect(logger.stoptime).toBe(40971867110000);
+    expect(logger.status).toBe(0);
   });
 
   it('shows a warning dialog if stop time is earlier than or equal to start time', () => {

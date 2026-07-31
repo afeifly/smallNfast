@@ -307,7 +307,7 @@ export function remarshalAll(configData, activeAlarms) {
           starttime: starttimeMs,
           stoptime: stoptimeMs,
           channels: channelCount,
-          status: channelCount > 0 ? 1 : 0,
+          status: ((logger.mode ?? 0) === 0 && channelCount > 0) ? 1 : 0,
           channelArray: updatedChannelArray
         }
       };

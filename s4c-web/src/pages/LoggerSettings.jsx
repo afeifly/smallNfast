@@ -331,8 +331,8 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
       const startMs = rawStart > 0 && rawStart < 1e11 ? rawStart * 1000 : (rawStart || getNextHourMs());
       const stopMs = rawStop > 0 && rawStop < 1e11 ? rawStop * 1000 : ((rawStop && rawStop !== 40971867110000) ? rawStop : getDefaultStopTimeMs(startMs));
 
-      const enableStopTime = (mode === 2);
-      const startupType = (mode === 1 || (mode === 2 && (rawLogger.starttime ?? 0) > 0)) ? 1 : 0;
+      const enableStopTime = (mode === 2) || (mode === 1 && rawStop > 0 && rawStop !== 40971867110000);
+      const startupType = (mode === 1) ? 1 : 0;
 
       setForm({
         startupType,
@@ -643,14 +643,14 @@ const LoggerSettings = () => {
     const existingLogger = configData.configs[loggerPath]?.logger || {};
     
     // Mode logic:
-    // Mode 0: Manual Start (no stoptime)
-    // Mode 1: Scheduled Start (no stoptime)
-    // Mode 2: Stop time enabled (can be manual or scheduled start)
+    // Mode 0: Manual Start (no stoptime) -> mode = 0
+    // Mode 1: Scheduled Start (with or without stoptime) -> mode = 1
+    // Mode 2: Manual Start with stoptime -> mode = 2
     let mode = 0;
-    if (updatedForm.enableStopTime) {
-      mode = 2;
-    } else if (updatedForm.startupType === 1) {
+    if (updatedForm.startupType === 1) {
       mode = 1;
+    } else if (updatedForm.enableStopTime) {
+      mode = 2;
     } else {
       mode = 0;
     }
@@ -755,7 +755,7 @@ const LoggerSettings = () => {
             <div className="logger-field-item">
               <label>{t('Stop time')}</label>
               <div className="logger-display-value">
-                {rawLogger?.mode === 2 && rawLogger?.stoptime ? (
+                {rawLogger?.stoptime && rawLogger.stoptime !== 40971867110000 ? (
                   (() => {
                     const stopMs = rawLogger.stoptime < 1e11 ? rawLogger.stoptime * 1000 : rawLogger.stoptime;
                     const { year, month, day, hour, minute, second } = msToLocalParts(stopMs);

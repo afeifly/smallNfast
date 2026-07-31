@@ -117,7 +117,7 @@ describe('LoggerSettings Page', () => {
     expect(logger.stoptime).toBe(40971867110000);
   });
 
-  it('supports selecting Scheduled Start (mode 1) and enabling Stop time (mode 2)', () => {
+  it('supports Manual Start with Stop time enabled (mode 2)', () => {
     render(
       <LanguageProvider>
         <LoggerSettings />
@@ -127,11 +127,7 @@ describe('LoggerSettings Page', () => {
     const editBtn = document.querySelector('.btn-header-edit');
     fireEvent.click(editBtn);
 
-    // Select Scheduled Start (value 1)
-    const select = screen.getByDisplayValue('Manual Start');
-    fireEvent.change(select, { target: { value: '1' } });
-
-    // Enable Stop time switch
+    // Keep Manual Start (value 0) and enable Stop time switch
     const switchEl = document.querySelector('.logger-switch');
     fireEvent.click(switchEl);
 
@@ -142,7 +138,7 @@ describe('LoggerSettings Page', () => {
     expect(mockSetConfigData).toHaveBeenCalled();
     const logger = mockSetConfigData.mock.calls[0][0].configs['config/cfglogger.json'].logger;
 
-    // Mode 2 expected when Stop time is enabled
+    // Mode 2 expected when Manual Start + Stop time enabled
     expect(logger.mode).toBe(2);
     expect(logger.status).toBe(1);
   });
@@ -173,9 +169,39 @@ describe('LoggerSettings Page', () => {
     expect(logger.status).toBe(0);
   });
 
+  it('keeps mode 1 and status 0 when selecting Scheduled Start with Stop time enabled', () => {
+    render(
+      <LanguageProvider>
+        <LoggerSettings />
+      </LanguageProvider>
+    );
+
+    const editBtn = document.querySelector('.btn-header-edit');
+    fireEvent.click(editBtn);
+
+    // Select Scheduled Start (value 1)
+    const select = screen.getByDisplayValue('Manual Start');
+    fireEvent.change(select, { target: { value: '1' } });
+
+    // Enable Stop time switch
+    const switchEl = document.querySelector('.logger-switch');
+    fireEvent.click(switchEl);
+
+    // Click Submit
+    const saveBtn = screen.getByText('Submit');
+    fireEvent.click(saveBtn);
+
+    expect(mockSetConfigData).toHaveBeenCalled();
+    const logger = mockSetConfigData.mock.calls[0][0].configs['config/cfglogger.json'].logger;
+
+    // Mode 1 expected when Scheduled Start + Stop time enabled
+    expect(logger.mode).toBe(1);
+    expect(logger.status).toBe(0);
+  });
+
   it('shows a warning dialog if stop time is earlier than or equal to start time', () => {
     mockConfigs['config/cfglogger.json'].logger = {
-      mode: 2,
+      mode: 1,
       filename: 'testlog',
       starttime: 1784822400000,
       stoptime: 1784800000000, // stoptime < starttime

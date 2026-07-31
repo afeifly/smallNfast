@@ -293,7 +293,7 @@ export function remarshalAll(configData, activeAlarms) {
       const starttimeMs = rawStartTime > 0 && rawStartTime < 1e11 ? rawStartTime * 1000 : rawStartTime;
 
       let rawStopTime = logger.stoptime || 0;
-      if (logger.mode === 1 && (!rawStopTime || rawStopTime === 0)) {
+      if (logger.mode !== 2 && (!rawStopTime || rawStopTime === 0)) {
         rawStopTime = 40971867110000;
       }
       const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
@@ -307,7 +307,7 @@ export function remarshalAll(configData, activeAlarms) {
           starttime: starttimeMs,
           stoptime: stoptimeMs,
           channels: channelCount,
-          status: ((logger.mode ?? 0) === 0 && channelCount > 0) ? 1 : 0,
+          status: ((logger.mode ?? 0) !== 1 && channelCount > 0) ? 1 : 0,
           channelArray: updatedChannelArray
         }
       };

@@ -113,6 +113,8 @@ describe('LoggerSettings Page', () => {
     expect(channels[1].Logger).toBe(false);
     // Verify status is 1 when channel size > 0
     expect(logger.status).toBe(1);
+    // Verify stoptime is set to 40971867110000 for manual start (mode 0)
+    expect(logger.stoptime).toBe(40971867110000);
   });
 
   it('supports selecting Scheduled Start (mode 1) and enabling Stop time (mode 2)', () => {
@@ -142,6 +144,7 @@ describe('LoggerSettings Page', () => {
 
     // Mode 2 expected when Stop time is enabled
     expect(logger.mode).toBe(2);
+    expect(logger.status).toBe(1);
   });
 
   it('sets stoptime to 40971867110000 when selecting Scheduled Start (mode 1) without stop time enabled', () => {

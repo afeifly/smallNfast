@@ -660,7 +660,7 @@ const LoggerSettings = () => {
 
     const rawStopTime = (updatedForm.enableStopTime && updatedForm.stoptime)
       ? updatedForm.stoptime
-      : (mode === 1 ? 40971867110000 : 0);
+      : 40971867110000;
     const stoptimeMs = rawStopTime > 0 && rawStopTime < 1e11 ? rawStopTime * 1000 : rawStopTime;
 
     const nextConfigData = {
@@ -677,7 +677,7 @@ const LoggerSettings = () => {
             stoptime:      stoptimeMs,
             samplerate:    updatedForm.samplerate,
             channels:      updatedForm.channelArray.length,
-            status:        (mode === 0 && updatedForm.channelArray.length > 0) ? 1 : 0,
+            status:        (mode !== 1 && updatedForm.channelArray.length > 0) ? 1 : 0,
             channelArray:  updatedForm.channelArray,
           },
         },

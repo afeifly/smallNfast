@@ -180,10 +180,16 @@ describe('remarshalAll', () => {
     expect(logger.status).toBe(1);
   });
 
-  it('sets logger status to 1 only when mode is 0 and channel size > 0', () => {
+  it('sets logger status to 1 for Mode 0 and Mode 2 when channel size > 0, and 0 for Mode 1', () => {
     const configDataMode0WithCh = makeConfigData({
       'config/cfglogger.json': {
         logger: { mode: 0, channelArray: [{ channelid: 0 }] },
+      },
+      'config/SUTO-SensorList.sutolist': { cfgsensor: [] },
+    });
+    const configDataMode2WithCh = makeConfigData({
+      'config/cfglogger.json': {
+        logger: { mode: 2, channelArray: [{ channelid: 0 }] },
       },
       'config/SUTO-SensorList.sutolist': { cfgsensor: [] },
     });
@@ -201,6 +207,7 @@ describe('remarshalAll', () => {
     });
 
     expect(remarshalAll(configDataMode0WithCh).configs['config/cfglogger.json'].logger.status).toBe(1);
+    expect(remarshalAll(configDataMode2WithCh).configs['config/cfglogger.json'].logger.status).toBe(1);
     expect(remarshalAll(configDataMode0Empty).configs['config/cfglogger.json'].logger.status).toBe(0);
     expect(remarshalAll(configDataMode1WithCh).configs['config/cfglogger.json'].logger.status).toBe(0);
   });

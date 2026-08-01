@@ -13,7 +13,7 @@ import LanguageSelector from "../components/LanguageSelector";
 import TranslationProgress from "../components/TranslationProgress";
 import SegmentTable from "../components/SegmentTable";
 import ExportProgressDialog from "../components/ExportProgressDialog";
-import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, X, Copy, ExternalLink } from "lucide-react";
+import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, X, Copy, ExternalLink, Maximize2, Minimize2 } from "lucide-react";
 import * as React from "react";
 import axios from "axios";
 import mermaid from "mermaid";
@@ -264,10 +264,23 @@ export default function MarkdownProject() {
     );
   };
 
+  const [wideMode, setWideMode] = useState<boolean>(() => {
+    return localStorage.getItem("creator_wide_mode") === "true";
+  });
+
+  const toggleWideMode = () => {
+    setWideMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("creator_wide_mode", String(next));
+      return next;
+    });
+  };
+
   const handleExport = async (exportLang: string) => {
     setExportOpen(false);
     try {
-      const res = await api.startExport(projectId, exportLang);
+      const orientation = wideMode ? "landscape" : "portrait";
+      const res = await api.startExport(projectId, exportLang, orientation);
       setExportJobId(res.job_id);
     } catch (err: any) {
       alert("Export failed: " + (err?.response?.data?.detail || err.message));
@@ -289,7 +302,7 @@ export default function MarkdownProject() {
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
       {/* Top bar — fixed, content centered */}
       <div className="border-b border-gray-200 bg-white shrink-0">
-        <div className="max-w-5xl mx-auto flex items-center gap-3 flex-wrap px-4 py-3">
+        <div className={`${wideMode ? "max-w-7xl" : "max-w-5xl"} mx-auto flex items-center gap-3 flex-wrap px-4 py-3 transition-all duration-200`}>
           {editingName ? (
             <form onSubmit={async (e) => {
               e.preventDefault();
@@ -325,6 +338,29 @@ export default function MarkdownProject() {
               </button>
             ))}
           </div>
+
+          {/* Wide Mode Toggle */}
+          <button
+            onClick={toggleWideMode}
+            title={wideMode ? "Switch to standard width" : "Switch to wide width"}
+            className={`flex items-center gap-1 px-2.5 py-1.5 border rounded-md text-xs font-medium transition-all cursor-pointer ${
+              wideMode
+                ? "bg-blue-50 border-blue-200 text-blue-700 font-semibold"
+                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            {wideMode ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Standard</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-gray-400" />
+                <span>Wide Mode</span>
+              </>
+            )}
+          </button>
 
           <div className="flex-1" />
 
@@ -378,12 +414,15 @@ export default function MarkdownProject() {
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700"
               >
                 <Download className="w-3.5 h-3.5" />
-                PDF
+                PDF{wideMode ? " (Landscape)" : ""}
                 <ChevronDown className="w-3 h-3" />
               </button>
               {exportOpen && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[160px]">
-                  <div className="px-3 py-1 text-xs text-gray-400">Download PDF</div>
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 min-w-[180px]">
+                  <div className="px-3 py-1 text-xs text-gray-400 flex items-center justify-between">
+                    <span>Download PDF</span>
+                    <span className="text-[10px] text-gray-400 font-mono">{wideMode ? "Landscape" : "Portrait"}</span>
+                  </div>
                   <button
                     onClick={() => handleExport(project.source_lang)}
                     className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between"
@@ -407,6 +446,7 @@ export default function MarkdownProject() {
           )}
         </div>
       </div>
+
 
       {/* Publishing Card */}
       <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-4 shrink-0">
@@ -469,7 +509,7 @@ export default function MarkdownProject() {
       {/* Content area */}
       {mode === "preview" && (
         <div className="flex-1 overflow-auto px-4 py-4">
-          <div className="max-w-4xl mx-auto border border-gray-200 rounded-lg bg-white p-6">
+          <div className={`${wideMode ? "max-w-7xl" : "max-w-4xl"} mx-auto border border-gray-200 rounded-lg bg-white p-6 transition-all duration-200`}>
             <MDEditor.Markdown source={project.markdown_content || "*No content yet*"} components={codeComponent} />
           </div>
         </div>

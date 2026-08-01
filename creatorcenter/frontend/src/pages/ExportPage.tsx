@@ -12,6 +12,7 @@ export default function ExportPage() {
   const { data: project } = useProject(projectId);
 
   const [lang, setLang] = useState(project?.target_lang || "");
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [exportJobId, setExportJobId] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function ExportPage() {
     setExporting(true);
     setError("");
     try {
-      const res = await startExport(projectId, lang);
+      const res = await startExport(projectId, lang, orientation);
       setExportJobId(res.job_id);
     } catch (err: any) {
       const msg = err?.response?.data?.detail || "Export failed";
@@ -45,10 +46,46 @@ export default function ExportPage() {
         </p>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-5">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Target Language</label>
           <LanguageSelector value={lang || project.target_lang || ""} onChange={setLang} />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Page Orientation</label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setOrientation("portrait")}
+              className={`p-3 border rounded-lg text-left text-sm flex flex-col gap-1 transition-all ${
+                orientation === "portrait"
+                  ? "border-blue-500 bg-blue-50/50 text-blue-900 ring-2 ring-blue-500/20 font-medium"
+                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-semibold">
+                <span className="w-4 h-5 border-2 border-current rounded-sm inline-block" />
+                Portrait (Vertical)
+              </div>
+              <span className="text-xs text-gray-500">Standard document layout</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrientation("landscape")}
+              className={`p-3 border rounded-lg text-left text-sm flex flex-col gap-1 transition-all ${
+                orientation === "landscape"
+                  ? "border-blue-500 bg-blue-50/50 text-blue-900 ring-2 ring-blue-500/20 font-medium"
+                  : "border-gray-200 hover:bg-gray-50 text-gray-700"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-semibold">
+                <span className="w-5 h-4 border-2 border-current rounded-sm inline-block" />
+                Landscape (Horizontal)
+              </div>
+              <span className="text-xs text-gray-500">Ideal for wide tables & diagrams</span>
+            </button>
+          </div>
         </div>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -56,12 +93,13 @@ export default function ExportPage() {
         <button
           onClick={handleExport}
           disabled={!lang || exporting}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium cursor-pointer"
         >
           <Download className="w-5 h-5" />
-          {exporting ? "Generating..." : "Download Translated PDF"}
+          {exporting ? "Generating..." : `Download Translated PDF (${orientation === "landscape" ? "Horizontal" : "Vertical"})`}
         </button>
       </div>
+
 
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-500 space-y-1">
         <p><strong>What gets preserved:</strong></p>

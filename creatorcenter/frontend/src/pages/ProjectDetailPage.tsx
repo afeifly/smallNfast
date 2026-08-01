@@ -10,7 +10,7 @@ import {
 import LanguageSelector from "../components/LanguageSelector";
 import TranslationProgress from "../components/TranslationProgress";
 import SegmentTable from "../components/SegmentTable";
-import { Copy, Check, ExternalLink } from "lucide-react";
+import { Copy, Check, ExternalLink, Maximize2, Minimize2 } from "lucide-react";
 import * as api from "../api/client";
 
 const PROVIDERS = [
@@ -38,6 +38,18 @@ export default function ProjectDetailPage() {
   const [resultMsg, setResultMsg] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
+
+  const [wideMode, setWideMode] = useState<boolean>(() => {
+    return localStorage.getItem("creator_wide_mode") === "true";
+  });
+
+  const toggleWideMode = () => {
+    setWideMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("creator_wide_mode", String(next));
+      return next;
+    });
+  };
 
   const handlePublishToggle = async () => {
     if (!project) return;
@@ -105,7 +117,7 @@ export default function ProjectDetailPage() {
   const pendingCount = status ? status.total_count - status.translated_count : 0;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className={`${wideMode ? "max-w-7xl" : "max-w-5xl"} mx-auto px-4 py-8 space-y-6 transition-all duration-200`}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">{project.name}</h1>
@@ -114,7 +126,29 @@ export default function ProjectDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggleWideMode}
+            title={wideMode ? "Switch to standard width" : "Switch to wide width"}
+            className={`flex items-center gap-1 px-3 py-2 border rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+              wideMode
+                ? "bg-blue-50 border-blue-200 text-blue-700"
+                : "border-gray-300 text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            {wideMode ? (
+              <>
+                <Minimize2 className="w-4 h-4 text-blue-600" />
+                <span>Standard</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-4 h-4 text-gray-500" />
+                <span>Wide Mode</span>
+              </>
+            )}
+          </button>
           <LanguageSelector value={lang || project.target_lang || ""} onChange={handleLangChange} />
+
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value)}

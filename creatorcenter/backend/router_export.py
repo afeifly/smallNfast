@@ -15,12 +15,12 @@ from backend.job_manager import create_job, complete_job, fail_job, get_job, rem
 
 router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
-def _run_export_task(job_id: str, is_markdown: bool, content: Any, output_path: str, target_lang: str, project_id: int):
+def _run_export_task(job_id: str, is_markdown: bool, content: Any, output_path: str, target_lang: str, project_id: int, orientation: str = "portrait"):
     try:
         if is_markdown:
-            markdown_to_pdf(content, output_path, target_lang, job_id)
+            markdown_to_pdf(content, output_path, target_lang, job_id, orientation)
         else:
-            segments_to_pdf(content, output_path, target_lang, job_id)
+            segments_to_pdf(content, output_path, target_lang, job_id, orientation)
             
         # Update db status to exported
         try:
@@ -61,6 +61,8 @@ def export_project(project_id: int, req: ExportRequest, background_tasks: Backgr
     download_name = f"{proj['name'].rsplit('.', 1)[0]}_{req.target_lang}.pdf"
     job_id = create_job(str(output_path), download_name)
 
+    orientation = req.orientation or "portrait"
+
     try:
         if proj["content_type"] == "markdown":
             if is_source:
@@ -68,7 +70,7 @@ def export_project(project_id: int, req: ExportRequest, background_tasks: Backgr
             else:
                 placeholder_md = proj["placeholder_md"] or ""
                 md_text = rebuild_markdown(placeholder_md, db, project_id, req.target_lang)
-            background_tasks.add_task(_run_export_task, job_id, True, md_text, str(output_path), req.target_lang, project_id)
+            background_tasks.add_task(_run_export_task, job_id, True, md_text, str(output_path), req.target_lang, project_id, orientation)
         else:
             rows = db.execute(
                 """SELECT s.*, tv.translated_text FROM segments s
@@ -78,7 +80,7 @@ def export_project(project_id: int, req: ExportRequest, background_tasks: Backgr
                 (req.target_lang, project_id),
             ).fetchall()
             segments = [dict(r) for r in rows]
-            background_tasks.add_task(_run_export_task, job_id, False, segments, str(output_path), req.target_lang, project_id)
+            background_tasks.add_task(_run_export_task, job_id, False, segments, str(output_path), req.target_lang, project_id, orientation)
     except Exception as e:
         tb = traceback.format_exc()
         print(f"PDF export setup error: {tb}", flush=True)

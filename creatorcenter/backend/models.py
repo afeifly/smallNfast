@@ -96,6 +96,8 @@ class TranslateStatus(BaseModel):
 
 class ExportRequest(BaseModel):
     target_lang: str
+    orientation: Optional[str] = "portrait"
+
 
 
 class UpdateProjectRequest(BaseModel):

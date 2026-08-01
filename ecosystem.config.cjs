@@ -58,21 +58,12 @@ module.exports = {
       }
     },
     {
-      name: 'creatorcenter-backend',
+      name: 'creatorcenter',
       cwd: './creatorcenter',
       script: './.venv/bin/python',
-      args: '-m uvicorn backend.main:app --host 127.0.0.1 --port 8000',
+      args: '-m uvicorn backend.main:app --host 127.0.0.1 --port 9022',
       env: {
         NODE_ENV: 'production'
-      }
-    },
-    {
-      name: 'creatorcenter-frontend',
-      cwd: './creatorcenter/frontend',
-      script: 'npm',
-      args: 'run dev -- --port 9022 --host 127.0.0.1',
-      env: {
-        NODE_ENV: 'development'
       }
     },
     {

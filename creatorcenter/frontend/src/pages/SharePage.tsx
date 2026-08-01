@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import MDEditor from "@uiw/react-md-editor";
-import { Home, Share2, FileText, ChevronLeft, Check, Copy } from "lucide-react";
+import { Home, Share2, FileText, ChevronLeft, Check, Copy, Maximize2, Minimize2 } from "lucide-react";
 import * as api from "../api/client";
 import type { SharedProject } from "../api/client";
 import * as React from "react";
@@ -245,6 +245,17 @@ export default function SharePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [wideMode, setWideMode] = useState<boolean>(() => {
+    return localStorage.getItem("creator_wide_mode") === "true";
+  });
+
+  const toggleWideMode = () => {
+    setWideMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("creator_wide_mode", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!code) return;
@@ -305,12 +316,33 @@ export default function SharePage() {
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans text-slate-800">
       {/* Public restricted header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className={`${wideMode ? "max-w-7xl" : "max-w-4xl"} mx-auto px-4 h-14 flex items-center justify-between transition-all duration-200`}>
           <Link to="/" className="flex items-center gap-2 text-slate-800 font-bold hover:opacity-80 transition-opacity">
             <FileText className="w-5 h-5 text-blue-600" />
             <span className="tracking-wide">Creator Center</span>
           </Link>
           <div className="flex items-center gap-3">
+            <button
+              onClick={toggleWideMode}
+              title={wideMode ? "Switch to standard width" : "Switch to wide width"}
+              className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                wideMode
+                  ? "bg-blue-50 border-blue-200 text-blue-700"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {wideMode ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Standard</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Wide Mode</span>
+                </>
+              )}
+            </button>
             <button
               onClick={handleCopyLink}
               className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 active:scale-[0.98] transition-all cursor-pointer"
@@ -339,7 +371,8 @@ export default function SharePage() {
       </header>
 
       {/* Main content reading view */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 md:py-12">
+      <main className={`flex-1 ${wideMode ? "max-w-7xl" : "max-w-4xl"} w-full mx-auto px-4 py-8 md:py-12 transition-all duration-200`}>
+
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6 md:p-10 space-y-6">
           {/* Metadata banner */}
           <div className="border-b border-slate-100 pb-5">

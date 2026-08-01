@@ -149,10 +149,14 @@ export async function updateMarkdownContent(projectId: number, markdown_content:
 }
 
 // Export
-export async function startExport(projectId: number, targetLang: string): Promise<{ job_id: string }> {
+export async function startExport(
+  projectId: number,
+  targetLang: string,
+  orientation: "portrait" | "landscape" = "portrait"
+): Promise<{ job_id: string }> {
   const res = await api.post(
     `/projects/${projectId}/export`,
-    { target_lang: targetLang }
+    { target_lang: targetLang, orientation }
   );
   return res.data;
 }

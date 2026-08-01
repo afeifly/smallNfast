@@ -243,15 +243,16 @@ def _get_font_css(target_lang: str = "en") -> str:
 # Master stylesheet
 # ---------------------------------------------------------------------------
 
-def _build_css(extra_font_css: str = "", include_cjk: bool = True) -> str:
+def _build_css(extra_font_css: str = "", include_cjk: bool = True, orientation: str = "portrait") -> str:
     font_stack = "'DocSans', 'DocCJK', sans-serif" if include_cjk else "'DocSans', sans-serif"
     mono_stack = "'DocMono', 'Courier New', monospace"
+    page_size = "A4 landscape" if orientation == "landscape" else "A4"
 
     return f"""
 {extra_font_css}
 
 @page {{
-    size: A4;
+    size: {page_size};
     margin: 20mm 22mm 22mm 22mm;
 
     @bottom-center {{
@@ -442,8 +443,8 @@ td {{
 # HTML wrapper
 # ---------------------------------------------------------------------------
 
-def _wrap_html(body_html: str, font_css: str, include_cjk: bool = True) -> str:
-    css = _build_css(font_css, include_cjk)
+def _wrap_html(body_html: str, font_css: str, include_cjk: bool = True, orientation: str = "portrait") -> str:
+    css = _build_css(font_css, include_cjk, orientation)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -493,7 +494,7 @@ def _generate_pdf(html_string: str, output_path: str, job_id: str = None):
         if handler:
             logger.removeHandler(handler)
 
-def markdown_to_pdf(md_text: str, output_path: str, target_lang: str = "en", job_id: str = None) -> str:
+def markdown_to_pdf(md_text: str, output_path: str, target_lang: str = "en", job_id: str = None, orientation: str = "portrait") -> str:
     """Convert a Markdown string to a PDF file at output_path."""
     font_css = _get_font_css(target_lang)
     needs_cjk = target_lang.lower().startswith(("zh", "ja", "ko"))
@@ -514,13 +515,14 @@ def markdown_to_pdf(md_text: str, output_path: str, target_lang: str = "en", job
         html_parts.append(converted)
 
     body_html = _resolve_images("\n".join(html_parts))
-    full_html = _wrap_html(body_html, font_css, needs_cjk)
+    full_html = _wrap_html(body_html, font_css, needs_cjk, orientation)
     _generate_pdf(full_html, output_path, job_id)
     return output_path
 
 
-def segments_to_pdf(segments, output_path: str, target_lang: str = "en", job_id: str = None) -> str:
+def segments_to_pdf(segments, output_path: str, target_lang: str = "en", job_id: str = None, orientation: str = "portrait") -> str:
     """Build a PDF from DOCX segments, including proper table cell rendering."""
+
     font_css = _get_font_css(target_lang)
     needs_cjk = target_lang.lower().startswith(("zh", "ja", "ko"))
 
@@ -690,7 +692,7 @@ def segments_to_pdf(segments, output_path: str, target_lang: str = "en", job_id:
             html_parts.append("</table>")
 
     body_html = _resolve_images("\n".join(html_parts))
-    full_html = _wrap_html(body_html, font_css, needs_cjk)
+    full_html = _wrap_html(body_html, font_css, needs_cjk, orientation)
     _generate_pdf(full_html, output_path, job_id)
     return output_path
 

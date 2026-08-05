@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../context/ThemeContext';
 import './EditChannelModal.css';
 
 const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
@@ -13,6 +14,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
   const [functionCode, setFunctionCode] = useState('');
   const [errorValue, setErrorValue] = useState('');
   const { t } = useLanguage();
+  const { isOemAC } = useTheme();
 
   useEffect(() => {
     if (channelData) {
@@ -63,7 +65,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
         <header className="edit-channel-header">
           <div className="edit-channel-title">
             {isSuto 
-              ? t('Edit SUTO channel') 
+              ? (isOemAC ? t('Edit Preset channel') : t('Edit SUTO channel'))
               : t('Edit channel')
             }
           </div>

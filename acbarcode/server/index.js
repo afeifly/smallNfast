@@ -2,12 +2,166 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { jsPDF } = require('jspdf');
 
 const app = express();
 const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 9016 : 5005);
 
 app.use(cors());
 app.use(express.json());
+
+// Load ST Label static image assets once at startup
+let stLogoBase64 = null;
+let stBgxBase64 = null;
+let stLogoAspect = 42 / 160;
+let stBgxAspect = 392 / 1835;
+
+function initStAssets() {
+  try {
+    const publicDir = path.join(__dirname, '..', 'public');
+    const logoPath = path.join(publicDir, 't_logo.jpg');
+    const bgxPath = path.join(publicDir, 'b_bgx.png');
+
+    if (fs.existsSync(logoPath)) {
+      const buf = fs.readFileSync(logoPath);
+      stLogoBase64 = `data:image/jpeg;base64,${buf.toString('base64')}`;
+      let i = 0;
+      while (i < buf.length) {
+        if (buf[i] === 0xFF && (buf[i+1] === 0xC0 || buf[i+1] === 0xC2)) {
+          const height = buf.readUInt16BE(i + 5);
+          const width = buf.readUInt16BE(i + 7);
+          if (width > 0) stLogoAspect = height / width;
+          break;
+        }
+        i++;
+      }
+    }
+    if (fs.existsSync(bgxPath)) {
+      const buf = fs.readFileSync(bgxPath);
+      stBgxBase64 = `data:image/png;base64,${buf.toString('base64')}`;
+      if (buf.length >= 24) {
+        const width = buf.readUInt32BE(16);
+        const height = buf.readUInt32BE(20);
+        if (width > 0) stBgxAspect = height / width;
+      }
+    }
+  } catch (err) {
+    console.error('Error pre-loading ST label assets:', err);
+  }
+}
+initStAssets();
+
+function formatStSerial(raw) {
+  if (!raw) return '3726 0001';
+  const clean = String(raw).trim();
+  if (/^\d{8}$/.test(clean)) {
+    return `${clean.slice(0, 4)} ${clean.slice(4)}`;
+  }
+  return clean;
+}
+
+function generateStPdfBuffer(serialNumbers) {
+  const doc = new jsPDF({ unit: 'mm', format: [35, 22], orientation: 'landscape' });
+
+  const logoW = 9.6;
+  const logoH = logoW * stLogoAspect;
+  const bgxW = 16.0;
+  const bgxH = bgxW * stBgxAspect;
+
+  serialNumbers.forEach((rawSerial, idx) => {
+    if (idx > 0) {
+      doc.addPage([35, 22], 'landscape');
+    }
+
+    const formattedSerial = formatStSerial(rawSerial);
+
+    // Background
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, 35, 22, 'F');
+
+    // Logo top-left
+    if (stLogoBase64) {
+      doc.addImage(stLogoBase64, 'JPEG', 1, 1, logoW, logoH);
+    }
+
+    // Header URL
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    doc.setTextColor(0, 0, 0);
+    doc.text('www.suto-itec.com', 33, 2.8, { align: 'right' });
+
+    // Horizontal line
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.38);
+    doc.line(1, 4.2, 34, 4.2);
+
+    // Title Model line
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    doc.text('Model: S403 | Thermal Mass Flow', 1, 5.8);
+
+    // Upper 4 Information items
+    doc.setFontSize(4);
+    let y = 7.8;
+    const step = 1.7;
+    const colon1_x = 7.2;
+
+    const upperItems = [
+      ['Item No.', ': S695 4035 (Air)'],
+      ['Serial No.', `: ${formattedSerial}`],
+      ['Range', ': Standard'],
+      ['Fieldbus', ': Modbus/RTU+Analog']
+    ];
+
+    upperItems.forEach(([label, val]) => {
+      doc.text(label, 1, y);
+      doc.text(val, colon1_x, y);
+      y += step;
+    });
+
+    // Bottom left items
+    let yBottom = 14.8;
+    const colonL = 10.6;
+    const leftItems = [
+      ['Power supply', ': 16...30 VDC'],
+      ['Max. Pressure', ': 5.0 MPa(g)']
+    ];
+
+    leftItems.forEach(([label, val]) => {
+      doc.text(label, 1, yBottom);
+      doc.text(val, colonL, yBottom);
+      yBottom += step;
+    });
+
+    // Vertical Separator Bar
+    doc.setLineWidth(0.21);
+    doc.line(19.6, 14.3, 19.6, 17.3);
+
+    // Bottom right items
+    let yR = 14.8;
+    const rightX = 20.4;
+    const colonR = 26.4;
+    const rightItems = [
+      ['Accuracy', ': 1.5%'],
+      ['MFD', ': 2027-07']
+    ];
+
+    rightItems.forEach(([label, val]) => {
+      doc.text(label, rightX, yR);
+      doc.text(val, colonR, yR);
+      yR += step;
+    });
+
+    // Bottom Right Image
+    if (stBgxBase64) {
+      const bgxX = 35 - bgxW - 1;
+      const bgxY = 22 - bgxH - 1;
+      doc.addImage(stBgxBase64, 'PNG', bgxX, bgxY, bgxW, bgxH);
+    }
+  });
+
+  return Buffer.from(doc.output('arraybuffer'));
+}
 
 // Database configuration
 const dbDir = path.join(__dirname, 'data');
@@ -354,6 +508,56 @@ app.delete('/api/products/:item', adminAuth, (req, res) => {
     res.status(500).json({ error: 'Failed to update product database' });
   }
 });
+
+// ST Label PDF Generation API
+// GET /api/st-label?sn=12345678 or GET /api/st-label?sn=12345678&sn=87654321
+// POST /api/st-label with JSON { "serials": ["12345678", "87654321"] }
+const handleStLabelRequest = (req, res) => {
+  let serials = [];
+
+  if (req.method === 'POST' && req.body) {
+    if (Array.isArray(req.body.serials)) {
+      serials = req.body.serials;
+    } else if (req.body.sn) {
+      serials = Array.isArray(req.body.sn) ? req.body.sn : [req.body.sn];
+    }
+  }
+
+  if (serials.length === 0 && req.query) {
+    if (req.query.sn) {
+      serials = Array.isArray(req.query.sn) ? req.query.sn : [req.query.sn];
+    } else if (req.query.serials) {
+      serials = String(req.query.serials).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+    }
+  }
+
+  // Clean serial numbers
+  serials = serials.map(s => String(s).trim()).filter(Boolean);
+
+  if (serials.length === 0) {
+    return res.status(400).json({ 
+      error: 'Serial number is required. Usage: GET /api/st-label?sn=12345678 or POST /api/st-label with { "serials": ["12345678"] }' 
+    });
+  }
+
+  // Limit max 10 serials per request
+  serials = serials.slice(0, 10);
+
+  try {
+    const pdfBuffer = generateStPdfBuffer(serials);
+    const filename = serials.length === 1 ? `ST_Label_${serials[0]}.pdf` : 'ST_Labels.pdf';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('Error generating ST label PDF:', err);
+    res.status(500).json({ error: 'Failed to generate ST label PDF' });
+  }
+};
+
+app.get('/api/st-label', handleStLabelRequest);
+app.post('/api/st-label', handleStLabelRequest);
 
 // Serve frontend build in production
 const clientDist = path.join(__dirname, '..', 'dist');

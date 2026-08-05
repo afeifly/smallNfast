@@ -4,134 +4,187 @@
     
     <!-- Admin Navigation Tabs -->
     <div v-if="isAdmin" class="admin-tabs">
-      <button :class="{ active: activeTab === 'maker' }" @click="activeTab = 'maker'">Label Maker</button>
-      <button :class="{ active: activeTab === 'products' }" @click="activeTab = 'products'">Manage Products</button>
+      <button :class="{ active: activeTab === 'maker' }" @click="activeTab = 'maker'">AC Label</button>
+      <button :class="{ active: activeTab === 'st' }" @click="activeTab = 'st'">ST Label</button>
     </div>
 
-    <!-- TAB 1: Label Maker -->
+    <!-- TAB 1: AC Label -->
     <div v-if="activeTab === 'maker'">
-      <form @submit.prevent="generateLabels">
-        <div class="form-group">
-          <label>Item Number</label>
-          <div class="custom-dropdown">
-            <div class="dropdown-selected" @click="toggleDropdown">
-              <span>{{ selectedItemNumber || 'Select a product...' }}</span>
-              <span class="dropdown-arrow" :class="{ 'open': isDropdownOpen }">▼</span>
-            </div>
-            <div v-if="isDropdownOpen" class="dropdown-options">
-              <div class="search-box">
-                <input 
-                  type="text" 
-                  v-model="searchQuery" 
-                  placeholder="Search item number..." 
-                  @click.stop
-                />
+      <!-- AC Label Maker Form & Preview -->
+      <div v-if="!isAdmin || acSubTab === 'generator'">
+        <form @submit.prevent="generateLabels">
+          <div v-if="isAdmin" class="card-header-action">
+            <button 
+              type="button" 
+              class="manage-toggle-btn" 
+              @click="acSubTab = 'products'"
+            >
+              ⚙️ Manage Products
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label>Item Number</label>
+            <div class="custom-dropdown">
+              <div class="dropdown-selected" @click="toggleDropdown">
+                <span>{{ selectedItemNumber || 'Select a product...' }}</span>
+                <span class="dropdown-arrow" :class="{ 'open': isDropdownOpen }">▼</span>
               </div>
-              <div class="chips-container">
-                <div 
-                  v-for="product in filteredProducts" 
-                  :key="product.item"
-                  class="chip"
-                  :class="{ 'selected': product.item === selectedItemNumber }"
-                  @click="selectItem(product.item)"
-                >
-                  {{ product.item }}
+              <div v-if="isDropdownOpen" class="dropdown-options">
+                <div class="search-box">
+                  <input 
+                    type="text" 
+                    v-model="searchQuery" 
+                    placeholder="Search item number..." 
+                    @click.stop
+                  />
+                </div>
+                <div class="chips-container">
+                  <div 
+                    v-for="product in filteredProducts" 
+                    :key="product.item"
+                    class="chip"
+                    :class="{ 'selected': product.item === selectedItemNumber }"
+                    @click="selectItem(product.item)"
+                  >
+                    {{ product.item }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+          <div class="form-group">
+            <label>Product Name</label>
+            <input type="text" v-model="productName" readonly />
+          </div>
+          
+          <!-- Band & Logo Selection (Read-only on maker page, editable in Manage Products) -->
+          <div class="form-group">
+            <label>Logo / Band</label>
+            <input 
+              type="text" 
+              :value="selectedBand === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco'" 
+              readonly 
+            />
+          </div>
+
+          <div class="form-group">
+            <label>Serial Numbers (one per line, max 10)</label>
+            <textarea v-model="serialNumbersInput" rows="5" placeholder="Enter up to 10 serial numbers, one per line"></textarea>
+          </div>
+          <button type="submit" :disabled="!selectedItemNumber">Generate Labels</button>
+        </form>
+
+        <div v-if="labels.length" class="labels-preview">
+          <h2>Preview</h2>
+          <div class="labels-list">
+            <div v-for="(label, idx) in labels" :key="label.serial" class="label-card clickable-card" @click="downloadSinglePDF(idx)">
+              <div class="label-content">
+                <div class="label-title">{{ productName }}</div>
+                <div class="label-subtitle">Item No.: {{ selectedItemNumber }}</div>
+                <div class="label-serial">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; SN: {{ label.serial }}</div>
+                <div class="barcode-container">
+                  <svg :id="'barcode-' + idx" class="barcode-svg"></svg>
+                </div>
+                <div class="label-footer">
+                  <span class="website">{{ websiteMap[selectedBand] || 'www.atlascopco.com' }}</span>
+                  <img :src="logoMap[selectedBand] || '/logo.png'" alt="Logo" class="logo" />
+                </div>
+              </div>
+              <div class="download-hint">Click to download PDF</div>
+            </div>
+          </div>
+          <div class="download-buttons">
+            <button @click="downloadPDF">Download All</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Product Name</label>
-          <input type="text" v-model="productName" readonly />
+      </div>
+
+      <!-- Manage Products (Admin Only under AC Label) -->
+      <div v-else-if="isAdmin && acSubTab === 'products'" class="products-management">
+        <div class="management-header">
+          <h2>Products Directory</h2>
+          <div class="header-btn-group">
+            <button class="add-btn" @click="openAddModal">+ Add New Product</button>
+            <button type="button" class="back-toggle-btn" @click="acSubTab = 'generator'">
+              ← Back to Label Maker
+            </button>
+          </div>
         </div>
         
-        <!-- Band & Logo Selection (Read-only on maker page, editable in Manage Products) -->
-        <div class="form-group">
-          <label>Logo / Band</label>
+        <div class="search-bar">
           <input 
             type="text" 
-            :value="selectedBand === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco'" 
-            readonly 
+            v-model="productSearchQuery" 
+            placeholder="Search by item number or name..."
           />
         </div>
+        
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Item Number</th>
+                <th>Product Name</th>
+                <th>Default Band / Logo</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="product in searchedProducts" :key="product.item">
+                <td>{{ product.item }}</td>
+                <td>{{ product.name }}</td>
+                <td>
+                  <span class="band-tag" :class="product.band || 'atlascopco'">
+                    {{ product.band === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco' }}
+                  </span>
+                </td>
+                <td class="actions-cell">
+                  <button class="edit-action" @click="openEditModal(product)">Edit</button>
+                  <button class="delete-action" @click="deleteProduct(product.item)">Delete</button>
+                </td>
+              </tr>
+              <tr v-if="searchedProducts.length === 0">
+                <td colspan="4" class="no-data">No products found</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
+    <!-- TAB 3: ST Label (Admin Only) -->
+    <div v-else-if="activeTab === 'st' && isAdmin">
+      <form @submit.prevent="generateStLabels">
         <div class="form-group">
           <label>Serial Numbers (one per line, max 10)</label>
-          <textarea v-model="serialNumbersInput" rows="5" placeholder="Enter up to 10 serial numbers, one per line"></textarea>
+          <textarea 
+            v-model="stSerialNumbersInput" 
+            rows="5" 
+            placeholder="Enter up to 10 serial numbers, e.g. 12345678"
+          ></textarea>
         </div>
-        <button type="submit" :disabled="!selectedItemNumber">Generate Labels</button>
+        <button type="submit" :disabled="!stSerialNumbersInput.trim()">Generate ST Labels</button>
       </form>
 
-      <div v-if="labels.length" class="labels-preview">
+      <div v-if="stLabels.length" class="labels-preview">
         <h2>Preview</h2>
-        <div class="labels-list">
-          <div v-for="(label, idx) in labels" :key="label.serial" class="label-card clickable-card" @click="downloadSinglePDF(idx)">
-            <div class="label-content">
-              <div class="label-title">{{ productName }}</div>
-              <div class="label-subtitle">Item No.: {{ selectedItemNumber }}</div>
-              <div class="label-serial">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; SN: {{ label.serial }}</div>
-              <div class="barcode-container">
-                <svg :id="'barcode-' + idx" class="barcode-svg"></svg>
-              </div>
-              <div class="label-footer">
-                <span class="website">{{ websiteMap[selectedBand] || 'www.atlascopco.com' }}</span>
-                <img :src="logoMap[selectedBand] || '/logo.png'" alt="Logo" class="logo" />
-              </div>
+        <div class="st-labels-list">
+          <div 
+            v-for="(label, idx) in stLabels" 
+            :key="label.rawSerial + '-' + idx" 
+            class="st-label-card clickable-card"
+            @click="downloadStSinglePDF(idx)"
+          >
+            <div class="st-canvas-container">
+              <canvas :ref="el => { if (el) stCanvasRefs[idx] = el }" class="st-preview-canvas"></canvas>
             </div>
             <div class="download-hint">Click to download PDF</div>
           </div>
         </div>
         <div class="download-buttons">
-          <button @click="downloadPDF">Download All</button>
+          <button @click="downloadStAllPDF">Download All (PDF)</button>
         </div>
-      </div>
-    </div>
-
-    <!-- TAB 2: Manage Products (Admin Only) -->
-    <div v-else-if="activeTab === 'products' && isAdmin" class="products-management">
-      <div class="management-header">
-        <h2>Products Directory</h2>
-        <button class="add-btn" @click="openAddModal">Add New Product</button>
-      </div>
-      
-      <div class="search-bar">
-        <input 
-          type="text" 
-          v-model="productSearchQuery" 
-          placeholder="Search by item number or name..."
-        />
-      </div>
-      
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Item Number</th>
-              <th>Product Name</th>
-              <th>Default Band / Logo</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="product in searchedProducts" :key="product.item">
-              <td>{{ product.item }}</td>
-              <td>{{ product.name }}</td>
-              <td>
-                <span class="band-tag" :class="product.band || 'atlascopco'">
-                  {{ product.band === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco' }}
-                </span>
-              </td>
-              <td class="actions-cell">
-                <button class="edit-action" @click="openEditModal(product)">Edit</button>
-                <button class="delete-action" @click="deleteProduct(product.item)">Delete</button>
-              </td>
-            </tr>
-            <tr v-if="searchedProducts.length === 0">
-              <td colspan="4" class="no-data">No products found</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
 
@@ -197,9 +250,217 @@ const labels = ref([]);
 const isDropdownOpen = ref(false);
 const searchQuery = ref('');
 
+// ST Label State & Methods
+const stSerialNumbersInput = ref('');
+const stLabels = ref([]);
+const stCanvasRefs = ref([]);
+
+let stImagesLoaded = false;
+let stLogoImg = null;
+let stBgxImg = null;
+
+function loadStImages() {
+  return new Promise((resolve) => {
+    if (stImagesLoaded && stLogoImg && stBgxImg) {
+      return resolve({ logo: stLogoImg, bgx: stBgxImg });
+    }
+    let loadedCount = 0;
+    const checkDone = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        stImagesLoaded = true;
+        resolve({ logo: stLogoImg, bgx: stBgxImg });
+      }
+    };
+
+    stLogoImg = new Image();
+    stLogoImg.crossOrigin = 'anonymous';
+    stLogoImg.onload = checkDone;
+    stLogoImg.onerror = checkDone;
+    stLogoImg.src = '/t_logo.jpg';
+
+    stBgxImg = new Image();
+    stBgxImg.crossOrigin = 'anonymous';
+    stBgxImg.onload = checkDone;
+    stBgxImg.onerror = checkDone;
+    stBgxImg.src = '/b_bgx.png';
+  });
+}
+
+function formatStSerial(raw) {
+  if (!raw) return '3726 0001';
+  const clean = raw.trim();
+  if (/^\d{8}$/.test(clean)) {
+    return `${clean.slice(0, 4)} ${clean.slice(4)}`;
+  }
+  return clean;
+}
+
+function renderStCanvas(canvas, labelData, images) {
+  if (!canvas) return;
+  const DPI = 600;
+  const mmToPx = (mm) => Math.round((mm / 25.4) * DPI);
+  const ptToPx = (pt) => Math.round((pt / 72) * DPI);
+
+  const W = mmToPx(35);
+  const H = mmToPx(22);
+
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  if (images.logo && images.logo.complete && images.logo.naturalWidth > 0) {
+    const logoW = mmToPx(9.6);
+    const logoH = Math.round(images.logo.height * (logoW / images.logo.width));
+    ctx.drawImage(images.logo, mmToPx(1), mmToPx(1), logoW, logoH);
+  }
+
+  const fontTitle = `bold ${ptToPx(5)}px "Arial", "Helvetica", sans-serif`;
+  const fontSmall = `bold ${ptToPx(4)}px "Arial", "Helvetica", sans-serif`;
+
+  ctx.fillStyle = '#000000';
+  ctx.font = fontTitle;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'right';
+  ctx.fillText('www.suto-itec.com', W - mmToPx(2), mmToPx(1.8));
+
+  ctx.beginPath();
+  ctx.moveTo(mmToPx(1), mmToPx(4.2));
+  ctx.lineTo(W - mmToPx(1), mmToPx(4.2));
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 9;
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.font = fontTitle;
+  ctx.fillText('Model: S403 | Thermal Mass Flow', mmToPx(1), mmToPx(4.8));
+
+  ctx.font = fontSmall;
+  let y = mmToPx(7.2);
+  const step = mmToPx(1.7);
+  const colon1_x = mmToPx(7.2);
+
+  const upperItems = [
+    ['Item No.', ': S695 4035 (Air)'],
+    ['Serial No.', `: ${labelData.formattedSerial}`],
+    ['Range', ': Standard'],
+    ['Fieldbus', ': Modbus/RTU+Analog']
+  ];
+
+  upperItems.forEach(([label, val]) => {
+    ctx.fillText(label, mmToPx(1), y);
+    ctx.fillText(val, colon1_x, y);
+    y += step;
+  });
+
+  let yBottom = mmToPx(14.2);
+  const colonL = mmToPx(10.6);
+  const leftItems = [
+    ['Power supply', ': 16...30 VDC'],
+    ['Max. Pressure', ': 5.0 MPa(g)']
+  ];
+
+  leftItems.forEach(([label, val]) => {
+    ctx.fillText(label, mmToPx(1), yBottom);
+    ctx.fillText(val, colonL, yBottom);
+    yBottom += step;
+  });
+
+  ctx.beginPath();
+  ctx.moveTo(mmToPx(19.6), mmToPx(14.3));
+  ctx.lineTo(mmToPx(19.6), mmToPx(17.3));
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  let yR = mmToPx(14.2);
+  const rightX = mmToPx(20.4);
+  const colonR = mmToPx(26.4);
+  const rightItems = [
+    ['Accuracy', ': 1.5%'],
+    ['MFD', ': 2027-07']
+  ];
+
+  rightItems.forEach(([label, val]) => {
+    ctx.fillText(label, rightX, yR);
+    ctx.fillText(val, colonR, yR);
+    yR += step;
+  });
+
+  if (images.bgx && images.bgx.complete && images.bgx.naturalWidth > 0) {
+    const bgxW = mmToPx(16);
+    const bgxH = Math.round(images.bgx.height * (bgxW / images.bgx.width));
+    const bgxX = W - bgxW - mmToPx(1);
+    const bgxY = H - bgxH - mmToPx(1);
+    ctx.drawImage(images.bgx, bgxX, bgxY, bgxW, bgxH);
+  }
+}
+
+async function generateStLabels() {
+  const serials = stSerialNumbersInput.value
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+
+  stLabels.value = serials.map(s => ({
+    rawSerial: s,
+    formattedSerial: formatStSerial(s)
+  }));
+  stCanvasRefs.value = [];
+
+  const images = await loadStImages();
+  await nextTick();
+
+  setTimeout(() => {
+    stLabels.value.forEach((label, idx) => {
+      const canvas = stCanvasRefs.value[idx];
+      if (canvas) {
+        renderStCanvas(canvas, label, images);
+      }
+    });
+  }, 100);
+}
+
+function downloadStSinglePDF(index) {
+  const canvas = stCanvasRefs.value[index];
+  if (!canvas) return;
+  const label = stLabels.value[index];
+  try {
+    const pdf = new jsPDF({ unit: 'mm', format: [35, 22], orientation: 'landscape' });
+    const dataUrl = canvas.toDataURL('image/png');
+    pdf.addImage(dataUrl, 'PNG', 0, 0, 35, 22);
+    pdf.save(`ST_Label_${label.rawSerial}.pdf`);
+  } catch (err) {
+    console.error('Error downloading ST PDF:', err);
+  }
+}
+
+function downloadStAllPDF() {
+  if (!stLabels.value.length) return;
+  try {
+    const pdf = new jsPDF({ unit: 'mm', format: [35, 22], orientation: 'landscape' });
+    stLabels.value.forEach((label, idx) => {
+      const canvas = stCanvasRefs.value[idx];
+      if (canvas) {
+        if (idx > 0) pdf.addPage([35, 22], 'landscape');
+        const dataUrl = canvas.toDataURL('image/png');
+        pdf.addImage(dataUrl, 'PNG', 0, 0, 35, 22);
+      }
+    });
+    pdf.save('ST_Labels.pdf');
+  } catch (err) {
+    console.error('Error downloading ST PDFs:', err);
+  }
+}
+
 // Admin Role State
 const isAdmin = ref(sessionStorage.getItem('acbarcode_role') === 'admin');
 const activeTab = ref('maker');
+const acSubTab = ref('generator');
 
 // Products CRUD State
 const productSearchQuery = ref('');
@@ -682,6 +943,57 @@ h2 {
   color: #764ba2;
   font-weight: bold;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Header Action inside AC Label Card */
+.card-header-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.manage-toggle-btn {
+  background: #f0f4f8;
+  color: #4a5568;
+  border: 1px solid #cbd5e0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  width: auto;
+  transition: all 0.2s ease;
+}
+
+.manage-toggle-btn:hover {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+  transform: none;
+}
+
+.header-btn-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.back-toggle-btn {
+  background: #edf2f7;
+  color: #4a5568;
+  border: 1px solid #cbd5e0;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  width: auto;
+  transition: all 0.2s ease;
+}
+
+.back-toggle-btn:hover {
+  background: #cbd5e0;
+  transform: none;
 }
 
 form {
@@ -1209,6 +1521,54 @@ tr:hover td {
   border-radius: 6px;
   font-size: 0.85rem;
   margin-top: 12px;
+}
+
+/* ST Label Styles */
+.st-labels-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.st-label-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.st-canvas-container {
+  width: 100%;
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.st-preview-canvas {
+  width: 100%;
+  height: auto;
+  max-width: 340px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.secondary-btn {
+  background: #4a5568 !important;
+  box-shadow: 0 4px 16px rgba(74, 85, 104, 0.35) !important;
+}
+
+.secondary-btn:hover {
+  background: #2d3748 !important;
 }
 
 /* Responsive design */

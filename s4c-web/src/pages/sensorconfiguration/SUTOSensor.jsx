@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../context/ThemeContext';
 import SensorConfigModal from './SensorConfigModal';
 import EditChannelModal from './EditChannelModal';
 import CustomDialog from '../../components/CustomDialog';
@@ -21,6 +22,7 @@ const formatSN = (sn) => {
 const SUTOSensor = () => {
   const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
+  const { isOemAC } = useTheme();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSensor, setEditingSensor] = useState(null);
 
@@ -116,7 +118,7 @@ const SUTOSensor = () => {
     <div className="content-card suto-sensor-page">
       {/* Header */}
       <header className="suto-header">
-        <h2 className="suto-title">{t('SUTO sensor list')}</h2>
+        <h2 className="suto-title">{isOemAC ? t('Preset sensor list') : t('SUTO sensor list')}</h2>
         <button
           className="add-sensor-btn"
           onClick={() => {
@@ -128,7 +130,7 @@ const SUTOSensor = () => {
             <path d="M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M3 8H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>{t('Add SUTO Sensor')}</span>
+          <span>{isOemAC ? t('Add Preset Sensor') : t('Add SUTO Sensor')}</span>
         </button>
       </header>
 
@@ -180,7 +182,7 @@ const SUTOSensor = () => {
                 <tr>
                   <td colSpan={5} style={{ borderBottom: 'none', padding: 0 }}>
                     <div className="suto-empty-container">
-                      {t('No SUTO sensors configured. Click "Add SUTO Sensor" to get started.')}
+                      {isOemAC ? t('No Preset sensors configured. Click "Add Preset Sensor" to get started.') : t('No SUTO sensors configured. Click "Add SUTO Sensor" to get started.')}
                     </div>
                   </td>
                 </tr>

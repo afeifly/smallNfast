@@ -139,8 +139,12 @@ const Sidebar = () => {
   const currentPath = location.pathname;
   const { activeConfigId } = useConfig();
   const { t } = useLanguage();
-  const { appName, appLogo, logoHeight } = useTheme();
+  const { appName, appLogo, logoHeight, isOemAC } = useTheme();
   const hasConfig = !!activeConfigId;
+
+  // Helper for child menu item text
+  const getChildLabel = (child) => (child.to === '/sensor/add-suto' && isOemAC) ? t('Preset Sensor') : t(child.label);
+
 
   // Track if sidebar is collapsed
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -285,7 +289,7 @@ const Sidebar = () => {
                           key={child.to}
                           className="submenu-item disabled"
                         >
-                          <span>{t(child.label)}</span>
+                          <span>{getChildLabel(child)}</span>
                         </div>
                       );
                     }
@@ -296,7 +300,7 @@ const Sidebar = () => {
                         to={child.to}
                         className={`submenu-item ${childActive ? 'active' : ''}`}
                       >
-                        <span>{t(child.label)}</span>
+                        <span>{getChildLabel(child)}</span>
                       </Link>
                     );
                   })}

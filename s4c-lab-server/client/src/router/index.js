@@ -31,11 +31,33 @@ const router = createRouter({
     routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
     const token = localStorage.getItem('admin_token')
-    if (to.meta.requiresAuth && !token) {
-        next('/login')
-    } else {
+
+    if (!to.meta.requiresAuth) {
+        // Public route (e.g. /login) — always allow
+        return next()
+    }
+
+    if (!token) {
+        // No token at all — go to login
+        return next('/login')
+    }
+
+    // Verify the token is actually valid on the server, not just a fake string
+    try {
+        const res = await fetch('/api/admins', {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.ok) {
+            next()
+        } else {
+            // Token rejected by server (expired, tampered, wrong secret)
+            localStorage.removeItem('admin_token')
+            next('/login')
+        }
+    } catch {
+        // Network error — still allow navigation (offline-safe)
         next()
     }
 })

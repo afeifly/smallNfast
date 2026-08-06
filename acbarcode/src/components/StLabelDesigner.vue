@@ -64,9 +64,15 @@
                     <span class="element-name">{{ el.name || el.type }}</span>
                   </div>
                   <div class="element-actions" @click.stop>
-                    <button type="button" class="icon-btn" :disabled="index === 0" @click="moveStElement(index, -1)" title="Move Up">▲</button>
-                    <button type="button" class="icon-btn" :disabled="index === stElements.length - 1" @click="moveStElement(index, 1)" title="Move Down">▼</button>
-                    <button type="button" class="icon-btn delete-btn" @click="removeStElement(index)" title="Delete Element">✕</button>
+                    <button type="button" class="icon-btn move-btn" :disabled="index === 0" @click="moveStElement(index, -1)" title="Move Up">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                    </button>
+                    <button type="button" class="icon-btn move-btn" :disabled="index === stElements.length - 1" @click="moveStElement(index, 1)" title="Move Down">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <button type="button" class="icon-btn delete-btn" @click="removeStElement(index)" title="Delete Element">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
                   </div>
                 </div>
                 <div v-if="getElementSummary(el)" class="header-sub-row">
@@ -133,9 +139,16 @@
                   </div>
                 </template>
 
-                <!-- Horizontal Line Controls -->
-                <template v-else-if="el.type === 'hline'">
+                <!-- Line Controls (Horizontal & Vertical) -->
+                <template v-else-if="el.type === 'hline' || el.type === 'vline'">
                   <div class="form-row">
+                    <div class="form-group">
+                      <label>Orientation</label>
+                      <select v-model="el.lineShape">
+                        <option value="HLine">Horizontal Line</option>
+                        <option value="VLine">Vertical Line</option>
+                      </select>
+                    </div>
                     <div class="form-group">
                       <label>Start X (mm)</label>
                       <input type="number" step="0.1" v-model.number="el.xMm" />
@@ -144,9 +157,13 @@
                       <label>Start Y (mm)</label>
                       <input type="number" step="0.1" v-model.number="el.yMm" />
                     </div>
-                    <div class="form-group">
+                    <div v-if="el.lineShape !== 'VLine'" class="form-group">
                       <label>End X (mm)</label>
                       <input type="number" step="0.1" v-model.number="el.x1Mm" />
+                    </div>
+                    <div v-else class="form-group">
+                      <label>End Y (mm)</label>
+                      <input type="number" step="0.1" v-model.number="el.y1Mm" />
                     </div>
                     <div class="form-group">
                       <label>Thickness (dots)</label>
@@ -285,13 +302,45 @@ defineEmits(['open-odoo-modal']);
 const stSerialNumbersInput = ref('3726 0001');
 const stSingleCanvasRef = ref(null);
 
-const stCanvasConfig = ref({
+const LOCAL_STORAGE_KEY = 'acbarcode_st_template';
+
+function getInitialStTemplate() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.elements && Array.isArray(data.elements)) {
+        // Update el_separator in saved data if on old coordinates so change takes effect immediately
+        const sep = data.elements.find(e => e.id === 'el_separator' || e.name === 'Vertical Separator');
+        if (sep) {
+          sep.lineShape = 'VLine';
+          if (sep.y1Mm === undefined) {
+            sep.y1Mm = sep.heightMm ? sep.yMm + sep.heightMm : 17.3;
+          }
+          if (sep.xMm === 27.0 || sep.xMm === 24.6 || sep.xMm === 23.8) {
+            sep.xMm = 19.6;
+            sep.yMm = 14.3;
+            sep.y1Mm = 17.3;
+          }
+        }
+        return data;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse initial saved template:', e);
+  }
+  return null;
+}
+
+const savedStTemplate = getInitialStTemplate();
+
+const stCanvasConfig = ref(savedStTemplate?.config || {
   widthMm: 35,
   heightMm: 22,
   dpi: 203
 });
 
-const stElements = ref([
+const stElements = ref(savedStTemplate?.elements || [
   {
     id: 'el_logo',
     type: 'image',
@@ -308,7 +357,7 @@ const stElements = ref([
     type: 'text',
     name: 'Header URL',
     text: 'www.suto-itec.com',
-    xMm: 33,
+    xMm: 15.5,
     yMm: 1.8,
     fontSize: 5,
     bold: true,
@@ -404,10 +453,11 @@ const stElements = ref([
   {
     id: 'el_separator',
     type: 'hline',
+    lineShape: 'VLine',
     name: 'Vertical Separator',
     xMm: 19.6,
     yMm: 14.3,
-    x1Mm: 19.6,
+    y1Mm: 17.3,
     thicknessDots: 5,
     expanded: false
   },
@@ -439,7 +489,7 @@ const stElements = ref([
     name: 'Bottom Right Image',
     src: '/b_bgx.png',
     xMm: 18,
-    yMm: 14,
+    yMm: 17.6,
     widthMm: 16,
     storedName: 'BGX',
     autoBottomRight: true,
@@ -679,29 +729,27 @@ async function compileEZPX(serial = '3726 0001') {
     const escapedText = escapeXml(textVal);
 
     if (el.type === 'text') {
+      // Font size in pt matches el.fontSize 1:1 (5pt for titles/URL, 4pt for details)
+      const fontPt = el.fontSize || 4;
+      const fontCmdStr = el.bold ? `Arial,${fontPt},B\r\n` : `Arial,${fontPt}\r\n`;
+      const fontWidth = el.bold ? 1100 : 1000;
+
+      const fontHeightPx = Math.round((fontPt / 72) * ezpxDpi * 1.2);
+      const rectH = Math.max(12, fontHeightPx);
+      const rectW = measureTextWidthDots(textVal, fontPt, ezpxDpi);
+
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
-      // GoLabel built-in bitmap font (Microsoft Sans Serif); size matches el.fontSize in pt
-      const fontPt = el.fontSize;
-      const isRight = el.name === 'Header URL' || el.align === 'right';
-      const alignStr = isRight ? 'Right' : 'Left';
-
-      // Box sized like GoLabel: ~1.4x line height at 203 DPI, real measured text width
-      const rectH = Math.round((fontPt / 72) * ezpxDpi * 1.4);
-      const rectW = measureTextWidthDots(textVal, fontPt, ezpxDpi);
-      // GoLabel sizes text via FontHeight/FontWidth (vector-font size index): 1=tiny, 4=good.
-      // Map el.fontSize directly so the designer number = the GoLabel size.
-      const fontDots = Math.max(1, Math.round(el.fontSize));
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Text" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="${alignStr}" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" TextAlign="${alignStr}" FontCmd="Arial,${fontPt}&#xD;&#xA;" FontType="TrueType_Font" TextSpace="0" Encoding="Default" FontId="Default" FontHeight="${fontDots}" FontWidth="${fontDots}" IsInverse="false" IsUTF8="true" IsCheckDigit="false" UsePrinterClock="true">
+      <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="${fontWidth}" TextSpace="0" bSpaceCropping="false">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
         <Id>${index}</Id>
-        <ItemLabel>${escapeXml(el.name || `Text_${index}`)}</ItemLabel>
+        <ItemLabel>${escapeXml(el.name || `WindowText_${index}`)}</ItemLabel>
         <ObjectDrawMode>FW</ObjectDrawMode>
-        <Name>A</Name>
+        <Name>W</Name>
         <GroupID>0</GroupID>
         <GroupSelected>false</GroupSelected>
         <CharTruncateRule>
@@ -737,7 +785,12 @@ async function compileEZPX(serial = '3726 0001') {
         <DispData>${escapedText}</DispData>
         <bRemovePreZeroAndEmpty>false</bRemovePreZeroAndEmpty>
         <Data>${escapedText}</Data>
-        <ItemInfoList />
+        <ItemInfoList>
+          <Item>
+            <ItemSymbol>1</ItemSymbol>
+            <ItemData>${escapedText}</ItemData>
+          </Item>
+        </ItemInfoList>
         <BoundRectHeight>${rectH}</BoundRectHeight>
         <BoundRect>
           <Location>
@@ -753,83 +806,75 @@ async function compileEZPX(serial = '3726 0001') {
           <Width>${rectW}</Width>
           <Height>${rectH}</Height>
         </BoundRect>
-        <NormalRatio>true</NormalRatio>
         <BTrueType>true</BTrueType>
+        <Angle>0</Angle>
+        <IsInverse>false</IsInverse>
+        <bVerticalRedirection>false</bVerticalRedirection>
+        <VerticalKerningOffset>0</VerticalKerningOffset>
+        <CharacterSpacingRate>0</CharacterSpacingRate>
       </GraphicShape>`;
-    } else if (el.type === 'hline') {
+    } else if (el.type === 'hline' || el.type === 'vline') {
+      const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
-      const isVertical = el.x1Mm !== undefined && el.x1Mm === el.xMm;
       
-      let xEnd, yEnd, rectW, rectH, lineThickness;
+      let lineShapeStr, wVal, hVal;
       if (isVertical) {
-        xEnd = x;
-        yEnd = mmToDots(el.y1Mm !== undefined ? el.y1Mm : 17.3);
-        lineThickness = el.thicknessDots || 5;
-        rectW = lineThickness;
-        rectH = Math.max(1, yEnd - y);
+        lineShapeStr = 'VLine';
+        wVal = el.thicknessDots || 5;
+        const endY = el.y1Mm !== undefined ? el.y1Mm : (el.yMm + (el.heightMm || 3.0));
+        hVal = Math.max(1, mmToDots(endY - el.yMm));
       } else {
-        xEnd = mmToDots(el.x1Mm || w);
-        yEnd = y;
-        lineThickness = el.thicknessDots || 9;
-        rectW = Math.max(1, xEnd - x);
-        rectH = lineThickness;
+        lineShapeStr = 'HLine';
+        const endX = el.x1Mm !== undefined ? el.x1Mm : w;
+        wVal = Math.max(1, mmToDots(endX - el.xMm));
+        hVal = el.thicknessDots || 5;
       }
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Line" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" LineWidth="${lineThickness}">
+      <GraphicShape xsi:type="Line" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
         <Id>${index}</Id>
         <ItemLabel>${escapeXml(el.name || `Line_${index}`)}</ItemLabel>
         <ObjectDrawMode>FW</ObjectDrawMode>
-        <Name>Line</Name>
+        <Name>L</Name>
         <GroupID>0</GroupID>
         <GroupSelected>false</GroupSelected>
-        <StartPoint><X>${x}</X><Y>${y}</Y></StartPoint>
-        <EndPoint><X>${xEnd}</X><Y>${yEnd}</Y></EndPoint>
-        <BoundRectWidth>${rectW}</BoundRectWidth>
-        <BoundRectHeight>${rectH}</BoundRectHeight>
-        <BoundRect>
-          <Location><X>${x}</X><Y>${y}</Y></Location>
-          <Size><Width>${rectW}</Width><Height>${rectH}</Height></Size>
-          <X>${x}</X><Y>${y}</Y><Width>${rectW}</Width><Height>${rectH}</Height>
-        </BoundRect>
+        <lineShape>${lineShapeStr}</lineShape>
+        <Height>${hVal}</Height>
+        <Operation>111</Operation>
+        <Width>${wVal}</Width>
       </GraphicShape>`;
     } else if (el.type === 'image') {
-      let xMm = el.xMm || 0;
-      let yMm = el.yMm || 0;
-      const widthMm = el.widthMm || 10;
-      
-      if (el.autoBottomRight) {
-        const aspect = 6.5 / 16;
-        xMm = w - widthMm - 1;
-        yMm = h - (widthMm * aspect) - 1;
-      }
-      
-      const x = mmToDots(xMm);
-      const y = mmToDots(yMm);
-
       const imgInfo = await getImageBase64(el.src);
       const base64Data = imgInfo.data;
 
-      const wDots = mmToDots(widthMm);
-      let hDots;
+      const widthMm = el.widthMm || 10;
+      let heightMm;
       if (el.heightMm) {
-        hDots = mmToDots(el.heightMm);
+        heightMm = el.heightMm;
       } else if (imgInfo.width > 0) {
-        hDots = Math.max(1, Math.round(wDots * (imgInfo.height / imgInfo.width)));
+        heightMm = widthMm * (imgInfo.height / imgInfo.width);
       } else {
-        hDots = Math.round(wDots * 0.45);
+        heightMm = widthMm * 0.45;
       }
-      // FixedRatio=true makes GoLabel re-derive the height from the image's true
-      // aspect ratio, so height cannot be controlled. Disable it so the exact
-      // BoundRect box (width + height) is honored.
-      const fixedRatio = el.heightMm ? 'false' : 'true';
+
+      let xMm = el.xMm || 0;
+      let yMm = el.yMm || 0;
+      if (el.autoBottomRight) {
+        xMm = w - widthMm - 1;
+        yMm = h - heightMm - 1;
+      }
+
+      const x = mmToDots(xMm);
+      const y = mmToDots(yMm);
+      const wDots = mmToDots(widthMm);
+      const hDots = mmToDots(heightMm);
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Image" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FixedRatio="${fixedRatio}">
+      <GraphicShape xsi:type="Image" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FixedRatio="false">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -869,7 +914,7 @@ async function compileEZPX(serial = '3726 0001') {
         <DataField>None</DataField>
         <Prompt>None</Prompt>
         <BoundRectWidth>${wDots}</BoundRectWidth>
-        <DispData></DispData>
+        <DispData />
         <bRemovePreZeroAndEmpty>false</bRemovePreZeroAndEmpty>
         <Data />
         <ItemInfoList />
@@ -882,7 +927,7 @@ async function compileEZPX(serial = '3726 0001') {
         <BitmapCmd>${base64Data}</BitmapCmd>
         <FixedAspectRatio>false</FixedAspectRatio>
         <LoadToDevice>false</LoadToDevice>
-        <FileName>${escapeXml(el.src || '')}</FileName>
+        <FileName>${escapeXml(el.storedName || 'LOGO')}</FileName>
         <Identifier />
         <DitherType>Default</DitherType>
         <RotationFlip>RotateNoneFlipNone</RotationFlip>
@@ -1114,17 +1159,19 @@ async function renderStCanvasDynamic(canvas, serial = '3726 0001') {
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
 
-      if (el.name === 'Header URL' || el.align === 'right') {
-        ctx.textAlign = 'right';
-        ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
-      } else {
-        ctx.textAlign = 'left';
-        ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
-      }
-    } else if (el.type === 'hline') {
+      ctx.textAlign = 'left';
+      ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
+    } else if (el.type === 'hline' || el.type === 'vline') {
+      const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);
       ctx.beginPath();
       ctx.moveTo(mmToPx(el.xMm), mmToPx(el.yMm));
-      ctx.lineTo(mmToPx(el.x1Mm || stCanvasConfig.value.widthMm), mmToPx(el.yMm));
+      if (isVertical) {
+        const endY = el.y1Mm !== undefined ? el.y1Mm : (el.yMm + (el.heightMm || 3.0));
+        ctx.lineTo(mmToPx(el.xMm), mmToPx(endY));
+      } else {
+        const endX = el.x1Mm !== undefined ? el.x1Mm : stCanvasConfig.value.widthMm;
+        ctx.lineTo(mmToPx(endX), mmToPx(el.yMm));
+      }
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = el.thicknessDots || 3;
       ctx.stroke();
@@ -1173,16 +1220,29 @@ async function renderStCanvasDynamic(canvas, serial = '3726 0001') {
   }
 }
 
+function autoSaveStTemplate() {
+  const data = {
+    config: stCanvasConfig.value,
+    elements: stElements.value
+  };
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Auto-save to localStorage failed:', e);
+  }
+}
+
 watch(
   [stCanvasConfig, stElements, stSerialNumbersInput],
   async () => {
+    autoSaveStTemplate();
     await nextTick();
     const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
     if (stSingleCanvasRef.value) {
       renderStCanvasDynamic(stSingleCanvasRef.value, firstSerial);
     }
   },
-  { deep: true, immediate: true }
+  { deep: true }
 );
 
 onMounted(() => {
@@ -1519,27 +1579,40 @@ input[type="text"], input[type="number"], select, textarea {
 
 .element-actions {
   display: flex;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.2rem;
 }
 
 .icon-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 50% !important;
   background: transparent !important;
-  color: #718096 !important;
-  padding: 0.2rem 0.4rem !important;
-  font-size: 0.8rem !important;
+  color: #a0aec0 !important;
+  cursor: pointer !important;
   box-shadow: none !important;
-  width: auto !important;
-  min-height: unset !important;
+  transition: all 0.15s ease !important;
+  outline: none !important;
 }
 
 .icon-btn:hover:not(:disabled) {
-  color: #2d3748 !important;
-  background: #cbd5e0 !important;
+  color: #4a5568 !important;
+  background: #edf2f7 !important;
 }
 
-.icon-btn.delete-btn:hover {
+.icon-btn:disabled {
+  opacity: 0.25 !important;
+  cursor: not-allowed !important;
+}
+
+.icon-btn.delete-btn:hover:not(:disabled) {
   color: #e53e3e !important;
-  background: #fed7d7 !important;
+  background: #fff5f5 !important;
 }
 
 .element-item-body {

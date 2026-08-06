@@ -559,6 +559,389 @@ const handleStLabelRequest = (req, res) => {
 app.get('/api/st-label', handleStLabelRequest);
 app.post('/api/st-label', handleStLabelRequest);
 
+// Odoo API Configuration & Test Endpoints
+const odooConfigPath = path.join(dbDir, 'odoo_config.json');
+
+const https = require('https');
+const http = require('http');
+
+const keepAliveHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+const keepAliveHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+
+// In-memory cache for Odoo Auth UID to eliminate redundant auth roundtrips
+const odooAuthCache = new Map();
+
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function unescapeXml(str) {
+  return String(str)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function jsToXmlRpc(val) {
+  if (val === null || val === undefined) {
+    return '<value><nil/></value>';
+  }
+  if (typeof val === 'boolean') {
+    return `<value><boolean>${val ? 1 : 0}</boolean></value>`;
+  }
+  if (typeof val === 'number') {
+    return Number.isInteger(val)
+      ? `<value><int>${val}</int></value>`
+      : `<value><double>${val}</double></value>`;
+  }
+  if (typeof val === 'string') {
+    return `<value><string>${escapeXml(val)}</string></value>`;
+  }
+  if (Array.isArray(val)) {
+    const items = val.map(jsToXmlRpc).join('');
+    return `<value><array><data>${items}</data></array></value>`;
+  }
+  if (typeof val === 'object') {
+    const members = Object.entries(val)
+      .map(([k, v]) => `<member><name>${escapeXml(k)}</name>${jsToXmlRpc(v)}</member>`)
+      .join('');
+    return `<value><struct>${members}</struct></value>`;
+  }
+  return `<value><string>${escapeXml(String(val))}</string></value>`;
+}
+
+function xmlRpcToJs(xml) {
+  if (xml.includes('<fault>')) {
+    const faultMatch = xml.match(/<member><name>faultString<\/name><value>(?:<string>)?([\s\S]*?)(?:<\/string>)?<\/value>/i);
+    throw new Error(faultMatch ? unescapeXml(faultMatch[1]) : 'XML-RPC Fault');
+  }
+
+  let pos = 0;
+  
+  function skipWhitespace() {
+    while (pos < xml.length && /\s/.test(xml[pos])) pos++;
+  }
+
+  function parseValue() {
+    skipWhitespace();
+    if (xml.startsWith('<value>', pos)) {
+      pos += 7;
+      skipWhitespace();
+      const val = parseValueContent();
+      skipWhitespace();
+      if (xml.startsWith('</value>', pos)) {
+        pos += 8;
+      }
+      return val;
+    }
+    return parseValueContent();
+  }
+
+  function parseValueContent() {
+    skipWhitespace();
+    if (xml.startsWith('<string>', pos)) {
+      pos += 8;
+      const end = xml.indexOf('</string>', pos);
+      const str = unescapeXml(xml.slice(pos, end));
+      pos = end + 9;
+      return str;
+    }
+    if (xml.startsWith('<int>', pos) || xml.startsWith('<i4>', pos)) {
+      const tagLen = xml.startsWith('<int>', pos) ? 5 : 4;
+      const endTag = xml.startsWith('<int>', pos) ? '</int>' : '</i4>';
+      pos += tagLen;
+      const end = xml.indexOf(endTag, pos);
+      const num = parseInt(xml.slice(pos, end), 10);
+      pos = end + endTag.length;
+      return num;
+    }
+    if (xml.startsWith('<double>', pos)) {
+      pos += 8;
+      const end = xml.indexOf('</double>', pos);
+      const num = parseFloat(xml.slice(pos, end));
+      pos = end + 9;
+      return num;
+    }
+    if (xml.startsWith('<boolean>', pos)) {
+      pos += 9;
+      const end = xml.indexOf('</boolean>', pos);
+      const bool = xml.slice(pos, end).trim() === '1';
+      pos = end + 10;
+      return bool;
+    }
+    if (xml.startsWith('<nil/>', pos)) {
+      pos += 6;
+      return null;
+    }
+    if (xml.startsWith('<array>', pos)) {
+      pos += 7;
+      skipWhitespace();
+      if (xml.startsWith('<data>', pos)) pos += 6;
+      const arr = [];
+      while (pos < xml.length) {
+        skipWhitespace();
+        if (xml.startsWith('</data>', pos) || xml.startsWith('</array>', pos)) break;
+        arr.push(parseValue());
+      }
+      skipWhitespace();
+      if (xml.startsWith('</data>', pos)) pos += 7;
+      skipWhitespace();
+      if (xml.startsWith('</array>', pos)) pos += 8;
+      return arr;
+    }
+    if (xml.startsWith('<struct>', pos)) {
+      pos += 8;
+      const obj = {};
+      while (pos < xml.length) {
+        skipWhitespace();
+        if (xml.startsWith('</struct>', pos)) {
+          pos += 9;
+          break;
+        }
+        if (xml.startsWith('<member>', pos)) {
+          pos += 8;
+          skipWhitespace();
+          let key = '';
+          if (xml.startsWith('<name>', pos)) {
+            pos += 6;
+            const end = xml.indexOf('</name>', pos);
+            key = unescapeXml(xml.slice(pos, end));
+            pos = end + 7;
+          }
+          const val = parseValue();
+          skipWhitespace();
+          if (xml.startsWith('</member>', pos)) pos += 9;
+          if (key) obj[key] = val;
+        } else {
+          pos++;
+        }
+      }
+      return obj;
+    }
+
+    const end = xml.indexOf('<', pos);
+    if (end === -1) {
+      const str = unescapeXml(xml.slice(pos));
+      pos = xml.length;
+      return str;
+    }
+    const str = unescapeXml(xml.slice(pos, end));
+    pos = end;
+    return str;
+  }
+
+  const paramIdx = xml.indexOf('<param>');
+  if (paramIdx !== -1) pos = paramIdx + 7;
+
+  return parseValue();
+}
+
+async function odooXmlRpcCall(url, path, methodName, params) {
+  const paramsXml = params.map(p => `<param>${jsToXmlRpc(p)}</param>`).join('');
+  const xmlBody = `<?xml version="1.0"?><methodCall><methodName>${methodName}</methodName><params>${paramsXml}</params></methodCall>`;
+
+  const cleanUrl = url.replace(/\/+$/, '');
+  const agent = cleanUrl.startsWith('https') ? keepAliveHttpsAgent : keepAliveHttpAgent;
+
+  const res = await fetch(`${cleanUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/xml' },
+    body: xmlBody,
+    agent
+  });
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+
+  const xmlText = await res.text();
+  return xmlRpcToJs(xmlText);
+}
+
+
+function loadOdooConfig() {
+  try {
+    if (fs.existsSync(odooConfigPath)) {
+      return JSON.parse(fs.readFileSync(odooConfigPath, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Error reading odoo_config.json:', err);
+  }
+  return { url: '', db: '', username: '', password: '' };
+}
+
+function saveOdooConfig(config) {
+  try {
+    fs.writeFileSync(odooConfigPath, JSON.stringify(config, null, 2), 'utf8');
+    odooAuthCache.clear();
+    return true;
+  } catch (err) {
+    console.error('Error saving odoo_config.json:', err);
+    return false;
+  }
+}
+
+// GET /api/odoo/config
+app.get('/api/odoo/config', (req, res) => {
+  const config = loadOdooConfig();
+  res.json({
+    url: config.url || '',
+    db: config.db || '',
+    username: config.username || '',
+    password: config.password || ''
+  });
+});
+
+// POST /api/odoo/config
+app.post('/api/odoo/config', (req, res) => {
+  const { url, db, username, password } = req.body || {};
+  const newConfig = {
+    url: (url || '').trim(),
+    db: (db || '').trim(),
+    username: (username || '').trim(),
+    password: (password || '').trim()
+  };
+
+  if (saveOdooConfig(newConfig)) {
+    res.json({ message: 'Odoo configuration saved successfully', config: newConfig });
+  } else {
+    res.status(500).json({ error: 'Failed to save Odoo configuration' });
+  }
+});
+
+// POST /api/odoo/test-search
+app.post('/api/odoo/test-search', async (req, res) => {
+  const savedConfig = loadOdooConfig();
+  const url = (req.body.url || savedConfig.url || '').trim();
+  const db = (req.body.db || savedConfig.db || '').trim();
+  const username = (req.body.username || savedConfig.username || '').trim();
+  const password = (req.body.password !== undefined ? req.body.password : savedConfig.password || '').trim();
+  const inputSerial = (req.body.serialNumber || '').trim();
+
+  if (!url || !db || !username) {
+    return res.status(400).json({ error: 'Odoo URL, Database, and Username must be configured.' });
+  }
+
+  if (!inputSerial) {
+    return res.status(400).json({ error: 'Please enter a serial number to test search.' });
+  }
+
+  const formattedSerial = formatStSerial(inputSerial);
+  const searchSerials = Array.from(new Set([inputSerial, formattedSerial]));
+
+  const logs = [];
+  const authKey = `${url}|${db}|${username}|${password}`;
+
+  try {
+    // Step 1: Authenticate via fast /xmlrpc/2/common
+    let uid = odooAuthCache.get(authKey);
+    if (!uid) {
+      uid = await odooXmlRpcCall(url, '/xmlrpc/2/common', 'authenticate', [db, username, password, {}]);
+      if (!uid) {
+        logs.push('Connect failed, please check the database and username and password.');
+        return res.json({
+          success: false,
+          error: 'Connect failed, please check database, username, and password.',
+          logs
+        });
+      }
+      odooAuthCache.set(authKey, uid);
+    }
+    logs.push(`Success connected, user:${uid}`);
+
+    // Step 2: Search stock.lot via fast /xmlrpc/2/object (matching both raw and formatted serials)
+    let lotIds;
+    try {
+      lotIds = await odooXmlRpcCall(url, '/xmlrpc/2/object', 'execute_kw', [
+        db, uid, password, 'stock.lot', 'search', [[['name', 'in', searchSerials]]]
+      ]);
+    } catch (err) {
+      odooAuthCache.delete(authKey);
+      uid = await odooXmlRpcCall(url, '/xmlrpc/2/common', 'authenticate', [db, username, password, {}]);
+      if (!uid) throw err;
+      odooAuthCache.set(authKey, uid);
+      lotIds = await odooXmlRpcCall(url, '/xmlrpc/2/object', 'execute_kw', [
+        db, uid, password, 'stock.lot', 'search', [[['name', 'in', searchSerials]]]
+      ]);
+    }
+
+    if (!lotIds || lotIds.length === 0) {
+      logs.push('Can not find SN.');
+      return res.json({
+        success: true,
+        uid,
+        lotIds: [],
+        productionIds: [],
+        records: [],
+        message: 'Can not find SN.',
+        logs
+      });
+    }
+    logs.push(`Found stock.lot IDs: ${JSON.stringify(lotIds)}`);
+
+    // Step 3: Search mrp.production via fast /xmlrpc/2/object
+    const productionIds = await odooXmlRpcCall(url, '/xmlrpc/2/object', 'execute_kw', [
+      db, uid, password, 'mrp.production', 'search', [[['serial_ids', 'in', lotIds]]]
+    ]);
+
+    if (!productionIds || productionIds.length === 0) {
+      logs.push('Can not find MO.');
+      return res.json({
+        success: true,
+        uid,
+        lotIds,
+        productionIds: [],
+        records: [],
+        message: 'Can not find MO.',
+        logs
+      });
+    }
+    logs.push(`Found mrp.production IDs: ${JSON.stringify(productionIds)}`);
+
+    // Step 4: Read mrp.production fields (fetching essential fields fast)
+    const records = await odooXmlRpcCall(url, '/xmlrpc/2/object', 'execute_kw', [
+      db, uid, password, 'mrp.production', 'read', [productionIds],
+      { fields: ['name', 'product_description_variants', 'product_id', 'product_tmpl_id', 'origin', 'state'] }
+    ]);
+
+    logs.push('\nMO and SN as below:');
+    if (Array.isArray(records)) {
+      records.forEach(rec => {
+        logs.push(`MO: ${rec.name || ''} | Variants: ${rec.product_description_variants || ''}`);
+      });
+    }
+
+    res.json({
+      success: true,
+      uid,
+      lotIds,
+      productionIds,
+      records: Array.isArray(records) ? records : [],
+      logs
+    });
+
+
+  } catch (err) {
+    console.error('Error during Odoo test search:', err);
+    logs.push(`Error: ${err.message}`);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      logs
+    });
+  }
+});
+
+
+
+
 // Serve frontend build in production
 const clientDist = path.join(__dirname, '..', 'dist');
 app.use(express.static(clientDist));

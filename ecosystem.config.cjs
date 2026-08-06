@@ -67,25 +67,16 @@ module.exports = {
       }
     },
     {
-      name: 's4c-lab-backend',
+      name: 's4c-lab',
       cwd: './s4c-lab-server/server',
       script: 'node',
       args: 'index.js',
       env: {
         NODE_ENV: 'production',
-        PORT: 3001,
+        PORT: 9017,
         HOST: '127.0.0.1',
         DATABASE_URL: `file:${path.resolve(__dirname, 's4c-lab-server/server/prisma/dev.db')}`,
         JWT_SECRET: 's4c-lab-secret-key-keep-it-secret'
-      }
-    },
-    {
-      name: 's4c-lab-frontend',
-      cwd: './s4c-lab-server/client',
-      script: 'npm',
-      args: 'run dev -- --port 9017 --host 127.0.0.1',
-      env: {
-        NODE_ENV: 'development'
       }
     },
     {

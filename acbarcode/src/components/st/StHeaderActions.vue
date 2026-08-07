@@ -16,9 +16,14 @@
         🔄 Fetch Data from Odoo
       </button>
     </div>
-    <button type="button" class="manage-odoo-btn" @click="$emit('open-odoo-modal')">
-      ⚙️ Manage Odoo Server
-    </button>
+    <div class="st-header-right">
+      <button type="button" class="template-mgr-btn" @click="$emit('open-template-modal')">
+        📋 Template Manager
+      </button>
+      <button type="button" class="manage-odoo-btn" @click="$emit('open-odoo-modal')">
+        ⚙️ Manage Odoo Server
+      </button>
+    </div>
   </div>
 </template>
 
@@ -30,7 +35,7 @@ defineProps({
   }
 });
 
-defineEmits(['update:modelValue', 'fetch-odoo', 'open-odoo-modal']);
+defineEmits(['update:modelValue', 'fetch-odoo', 'open-odoo-modal', 'open-template-modal']);
 </script>
 
 <style scoped>
@@ -46,6 +51,12 @@ defineEmits(['update:modelValue', 'fetch-odoo', 'open-odoo-modal']);
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.st-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .sn-input-group {
@@ -105,5 +116,24 @@ defineEmits(['update:modelValue', 'fetch-odoo', 'open-odoo-modal']);
 
 .manage-odoo-btn:hover {
   background: #2d3748 !important;
+}
+
+.template-mgr-btn {
+  background: #6b46c1 !important;
+  color: white !important;
+  border: none;
+  padding: 0.5rem 1rem !important;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: none !important;
+  width: auto !important;
+}
+
+.template-mgr-btn:hover {
+  background: #553c9a !important;
 }
 </style>

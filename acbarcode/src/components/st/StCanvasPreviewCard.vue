@@ -22,12 +22,6 @@
       <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf')">
         📄 Download PDF
       </button>
-      <button type="button" class="action-btn save-btn" @click="$emit('save-template')">
-        💾 Save Template
-      </button>
-      <button type="button" class="action-btn load-btn" @click="$emit('load-template')">
-        📂 Load Template
-      </button>
     </div>
   </div>
 </template>
@@ -46,9 +40,7 @@ defineEmits([
   'export-ezpl',
   'export-ezpx',
   'copy-ezpl',
-  'download-pdf',
-  'save-template',
-  'load-template'
+  'download-pdf'
 ]);
 
 const canvasRef = ref(null);
@@ -166,23 +158,5 @@ defineExpose({
 
 .pdf-btn:hover {
   background: #c53030 !important;
-}
-
-.save-btn {
-  background: #d69e2e !important;
-  color: white !important;
-}
-
-.save-btn:hover {
-  background: #b7791f !important;
-}
-
-.load-btn {
-  background: #718096 !important;
-  color: white !important;
-}
-
-.load-btn:hover {
-  background: #4a5568 !important;
 }
 </style>

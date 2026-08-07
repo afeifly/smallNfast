@@ -4,6 +4,7 @@
       v-model="stSerialNumbersInput" 
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
+      @open-template-modal="showTemplateModal = true"
     />
 
     <div class="st-editor-layout">
@@ -14,7 +15,13 @@
 
       <!-- RIGHT PANEL: Template Basic Infos & Live Canvas Preview & Code Stream -->
       <div class="st-preview-panel">
-        <StCanvasConfigCard :config="stCanvasConfig" />
+        <StCanvasConfigCard 
+          :config="stCanvasConfig"
+          :template-name="activeTemplate?.name || ''"
+          :item-numbers="itemNumbersString"
+          :active-lang="activeLang"
+          @update:active-lang="activeLang = $event"
+        />
         <StCanvasPreviewCard 
           ref="previewCardRef"
           :config="stCanvasConfig"
@@ -22,12 +29,26 @@
           @export-ezpx="exportEZPX"
           @copy-ezpl="copyEZPL"
           @download-pdf="downloadStSinglePDF"
-          @save-template="saveStTemplate"
-          @load-template="loadStTemplate"
         />
         <StCodePreviewCard :code="liveEzplCode" />
       </div>
     </div>
+
+    <!-- Template Manager Modal -->
+    <StTemplateModal
+      v-if="showTemplateModal"
+      :templates="templates"
+      :active-template-id="activeTemplateId"
+      @close="showTemplateModal = false"
+      @update:active-template-id="activeTemplateId = $event"
+      @update:template-field="onUpdateTemplateField"
+      @create-new="onCreateNewTemplate"
+      @duplicate="onDuplicateTemplate"
+      @delete="onDeleteTemplate"
+      @reset-defaults="onResetDefaults"
+      @export-json="onExportJson"
+      @import-json="onImportJson"
+    />
   </div>
 </template>
 
@@ -40,214 +61,150 @@ import StCanvasConfigCard from './st/StCanvasConfigCard.vue';
 import StElementsManagerCard from './st/StElementsManagerCard.vue';
 import StCanvasPreviewCard from './st/StCanvasPreviewCard.vue';
 import StCodePreviewCard from './st/StCodePreviewCard.vue';
+import StTemplateModal from './st/StTemplateModal.vue';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
 import { compileEZPX } from '../utils/stEzpxCompiler.js';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
+import {
+  loadTemplatesFromStorage,
+  saveTemplatesToStorage,
+  matchTemplateByItemNo,
+  createInitialDefaultTemplates,
+  DEFAULT_ELEMENTS_EN,
+  DEFAULT_ELEMENTS_CN
+} from '../utils/stTemplateManager.js';
 
 defineEmits(['open-odoo-modal']);
 
+// ── State ──────────────────────────────────────────────────────────────
 const stSerialNumbersInput = ref('3726 0001');
 const previewCardRef = ref(null);
+const showTemplateModal = ref(false);
 
-const LOCAL_STORAGE_KEY = 'acbarcode_st_template';
+const templates = ref(loadTemplatesFromStorage());
+const activeTemplateId = ref(templates.value[0]?.id || '');
+const activeLang = ref('EN'); // 'EN' | 'CN'
 
-function getInitialStTemplate() {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      if (data && data.elements && Array.isArray(data.elements)) {
-        const sep = data.elements.find(e => e.id === 'el_separator' || e.name === 'Vertical Separator');
-        if (sep) {
-          sep.lineShape = 'VLine';
-          if (sep.y1Mm === undefined) {
-            sep.y1Mm = sep.heightMm ? sep.yMm + sep.heightMm : 17.3;
-          }
-          if (sep.xMm === 27.0 || sep.xMm === 24.6 || sep.xMm === 23.8) {
-            sep.xMm = 19.6;
-            sep.yMm = 14.3;
-            sep.y1Mm = 17.3;
-          }
-        }
-        return data;
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to parse initial saved template:', e);
-  }
-  return null;
-}
+// ── Computed ───────────────────────────────────────────────────────────
+const activeTemplate = computed(() =>
+  templates.value.find(t => t.id === activeTemplateId.value) || templates.value[0]
+);
 
-const savedStTemplate = getInitialStTemplate();
+const stCanvasConfig = computed(() => activeTemplate.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 });
 
-const stCanvasConfig = ref(savedStTemplate?.config || {
-  widthMm: 35,
-  heightMm: 22,
-  dpi: 203
-});
+const stElements = computed(() =>
+  activeLang.value === 'CN'
+    ? (activeTemplate.value?.elements_cn || [])
+    : (activeTemplate.value?.elements_en || [])
+);
 
-const stElements = ref(savedStTemplate?.elements || [
-  {
-    id: 'el_logo',
-    type: 'image',
-    name: 'Logo',
-    src: '/t_logo.jpg',
-    xMm: 1,
-    yMm: 1,
-    widthMm: 9.6,
-    storedName: 'LOGO',
-    expanded: true
-  },
-  {
-    id: 'el_header_url',
-    type: 'text',
-    name: 'Header URL',
-    text: 'www.suto-itec.com',
-    xMm: 15.5,
-    yMm: 1.8,
-    fontSize: 5,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_divider',
-    type: 'hline',
-    name: 'Top Divider Line',
-    xMm: 1,
-    yMm: 4.2,
-    x1Mm: 34,
-    thicknessDots: 9,
-    expanded: false
-  },
-  {
-    id: 'el_model',
-    type: 'text',
-    name: 'Model Title',
-    text: 'Model: S403 | Thermal Mass Flow',
-    xMm: 1,
-    yMm: 4.8,
-    fontSize: 5,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_item_no',
-    type: 'text',
-    name: 'Item No.',
-    text: 'Item No.: S695 4035 (Air)',
-    xMm: 1,
-    yMm: 7.2,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_serial',
-    type: 'text',
-    name: 'Serial No.',
-    text: 'Serial No.: {{serial}}',
-    xMm: 1,
-    yMm: 8.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_range',
-    type: 'text',
-    name: 'Range',
-    text: 'Range: Standard',
-    xMm: 1,
-    yMm: 10.6,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_fieldbus',
-    type: 'text',
-    name: 'Fieldbus',
-    text: 'Fieldbus: Modbus/RTU+Analog',
-    xMm: 1,
-    yMm: 12.3,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_power',
-    type: 'text',
-    name: 'Power supply',
-    text: 'Power supply: 16...30 VDC',
-    xMm: 1,
-    yMm: 14.2,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_pressure',
-    type: 'text',
-    name: 'Max. Pressure',
-    text: 'Max. Pressure: 5.0 MPa(g)',
-    xMm: 1,
-    yMm: 15.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_separator',
-    type: 'hline',
-    lineShape: 'VLine',
-    name: 'Vertical Separator',
-    xMm: 19.6,
-    yMm: 14.3,
-    y1Mm: 17.3,
-    thicknessDots: 5,
-    expanded: false
-  },
-  {
-    id: 'el_accuracy',
-    type: 'text',
-    name: 'Accuracy',
-    text: 'Accuracy: 1.5%',
-    xMm: 20.4,
-    yMm: 14.2,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_mfd',
-    type: 'text',
-    name: 'MFD',
-    text: 'MFD: 2027-07',
-    xMm: 20.4,
-    yMm: 15.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_bgx',
-    type: 'image',
-    name: 'Bottom Right Image',
-    src: '/b_bgx.png',
-    xMm: 18,
-    yMm: 17.6,
-    widthMm: 16,
-    storedName: 'BGX',
-    autoBottomRight: true,
-    expanded: false
-  }
-]);
+const itemNumbersString = computed(() =>
+  (activeTemplate.value?.itemNumbers || []).join(', ')
+);
 
+// ── Fetch / Auto-match ─────────────────────────────────────────────────
 function fetchFromOdooStub() {
-  alert('🔄 Odoo Data Sync Stub:\nIn production, this button will query Odoo for MO / Serial Number details and populate template text fields!');
+  // Attempt item-number auto-match from SN input as a demo
+  const sn = stSerialNumbersInput.value?.trim() || '';
+  const matched = matchTemplateByItemNo(templates.value, sn);
+  if (matched) {
+    activeTemplateId.value = matched.id;
+    alert(`🔄 Odoo Stub: Auto-matched template "${matched.name}" for SN "${sn}".`);
+  } else {
+    alert('🔄 Odoo Data Sync Stub:\nIn production, this will query Odoo for MO / Serial Number details.');
+  }
 }
 
+// ── Template Modal Actions ─────────────────────────────────────────────
+function generateId() {
+  return 'tpl_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Fired from modal when user clicks "Apply Changes"
+function onUpdateTemplateField({ id, name, itemNumbers, config }) {
+  const tpl = templates.value.find(t => t.id === id);
+  if (!tpl) return;
+  tpl.name = name;
+  tpl.itemNumbers = itemNumbers;
+  tpl.config = { ...config };
+  saveTemplatesToStorage(templates.value);
+}
+
+function onCreateNewTemplate() {
+  const newTpl = {
+    id: generateId(),
+    name: 'New Template',
+    itemNumbers: [],
+    config: { widthMm: 35, heightMm: 22, dpi: 203 },
+    elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
+    elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN))
+  };
+  templates.value.push(newTpl);
+  activeTemplateId.value = newTpl.id;
+  saveTemplatesToStorage(templates.value);
+}
+
+function onDuplicateTemplate() {
+  if (!activeTemplate.value) return;
+  const clone = JSON.parse(JSON.stringify(activeTemplate.value));
+  clone.id = generateId();
+  clone.name = clone.name + ' (Copy)';
+  templates.value.push(clone);
+  activeTemplateId.value = clone.id;
+  saveTemplatesToStorage(templates.value);
+}
+
+function onDeleteTemplate() {
+  if (templates.value.length <= 1) return;
+  const idx = templates.value.findIndex(t => t.id === activeTemplateId.value);
+  templates.value.splice(idx, 1);
+  activeTemplateId.value = templates.value[Math.max(0, idx - 1)]?.id || templates.value[0]?.id;
+  saveTemplatesToStorage(templates.value);
+}
+
+function onResetDefaults() {
+  if (!activeTemplate.value) return;
+  activeTemplate.value.elements_en = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
+  activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
+  activeTemplate.value.config = { widthMm: 35, heightMm: 22, dpi: 203 };
+  saveTemplatesToStorage(templates.value);
+}
+
+function onExportJson() {
+  const json = JSON.stringify(templates.value, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'st_templates_backup.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function onImportJson(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (Array.isArray(data) && data.length > 0) {
+        templates.value = data;
+        activeTemplateId.value = data[0].id;
+        saveTemplatesToStorage(templates.value);
+        alert('📥 Templates restored successfully!');
+      } else {
+        alert('Invalid JSON: Expected an array of templates.');
+      }
+    } catch (err) {
+      alert('Failed to parse JSON file.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ── EZPL / EZPX Exports ────────────────────────────────────────────────
 const liveEzplCode = computed(() => {
   const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
   return compileEZPL(stElements.value, stCanvasConfig.value, firstSerial);
@@ -288,43 +245,7 @@ async function copyEZPL() {
   }
 }
 
-function saveStTemplate() {
-  const data = {
-    config: stCanvasConfig.value,
-    elements: stElements.value
-  };
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-  alert('💾 Label Template saved successfully to local storage!');
-}
-
-function loadStTemplate() {
-  const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (raw) {
-    try {
-      const data = JSON.parse(raw);
-      if (data.config) stCanvasConfig.value = data.config;
-      if (data.elements) stElements.value = data.elements;
-      alert('📂 Label Template loaded successfully!');
-    } catch (err) {
-      alert('Failed to parse saved template.');
-    }
-  } else {
-    alert('No saved template found in local storage.');
-  }
-}
-
-function autoSaveStTemplate() {
-  const data = {
-    config: stCanvasConfig.value,
-    elements: stElements.value
-  };
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.warn('Auto-save to localStorage failed:', e);
-  }
-}
-
+// ── Canvas Update ──────────────────────────────────────────────────────
 function updateCanvas() {
   const canvas = previewCardRef.value?.canvasRef;
   const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
@@ -334,9 +255,9 @@ function updateCanvas() {
 }
 
 watch(
-  [stCanvasConfig, stElements, stSerialNumbersInput],
+  [activeTemplateId, activeLang, stSerialNumbersInput, templates],
   async () => {
-    autoSaveStTemplate();
+    saveTemplatesToStorage(templates.value);
     await nextTick();
     updateCanvas();
   },
@@ -349,6 +270,7 @@ onMounted(() => {
   });
 });
 
+// ── PDF Download ───────────────────────────────────────────────────────
 function downloadStSinglePDF() {
   const canvas = previewCardRef.value?.canvasRef;
   if (!canvas) return;

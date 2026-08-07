@@ -595,7 +595,7 @@ function fetchFromOdooStub() {
 function compileEZPL(serial = '3726 0001') {
   const w = stCanvasConfig.value.widthMm || 35;
   const h = stCanvasConfig.value.heightMm || 22;
-  const dpi = PRINTER_DPI;
+  const dpi = stCanvasConfig.value.dpi || 203;
   const mmToDots = (mm) => Math.round((mm / 25.4) * dpi);
 
   let ezpl = '';
@@ -611,20 +611,45 @@ function compileEZPL(serial = '3726 0001') {
     if (el.type === 'text') {
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
-      const mul = Math.max(1, Math.round((el.fontSize || 4) / 4));
-      ezpl += `AC,${x},${y},${mul},${mul},0,0,${textVal}\n`;
-    } else if (el.type === 'hline') {
+      const size = el.fontSize || 4;
+      let fontCmd = 'AC';
+      let mul = 1;
+      if (size <= 3.5) {
+        fontCmd = 'AB';
+      } else if (size <= 4.5) {
+        fontCmd = 'AC';
+      } else if (size <= 5.5) {
+        fontCmd = 'AD';
+      } else {
+        fontCmd = 'AE';
+        mul = Math.max(1, Math.round(size / 6));
+      }
+      ezpl += `${fontCmd},${x},${y},${mul},${mul},0,0,${textVal}\n`;
+      if (el.bold) {
+        ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,0,${textVal}\n`;
+      }
+    } else if (el.type === 'hline' || el.type === 'vline') {
+      const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
-      const x1 = mmToDots(el.x1Mm || w);
       const thickness = el.thicknessDots || 3;
-      ezpl += `Lo,${x},${y},${x1},${y + thickness}\n`;
+      if (isVertical) {
+        const endY = mmToDots(el.y1Mm !== undefined ? el.y1Mm : (el.yMm + (el.heightMm || 3.0)));
+        ezpl += `Lo,${x},${y},${x + thickness},${endY}\n`;
+      } else {
+        const endX = mmToDots(el.x1Mm !== undefined ? el.x1Mm : w);
+        ezpl += `Lo,${x},${y},${endX},${y + thickness}\n`;
+      }
     } else if (el.type === 'image') {
-      const x = el.autoBottomRight ? mmToDots(w - (el.widthMm || 10) - 1) : mmToDots(el.xMm || 0);
-      const y = el.autoBottomRight ? mmToDots(h - 8) : mmToDots(el.yMm || 0);
-      const name = el.storedName || 'LOGO';
-      ezpl += `; --- Pre-stored Graphic: ${el.name || 'Image'} ---\n`;
-      ezpl += `Y${x},${y},${name}\n`;
+      const widthMm = el.widthMm || 10;
+      const heightMm = el.heightMm || 3.8;
+      const xMm = el.autoBottomRight ? Math.max(0, w - widthMm - 1) : (el.xMm || 0);
+      const yMm = el.autoBottomRight ? Math.max(0, h - heightMm - 1) : (el.yMm || 0);
+      const x = mmToDots(xMm);
+      const y = mmToDots(yMm);
+      const graphicName = (el.storedName || el.name || `IMG_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+      ezpl += `; --- Graphic: ${el.name || 'Image'} ---\n`;
+      ezpl += `Y${x},${y},${graphicName}\n`;
     } else if (el.type === 'barcode') {
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
@@ -713,8 +738,13 @@ async function getImageBase64(src) {
 async function compileEZPX(serial = '3726 0001') {
   const w = stCanvasConfig.value.widthMm || 35;
   const h = stCanvasConfig.value.heightMm || 22;
-  // GoLabel and Godex G500 standard printer DPI is 203 DPI (8 dots per mm)
-  const ezpxDpi = PRINTER_DPI;
+  const ezpxDpi = stCanvasConfig.value.dpi || 203;
+  let printerModel = 'G500';
+  if (ezpxDpi === 300) {
+    printerModel = 'EZ-1300+';
+  } else if (ezpxDpi === 600) {
+    printerModel = 'RT863i+';
+  }
   const mmToDots = (mm) => Math.round((mm / 25.4) * ezpxDpi);
 
   const nullString100 = Array(100).fill('<string xsi:nil="true" />').join('\n      ');
@@ -732,7 +762,6 @@ async function compileEZPX(serial = '3726 0001') {
       // Font size in pt matches el.fontSize 1:1 (5pt for titles/URL, 4pt for details)
       const fontPt = el.fontSize || 4;
       const fontCmdStr = el.bold ? `Arial,${fontPt},B\r\n` : `Arial,${fontPt}\r\n`;
-      const fontWidth = el.bold ? 1100 : 1000;
 
       const fontHeightPx = Math.round((fontPt / 72) * ezpxDpi * 1.2);
       const rectH = Math.max(12, fontHeightPx);
@@ -742,7 +771,7 @@ async function compileEZPX(serial = '3726 0001') {
       const y = mmToDots(el.yMm || 0);
 
       qlabelShapes += `
-      <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="${fontWidth}" TextSpace="0" bSpaceCropping="false">
+      <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="1000" TextSpace="0" bSpaceCropping="false">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -872,6 +901,7 @@ async function compileEZPX(serial = '3726 0001') {
       const y = mmToDots(yMm);
       const wDots = mmToDots(widthMm);
       const hDots = mmToDots(heightMm);
+      const graphicName = (el.storedName || el.name || `Graphic_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
 
       qlabelShapes += `
       <GraphicShape xsi:type="Image" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FixedRatio="false">
@@ -927,7 +957,7 @@ async function compileEZPX(serial = '3726 0001') {
         <BitmapCmd>${base64Data}</BitmapCmd>
         <FixedAspectRatio>false</FixedAspectRatio>
         <LoadToDevice>false</LoadToDevice>
-        <FileName>${escapeXml(el.storedName || 'LOGO')}</FileName>
+        <FileName>${escapeXml(graphicName)}</FileName>
         <Identifier />
         <DitherType>Default</DitherType>
         <RotationFlip>RotateNoneFlipNone</RotationFlip>
@@ -1039,7 +1069,7 @@ async function compileEZPX(serial = '3726 0001') {
   <BLE_Address>0</BLE_Address>
   <BLE_AutoMTU>true</BLE_AutoMTU>
   <BLE_MTU>20</BLE_MTU>
-  <PrinterModel>G500</PrinterModel>
+  <PrinterModel>${printerModel}</PrinterModel>
   <PrinterLanguage>EZPL</PrinterLanguage>
   <USBName>00000000</USBName>
   <COMName />

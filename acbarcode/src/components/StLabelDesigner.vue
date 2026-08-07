@@ -1,9 +1,21 @@
 <template>
   <div class="st-designer-container">
     <div class="st-header-actions">
-      <button type="button" class="fetch-odoo-stub-btn" @click="fetchFromOdooStub">
-        🔄 Fetch Data from Odoo
-      </button>
+      <div class="st-header-left">
+        <div class="sn-input-group">
+          <label for="st-sn-input" class="sn-label">SN:</label>
+          <input 
+            id="st-sn-input"
+            type="text" 
+            v-model="stSerialNumbersInput" 
+            placeholder="e.g. 3726 0001" 
+            class="sn-input"
+          />
+        </div>
+        <button type="button" class="fetch-odoo-stub-btn" @click="fetchFromOdooStub">
+          🔄 Fetch Data from Odoo
+        </button>
+      </div>
       <button type="button" class="manage-odoo-btn" @click="$emit('open-odoo-modal')">
         ⚙️ Manage Odoo Server
       </button>
@@ -234,19 +246,8 @@
         </div>
       </div>
 
-      <!-- RIGHT PANEL: Serial Numbers Input & Canvas Live Preview & Action Toolbar -->
+      <!-- RIGHT PANEL: Canvas Live Preview & Action Toolbar -->
       <div class="st-preview-panel">
-        <div class="preview-card">
-          <h3>🏷️ Batch Serial Numbers</h3>
-          <div class="form-group">
-            <textarea 
-              v-model="stSerialNumbersInput" 
-              rows="3" 
-              placeholder="Enter serial numbers (one per line, max 10), e.g. 3726 0001"
-            ></textarea>
-          </div>
-        </div>
-
         <div class="preview-card">
           <div class="preview-card-header">
             <h3>👁️ Live Canvas Preview</h3>
@@ -1310,8 +1311,37 @@ function downloadStSinglePDF() {
 
 .st-header-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.st-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sn-input-group {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.sn-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #2d3748;
+  white-space: nowrap;
+}
+
+.sn-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  width: 200px;
 }
 
 .fetch-odoo-stub-btn {

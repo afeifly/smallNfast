@@ -1,6 +1,6 @@
 <template>
   <div class="editor-card">
-    <h3>📏 Label Dimensions & DPI</h3>
+    <h3>📏 Template basic infos</h3>
     <div class="form-row">
       <div class="form-group">
         <label>Width (mm)</label>

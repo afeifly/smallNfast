@@ -7,14 +7,14 @@
     />
 
     <div class="st-editor-layout">
-      <!-- LEFT PANEL: Label Settings & Elements Layer Manager -->
+      <!-- LEFT PANEL: Elements Layer Manager -->
       <div class="st-editor-panel">
-        <StCanvasConfigCard :config="stCanvasConfig" />
         <StElementsManagerCard :elements="stElements" :canvasConfig="stCanvasConfig" />
       </div>
 
-      <!-- RIGHT PANEL: Live Canvas Preview & Code Stream -->
+      <!-- RIGHT PANEL: Template Basic Infos & Live Canvas Preview & Code Stream -->
       <div class="st-preview-panel">
+        <StCanvasConfigCard :config="stCanvasConfig" />
         <StCanvasPreviewCard 
           ref="previewCardRef"
           :config="stCanvasConfig"

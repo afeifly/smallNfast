@@ -6,9 +6,25 @@
         <span class="element-count-badge">{{ elements.length }} elements</span>
       </div>
       <div class="header-actions-group">
-        <button type="button" class="mini-text-btn" @click="toggleAllElements(false)">Collapse All</button>
-        <button type="button" class="mini-text-btn" @click="toggleAllElements(true)">Expand All</button>
+        <button 
+          type="button" 
+          class="icon-only-btn" 
+          @click="toggleAll"
+          :title="isAnyExpanded ? 'Collapse All' : 'Expand All'"
+        >
+          {{ isAnyExpanded ? '−' : '+' }}
+        </button>
       </div>
+    </div>
+
+    <!-- Add Element Toolbar -->
+    <div class="add-element-toolbar">
+      <span>Add Element:</span>
+      <button type="button" class="add-type-btn" @click="addElement('text')">+ Text</button>
+      <button type="button" class="add-type-btn" @click="addElement('image')">+ Image</button>
+      <button type="button" class="add-type-btn" @click="addElement('hline')">+ Line</button>
+      <button type="button" class="add-type-btn" @click="addElement('barcode')">+ Barcode</button>
+      <button type="button" class="add-type-btn" @click="addElement('qrcode')">+ QR Code</button>
     </div>
 
     <div class="elements-list custom-scrollbar">
@@ -184,20 +200,12 @@
         </div>
       </div>
     </div>
-
-    <!-- Add Element Toolbar -->
-    <div class="add-element-toolbar">
-      <span>Add Element:</span>
-      <button type="button" class="add-type-btn" @click="addElement('text')">+ Text</button>
-      <button type="button" class="add-type-btn" @click="addElement('image')">+ Image</button>
-      <button type="button" class="add-type-btn" @click="addElement('hline')">+ Line</button>
-      <button type="button" class="add-type-btn" @click="addElement('barcode')">+ Barcode</button>
-      <button type="button" class="add-type-btn" @click="addElement('qrcode')">+ QR Code</button>
-    </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue';
+
 const props = defineProps({
   elements: {
     type: Array,
@@ -208,6 +216,17 @@ const props = defineProps({
     required: true
   }
 });
+
+const isAnyExpanded = computed(() => {
+  return props.elements.some(el => el.expanded !== false);
+});
+
+function toggleAll() {
+  const targetState = !isAnyExpanded.value;
+  props.elements.forEach(el => {
+    el.expanded = targetState;
+  });
+}
 
 function getElementSummary(el) {
   if (el.type === 'text') {
@@ -352,6 +371,30 @@ function onImageUpload(element, event) {
 
 .mini-text-btn:hover {
   background: #cbd5e0 !important;
+  color: #1a202c !important;
+}
+
+.icon-only-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #4a5568 !important;
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  cursor: pointer;
+  line-height: 1 !important;
+  transition: all 0.15s ease;
+}
+
+.icon-only-btn:hover {
+  background: #edf2f7 !important;
   color: #1a202c !important;
 }
 
@@ -597,9 +640,9 @@ input[type="text"], input[type="number"], select {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
   font-size: 0.9rem;
   font-weight: 600;
   color: #4a5568;

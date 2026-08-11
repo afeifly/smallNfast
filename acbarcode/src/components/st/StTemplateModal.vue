@@ -135,12 +135,40 @@
             <button type="button" class="action-btn export-btn" @click="$emit('export-json')">
               📤 Backup JSON
             </button>
+            <button type="button" class="action-btn import-btn" title="Paste EZPX XML text directly" @click="showPasteEzpxModal = true">
+              📋 Paste EZPX Text
+            </button>
             <label class="action-btn import-btn">
               📥 Restore JSON
               <input type="file" accept=".json" style="display:none;" @change="onImport" />
             </label>
           </div>
           <button type="button" class="btn-close-footer" @click="$emit('close')">Close</button>
+        </div>
+
+        <!-- ── Paste EZPX Text Sub-Modal ─────────────────────── -->
+        <div v-if="showPasteEzpxModal" class="submodal-backdrop" @click.self="showPasteEzpxModal = false">
+          <div class="submodal-panel">
+            <div class="submodal-header">
+              <h3>📋 Paste EZPX XML Text</h3>
+              <button type="button" class="close-btn" @click="showPasteEzpxModal = false">✕</button>
+            </div>
+            <div class="submodal-body">
+              <p class="submodal-desc">Paste the XML text content of an <code>.ezpx</code> file below to generate a template:</p>
+              <textarea
+                v-model="pastedEzpxText"
+                class="ezpx-textarea"
+                placeholder='Paste <?xml version="1.0" encoding="utf-8"?> <PrintJob>... XML text here'
+                rows="10"
+              ></textarea>
+            </div>
+            <div class="submodal-footer">
+              <button type="button" class="btn-cancel" @click="showPasteEzpxModal = false">Cancel</button>
+              <button type="button" class="btn-import" @click="submitPasteEzpx" :disabled="!pastedEzpxText.trim()">
+                ✨ Create Template from Text
+              </button>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -165,8 +193,20 @@ const emit = defineEmits([
   'delete',
   'reset-defaults',
   'export-json',
-  'import-json'
+  'import-json',
+  'import-ezpx',
+  'paste-ezpx'
 ]);
+
+const showPasteEzpxModal = ref(false);
+const pastedEzpxText = ref('');
+
+function submitPasteEzpx() {
+  if (!pastedEzpxText.value.trim()) return;
+  emit('paste-ezpx', pastedEzpxText.value.trim());
+  pastedEzpxText.value = '';
+  showPasteEzpxModal.value = false;
+}
 
 // Selected ID within the modal (default to the currently active template)
 const selectedId = ref(props.activeTemplateId);
@@ -226,6 +266,11 @@ function onResetConfirm() {
 
 function onImport(event) {
   emit('import-json', event);
+  event.target.value = '';
+}
+
+function onImportEzpx(event) {
+  emit('import-ezpx', event);
   event.target.value = '';
 }
 </script>
@@ -644,4 +689,113 @@ function onImport(event) {
 }
 
 .btn-close-footer:hover { background: #cbd5e0 !important; }
+
+/* ── Submodal styles for Paste EZPX Text ────────────────── */
+.submodal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease;
+}
+
+.submodal-panel {
+  background: #ffffff;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.submodal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.submodal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #2d3748;
+}
+
+.submodal-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.submodal-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #4a5568;
+}
+
+.ezpx-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  font-family: monospace;
+  font-size: 0.82rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  resize: vertical;
+  box-sizing: border-box;
+  background: #f8fafc;
+}
+
+.ezpx-textarea:focus {
+  outline: none;
+  border-color: #3182ce;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.15);
+}
+
+.submodal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  background: #edf2f7;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-cancel {
+  padding: 0.5rem 1rem !important;
+  background: #e2e8f0 !important;
+  color: #4a5568 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  width: auto !important;
+  box-shadow: none !important;
+}
+
+.btn-import {
+  padding: 0.5rem 1.25rem !important;
+  background: #3182ce !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  width: auto !important;
+  box-shadow: none !important;
+}
+
+.btn-import:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>

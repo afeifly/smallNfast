@@ -55,6 +55,8 @@
       @reset-defaults="onResetDefaults"
       @export-json="onExportJson"
       @import-json="onImportJson"
+      @import-ezpx="onImportEzpx"
+      @paste-ezpx="onPasteEzpx"
     />
   </div>
 </template>
@@ -72,6 +74,7 @@ import StTemplateModal from './st/StTemplateModal.vue';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
 import { compileEZPX, compileEZPXRange } from '../utils/stEzpxCompiler.js';
+import { parseEzpxXmlToTemplate } from '../utils/stEzpxParser.js';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
 import { generateSerialRange } from '../utils/stSerialRange.js';
 import {
@@ -233,6 +236,48 @@ function onImportJson(event) {
     }
   };
   reader.readAsText(file);
+}
+
+function onImportEzpx(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const xmlStr = e.target.result;
+      const newTpl = parseEzpxXmlToTemplate(xmlStr, file.name);
+      if (newTpl && newTpl.elements_en?.length) {
+        templates.value.push(newTpl);
+        activeTemplateId.value = newTpl.id;
+        saveTemplatesToStorage(templates.value);
+        alert(`📥 EZPX Template "${newTpl.name}" imported with ${newTpl.elements_en.length} elements!`);
+      } else {
+        alert('Could not parse any elements from the provided EZPX file.');
+      }
+    } catch (err) {
+      console.error('EZPX import error:', err);
+      alert('Failed to parse EZPX file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function onPasteEzpx(xmlStr) {
+  if (!xmlStr || typeof xmlStr !== 'string' || !xmlStr.trim()) return;
+  try {
+    const newTpl = parseEzpxXmlToTemplate(xmlStr.trim(), 'Pasted EZPX Template');
+    if (newTpl && newTpl.elements_en?.length) {
+      templates.value.push(newTpl);
+      activeTemplateId.value = newTpl.id;
+      saveTemplatesToStorage(templates.value);
+      alert(`🎉 EZPX Template "${newTpl.name}" created with ${newTpl.elements_en.length} elements!`);
+    } else {
+      alert('Could not parse any elements from the pasted EZPX text.');
+    }
+  } catch (err) {
+    console.error('EZPX paste error:', err);
+    alert('Failed to parse EZPX XML text: ' + err.message);
+  }
 }
 
 // ── EZPL / EZPX / PDF Exports ──────────────────────────────────────────

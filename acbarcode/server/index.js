@@ -8,7 +8,8 @@ const app = express();
 const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 9016 : 5005);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.text({ type: ['application/xml', 'text/xml', 'text/plain'], limit: '10mb' }));
 
 // Load ST Label static image assets once at startup
 let stLogoBase64 = null;
@@ -947,7 +948,22 @@ const { generateStEzpxXml } = require('./ezpxGenerator');
  */
 async function handleStLabel(req, res) {
   try {
-    const { product, serial_numbers, options } = req.body || {};
+    let product, serial_numbers, options, template_xml;
+
+    if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
+      // Raw XML POST body
+      template_xml = req.body;
+      product = req.query.product || 'S695 4120';
+      serial_numbers = req.query.serial_numbers ? req.query.serial_numbers.split(',') : ['12345678'];
+      options = req.query.options ? req.query.options.split(',') : [];
+    } else {
+      // JSON body payload
+      const body = req.body || {};
+      product = body.product;
+      serial_numbers = body.serial_numbers;
+      options = body.options;
+      template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
+    }
 
     if (!product || typeof product !== 'string' || !product.trim()) {
       return res.status(400).json({ error: 'Missing required field: product' });
@@ -957,7 +973,7 @@ async function handleStLabel(req, res) {
       return res.status(400).json({ error: 'Missing required field: serial_numbers must be a non-empty array' });
     }
 
-    const ezpxXml = await generateStEzpxXml(product, serial_numbers, options || []);
+    const ezpxXml = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="label_all.ezpx"');

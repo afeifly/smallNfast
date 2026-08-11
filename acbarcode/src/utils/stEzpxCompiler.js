@@ -21,6 +21,30 @@ export function measureTextWidthDots(text, pt = 4, dpi = 203) {
 
 export async function getImageBase64(src) {
   if (!src) return { data: '', width: 0, height: 0 };
+
+  // Node.js environment check
+  if (typeof window === 'undefined') {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      let localPath = src;
+      if (src.startsWith('/')) {
+        localPath = path.join(process.cwd(), 'public', src);
+      }
+      if (fs.existsSync(localPath)) {
+        const buf = fs.readFileSync(localPath);
+        return { data: buf.toString('base64'), width: 100, height: 100 };
+      }
+    } catch (e) {
+      console.warn('Node.js getImageBase64 file read failed:', e);
+    }
+    if (src.startsWith('data:')) {
+      return { data: src.split(',')[1] || '', width: 100, height: 100 };
+    }
+    return { data: '', width: 0, height: 0 };
+  }
+
+  // Browser environment
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';

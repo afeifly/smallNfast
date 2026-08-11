@@ -927,7 +927,6 @@ app.post('/api/odoo/test-search', async (req, res) => {
       logs
     });
 
-
   } catch (err) {
     console.error('Error during Odoo test search:', err);
     logs.push(`Error: ${err.message}`);
@@ -939,8 +938,38 @@ app.post('/api/odoo/test-search', async (req, res) => {
   }
 });
 
+// ── Web API: POST /st_label ─────────────────────────────────────────────
+const { generateStEzpxXml } = require('./ezpxGenerator');
 
+/**
+ * POST /st_label and POST /api/st_label
+ * Generates printable labels as a downloadable EZPX file based on webapi.md spec.
+ */
+async function handleStLabel(req, res) {
+  try {
+    const { product, serial_numbers, options } = req.body || {};
 
+    if (!product || typeof product !== 'string' || !product.trim()) {
+      return res.status(400).json({ error: 'Missing required field: product' });
+    }
+
+    if (!serial_numbers || !Array.isArray(serial_numbers) || serial_numbers.length === 0) {
+      return res.status(400).json({ error: 'Missing required field: serial_numbers must be a non-empty array' });
+    }
+
+    const ezpxXml = await generateStEzpxXml(product, serial_numbers, options || []);
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="label_all.ezpx"');
+    return res.status(200).send(ezpxXml);
+  } catch (err) {
+    console.error('Error handling /st_label:', err);
+    return res.status(500).json({ error: 'Internal Server Error', message: err.message });
+  }
+}
+
+app.post('/st_label', handleStLabel);
+app.post('/api/st_label', handleStLabel);
 
 // Serve frontend build in production
 const clientDist = path.join(__dirname, '..', 'dist');
@@ -948,7 +977,7 @@ app.use(express.static(clientDist));
 
 app.get('*', (req, res, next) => {
   // If it looks like an API call, don't serve index.html
-  if (req.path.startsWith('/api/')) {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/st_label')) {
     return next();
   }
   const htmlPath = path.join(clientDist, 'index.html');

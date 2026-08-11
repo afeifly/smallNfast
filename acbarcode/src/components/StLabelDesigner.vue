@@ -2,6 +2,8 @@
   <div class="st-designer-container">
     <StHeaderActions 
       v-model="stSerialNumbersInput" 
+      v-model:endValue="stEndSerialNumberInput"
+      :range-count="serialRange.length"
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
       @open-template-modal="showTemplateModal = true"
@@ -25,10 +27,15 @@
         <StCanvasPreviewCard 
           ref="previewCardRef"
           :config="stCanvasConfig"
+          :range-count="serialRange.length"
+          :current-idx="currentPreviewIndex"
+          :current-s-n="currentPreviewSN"
+          @prev-page="prevPreviewPage"
+          @next-page="nextPreviewPage"
           @export-ezpl="exportEZPL"
           @export-ezpx="exportEZPX"
           @copy-ezpl="copyEZPL"
-          @download-pdf="downloadStSinglePDF"
+          @download-pdf="downloadStPDF"
         />
         <StCodePreviewCard :code="liveEzplCode" />
       </div>
@@ -64,8 +71,9 @@ import StCodePreviewCard from './st/StCodePreviewCard.vue';
 import StTemplateModal from './st/StTemplateModal.vue';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
-import { compileEZPX } from '../utils/stEzpxCompiler.js';
+import { compileEZPX, compileEZPXRange } from '../utils/stEzpxCompiler.js';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
+import { generateSerialRange } from '../utils/stSerialRange.js';
 import {
   loadTemplatesFromStorage,
   saveTemplatesToStorage,
@@ -78,7 +86,9 @@ import {
 defineEmits(['open-odoo-modal']);
 
 // ── State ──────────────────────────────────────────────────────────────
-const stSerialNumbersInput = ref('3726 0001');
+const stSerialNumbersInput = ref('12345678');
+const stEndSerialNumberInput = ref('');
+const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const showTemplateModal = ref(false);
 
@@ -103,9 +113,31 @@ const itemNumbersString = computed(() =>
   (activeTemplate.value?.itemNumbers || []).join(', ')
 );
 
+const serialRange = computed(() =>
+  generateSerialRange(stSerialNumbersInput.value, stEndSerialNumberInput.value)
+);
+
+const currentPreviewSN = computed(() => {
+  if (!serialRange.value.length) return '12345678';
+  const idx = Math.min(currentPreviewIndex.value, serialRange.value.length - 1);
+  return serialRange.value[Math.max(0, idx)];
+});
+
+// ── Navigation ─────────────────────────────────────────────────────────
+function prevPreviewPage() {
+  if (currentPreviewIndex.value > 0) {
+    currentPreviewIndex.value--;
+  }
+}
+
+function nextPreviewPage() {
+  if (currentPreviewIndex.value < serialRange.value.length - 1) {
+    currentPreviewIndex.value++;
+  }
+}
+
 // ── Fetch / Auto-match ─────────────────────────────────────────────────
 function fetchFromOdooStub() {
-  // Attempt item-number auto-match from SN input as a demo
   const sn = stSerialNumbersInput.value?.trim() || '';
   const matched = matchTemplateByItemNo(templates.value, sn);
   if (matched) {
@@ -121,7 +153,6 @@ function generateId() {
   return 'tpl_' + Math.random().toString(36).substr(2, 9);
 }
 
-// Fired from modal when user clicks "Apply Changes"
 function onUpdateTemplateField({ id, name, itemNumbers, config }) {
   const tpl = templates.value.find(t => t.id === id);
   if (!tpl) return;
@@ -204,42 +235,55 @@ function onImportJson(event) {
   reader.readAsText(file);
 }
 
-// ── EZPL / EZPX Exports ────────────────────────────────────────────────
+// ── EZPL / EZPX / PDF Exports ──────────────────────────────────────────
 const liveEzplCode = computed(() => {
-  const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
-  return compileEZPL(stElements.value, stCanvasConfig.value, firstSerial);
+  return serialRange.value
+    .map(sn => compileEZPL(stElements.value, stCanvasConfig.value, sn))
+    .join('\n; ========================\n');
 });
 
 function exportEZPL() {
-  const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
-  const ezplText = compileEZPL(stElements.value, stCanvasConfig.value, firstSerial);
+  const ezplText = liveEzplCode.value;
   const blob = new Blob([ezplText], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `label_${firstSerial.replace(/\s+/g, '_')}.ezpl`;
+  const rangeName = serialRange.value.length > 1
+    ? `${serialRange.value[0]}_to_${serialRange.value[serialRange.value.length - 1]}`
+    : serialRange.value[0];
+  a.download = `ST_Labels_${rangeName.replace(/\s+/g, '_')}.ezpl`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 async function exportEZPX() {
-  const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
-  const ezpxXml = await compileEZPX(stElements.value, stCanvasConfig.value, firstSerial);
+  const range = serialRange.value;
+  const firstSN = range[0] || '12345678';
+  // Use compileEZPXRange so GoLabel auto-increments serial across all labels in range
+  const ezpxXml = await compileEZPXRange(
+    stElements.value,
+    stCanvasConfig.value,
+    range.length > 0 ? range : [firstSN],
+    { labelsPerCut: 0 }
+  );
   const blob = new Blob([ezpxXml], { type: 'application/xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `label_${firstSerial.replace(/\s+/g, '_')}.ezpx`;
+  // Filename shows range: firstSN_to_lastSN when multi
+  const lastSN = range.length > 1 ? range[range.length - 1] : firstSN;
+  const fname = range.length > 1
+    ? `label_${firstSN.replace(/\s+/g, '_')}_to_${lastSN.replace(/\s+/g, '_')}.ezpx`
+    : `label_${firstSN.replace(/\s+/g, '_')}.ezpx`;
+  a.download = fname;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 async function copyEZPL() {
-  const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
-  const ezplText = compileEZPL(stElements.value, stCanvasConfig.value, firstSerial);
   try {
-    await navigator.clipboard.writeText(ezplText);
-    alert('📋 EZPL command code copied to clipboard!');
+    await navigator.clipboard.writeText(liveEzplCode.value);
+    alert(`📋 EZPL code for ${serialRange.value.length} label(s) copied to clipboard!`);
   } catch (err) {
     console.error('Failed to copy EZPL code:', err);
   }
@@ -248,14 +292,13 @@ async function copyEZPL() {
 // ── Canvas Update ──────────────────────────────────────────────────────
 function updateCanvas() {
   const canvas = previewCardRef.value?.canvasRef;
-  const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
   if (canvas) {
-    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, firstSerial);
+    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value);
   }
 }
 
 watch(
-  [activeTemplateId, activeLang, stSerialNumbersInput, templates],
+  [activeTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, currentPreviewIndex, templates],
   async () => {
     saveTemplatesToStorage(templates.value);
     await nextTick();
@@ -270,20 +313,36 @@ onMounted(() => {
   });
 });
 
-// ── PDF Download ───────────────────────────────────────────────────────
-function downloadStSinglePDF() {
-  const canvas = previewCardRef.value?.canvasRef;
-  if (!canvas) return;
-  const firstSerial = (stSerialNumbersInput.value || '').split(/\r?\n/)[0]?.trim() || '3726 0001';
+// ── Multi-Label PDF Download ───────────────────────────────────────────
+async function downloadStPDF() {
+  const range = serialRange.value;
+  if (!range.length) return;
+
   try {
     const w = stCanvasConfig.value.widthMm || 35;
     const h = stCanvasConfig.value.heightMm || 22;
-    const pdf = new jsPDF({ unit: 'mm', format: [w, h], orientation: w >= h ? 'landscape' : 'portrait' });
-    const dataUrl = canvas.toDataURL('image/png');
-    pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
-    pdf.save(`ST_Label_${firstSerial.replace(/\s+/g, '_')}.pdf`);
+    const orientation = w >= h ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({ unit: 'mm', format: [w, h], orientation });
+
+    const offscreenCanvas = document.createElement('canvas');
+
+    for (let i = 0; i < range.length; i++) {
+      const sn = range[i];
+      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn);
+      const dataUrl = offscreenCanvas.toDataURL('image/png');
+      if (i > 0) {
+        pdf.addPage([w, h], orientation);
+      }
+      pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
+    }
+
+    const filename = range.length > 1
+      ? `ST_Labels_${range[0]}_to_${range[range.length - 1]}_${range.length}pcs.pdf`.replace(/\s+/g, '_')
+      : `ST_Label_${range[0]}.pdf`.replace(/\s+/g, '_');
+
+    pdf.save(filename);
   } catch (err) {
-    console.error('Error downloading ST PDF:', err);
+    console.error('Error generating multi-label PDF:', err);
   }
 }
 </script>

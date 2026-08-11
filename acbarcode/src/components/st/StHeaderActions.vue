@@ -8,11 +8,24 @@
           type="text" 
           :value="modelValue" 
           @input="$emit('update:modelValue', $event.target.value)"
-          placeholder="e.g. 3726 0001" 
+          placeholder="Start e.g. 12345678" 
           class="sn-input"
         />
+        <label for="st-sn-end-input" class="sn-label end-label">End:</label>
+        <input 
+          id="st-sn-end-input"
+          type="text" 
+          :value="endValue" 
+          @input="$emit('update:endValue', $event.target.value)"
+          placeholder="End e.g. 12345680" 
+          class="sn-input sn-input-end"
+        />
+        <span v-if="rangeCount > 1" class="range-badge" title="Total labels to generate in this batch">
+          📦 {{ rangeCount }} Labels
+        </span>
       </div>
-      <button type="button" class="fetch-odoo-stub-btn" @click="$emit('fetch-odoo')">
+      <!-- Temporarily hidden per user request -->
+      <button type="button" class="fetch-odoo-stub-btn" v-if="false" @click="$emit('fetch-odoo')">
         🔄 Fetch Data from Odoo
       </button>
     </div>
@@ -20,7 +33,8 @@
       <button type="button" class="template-mgr-btn" @click="$emit('open-template-modal')">
         📋 Template Manager
       </button>
-      <button type="button" class="manage-odoo-btn" @click="$emit('open-odoo-modal')">
+      <!-- Temporarily hidden per user request -->
+      <button type="button" class="manage-odoo-btn" v-if="false" @click="$emit('open-odoo-modal')">
         ⚙️ Manage Odoo Server
       </button>
     </div>
@@ -32,10 +46,18 @@ defineProps({
   modelValue: {
     type: String,
     default: ''
+  },
+  endValue: {
+    type: String,
+    default: ''
+  },
+  rangeCount: {
+    type: Number,
+    default: 1
   }
 });
 
-defineEmits(['update:modelValue', 'fetch-odoo', 'open-odoo-modal', 'open-template-modal']);
+defineEmits(['update:modelValue', 'update:endValue', 'fetch-odoo', 'open-odoo-modal', 'open-template-modal']);
 </script>
 
 <style scoped>
@@ -77,7 +99,26 @@ defineEmits(['update:modelValue', 'fetch-odoo', 'open-odoo-modal', 'open-templat
   border: 1px solid #cbd5e0;
   border-radius: 6px;
   font-size: 0.9rem;
-  width: 200px;
+  width: 150px;
+}
+
+.end-label {
+  margin-left: 0.25rem;
+}
+
+.sn-input-end {
+  width: 150px;
+}
+
+.range-badge {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border: 1px solid #bee3f8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  border-radius: 20px;
+  white-space: nowrap;
 }
 
 .fetch-odoo-stub-btn {

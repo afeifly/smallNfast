@@ -2,7 +2,14 @@
   <div class="preview-card">
     <div class="preview-card-header">
       <h3>👁️ Live Canvas Preview</h3>
-      <span class="canvas-dim-tag">{{ config.widthMm }}mm × {{ config.heightMm }}mm</span>
+      <div class="header-tags">
+        <span v-if="rangeCount > 1" class="preview-nav-tag">
+          <button type="button" class="nav-btn" :disabled="currentIdx <= 0" @click="$emit('prev-page')">◀</button>
+          <span class="nav-sn-info">Label {{ currentIdx + 1 }} / {{ rangeCount }} (SN: {{ currentSN }})</span>
+          <button type="button" class="nav-btn" :disabled="currentIdx >= rangeCount - 1" @click="$emit('next-page')">▶</button>
+        </span>
+        <span class="canvas-dim-tag">{{ config.widthMm }}mm × {{ config.heightMm }}mm</span>
+      </div>
     </div>
 
     <div class="st-preview-viewport">
@@ -11,7 +18,7 @@
 
     <div class="st-action-toolbar">
       <button type="button" class="action-btn primary-ezpl" @click="$emit('export-ezpl')">
-        📥 Export EZPL (.ezpl)
+        📥 Export EZPL {{ rangeCount > 1 ? `(${rangeCount} Labels)` : '' }}
       </button>
       <button type="button" class="action-btn primary-ezpx" @click="$emit('export-ezpx')">
         📦 Export EZPX (.ezpx)
@@ -20,7 +27,7 @@
         📋 Copy EZPL Code
       </button>
       <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf')">
-        📄 Download PDF
+        📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount} Pages)` : '' }}
       </button>
     </div>
   </div>
@@ -33,6 +40,18 @@ defineProps({
   config: {
     type: Object,
     required: true
+  },
+  rangeCount: {
+    type: Number,
+    default: 1
+  },
+  currentIdx: {
+    type: Number,
+    default: 0
+  },
+  currentSN: {
+    type: String,
+    default: ''
   }
 });
 
@@ -40,7 +59,9 @@ defineEmits([
   'export-ezpl',
   'export-ezpx',
   'copy-ezpl',
-  'download-pdf'
+  'download-pdf',
+  'prev-page',
+  'next-page'
 ]);
 
 const canvasRef = ref(null);
@@ -74,6 +95,54 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.header-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.preview-nav-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #edf2f7;
+  padding: 0.2rem 0.5rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: #2d3748;
+}
+
+.nav-sn-info {
+  font-weight: 600;
+}
+
+.nav-btn {
+  background: #cbd5e0 !important;
+  color: #2d3748 !important;
+  border: none;
+  border-radius: 50%;
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+  line-height: 1;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: #a0aec0 !important;
+}
+
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .canvas-dim-tag {

@@ -1,160 +1,39 @@
-export const MULTI_TEMPLATES_KEY = 'acbarcode_st_templates_v2';
+export const MULTI_TEMPLATES_KEY = 'acbarcode_st_templates_v3';
 
 export const DEFAULT_ELEMENTS_EN = [
-  {
-    id: 'el_logo',
-    type: 'image',
-    name: 'Logo',
-    src: '/t_logo.jpg',
-    xMm: 1,
-    yMm: 1,
-    widthMm: 9.6,
-    storedName: 'Logo',
-    expanded: false
-  },
-  {
-    id: 'el_header_url',
-    type: 'text',
-    name: 'Header URL',
-    text: 'www.suto-itec.com',
-    xMm: 15.5,
-    yMm: 1.8,
-    fontSize: 5,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_divider',
-    type: 'hline',
-    name: 'Top Divider Line',
-    xMm: 1,
-    yMm: 4.2,
-    x1Mm: 34,
-    thicknessDots: 9,
-    expanded: false
-  },
-  {
-    id: 'el_model',
-    type: 'text',
-    name: 'Model Title',
-    text: 'Model: S403 | Thermal Mass Flow',
-    xMm: 1,
-    yMm: 4.8,
-    fontSize: 5,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_item_no',
-    type: 'text',
-    name: 'Item No.',
-    text: 'Item No.: S695 4035 (Air)',
-    xMm: 1,
-    yMm: 7.2,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_serial',
-    type: 'text',
-    name: 'Serial No.',
-    text: 'Serial No.: {{serial}}',
-    xMm: 1,
-    yMm: 8.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_range',
-    type: 'text',
-    name: 'Range',
-    text: 'Range: Standard',
-    xMm: 1,
-    yMm: 10.6,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_fieldbus',
-    type: 'text',
-    name: 'Fieldbus',
-    text: 'Fieldbus: Modbus/RTU+Analog',
-    xMm: 1,
-    yMm: 12.3,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_power',
-    type: 'text',
-    name: 'Power supply',
-    text: 'Power supply: 16...30 VDC',
-    xMm: 1,
-    yMm: 14.2,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_pressure',
-    type: 'text',
-    name: 'Max. Pressure',
-    text: 'Max. Pressure: 5.0 MPa(g)',
-    xMm: 1,
-    yMm: 15.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_separator',
-    type: 'hline',
-    lineShape: 'VLine',
-    name: 'Vertical Separator',
-    xMm: 19.6,
-    yMm: 14.3,
-    y1Mm: 17.3,
-    thicknessDots: 5,
-    expanded: false
-  },
-  {
-    id: 'el_accuracy',
-    type: 'text',
-    name: 'Accuracy',
-    text: 'Accuracy: 1.5%',
-    xMm: 20.4,
-    yMm: 14.2,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_mfd',
-    type: 'text',
-    name: 'MFD',
-    text: 'MFD: 2027-07',
-    xMm: 20.4,
-    yMm: 15.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_bgx',
-    type: 'image',
-    name: 'Bottom Right Image',
-    src: '/b_bgx.png',
-    xMm: 18,
-    yMm: 17.6,
-    widthMm: 16,
-    storedName: 'Bottom_Right_Image',
-    autoBottomRight: true,
-    expanded: false
-  }
+  // ── Folders ──
+  { id: 'f_var', type: 'folder', name: 'Variable Data', expanded: true },
+  { id: 'f_fixed', type: 'folder', name: 'Fixed Layout', expanded: false },
+  // ── Variable elements (user focuses on these) ──
+  { id: 'el_model', type: 'text', name: 'Model Title', folderId: 'f_var',
+    text: 'Model: {{product}}', xMm: 1, yMm: 4.8, fontSize: 5, bold: true, expanded: false },
+  { id: 'el_item_no', type: 'text', name: 'Item No.', folderId: 'f_var',
+    text: 'Item No.: {{product}}', xMm: 1, yMm: 7.2, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_serial', type: 'text', name: 'Serial No.', folderId: 'f_var',
+    text: 'Serial No.: {{serial}}', xMm: 1, yMm: 8.9, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_range', type: 'text', name: 'Range / Options', folderId: 'f_var',
+    text: 'Option: {{options}}', xMm: 1, yMm: 10.6, fontSize: 4, bold: true, expanded: false },
+  // ── Fixed elements (collapse to hide) ──
+  { id: 'el_logo', type: 'image', name: 'Logo', folderId: 'f_fixed',
+    src: '/t_logo.jpg', xMm: 1, yMm: 1, widthMm: 9.6, storedName: 'Logo', expanded: false },
+  { id: 'el_header_url', type: 'text', name: 'Header URL', folderId: 'f_fixed',
+    text: 'www.suto-itec.com', xMm: 15.5, yMm: 1.8, fontSize: 5, bold: true, expanded: false },
+  { id: 'el_divider', type: 'hline', name: 'Top Divider', folderId: 'f_fixed',
+    xMm: 1, yMm: 4.2, x1Mm: 34, thicknessDots: 9, expanded: false },
+  { id: 'el_fieldbus', type: 'text', name: 'Fieldbus', folderId: 'f_fixed',
+    text: 'Fieldbus: Modbus/RTU+Analog', xMm: 1, yMm: 12.3, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_power', type: 'text', name: 'Power supply', folderId: 'f_fixed',
+    text: 'Power supply: 16...30 VDC', xMm: 1, yMm: 14.2, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_pressure', type: 'text', name: 'Max. Pressure', folderId: 'f_fixed',
+    text: 'Max. Pressure: 5.0 MPa(g)', xMm: 1, yMm: 15.9, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_separator', type: 'hline', lineShape: 'VLine', name: 'Vertical Sep.', folderId: 'f_fixed',
+    xMm: 19.6, yMm: 14.3, y1Mm: 17.3, thicknessDots: 5, expanded: false },
+  { id: 'el_accuracy', type: 'text', name: 'Accuracy', folderId: 'f_fixed',
+    text: 'Accuracy: 1.5%', xMm: 20.4, yMm: 14.2, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_mfd', type: 'text', name: 'MFD', folderId: 'f_fixed',
+    text: 'MFD: 2027-07', xMm: 20.4, yMm: 15.9, fontSize: 4, bold: true, expanded: false },
+  { id: 'el_bgx', type: 'image', name: 'Bottom Right Image', folderId: 'f_fixed',
+    src: '/b_bgx.png', xMm: 18, yMm: 17.6, widthMm: 16, storedName: 'Bottom_Right_Image', autoBottomRight: true, expanded: false }
 ];
 
 export const DEFAULT_ELEMENTS_CN = [

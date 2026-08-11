@@ -19,6 +19,7 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001') {
   ezpl += `^L\n`;
 
   elements.forEach((el, index) => {
+    if (el.type === 'folder') return;
     const textVal = (el.text || el.data || '').replace(/\{\{serial\}\}/g, serial);
 
     if (el.type === 'text') {
@@ -68,7 +69,13 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001') {
       const y = mmToDots(el.yMm || 0);
       const heightDots = mmToDots(el.heightMm || 10);
       const readable = el.readable ? 1 : 0;
-      ezpl += `BQ,${x},${y},2,5,${heightDots},0,${readable},${textVal}\n`;
+      let narrow = 2;
+      if (el.widthMm) {
+        const totalModules = (textVal.length * 11) + 35;
+        narrow = Math.max(1, Math.round(mmToDots(el.widthMm) / totalModules));
+      }
+      const wide = Math.max(narrow + 1, Math.round(narrow * 2.5));
+      ezpl += `BQ,${x},${y},${narrow},${wide},${heightDots},0,${readable},${textVal}\n`;
     } else if (el.type === 'qrcode') {
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);

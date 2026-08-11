@@ -304,12 +304,13 @@ function exportEZPL() {
 async function exportEZPX() {
   const range = serialRange.value;
   const firstSN = range[0] || '12345678';
+  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
   // Use compileEZPXRange so GoLabel auto-increments serial across all labels in range
   const ezpxXml = await compileEZPXRange(
     stElements.value,
     stCanvasConfig.value,
     range.length > 0 ? range : [firstSN],
-    { labelsPerCut: 0 }
+    { labelsPerCut: 0, product: activeProd }
   );
   const blob = new Blob([ezpxXml], { type: 'application/xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -338,7 +339,8 @@ async function copyEZPL() {
 function updateCanvas() {
   const canvas = previewCardRef.value?.canvasRef;
   if (canvas) {
-    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value);
+    const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, activeProd);
   }
 }
 
@@ -403,7 +405,7 @@ async function downloadStPDF() {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
   gap: 1.5rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 960px) {
@@ -416,5 +418,10 @@ async function downloadStPDF() {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.st-editor-panel > * {
+  flex: 1;
+  min-height: 0;
 }
 </style>

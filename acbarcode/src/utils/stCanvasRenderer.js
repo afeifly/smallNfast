@@ -21,7 +21,7 @@ export function getCachedImage(src) {
   });
 }
 
-export async function renderStCanvasDynamic(canvas, elements = [], config = {}, serial = '3726 0001') {
+export async function renderStCanvasDynamic(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '') {
   if (!canvas) return;
   const dpi = PRINTER_DPI;
   const mmToPx = (mm) => Math.round((mm / 25.4) * dpi);
@@ -38,7 +38,12 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
   ctx.fillRect(0, 0, W, H);
 
   for (const el of elements) {
-    const textVal = (el.text || el.data || '').replace(/\{\{serial\}\}/g, serial);
+    if (el.type === 'folder') continue;
+    let textVal = (el.text || el.data || '')
+      .replace(/\{\{serial\}\}/g, serial)
+      .replace(/\{\{product\}\}/g, product || 'S695 4035 (Air)')
+      .replace(/\{\{product_no\}\}/g, product || 'S695 4035 (Air)')
+      .replace(/\{\{options\}\}/g, optionsText || 'Range: Standard');
 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);
@@ -87,9 +92,9 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
           fontSize: ptToPx(4),
           margin: 0
         });
-        const bcW = offscreenCanvas.width;
-        const bcH = offscreenCanvas.height;
-        ctx.drawImage(offscreenCanvas, mmToPx(el.xMm), mmToPx(el.yMm), bcW, bcH);
+        const drawW = el.widthMm ? mmToPx(el.widthMm) : offscreenCanvas.width;
+        const drawH = offscreenCanvas.height;
+        ctx.drawImage(offscreenCanvas, mmToPx(el.xMm), mmToPx(el.yMm), drawW, drawH);
       } catch (e) {
         console.warn('Barcode render error:', e);
       }

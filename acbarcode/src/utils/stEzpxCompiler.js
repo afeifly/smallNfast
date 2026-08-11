@@ -177,10 +177,21 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
 
   // ── Build qlabel shapes ───────────────────────────────────────────────
   let qlabelShapes = '';
+  const productVal = (options && typeof options === 'object' && options.product) ? options.product : '';
+  const optionsVal = (options && typeof options === 'object' && options.optionsText) ? options.optionsText : '';
 
   for (let index = 0; index < elements.length; index++) {
-    const el          = elements[index];
-    const rawTemplate = el.text || el.data || '';
+    const el = elements[index];
+    if (el.type === 'folder') continue;
+    let rawTemplate = el.text || el.data || '';
+    if (productVal) {
+      rawTemplate = rawTemplate
+        .replace(/\{\{product\}\}/g, productVal)
+        .replace(/\{\{product_no\}\}/g, productVal);
+    }
+    if (optionsVal) {
+      rawTemplate = rawTemplate.replace(/\{\{options\}\}/g, optionsVal);
+    }
 
     // DispData: always the rendered first SN (for GoLabel preview)
     const dispVal     = rawTemplate.replace(/\{\{serial\}\}/g, firstSN);
@@ -398,9 +409,15 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       const y          = mmToDots(el.yMm || 0);
       const heightDots = mmToDots(el.heightMm || 10);
       const readable   = el.readable ? 'Bottom' : 'None';
+      let narrow = 2;
+      if (el.widthMm) {
+        const totalModules = (escapedData.length * 11) + 35;
+        narrow = Math.max(1, Math.round(mmToDots(el.widthMm) / totalModules));
+      }
+      const wide = Math.max(narrow + 1, Math.round(narrow * 2.5));
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Barcode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" BarcodeType="Code128" Height="${heightDots}" Narrow="2" Wide="5" Readable="${readable}" DisplayText="${escapedDisp}">
+      <GraphicShape xsi:type="Barcode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" BarcodeType="Code128" Height="${heightDots}" Narrow="${narrow}" Wide="${wide}" Readable="${readable}" DisplayText="${escapedDisp}">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>

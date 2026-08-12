@@ -91,6 +91,7 @@
 
 <script setup>
 import { computed, h, defineComponent } from 'vue';
+import { showStConfirm } from '../../utils/stDialog.js';
 
 /* ── PROPS ──────────────────────────────────────────────── */
 const props = defineProps({
@@ -132,15 +133,36 @@ function addElement(type) {
   props.elements.push(el);
 }
 
-function deleteById(id) {
+async function deleteById(id, confirmDelete = true) {
   const i = props.elements.findIndex(e => e.id === id);
-  if (i !== -1) props.elements.splice(i, 1);
+  if (i !== -1) {
+    if (confirmDelete) {
+      const el = props.elements[i];
+      const name = el.name || el.type || 'element';
+      const confirmed = await showStConfirm({
+        title: 'Delete Element',
+        message: `Are you sure you want to delete "${name}"?`,
+        confirmText: 'Delete',
+        type: 'danger'
+      });
+      if (!confirmed) return;
+    }
+    props.elements.splice(i, 1);
+  }
 }
 
-function deleteFolder(folder) {
+async function deleteFolder(folder) {
+  const folderName = folder.name || 'this folder';
+  const confirmed = await showStConfirm({
+    title: 'Delete Folder',
+    message: `Are you sure you want to delete folder "${folderName}"?`,
+    confirmText: 'Delete Folder',
+    type: 'danger'
+  });
+  if (!confirmed) return;
   // un-parent children
   props.elements.forEach(e => { if (e.folderId === folder.id) e.folderId = null; });
-  deleteById(folder.id);
+  deleteById(folder.id, false);
 }
 
 function onImageUpload(el, event) {
@@ -473,22 +495,23 @@ const ElementForm = defineComponent({
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
 }
 :deep(.fg-grow) { flex: 1; }
 :deep(.fg-row) {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
 }
 :deep(.fg label) {
   font-size: 11px;
   color: #718096;
   font-weight: 500;
+  white-space: nowrap;
 }
-:deep(.fg input[type="text"]),
-:deep(.fg input[type="number"]),
-:deep(.fg select) {
+:deep(.fg input[type="text"]) {
   background: white;
   border: 1px solid #cbd5e0;
   color: #2d3748;
@@ -498,6 +521,28 @@ const ElementForm = defineComponent({
   width: 100%;
   box-sizing: border-box;
 }
+:deep(.fg select) {
+  background: white;
+  border: 1px solid #cbd5e0;
+  color: #2d3748;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  width: auto;
+  min-width: 95px;
+  box-sizing: border-box;
+}
+:deep(.fg input[type="number"]) {
+  background: white;
+  border: 1px solid #cbd5e0;
+  color: #2d3748;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  width: 55px;
+  max-width: 60px;
+  box-sizing: border-box;
+}
 :deep(.fg input:focus),
 :deep(.fg select:focus) {
   border-color: #3182ce;
@@ -505,13 +550,15 @@ const ElementForm = defineComponent({
   box-shadow: 0 0 0 2px rgba(49,130,206,0.15);
 }
 :deep(.cb) {
-  display: flex !important;
+  display: inline-flex !important;
   align-items: center;
   gap: 4px;
   font-size: 12px;
   color: #4a5568;
   cursor: pointer;
-  margin-top: 2px;
+  height: 25px;
+  margin: 0;
+  user-select: none;
 }
 :deep(.img-row) {
   display: flex;

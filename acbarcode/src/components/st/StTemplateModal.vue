@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="modal-backdrop" @click.self="$emit('close')">
+    <div class="modal-backdrop">
       <div class="modal-panel">
 
         <!-- ── Header ─────────────────────────────────────────── -->
@@ -132,16 +132,9 @@
             <button type="button" class="action-btn reset-btn" :disabled="!selectedTemplate" @click="onResetConfirm">
               🔄 Reset Layout
             </button>
-            <button type="button" class="action-btn export-btn" @click="$emit('export-json')">
-              📤 Backup JSON
-            </button>
             <button type="button" class="action-btn import-btn" title="Paste EZPX XML text directly" @click="showPasteEzpxModal = true">
               📋 Paste EZPX Text
             </button>
-            <label class="action-btn import-btn">
-              📥 Restore JSON
-              <input type="file" accept=".json" style="display:none;" @change="onImport" />
-            </label>
           </div>
           <button type="button" class="btn-close-footer" @click="$emit('close')">Close</button>
         </div>
@@ -178,6 +171,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { showStConfirm } from '../../utils/stDialog.js';
 
 const props = defineProps({
   templates: { type: Array, required: true },
@@ -251,15 +245,27 @@ function applyChanges() {
   });
 }
 
-function onDeleteConfirm() {
+async function onDeleteConfirm() {
   if (props.templates.length <= 1) return;
-  if (confirm(`Delete template "${selectedTemplate.value?.name}"? This cannot be undone.`)) {
+  const confirmed = await showStConfirm({
+    title: 'Delete Template',
+    message: `Are you sure you want to delete template "${selectedTemplate.value?.name}"? This action cannot be undone.`,
+    confirmText: 'Delete Template',
+    type: 'danger'
+  });
+  if (confirmed) {
     emit('delete');
   }
 }
 
-function onResetConfirm() {
-  if (confirm(`Reset template "${selectedTemplate.value?.name}" to default elements? All layer edits will be lost.`)) {
+async function onResetConfirm() {
+  const confirmed = await showStConfirm({
+    title: 'Reset Template Layout',
+    message: `Reset template "${selectedTemplate.value?.name}" to factory default elements? All layer edits will be lost.`,
+    confirmText: 'Reset Layout',
+    type: 'warning'
+  });
+  if (confirmed) {
     emit('reset-defaults');
   }
 }
@@ -578,13 +584,21 @@ function onImportEzpx(event) {
   white-space: nowrap;
 }
 
-.dim-input-group input[type="number"],
+.dim-input-group input[type="number"] {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  width: 55px;
+  box-sizing: border-box;
+}
+
 .dim-input-group select {
   padding: 0.45rem 0.6rem;
   border: 1px solid #cbd5e0;
   border-radius: 6px;
   font-size: 0.88rem;
-  width: 72px;
+  width: 90px;
   box-sizing: border-box;
 }
 

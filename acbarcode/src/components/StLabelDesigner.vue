@@ -23,6 +23,7 @@
           :item-numbers="itemNumbersString"
           :active-lang="activeLang"
           @update:active-lang="activeLang = $event"
+          @copy-from-en="onCopyEnToCn"
         />
         <StCanvasPreviewCard 
           ref="previewCardRef"
@@ -36,6 +37,8 @@
           @export-ezpx="exportEZPX"
           @copy-ezpl="copyEZPL"
           @download-pdf="downloadStPDF"
+          @export-json="onExportJson"
+          @import-json="onImportJson"
         />
         <StCodePreviewCard :code="liveEzplCode" />
       </div>
@@ -58,6 +61,9 @@
       @import-ezpx="onImportEzpx"
       @paste-ezpx="onPasteEzpx"
     />
+
+    <!-- Custom Modal Dialogs -->
+    <StConfirmDialog />
   </div>
 </template>
 
@@ -71,6 +77,8 @@ import StElementsManagerCard from './st/StElementsManagerCard.vue';
 import StCanvasPreviewCard from './st/StCanvasPreviewCard.vue';
 import StCodePreviewCard from './st/StCodePreviewCard.vue';
 import StTemplateModal from './st/StTemplateModal.vue';
+import StConfirmDialog from './st/StConfirmDialog.vue';
+import { showStAlert, showStConfirm } from '../utils/stDialog.js';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
 import { compileEZPX, compileEZPXRange } from '../utils/stEzpxCompiler.js';
@@ -145,9 +153,9 @@ function fetchFromOdooStub() {
   const matched = matchTemplateByItemNo(templates.value, sn);
   if (matched) {
     activeTemplateId.value = matched.id;
-    alert(`🔄 Odoo Stub: Auto-matched template "${matched.name}" for SN "${sn}".`);
+    showStAlert(`Auto-matched template "${matched.name}" for SN "${sn}".`, 'Odoo Data Sync', 'success');
   } else {
-    alert('🔄 Odoo Data Sync Stub:\nIn production, this will query Odoo for MO / Serial Number details.');
+    showStAlert('In production, this button will query Odoo for MO / Serial Number details to populate template fields.', 'Odoo Data Sync Stub', 'info');
   }
 }
 
@@ -162,6 +170,12 @@ function onUpdateTemplateField({ id, name, itemNumbers, config }) {
   tpl.name = name;
   tpl.itemNumbers = itemNumbers;
   tpl.config = { ...config };
+  saveTemplatesToStorage(templates.value);
+}
+
+function onCopyEnToCn() {
+  if (!activeTemplate.value) return;
+  activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(activeTemplate.value.elements_en || []));
   saveTemplatesToStorage(templates.value);
 }
 
@@ -227,12 +241,12 @@ function onImportJson(event) {
         templates.value = data;
         activeTemplateId.value = data[0].id;
         saveTemplatesToStorage(templates.value);
-        alert('📥 Templates restored successfully!');
+        showStAlert('Templates restored successfully!', 'JSON Restore', 'success');
       } else {
-        alert('Invalid JSON: Expected an array of templates.');
+        showStAlert('Invalid JSON: Expected an array of templates.', 'JSON Restore Error', 'warning');
       }
     } catch (err) {
-      alert('Failed to parse JSON file.');
+      showStAlert('Failed to parse JSON backup file.', 'JSON Restore Error', 'danger');
     }
   };
   reader.readAsText(file);
@@ -250,13 +264,13 @@ function onImportEzpx(event) {
         templates.value.push(newTpl);
         activeTemplateId.value = newTpl.id;
         saveTemplatesToStorage(templates.value);
-        alert(`📥 EZPX Template "${newTpl.name}" imported with ${newTpl.elements_en.length} elements!`);
+        showStAlert(`EZPX Template "${newTpl.name}" imported with ${newTpl.elements_en.length} elements!`, 'EZPX Import', 'success');
       } else {
-        alert('Could not parse any elements from the provided EZPX file.');
+        showStAlert('Could not parse any elements from the provided EZPX file.', 'EZPX Import Failed', 'warning');
       }
     } catch (err) {
       console.error('EZPX import error:', err);
-      alert('Failed to parse EZPX file: ' + err.message);
+      showStAlert('Failed to parse EZPX file: ' + err.message, 'EZPX Import Error', 'danger');
     }
   };
   reader.readAsText(file);
@@ -270,13 +284,13 @@ function onPasteEzpx(xmlStr) {
       templates.value.push(newTpl);
       activeTemplateId.value = newTpl.id;
       saveTemplatesToStorage(templates.value);
-      alert(`🎉 EZPX Template "${newTpl.name}" created with ${newTpl.elements_en.length} elements!`);
+      showStAlert(`EZPX Template "${newTpl.name}" created with ${newTpl.elements_en.length} elements!`, 'EZPX Paste', 'success');
     } else {
-      alert('Could not parse any elements from the pasted EZPX text.');
+      showStAlert('Could not parse any elements from the pasted EZPX text.', 'EZPX Paste Failed', 'warning');
     }
   } catch (err) {
     console.error('EZPX paste error:', err);
-    alert('Failed to parse EZPX XML text: ' + err.message);
+    showStAlert('Failed to parse EZPX XML text: ' + err.message, 'EZPX Paste Error', 'danger');
   }
 }
 
@@ -329,7 +343,7 @@ async function exportEZPX() {
 async function copyEZPL() {
   try {
     await navigator.clipboard.writeText(liveEzplCode.value);
-    alert(`📋 EZPL code for ${serialRange.value.length} label(s) copied to clipboard!`);
+    showStAlert(`EZPL code for ${serialRange.value.length} label(s) copied to clipboard!`, 'Copied', 'success');
   } catch (err) {
     console.error('Failed to copy EZPL code:', err);
   }

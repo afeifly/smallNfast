@@ -17,18 +17,19 @@
     </div>
 
     <div class="st-action-toolbar">
-      <button type="button" class="action-btn primary-ezpl" @click="$emit('export-ezpl')">
-        📥 Export EZPL {{ rangeCount > 1 ? `(${rangeCount} Labels)` : '' }}
-      </button>
       <button type="button" class="action-btn primary-ezpx" @click="$emit('export-ezpx')">
         📦 Export EZPX (.ezpx)
-      </button>
-      <button type="button" class="action-btn copy-ezpl" @click="$emit('copy-ezpl')">
-        📋 Copy EZPL Code
       </button>
       <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf')">
         📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount} Pages)` : '' }}
       </button>
+      <button type="button" class="action-btn export-json-btn" @click="$emit('export-json')">
+        📤 Backup JSON
+      </button>
+      <label class="action-btn import-json-btn">
+        📥 Restore JSON
+        <input type="file" accept=".json" style="display:none;" @change="$emit('import-json', $event)" />
+      </label>
     </div>
   </div>
 </template>
@@ -56,10 +57,10 @@ defineProps({
 });
 
 defineEmits([
-  'export-ezpl',
   'export-ezpx',
-  'copy-ezpl',
   'download-pdf',
+  'export-json',
+  'import-json',
   'prev-page',
   'next-page'
 ]);
@@ -193,15 +194,6 @@ defineExpose({
   border: none;
 }
 
-.primary-ezpl {
-  background: #3182ce !important;
-  color: white !important;
-}
-
-.primary-ezpl:hover {
-  background: #2b6cb0 !important;
-}
-
 .primary-ezpx {
   background: #805ad5 !important;
   color: white !important;
@@ -211,15 +203,6 @@ defineExpose({
   background: #6b46c1 !important;
 }
 
-.copy-ezpl {
-  background: #38a169 !important;
-  color: white !important;
-}
-
-.copy-ezpl:hover {
-  background: #2f855a !important;
-}
-
 .pdf-btn {
   background: #e53e3e !important;
   color: white !important;
@@ -227,5 +210,26 @@ defineExpose({
 
 .pdf-btn:hover {
   background: #c53030 !important;
+}
+
+.export-json-btn {
+  background: #2b6cb0 !important;
+  color: white !important;
+}
+
+.export-json-btn:hover {
+  background: #2c5282 !important;
+}
+
+.import-json-btn {
+  background: #4a5568 !important;
+  color: white !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.import-json-btn:hover {
+  background: #2d3748 !important;
 }
 </style>

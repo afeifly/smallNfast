@@ -1,21 +1,32 @@
 <template>
   <div class="editor-card">
-    <!-- Card header: title + EN/CN toggle -->
+    <!-- Card header: title + Copy from EN + EN/CN toggle -->
     <div class="card-header">
       <h3>📏 Template basic infos</h3>
-      <div class="lang-toggle">
+      <div class="header-controls">
         <button
+          v-if="activeLang === 'CN'"
           type="button"
-          class="lang-btn"
-          :class="{ active: activeLang === 'EN' }"
-          @click="$emit('update:activeLang', 'EN')"
-        >🇬🇧 EN</button>
-        <button
-          type="button"
-          class="lang-btn"
-          :class="{ active: activeLang === 'CN' }"
-          @click="$emit('update:activeLang', 'CN')"
-        >🇨🇳 CN</button>
+          class="copy-en-btn"
+          @click="onCopyFromEn"
+          title="Copy element layout from EN version to CN version"
+        >
+          📋 Copy from EN
+        </button>
+        <div class="lang-toggle">
+          <button
+            type="button"
+            class="lang-btn"
+            :class="{ active: activeLang === 'EN' }"
+            @click="$emit('update:activeLang', 'EN')"
+          >🇬🇧 EN</button>
+          <button
+            type="button"
+            class="lang-btn"
+            :class="{ active: activeLang === 'CN' }"
+            @click="$emit('update:activeLang', 'CN')"
+          >🇨🇳 CN</button>
+        </div>
       </div>
     </div>
 
@@ -35,6 +46,8 @@
 </template>
 
 <script setup>
+import { showStConfirm } from '../../utils/stDialog.js';
+
 defineProps({
   config: { type: Object, required: true },
   templateName: { type: String, default: '' },
@@ -42,7 +55,20 @@ defineProps({
   activeLang: { type: String, default: 'EN' }
 });
 
-defineEmits(['update:activeLang']);
+const emit = defineEmits(['update:activeLang', 'copy-from-en']);
+
+async function onCopyFromEn() {
+  const confirmed = await showStConfirm({
+    title: 'Copy from EN Template',
+    message: 'This will overwrite your current CN elements configuration with a complete clone of the EN element layout.\n\nAll current CN modifications will be lost. Do you want to proceed?',
+    confirmText: 'Copy from EN',
+    cancelText: 'Cancel',
+    type: 'warning'
+  });
+  if (confirmed) {
+    emit('copy-from-en');
+  }
+}
 </script>
 
 <style scoped>
@@ -70,6 +96,32 @@ defineEmits(['update:activeLang']);
   align-items: center;
   gap: 0.4rem;
   white-space: nowrap;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.copy-en-btn {
+  background: #edf2f7 !important;
+  color: #2b6cb0 !important;
+  border: 1px solid #cbd5e0 !important;
+  padding: 0.28rem 0.6rem !important;
+  border-radius: 6px !important;
+  font-size: 0.76rem !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  transition: all 0.13s ease;
+  white-space: nowrap;
+  width: auto !important;
+}
+
+.copy-en-btn:hover {
+  background: #ebf8ff !important;
+  border-color: #3182ce !important;
 }
 
 /* ── EN/CN Toggle ─────────────────────────────── */

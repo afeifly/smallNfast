@@ -3,6 +3,7 @@
     <StHeaderActions 
       v-model="stSerialNumbersInput" 
       v-model:endValue="stEndSerialNumberInput"
+      v-model:optionsValue="stOptionsInput"
       :range-count="serialRange.length"
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
@@ -33,12 +34,10 @@
           :current-s-n="currentPreviewSN"
           @prev-page="prevPreviewPage"
           @next-page="nextPreviewPage"
-          @export-ezpl="exportEZPL"
           @export-ezpx="exportEZPX"
-          @copy-ezpl="copyEZPL"
           @download-pdf="downloadStPDF"
-          @export-json="onExportJson"
-          @import-json="onImportJson"
+          @export-template-json="exportSingleTemplateJson"
+          @import-template-json="importSingleTemplateJson"
         />
         <StCodePreviewCard :code="liveEzplCode" />
       </div>
@@ -99,6 +98,7 @@ defineEmits(['open-odoo-modal']);
 // ── State ──────────────────────────────────────────────────────────────
 const stSerialNumbersInput = ref('12345678');
 const stEndSerialNumberInput = ref('');
+const stOptionsInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const showTemplateModal = ref(false);
@@ -219,6 +219,68 @@ function onResetDefaults() {
   saveTemplatesToStorage(templates.value);
 }
 
+function exportSingleTemplateJson() {
+  if (!activeTemplate.value) return;
+  const tpl = JSON.parse(JSON.stringify(activeTemplate.value));
+  const jsonStr = JSON.stringify(tpl, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = (tpl.name || 'template').replace(/[^a-zA-Z0-9_-]/g, '_');
+  a.download = `template_${safeName}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importSingleTemplateJson(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const importedConfig = data.config || { widthMm: 35, heightMm: 22, dpi: 203 };
+        const importedEn = data.elements_en || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
+        const importedCn = data.elements_cn || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
+
+        if (activeTemplate.value) {
+          // Preserve current template name & itemNumbers intact! Only update label size/DPI config and element layers
+          activeTemplate.value.config = { ...importedConfig };
+          activeTemplate.value.elements_en = JSON.parse(JSON.stringify(importedEn));
+          activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(importedCn));
+        } else {
+          const newTpl = {
+            id: data.id || generateId(),
+            name: data.name || 'Imported Template',
+            itemNumbers: Array.isArray(data.itemNumbers) ? data.itemNumbers : [],
+            config: importedConfig,
+            elements_en: importedEn,
+            elements_cn: importedCn
+          };
+          templates.value.push(newTpl);
+          activeTemplateId.value = newTpl.id;
+        }
+
+        saveTemplatesToStorage(templates.value);
+        showStAlert(`Template layout restored into "${activeTemplate.value?.name}"!`, 'Template Restored', 'success');
+      } else if (Array.isArray(data) && data.length > 0) {
+        templates.value = data;
+        activeTemplateId.value = data[0].id;
+        saveTemplatesToStorage(templates.value);
+        showStAlert('Full template database restored from backup!', 'Database Restored', 'success');
+      } else {
+        showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
+      }
+    } catch (err) {
+      console.error('Import template JSON error:', err);
+      showStAlert('Failed to parse template JSON file: ' + err.message, 'Import Error', 'danger');
+    }
+  };
+  reader.readAsText(file);
+}
+
 function onExportJson() {
   const json = JSON.stringify(templates.value, null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
@@ -296,8 +358,9 @@ function onPasteEzpx(xmlStr) {
 
 // ── EZPL / EZPX / PDF Exports ──────────────────────────────────────────
 const liveEzplCode = computed(() => {
+  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
   return serialRange.value
-    .map(sn => compileEZPL(stElements.value, stCanvasConfig.value, sn))
+    .map(sn => compileEZPL(stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value))
     .join('\n; ========================\n');
 });
 
@@ -324,7 +387,7 @@ async function exportEZPX() {
     stElements.value,
     stCanvasConfig.value,
     range.length > 0 ? range : [firstSN],
-    { labelsPerCut: 0, product: activeProd }
+    { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value }
   );
   const blob = new Blob([ezpxXml], { type: 'application/xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -354,12 +417,12 @@ function updateCanvas() {
   const canvas = previewCardRef.value?.canvasRef;
   if (canvas) {
     const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
-    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, activeProd);
+    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, activeProd, stOptionsInput.value);
   }
 }
 
 watch(
-  [activeTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, currentPreviewIndex, templates],
+  [activeTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, currentPreviewIndex, templates],
   async () => {
     saveTemplatesToStorage(templates.value);
     await nextTick();
@@ -384,12 +447,13 @@ async function downloadStPDF() {
     const h = stCanvasConfig.value.heightMm || 22;
     const orientation = w >= h ? 'landscape' : 'portrait';
     const pdf = new jsPDF({ unit: 'mm', format: [w, h], orientation });
+    const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
 
     const offscreenCanvas = document.createElement('canvas');
 
     for (let i = 0; i < range.length; i++) {
       const sn = range[i];
-      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn);
+      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value);
       const dataUrl = offscreenCanvas.toDataURL('image/png');
       if (i > 0) {
         pdf.addPage([w, h], orientation);

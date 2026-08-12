@@ -218,10 +218,96 @@ const ElementForm = defineComponent({
       ]));
 
       if (el.type === 'text') {
-        kids.push(h('div', { class: 'fg' }, [
-          h('label', 'Text  (use {{serial}}, {{product}}, {{options}})'),
-          h('input', { type: 'text', value: el.text, onInput: e => el.text = e.target.value })
+        const isOptionMode = !!(el.useOptionMapping || el.isOptionMode);
+
+        // Content Type Mode Bar
+        kids.push(h('div', { class: 'text-mode-bar' }, [
+          h('span', { class: 'text-mode-label' }, 'Text Type:'),
+          h('div', { class: 'mode-btn-group' }, [
+            h('button', {
+              type: 'button',
+              class: ['mode-btn', !isOptionMode ? 'active' : ''],
+              onClick: () => {
+                el.useOptionMapping = false;
+                el.isOptionMode = false;
+              }
+            }, '📝 Normal Text'),
+            h('button', {
+              type: 'button',
+              class: ['mode-btn', isOptionMode ? 'active' : ''],
+              onClick: () => {
+                el.useOptionMapping = true;
+                el.isOptionMode = true;
+                if (!Array.isArray(el.optionMappings)) {
+                  el.optionMappings = [];
+                }
+              }
+            }, '🔀 Option Code')
+          ])
         ]));
+
+        if (!isOptionMode) {
+          // Normal mode: Standard text input
+          kids.push(h('div', { class: 'fg' }, [
+            h('label', 'Text  (use {{serial}}, {{product}})'),
+            h('input', { type: 'text', value: el.text || '', onInput: e => el.text = e.target.value, placeholder: 'e.g. {{product}} / {{serial}}' })
+          ]));
+        } else {
+          // Option Code Mode: Automatic {{options}} in background, no text input field needed!
+          kids.push(h('div', { class: 'opt-mapping-panel' }, [
+            h('div', { class: 'opt-panel-title' }, '🔀 Option Code Translation Rules'),
+            h('div', { class: 'opt-rules-header' }, [
+              h('span', { class: 'opt-col-title' }, 'Option Code'),
+              h('span', { class: 'opt-col-title' }, 'Display Text'),
+              h('span', { class: 'opt-col-title action-col' }, '')
+            ]),
+            ...(Array.isArray(el.optionMappings) ? el.optionMappings : []).map((rule, rIdx) =>
+              h('div', { class: 'opt-rule-row', key: rIdx }, [
+                h('input', {
+                  type: 'text',
+                  class: 'opt-code-input',
+                  value: rule.code || '',
+                  onInput: e => rule.code = e.target.value,
+                  placeholder: 'e.g. A1411'
+                }),
+                h('input', {
+                  type: 'text',
+                  class: 'opt-text-input',
+                  value: rule.text || '',
+                  onInput: e => rule.text = e.target.value,
+                  placeholder: 'e.g. Modbus RTU'
+                }),
+                h('button', {
+                  type: 'button',
+                  class: 'opt-del-btn',
+                  title: 'Delete Rule',
+                  onClick: () => el.optionMappings.splice(rIdx, 1)
+                }, '✕')
+              ])
+            ),
+            h('div', { class: 'opt-actions-row' }, [
+              h('button', {
+                type: 'button',
+                class: 'add-opt-rule-btn',
+                onClick: () => {
+                  if (!Array.isArray(el.optionMappings)) el.optionMappings = [];
+                  el.optionMappings.push({ code: '', text: '' });
+                }
+              }, '➕ Add Option Rule')
+            ]),
+            h('div', { class: 'fg default-fallback-fg' }, [
+              h('label', 'Default Fallback Text (if no code matches)'),
+              h('input', {
+                type: 'text',
+                value: el.defaultText || '',
+                onInput: e => el.defaultText = e.target.value,
+                placeholder: 'e.g. Standard'
+              })
+            ])
+          ]));
+        }
+
+        // Shared position & font properties
         kids.push(h('div', { class: 'fg-row' }, [
           h('div', { class: 'fg' }, [h('label', 'X mm'), h('input', { type: 'number', step: 0.1, value: el.xMm, onInput: e => el.xMm = +e.target.value })]),
           h('div', { class: 'fg' }, [h('label', 'Y mm'), h('input', { type: 'number', step: 0.1, value: el.yMm, onInput: e => el.yMm = +e.target.value })]),
@@ -570,5 +656,138 @@ const ElementForm = defineComponent({
   max-width: 48px;
   border: 1px solid #cbd5e0;
   border-radius: 3px;
+}
+
+/* ── Option Mapping Rules UI ─────────────────────── */
+:deep(.opt-mapping-block) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+:deep(.opt-mapping-cb) {
+  font-weight: 600 !important;
+  color: #2b6cb0 !important;
+}
+:deep(.opt-mapping-panel) {
+  background: #ffffff;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:deep(.opt-rules-header) {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 24px;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+:deep(.opt-rule-row) {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 24px;
+  gap: 6px;
+  align-items: center;
+}
+:deep(.opt-code-input),
+:deep(.opt-text-input) {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e0 !important;
+  border-radius: 4px !important;
+  padding: 3px 6px !important;
+  font-size: 12px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+:deep(.opt-code-input:focus),
+:deep(.opt-text-input:focus) {
+  background: white !important;
+  border-color: #3182ce !important;
+}
+:deep(.opt-del-btn) {
+  background: transparent !important;
+  border: none !important;
+  color: #e53e3e !important;
+  cursor: pointer;
+  padding: 2px 4px !important;
+  font-size: 11px !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  width: auto !important;
+}
+:deep(.opt-del-btn:hover) {
+  background: #fff5f5 !important;
+}
+:deep(.add-opt-rule-btn) {
+  background: #ebf8ff !important;
+  color: #2b6cb0 !important;
+  border: 1px dashed #90cdf4 !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  width: 100% !important;
+  margin-top: 2px;
+}
+:deep(.add-opt-rule-btn:hover) {
+  background: #bee3f8 !important;
+}
+:deep(.default-fallback-fg) {
+  margin-top: 4px;
+}
+
+/* ── Text Content Mode Selector ────────────────────── */
+:deep(.text-mode-bar) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+:deep(.text-mode-label) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #718096;
+}
+:deep(.mode-btn-group) {
+  display: inline-flex;
+  border: 1px solid #cbd5e0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+:deep(.mode-btn) {
+  background: #f7fafc !important;
+  color: #4a5568 !important;
+  border: none !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.12s ease;
+}
+:deep(.mode-btn + .mode-btn) {
+  border-left: 1px solid #cbd5e0 !important;
+}
+:deep(.mode-btn.active) {
+  background: #3182ce !important;
+  color: white !important;
+  font-weight: 600 !important;
+}
+:deep(.mode-btn:hover:not(.active)) {
+  background: #edf2f7 !important;
+  color: #2d3748 !important;
+}
+:deep(.opt-panel-title) {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2b6cb0;
+  margin-bottom: 2px;
 }
 </style>

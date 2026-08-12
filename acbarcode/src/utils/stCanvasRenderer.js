@@ -1,5 +1,6 @@
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+import { resolveElementText } from './stOptionResolver.js';
 
 const imageCache = new Map();
 const PRINTER_DPI = 203;
@@ -39,11 +40,7 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
 
   for (const el of elements) {
     if (el.type === 'folder') continue;
-    let textVal = (el.text || el.data || '')
-      .replace(/\{\{serial\}\}/g, serial)
-      .replace(/\{\{product\}\}/g, product || 'S695 4035 (Air)')
-      .replace(/\{\{product_no\}\}/g, product || 'S695 4035 (Air)')
-      .replace(/\{\{options\}\}/g, optionsText || 'Range: Standard');
+    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)');
 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);

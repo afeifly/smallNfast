@@ -1,3 +1,5 @@
+import { resolveElementText } from './stOptionResolver.js';
+
 export function escapeXml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
@@ -183,18 +185,10 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   for (let index = 0; index < elements.length; index++) {
     const el = elements[index];
     if (el.type === 'folder') continue;
-    let rawTemplate = el.text || el.data || '';
-    if (productVal) {
-      rawTemplate = rawTemplate
-        .replace(/\{\{product\}\}/g, productVal)
-        .replace(/\{\{product_no\}\}/g, productVal);
-    }
-    if (optionsVal) {
-      rawTemplate = rawTemplate.replace(/\{\{options\}\}/g, optionsVal);
-    }
 
+    const resolvedText = resolveElementText(el, optionsVal, '', productVal);
     // DispData: always the rendered first SN (for GoLabel preview)
-    const dispVal     = rawTemplate.replace(/\{\{serial\}\}/g, firstSN);
+    const dispVal     = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
     const escapedDisp = escapeXml(dispVal);
 
     // elUsesSerial: only true when range > 1 AND element references {{serial}}
@@ -202,7 +196,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
 
     // Data / ItemData: use ^C00 counter cmd for serial elements
     const dataVal     = elUsesSerial
-      ? rawTemplate.replace(/\{\{serial\}\}/g, counterStr)
+      ? resolvedText.replace(/\{\{serial\}\}/g, counterStr)
       : dispVal;
     const escapedData = escapeXml(dataVal);
 

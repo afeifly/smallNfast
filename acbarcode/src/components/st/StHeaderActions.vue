@@ -20,6 +20,15 @@
           placeholder="End e.g. 12345680" 
           class="sn-input sn-input-end"
         />
+        <label for="st-options-input" class="sn-label opt-label">Options:</label>
+        <input 
+          id="st-options-input"
+          type="text" 
+          :value="optionsValue" 
+          @input="$emit('update:optionsValue', $event.target.value)"
+          placeholder="e.g. A1410, A1411" 
+          class="sn-input options-input"
+        />
         <span v-if="rangeCount > 1" class="range-badge" title="Total labels to generate in this batch">
           📦 {{ rangeCount }} Labels
         </span>
@@ -51,13 +60,17 @@ defineProps({
     type: String,
     default: ''
   },
+  optionsValue: {
+    type: String,
+    default: ''
+  },
   rangeCount: {
     type: Number,
     default: 1
   }
 });
 
-defineEmits(['update:modelValue', 'update:endValue', 'fetch-odoo', 'open-odoo-modal', 'open-template-modal']);
+defineEmits(['update:modelValue', 'update:endValue', 'update:optionsValue', 'fetch-odoo', 'open-odoo-modal', 'open-template-modal']);
 </script>
 
 <style scoped>
@@ -90,7 +103,7 @@ defineEmits(['update:modelValue', 'update:endValue', 'fetch-odoo', 'open-odoo-mo
 .sn-label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #2d3748;
+  color: #ffffff;
   white-space: nowrap;
 }
 
@@ -102,11 +115,11 @@ defineEmits(['update:modelValue', 'update:endValue', 'fetch-odoo', 'open-odoo-mo
   width: 150px;
 }
 
-.end-label {
+.end-label, .opt-label {
   margin-left: 0.25rem;
 }
 
-.sn-input-end {
+.sn-input-end, .options-input {
   width: 150px;
 }
 

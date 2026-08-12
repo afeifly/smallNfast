@@ -1,11 +1,15 @@
+import { resolveElementText } from './stOptionResolver.js';
+
 /**
  * Compiles label elements and canvas configuration into EZPL printer command string.
  * @param {Array} elements - Label elements array
  * @param {Object} config - Canvas configuration { widthMm, heightMm, dpi }
  * @param {string} serial - Serial number string to substitute for {{serial}}
+ * @param {string} product - Product name
+ * @param {string} optionsText - Options text
  * @returns {string} Compiled EZPL command stream
  */
-export function compileEZPL(elements = [], config = {}, serial = '3726 0001') {
+export function compileEZPL(elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '') {
   const w = config.widthMm || 35;
   const h = config.heightMm || 22;
   const dpi = config.dpi || 203;
@@ -20,7 +24,7 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001') {
 
   elements.forEach((el, index) => {
     if (el.type === 'folder') return;
-    const textVal = (el.text || el.data || '').replace(/\{\{serial\}\}/g, serial);
+    const textVal = resolveElementText(el, optionsText, serial, product);
 
     if (el.type === 'text') {
       const x = mmToDots(el.xMm || 0);

@@ -23,12 +23,12 @@
       <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf')">
         📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount} Pages)` : '' }}
       </button>
-      <button type="button" class="action-btn export-json-btn" @click="$emit('export-json')">
+      <button type="button" class="action-btn export-json-btn" @click="$emit('export-template-json')" title="Save current template design as JSON file">
         📤 Backup JSON
       </button>
-      <label class="action-btn import-json-btn">
+      <label class="action-btn import-json-btn" title="Load template design from JSON file into current editor">
         📥 Restore JSON
-        <input type="file" accept=".json" style="display:none;" @change="$emit('import-json', $event)" />
+        <input type="file" accept=".json" style="display:none;" @change="$emit('import-template-json', $event)" />
       </label>
     </div>
   </div>
@@ -59,8 +59,8 @@ defineProps({
 defineEmits([
   'export-ezpx',
   'download-pdf',
-  'export-json',
-  'import-json',
+  'export-template-json',
+  'import-template-json',
   'prev-page',
   'next-page'
 ]);

@@ -48,10 +48,11 @@
               <span class="el-type-dot" :class="child.type"></span>
               <span class="el-label">{{ child.name || child.type }}</span>
               <span class="el-hint">{{ shortHint(child) }}</span>
+              <button class="row-btn duplicate-btn" @click.stop="duplicateElement(child)" title="Duplicate Element (X,Y +1mm)">📋</button>
               <button class="row-btn danger" @click.stop="deleteById(child.id)" title="Delete">✕</button>
             </div>
             <div v-show="child.expanded" class="el-detail">
-              <ElementForm :el="child" :folders="folders" @image-upload="onImageUpload" :canvasConfig="canvasConfig" />
+              <ElementForm :el="child" :folders="folders" @image-upload="onImageUpload" @duplicate-element="duplicateElement" :canvasConfig="canvasConfig" />
             </div>
           </div>
           <div v-if="folderChildCount(folder.id) === 0" class="empty-hint">Empty folder</div>
@@ -69,10 +70,11 @@
           <span class="el-type-dot" :class="el.type"></span>
           <span class="el-label">{{ el.name || el.type }}</span>
           <span class="el-hint">{{ shortHint(el) }}</span>
+          <button class="row-btn duplicate-btn" @click.stop="duplicateElement(el)" title="Duplicate Element (X,Y +1mm)">📋</button>
           <button class="row-btn danger" @click.stop="deleteById(el.id)" title="Delete">✕</button>
         </div>
         <div v-show="el.expanded" class="el-detail">
-          <ElementForm :el="el" :folders="folders" @image-upload="onImageUpload" :canvasConfig="canvasConfig" />
+          <ElementForm :el="el" :folders="folders" @image-upload="onImageUpload" @duplicate-element="duplicateElement" :canvasConfig="canvasConfig" />
         </div>
       </div>
 
@@ -133,6 +135,27 @@ function addElement(type) {
   props.elements.push(el);
 }
 
+function duplicateElement(targetEl) {
+  if (!targetEl) return;
+  const clone = JSON.parse(JSON.stringify(targetEl));
+  clone.id = generateId();
+  clone.name = (clone.name || clone.type || 'Element') + ' (Copy)';
+  if (typeof clone.xMm === 'number') {
+    clone.xMm = Math.round((clone.xMm + 1) * 10) / 10;
+  }
+  if (typeof clone.yMm === 'number') {
+    clone.yMm = Math.round((clone.yMm + 1) * 10) / 10;
+  }
+  clone.expanded = true;
+
+  const idx = props.elements.findIndex(e => e.id === targetEl.id);
+  if (idx !== -1) {
+    props.elements.splice(idx + 1, 0, clone);
+  } else {
+    props.elements.push(clone);
+  }
+}
+
 async function deleteById(id, confirmDelete = true) {
   const i = props.elements.findIndex(e => e.id === id);
   if (i !== -1) {
@@ -181,7 +204,7 @@ const ElementForm = defineComponent({
     folders: Array,
     canvasConfig: Object,
   },
-  emits: ['image-upload'],
+  emits: ['image-upload', 'duplicate-element'],
   setup(props, { emit }) {
     function input(opts) {
       const attrs = { ...opts };
@@ -243,7 +266,13 @@ const ElementForm = defineComponent({
                 }
               }
             }, '🔀 Option Code')
-          ])
+          ]),
+          h('button', {
+            type: 'button',
+            class: 'duplicate-el-btn',
+            title: 'Duplicate element with offset (X+1, Y+1 mm)',
+            onClick: () => emit('duplicate-element', el)
+          }, '📋 Duplicate')
         ]));
 
         if (!isOptionMode) {
@@ -503,6 +532,7 @@ const ElementForm = defineComponent({
 .folder-row:hover .row-btn,
 .el-row:hover .row-btn { opacity: 1; }
 .row-btn.danger:hover { color: #e53e3e !important; background: #fff5f5 !important; }
+.row-btn.duplicate-btn:hover { color: #2b6cb0 !important; background: #ebf8ff !important; }
 
 /* ── FOLDER CHILDREN ────────────────────────────────────── */
 .folder-children {
@@ -789,5 +819,24 @@ const ElementForm = defineComponent({
   font-weight: 700;
   color: #2b6cb0;
   margin-bottom: 2px;
+}
+
+:deep(.duplicate-el-btn) {
+  margin-left: auto;
+  background: #f7fafc !important;
+  color: #2b6cb0 !important;
+  border: 1px solid #cbd5e0 !important;
+  padding: 3px 8px !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.12s ease;
+}
+:deep(.duplicate-el-btn:hover) {
+  background: #ebf8ff !important;
+  border-color: #3182ce !important;
 }
 </style>

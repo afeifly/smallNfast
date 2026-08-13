@@ -1,14 +1,14 @@
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 
 const dbDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 
-const db = new Database(path.join(dbDir, 'templates.db'));
-db.pragma('journal_mode = WAL');
+const db = new DatabaseSync(path.join(dbDir, 'templates.db'));
+db.exec('PRAGMA journal_mode = WAL;');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS templates (
@@ -113,9 +113,10 @@ function replaceAll(templatesList) {
     INSERT OR REPLACE INTO templates (id, name, itemNumbers, config, elements_en, elements_cn, created_at, updated_at)
     VALUES (@id, @name, @itemNumbers, @config, @elements_en, @elements_cn, @created_at, @updated_at)
   `);
-  const tx = db.transaction((items) => {
+  db.exec('BEGIN');
+  try {
     db.prepare('DELETE FROM templates').run();
-    for (const t of items) {
+    for (const t of list) {
       insert.run({
         id: t.id,
         name: t.name,
@@ -127,8 +128,11 @@ function replaceAll(templatesList) {
         updated_at: now
       });
     }
-  });
-  tx(list);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
   return getAllTemplates();
 }
 

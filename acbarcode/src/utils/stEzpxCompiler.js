@@ -9,6 +9,61 @@ export function escapeXml(str) {
     .replace(/'/g, '&apos;');
 }
 
+/**
+ * Read image pixel dimensions from a raw buffer by parsing the file header.
+ * Supports PNG, JPEG, GIF and BMP. Returns { width, height } or a 1:1 fallback.
+ */
+export function parseImageSize(buf) {
+  const fallback = { width: 100, height: 100 };
+  try {
+    if (!buf || buf.length < 16) return fallback;
+    // PNG: 8-byte sig + IHDR (width @16, height @20, big-endian)
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+      const width = buf.readUInt32BE(16);
+      const height = buf.readUInt32BE(20);
+      if (width > 0 && height > 0) return { width, height };
+      return fallback;
+    }
+    // JPEG: walk markers until SOF (height @i+5, width @i+7, big-endian)
+    if (buf[0] === 0xFF && buf[1] === 0xD8) {
+      let i = 2;
+      while (i < buf.length - 9) {
+        if (buf[i] !== 0xFF) { i++; continue; }
+        const marker = buf[i + 1];
+        if (marker === 0xD8 || marker === 0x01) { i += 2; continue; }
+        if (marker >= 0xD0 && marker <= 0xD7) { i += 2; continue; }
+        if (marker === 0xD9 || marker === 0xDA) break;
+        const len = buf.readUInt16BE(i + 2);
+        if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+          const height = buf.readUInt16BE(i + 5);
+          const width = buf.readUInt16BE(i + 7);
+          if (width > 0 && height > 0) return { width, height };
+          return fallback;
+        }
+        i += 2 + len;
+      }
+      return fallback;
+    }
+    // GIF: "GIF87a"/"GIF89a", width @6, height @8, little-endian
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+      const width = buf.readUInt16LE(6);
+      const height = buf.readUInt16LE(8);
+      if (width > 0 && height > 0) return { width, height };
+      return fallback;
+    }
+    // BMP: "BM", width @18 (signed), height @22 (signed, may be negative)
+    if (buf[0] === 0x42 && buf[1] === 0x4D) {
+      const width = buf.readInt32LE(18);
+      const height = Math.abs(buf.readInt32LE(22));
+      if (width > 0 && height > 0) return { width, height };
+      return fallback;
+    }
+  } catch (e) {
+    console.warn('parseImageSize failed:', e);
+  }
+  return fallback;
+}
+
 export function measureTextWidthDots(text, pt = 4, dpi = 203) {
   try {
     const c = document.createElement('canvas');
@@ -35,13 +90,16 @@ export async function getImageBase64(src) {
       }
       if (fs.existsSync(localPath)) {
         const buf = fs.readFileSync(localPath);
-        return { data: buf.toString('base64'), width: 100, height: 100 };
+        const size = parseImageSize(buf);
+        return { data: buf.toString('base64'), width: size.width, height: size.height };
       }
     } catch (e) {
       console.warn('Node.js getImageBase64 file read failed:', e);
     }
     if (src.startsWith('data:')) {
-      return { data: src.split(',')[1] || '', width: 100, height: 100 };
+      const b64 = src.split(',')[1] || '';
+      const size = parseImageSize(Buffer.from(b64, 'base64'));
+      return { data: b64, width: size.width, height: size.height };
     }
     return { data: '', width: 0, height: 0 };
   }
@@ -206,6 +264,13 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       ? resolvedText.replace(/\{\{serial\}\}/g, serialRef)
       : dispVal;
     const escapedData = escapeXml(dataVal);
+
+    // Skip text/barcode/QR elements whose resolved value is empty (e.g. an
+    // option-mapped field with no matching code) so nothing prints instead of
+    // a GoLabel "<Empty>" placeholder.
+    if ((el.type === 'text' || el.type === 'barcode' || el.type === 'qrcode') && !dataVal.trim()) {
+      continue;
+    }
 
     // ItemSymbol: 1 = literal text, 2 = serial counter, 5 = DB field reference
     const itemSymbol = elUsesSerial ? (csvDatabase ? 5 : 2) : 1;

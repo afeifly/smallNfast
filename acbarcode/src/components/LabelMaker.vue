@@ -1,13 +1,5 @@
 <template>
   <div class="label-maker">
-    <h1>Product Label Generator</h1>
-    
-    <!-- Admin Navigation Tabs -->
-    <div v-if="isAdmin" class="admin-tabs">
-      <button :class="{ active: activeTab === 'maker' }" @click="activeTab = 'maker'">AC Label</button>
-      <button :class="{ active: activeTab === 'st' }" @click="activeTab = 'st'">ST Label</button>
-    </div>
-
     <!-- TAB 1: AC Label -->
     <div v-if="activeTab === 'maker'">
       <!-- AC Label Maker Form & Preview -->
@@ -230,7 +222,10 @@ const showOdooModal = ref(false);
 
 // Admin Role State
 const isAdmin = ref(sessionStorage.getItem('acbarcode_role') === 'admin');
-const activeTab = ref('maker');
+const props = defineProps({
+  activeTab: { type: String, default: 'maker' }
+});
+const emit = defineEmits(['update:activeTab']);
 const acSubTab = ref('generator');
 
 // Products CRUD State
@@ -627,15 +622,6 @@ async function deleteProduct(itemNumber) {
   min-height: 100vh;
 }
 
-h1 {
-  color: white;
-  text-align: center;
-  font-size: 2.5rem;
-  font-weight: 300;
-  margin-bottom: 2rem;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-}
-
 h2 {
   color: #333;
   font-size: 1.8rem;
@@ -644,37 +630,6 @@ h2 {
 }
 
 /* Admin Tabs Navigation */
-.admin-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.admin-tabs button {
-  background: rgba(255, 255, 255, 0.2);
-  border: 2px solid transparent;
-  color: white;
-  padding: 10px 24px;
-  border-radius: 30px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: none;
-}
-
-.admin-tabs button:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: none;
-}
-
-.admin-tabs button.active {
-  background: white;
-  color: #764ba2;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
 
 .card-header-action {
   display: flex;

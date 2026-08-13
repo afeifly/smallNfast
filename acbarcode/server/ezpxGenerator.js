@@ -5,9 +5,9 @@
 const templateStore = require('./templateStore');
 
 async function generateStEzpxXml(product, serialNumbers = [], options = [], templateXml = null) {
-  const { compileEZPXRange } = await import('../src/utils/stEzpxCompiler.js');
+  const { compileEZPXRange, buildSerialCsv } = await import('../src/utils/stEzpxCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
-  const { DEFAULT_ELEMENTS_EN, matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
+  const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
 
   const serials = (Array.isArray(serialNumbers) && serialNumbers.length > 0)
     ? serialNumbers.map(s => String(s).trim())
@@ -40,44 +40,31 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     }
   }
 
-  // 3. Fallback to default 14-element ST label template if still no elements
+  // 3. If still no elements, no posted template nor a stored template matched the product.
+  //    Error out instead of silently using the hardcoded default template.
   if (!elements || elements.length === 0) {
-    elements = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
+    const err = new Error(`No template found for product "${productName}". Make sure the product matches a template's item numbers, or post template_xml.`);
+    err.status = 404;
+    throw err;
   }
 
+  // Options are passed to compileEZPXRange, which resolves {{product}} / {{options}}
+  // placeholders AND optionMappings via resolveElementText — identical to the
+  // frontend export. No manual replacement here (it would skip the mappings).
   const optionsStr = Array.isArray(options) && options.length > 0
     ? options.join(', ')
     : 'Standard';
 
-  // 4. Update elements with product & options
-  elements = elements.map(el => {
-    const updated = { ...el };
-    if (updated.type === 'text' || updated.type === 'barcode') {
-      let val = updated.text || updated.data || '';
-
-      // Replace {{product}} or {{product_no}}
-      if (val.includes('{{product}}') || val.includes('{{product_no}}')) {
-        val = val.replace(/\{\{product\}\}/g, productName).replace(/\{\{product_no\}\}/g, productName);
-      } else if (updated.id === 'el_item_no' || /item\s*no/i.test(updated.name || '')) {
-        val = `Item No.: ${productName}`;
-      } else if (updated.id === 'el_model' || /model/i.test(updated.name || '')) {
-        val = `Model: ${productName}`;
-      }
-
-      // Replace {{options}} or {{option}}
-      if (val.includes('{{options}}') || val.includes('{{option}}')) {
-        val = val.replace(/\{\{options\}\}/g, optionsStr).replace(/\{\{option\}\}/g, optionsStr);
-      } else if (updated.id === 'el_range' || /range|option/i.test(updated.name || '')) {
-        val = Array.isArray(options) && options.length > 0 ? `Option: ${optionsStr}` : val;
-      }
-
-      if (updated.type === 'text') updated.text = val;
-      if (updated.type === 'barcode') updated.data = val;
-    }
-    return updated;
+  // CSV-database mode: the EZPX references data.csv (one label per row) instead of the
+  // ^C00 serial counter, matching the frontend export workflow.
+  const ezpxXml = await compileEZPXRange(elements, canvasConfig, serials, {
+    product: productName,
+    optionsText: optionsStr,
+    csvDatabase: true
   });
+  const csvContent = buildSerialCsv(serials);
 
-  return await compileEZPXRange(elements, canvasConfig, serials, { product: productName, optionsText: optionsStr });
+  return { ezpxXml, csvContent };
 }
 
 module.exports = {

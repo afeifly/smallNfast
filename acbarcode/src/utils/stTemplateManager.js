@@ -9,8 +9,6 @@ export const DEFAULT_ELEMENTS_EN = [
     text: 'Item No.: {{product}}', xMm: 1, yMm: 7.2, fontSize: 4, bold: true, expanded: false },
   { id: 'el_serial', type: 'text', name: 'Serial No.', folderId: 'f_var',
     text: 'Serial No.: {{serial}}', xMm: 1, yMm: 8.9, fontSize: 4, bold: true, expanded: false },
-  { id: 'el_range', type: 'text', name: 'Range / Options', folderId: 'f_var',
-    text: 'Option: {{options}}', xMm: 1, yMm: 10.6, fontSize: 4, bold: true, expanded: false },
   // ── Fixed elements (collapse to hide) ──
   { id: 'el_logo', type: 'image', name: 'Logo', folderId: 'f_fixed',
     src: '/t_logo.jpg', xMm: 1, yMm: 1, widthMm: 9.6, storedName: 'Logo', expanded: false },
@@ -96,17 +94,6 @@ export const DEFAULT_ELEMENTS_CN = [
     text: '序列号: {{serial}}',
     xMm: 1,
     yMm: 8.9,
-    fontSize: 4,
-    bold: true,
-    expanded: false
-  },
-  {
-    id: 'el_range',
-    type: 'text',
-    name: 'Range',
-    text: '量程: 标准量程',
-    xMm: 1,
-    yMm: 10.6,
     fontSize: 4,
     bold: true,
     expanded: false

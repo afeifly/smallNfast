@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { jsPDF } = require('jspdf');
+const JSZip = require('jszip');
 const templateStore = require('./templateStore');
 
 templateStore.seedIfEmpty().then(() => {
@@ -1037,14 +1038,24 @@ async function handleStLabel(req, res) {
       return res.status(400).json({ error: 'Missing required field: serial_numbers must be a non-empty array' });
     }
 
-    const ezpxXml = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);
+    const { ezpxXml, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);
 
-    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="label_all.ezpx"');
-    return res.status(200).send(ezpxXml);
+    // Package the .ezpx, data.csv and the Windows helper .bat into one ZIP,
+    // since the EZPX now loads serials from the CSV database.
+    const { PRINT_LABELS_BAT } = await import('../src/utils/stGoLabelBatch.js');
+    const zip = new JSZip();
+    zip.file('label_all.ezpx', ezpxXml);
+    zip.file('data.csv', csvContent);
+    zip.file('print_labels.bat', PRINT_LABELS_BAT);
+    const pkgBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="label_all.zip"');
+    return res.status(200).send(pkgBuffer);
   } catch (err) {
     console.error('Error handling /st_label:', err);
-    return res.status(500).json({ error: 'Internal Server Error', message: err.message });
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message });
   }
 }
 

@@ -1,18 +1,34 @@
 <template>
   <LoginPage v-if="!isAuthenticated" @login-success="onLoginSuccess" />
   <template v-else>
-    <div class="floating-actions">
-
-      <button class="action-btn logout-btn" @click="handleLogout" title="Logout">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-      </button>
-    </div>
-    <LabelMaker />
-
+    <header class="app-header">
+      <h1 class="app-title">Product Label Generator</h1>
+      <div class="header-actions">
+        <template v-if="currentRole === 'admin'">
+          <button
+            type="button"
+            class="header-btn"
+            :class="{ active: activeTab === 'maker' }"
+            @click="activeTab = 'maker'"
+          >AC</button>
+          <button
+            type="button"
+            class="header-btn"
+            :class="{ active: activeTab === 'st' }"
+            @click="activeTab = 'st'"
+          >ST</button>
+        </template>
+        <button type="button" class="header-btn logout-btn" @click="handleLogout" title="Logout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Logout
+        </button>
+      </div>
+    </header>
+    <LabelMaker v-model:active-tab="activeTab" />
   </template>
 </template>
 
@@ -24,6 +40,7 @@ import LabelMaker from './components/LabelMaker.vue';
 
 const isAuthenticated = ref(false);
 const currentRole = ref('user');
+const activeTab = ref('maker');
 
 onMounted(() => {
   if (sessionStorage.getItem('acbarcode_auth') === 'true') {
@@ -46,71 +63,70 @@ function handleLogout() {
 </script>
 
 <style>
-.floating-actions {
-  position: fixed;
-  top: 16px;
-  right: 20px;
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.action-btn {
-  width: 40px;
-  height: 40px;
-  min-height: unset;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px);
-  color: #fff;
-  cursor: pointer;
+.app-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-.action-btn svg {
-  width: 18px;
-  height: 18px;
+.header-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
-.action-btn:hover {
-  background: rgba(0, 0, 0, 0.5);
-  transform: none;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+.header-btn:hover {
+  background: rgba(0, 0, 0, 0.35);
 }
 
-.action-btn:active {
-  transform: scale(0.93);
+.header-btn.active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #553c9a;
+  border-color: transparent;
 }
 
-.logout-btn {
-  background: rgba(180, 40, 30, 0.4);
+.header-btn.logout-btn {
+  background: rgba(180, 40, 30, 0.55);
 }
 
-.logout-btn:hover {
-  background: rgba(180, 40, 30, 0.6);
-}
-
-@media (max-width: 600px) {
-  .floating-actions {
-    top: 10px;
-    right: 10px;
-  }
-
-  .action-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .action-btn svg {
-    width: 16px;
-    height: 16px;
-  }
+.header-btn.logout-btn:hover {
+  background: rgba(180, 40, 30, 0.75);
 }
 </style>

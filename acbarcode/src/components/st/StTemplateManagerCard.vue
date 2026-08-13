@@ -68,11 +68,6 @@
         <button type="button" class="mini-action-btn" @click="$emit('duplicate')">📋 Duplicate</button>
         <button type="button" class="mini-action-btn danger" @click="$emit('delete')" :disabled="templates.length <= 1">🗑️ Delete</button>
         <button type="button" class="mini-action-btn" @click="$emit('reset-defaults')">🔄 Reset Layout</button>
-        <button type="button" class="mini-action-btn" @click="$emit('export-json')">📤 Backup JSON</button>
-        <label class="mini-action-btn import-btn">
-          📥 Restore
-          <input type="file" accept=".json" @change="$emit('import-json', $event)" style="display:none;" />
-        </label>
       </div>
     </div>
   </div>
@@ -95,8 +90,6 @@ const emit = defineEmits([
   'duplicate',
   'delete',
   'reset-defaults',
-  'export-json',
-  'import-json',
   'save-templates'
 ]);
 

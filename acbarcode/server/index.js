@@ -1,8 +1,14 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { jsPDF } = require('jspdf');
+const templateStore = require('./templateStore');
+
+templateStore.seedIfEmpty().then(() => {
+  console.log(`Template store ready (${templateStore.count()} templates)`);
+});
 
 const app = express();
 const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 9016 : 5005);
@@ -508,6 +514,64 @@ app.delete('/api/products/:item', adminAuth, (req, res) => {
   } else {
     res.status(500).json({ error: 'Failed to update product database' });
   }
+});
+
+// ── Label Template API (SQLite-backed) ────────────────────────────────
+// GET /api/templates  ->  all templates (export / read)
+// PUT /api/templates  ->  replace all templates (import), admin only
+// POST /api/templates  ->  create new template, admin only
+// PUT /api/templates/:id  ->  update one template, admin only
+// DELETE /api/templates/:id  ->  delete one template (keep >= 1), admin only
+
+app.get('/api/templates', (req, res) => {
+  res.json(templateStore.getAllTemplates());
+});
+
+app.put('/api/templates', adminAuth, (req, res) => {
+  const list = req.body;
+  if (!Array.isArray(list)) {
+    return res.status(400).json({ error: 'Expected a JSON array of templates' });
+  }
+  const prepared = list.map(t => ({
+    id: (t && t.id) ? String(t.id) : crypto.randomUUID(),
+    name: (t && t.name) || 'New Template',
+    itemNumbers: (t && Array.isArray(t.itemNumbers)) ? t.itemNumbers : [],
+    config: (t && t.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
+    elements_en: (t && Array.isArray(t.elements_en)) ? t.elements_en : [],
+    elements_cn: (t && Array.isArray(t.elements_cn)) ? t.elements_cn : []
+  }));
+  const saved = templateStore.replaceAll(prepared);
+  res.json({ message: `${saved.length} template(s) imported`, templates: saved });
+});
+
+app.post('/api/templates', adminAuth, (req, res) => {
+  const t = {
+    id: crypto.randomUUID(),
+    name: (req.body && req.body.name) || 'New Template',
+    itemNumbers: (req.body && Array.isArray(req.body.itemNumbers)) ? req.body.itemNumbers : [],
+    config: (req.body && req.body.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
+    elements_en: (req.body && Array.isArray(req.body.elements_en)) ? req.body.elements_en : [],
+    elements_cn: (req.body && Array.isArray(req.body.elements_cn)) ? req.body.elements_cn : []
+  };
+  res.status(201).json(templateStore.insertTemplate(t));
+});
+
+app.put('/api/templates/:id', adminAuth, (req, res) => {
+  const updated = templateStore.updateTemplate(req.params.id, req.body || {});
+  if (!updated) {
+    return res.status(404).json({ error: `Template with id ${req.params.id} not found` });
+  }
+  res.json(updated);
+});
+
+app.delete('/api/templates/:id', adminAuth, (req, res) => {
+  if (templateStore.count() <= 1) {
+    return res.status(400).json({ error: 'Cannot delete the last template' });
+  }
+  if (!templateStore.deleteTemplate(req.params.id)) {
+    return res.status(404).json({ error: `Template with id ${req.params.id} not found` });
+  }
+  res.json({ message: 'Template deleted successfully' });
 });
 
 // ST Label PDF Generation API

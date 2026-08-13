@@ -43,9 +43,12 @@ export function parseEzpxXmlToTemplate(xmlStr, filename = 'Imported EZPX Templat
     const itemLabel = getTag('ItemLabel') || `Element_${idx}`;
     let rawData = getTag('Data') || getTag('DispData');
 
-    // Replace ^C00 counter with {{serial}} placeholder
-    if (rawData === '^C00' || rawData.includes('^C00')) {
+    // Replace ^C00 serial counter and ^F00 DB field refs with {{serial}} placeholder
+    if (rawData.includes('^C00')) {
       rawData = rawData.replace(/\^C00/g, '{{serial}}');
+    }
+    if (rawData.includes('^F00')) {
+      rawData = rawData.replace(/\^F00/g, '{{serial}}');
     }
 
     // Try to extract Item Numbers from text content like "Item No.: S695 4035"

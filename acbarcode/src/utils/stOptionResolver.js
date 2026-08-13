@@ -49,9 +49,10 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     }
   }
 
-  // Replace placeholders
+  // Replace placeholders. Preserve {{serial}} when no serial value is supplied
+  // so downstream compilers can inject their own serial command (^C00 / ^F00).
   return rawText
-    .replace(/\{\{serial\}\}/g, serial || '')
+    .replace(/\{\{serial\}\}/g, (serial !== undefined && serial !== '') ? serial : '{{serial}}')
     .replace(/\{\{product\}\}/g, product || '')
     .replace(/\{\{product_no\}\}/g, product || '')
     .replace(/\{\{options\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''));

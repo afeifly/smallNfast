@@ -114,6 +114,9 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   const firstSN    = serialRange[0] || '3726 0001';
   const totalCount = serialRange.length;
   const labelsPerCut = options.labelsPerCut ?? 0;
+  // csvDatabase: generate a CSV-database EZPX (SNs loaded from data.csv, one label per row)
+  // instead of the GoLabel ^C00 serial counter.
+  const csvDatabase = !!options.csvDatabase;
 
   const w = config.widthMm  || 35;
   const h = config.heightMm || 22;
@@ -162,16 +165,18 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   const usesSerial = (el) => /\{\{serial\}\}/.test(el.text || el.data || '');
 
   // ── 100-slot XML arrays ────────────────────────────────────────────────
-  // SerialFormat: slot 0 = counter def when range; rest = empty <string />
+  // SerialFormat: slot 0 = counter def when counter mode; rest = empty <string />
   // SerialLeadingCode: slot 0 = 1 (leading-zero flag); rest = 0
+  const useCounter = !csvDatabase && hasSerialRange;
+
   const serialFormatXml = Array.from({ length: 100 }, (_, i) =>
-    (i === 0 && hasSerialRange)
+    (i === 0 && useCounter)
       ? `<string>${escapeXml(serialFormatStr)}</string>`
       : '<string />'
   ).join('\n      ');
 
   const serialLeadingXml = Array.from({ length: 100 }, (_, i) =>
-    (i === 0 && hasSerialRange) ? '<int>1</int>' : '<int>0</int>'
+    (i === 0 && useCounter) ? '<int>1</int>' : '<int>0</int>'
   ).join('\n      ');
 
   const nullString100 = Array(100).fill('<string xsi:nil="true" />').join('\n      ');
@@ -191,17 +196,19 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     const dispVal     = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
     const escapedDisp = escapeXml(dispVal);
 
-    // elUsesSerial: only true when range > 1 AND element references {{serial}}
-    const elUsesSerial = hasSerialRange && usesSerial(el);
+    // elUsesSerial: element references {{serial}}; in CSV-DB mode always (field ^F00),
+    // otherwise only when range > 1 (GoLabel ^C00 counter)
+    const elUsesSerial = csvDatabase ? usesSerial(el) : (hasSerialRange && usesSerial(el));
 
-    // Data / ItemData: use ^C00 counter cmd for serial elements
-    const dataVal     = elUsesSerial
-      ? resolvedText.replace(/\{\{serial\}\}/g, counterStr)
+    // Data / ItemData: DB field ref ^F00 in CSV mode, ^C00 counter otherwise
+    const serialRef  = csvDatabase ? '^F00' : counterStr;
+    const dataVal    = elUsesSerial
+      ? resolvedText.replace(/\{\{serial\}\}/g, serialRef)
       : dispVal;
     const escapedData = escapeXml(dataVal);
 
-    // ItemSymbol: 1 = literal text, 2 = serial counter reference
-    const itemSymbol = elUsesSerial ? 2 : 1;
+    // ItemSymbol: 1 = literal text, 2 = serial counter, 5 = DB field reference
+    const itemSymbol = elUsesSerial ? (csvDatabase ? 5 : 2) : 1;
 
     if (el.type === 'text') {
       const fontPt      = el.fontSize || 4;
@@ -460,6 +467,18 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   }
 
   // ── Final XML output ──────────────────────────────────────────────────
+  const dbConfigXml = csvDatabase
+    ? `<DataBaseFormat>Text_CommaDelimited</DataBaseFormat>
+    <DataBaseFilePath>data.csv</DataBaseFilePath>
+    <DataBaseSelection>SELECT  * from \`data#csv\` ;</DataBaseSelection>
+    <Delimiter>Delimited(,)</Delimiter>
+    <CharacterSet>1252</CharacterSet>
+    <UserID />`
+    : `<DataBaseFormat>None</DataBaseFormat>
+    <DataBaseFilePath />
+    <DataBaseSelection />
+    <UserID />`;
+
   return `<?xml version="1.0" encoding="utf-8"?>
 <PrintJob xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <FileEncryptPwd />
@@ -507,17 +526,14 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     <VariableOption />
     <DateFormat>y2-me-dd</DateFormat>
     <TimeFormat>h:m:s</TimeFormat>
-    <DataBaseFormat>None</DataBaseFormat>
-    <DataBaseFilePath />
-    <DataBaseSelection />
-    <UserID />
+    ${dbConfigXml}
     <Password>zhsTbm6nT9o+RQurpwH5Hw==</Password>
     <EncryptPwd>true</EncryptPwd>
     <DatabaseNoHeader>false</DatabaseNoHeader>
     <IntegratedSecurity>false</IntegratedSecurity>
     <RowIndex>0</RowIndex>
   </Label>
-  <Setup bInfinityPrint="false" LabelLength="${h}" LabelWidth="${w}" LeftMargin="0" TopMargin="0" LabelType="0" GapLength="3" FeedLength="0" ZSign="45" BlackMark="3" Position="0" Speed="4" Copy="1" bCopyDataBase="false" CopyField="None" Stripper="0" LabelsPerCut="${labelsPerCut}" DoubleCut_Enable="false" DoubleCut_OffsetLen="0" DoubleCut_FirstCutMode="1" Rotate180="255" Stop="18" Darkness="8" Number="${totalCount}" bCutDataBase="false" bBatchCut="false" bPartialCut="false" bFullCutLast="false" bFullCutEachRecord="false" bNumberDataBase="false" NumberField="None" PageDirection="Portrait" PrintMode="1" bUsePrinterRFIDCfg="false" PowerRFID="0" LengthRFID="-1" RetryRFID="1" DrawMode="0">
+  <Setup bInfinityPrint="false" LabelLength="${h}" LabelWidth="${w}" LeftMargin="0" TopMargin="0" LabelType="0" GapLength="3" FeedLength="0" ZSign="45" BlackMark="3" Position="0" Speed="4" Copy="1" bCopyDataBase="false" CopyField="None" Stripper="0" LabelsPerCut="${labelsPerCut}" DoubleCut_Enable="false" DoubleCut_OffsetLen="0" DoubleCut_FirstCutMode="1" Rotate180="255" Stop="18" Darkness="8" Number="${csvDatabase ? 1 : totalCount}" bCutDataBase="false" bBatchCut="false" bPartialCut="false" bFullCutLast="false" bFullCutEachRecord="false" bNumberDataBase="false" NumberField="None" PageDirection="Portrait" PrintMode="1" bUsePrinterRFIDCfg="false" PowerRFID="0" LengthRFID="-1" RetryRFID="1" DrawMode="0">
     <Layout Shape="0" AcrossType="Copied" PageDirection="Portrait" HorAcross="1" VerAcross="1" HorGap="0" VerGap="0" HorAcrossMode1="1" VerAcrossMode1="1" LabelMode="0" HorGapMode1="0" VerGapMode1="0" BottomMargin="0" RightMargin="0" />
     <Description>Lang:(en-US) OS:Microsoft Windows NT 10.0.26200.0(Win32NT)</Description>
     <UnitType>Mm</UnitType>
@@ -542,4 +558,18 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   <StandaloneDbEnable>false</StandaloneDbEnable>
   <StandaloneDbMode>PrintByFieldInput</StandaloneDbMode>
 </PrintJob>`;
+}
+
+/**
+ * Build the data.csv content for CSV-database mode.
+ * Header row "sn", one serial number per line (field ^F00 in the EZPX).
+ */
+export function buildSerialCsv(serialRange = ['3726 0001']) {
+  const rows = (Array.isArray(serialRange) && serialRange.length > 0) ? serialRange : ['3726 0001'];
+  const lines = ['sn'];
+  rows.forEach(sn => {
+    const v = String(sn).trim();
+    lines.push(/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  });
+  return lines.join('\r\n') + '\r\n';
 }

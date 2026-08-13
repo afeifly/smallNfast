@@ -2,10 +2,12 @@
  * Server-side EZPX generator module supporting product itemNumber template matching & placeholders.
  */
 
+const templateStore = require('./templateStore');
+
 async function generateStEzpxXml(product, serialNumbers = [], options = [], templateXml = null) {
   const { compileEZPXRange } = await import('../src/utils/stEzpxCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
-  const { DEFAULT_ELEMENTS_EN, matchTemplateByItemNo, createInitialDefaultTemplates } = await import('../src/utils/stTemplateManager.js');
+  const { DEFAULT_ELEMENTS_EN, matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
 
   const serials = (Array.isArray(serialNumbers) && serialNumbers.length > 0)
     ? serialNumbers.map(s => String(s).trim())
@@ -28,10 +30,10 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     }
   }
 
-  // 2. If no direct templateXml was provided, try matching product against stored templates
+  // 2. If no direct templateXml was provided, try matching product against stored templates (SQLite)
   if (!elements || elements.length === 0) {
-    const defaultTemplates = createInitialDefaultTemplates();
-    const matched = matchTemplateByItemNo(defaultTemplates, productName);
+    const storedTemplates = templateStore.getAllTemplates();
+    const matched = matchTemplateByItemNo(storedTemplates, productName);
     if (matched) {
       elements = JSON.parse(JSON.stringify(matched.elements_en || matched.elements || []));
       if (matched.config) canvasConfig = matched.config;

@@ -1,5 +1,3 @@
-export const MULTI_TEMPLATES_KEY = 'acbarcode_st_templates_v3';
-
 export const DEFAULT_ELEMENTS_EN = [
   // ── Folders ──
   { id: 'f_var', type: 'folder', name: 'Variable Data', expanded: true },
@@ -214,29 +212,44 @@ export function createInitialDefaultTemplates() {
   ];
 }
 
-export function loadTemplatesFromStorage() {
-  try {
-    const raw = localStorage.getItem(MULTI_TEMPLATES_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to parse templates from storage:', e);
+// ── Server API (templates are stored server-side in SQLite) ─────────────
+
+export function getAdminHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (sessionStorage.getItem('acbarcode_role') === 'admin') {
+    headers['X-Admin-Password'] = 'SUTOadmin1234';
   }
-  const defaults = createInitialDefaultTemplates();
-  localStorage.setItem(MULTI_TEMPLATES_KEY, JSON.stringify(defaults));
-  return defaults;
+  return headers;
 }
 
-export function saveTemplatesToStorage(templates) {
-  try {
-    localStorage.setItem(MULTI_TEMPLATES_KEY, JSON.stringify(templates));
-  } catch (e) {
-    console.error('Failed to save templates to storage:', e);
+export async function fetchTemplatesFromServer() {
+  const res = await fetch('/api/templates');
+  if (!res.ok) {
+    let msg = 'Failed to load templates';
+    try { msg = (await res.json()).error || msg; } catch (e) { /* ignore */ }
+    throw new Error(msg);
   }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function saveTemplatesToServer(templates) {
+  const res = await fetch('/api/templates', {
+    method: 'PUT',
+    headers: getAdminHeaders(),
+    body: JSON.stringify(Array.isArray(templates) ? templates : [])
+  });
+  if (!res.ok) {
+    let msg = 'Failed to save templates';
+    try { msg = (await res.json()).error || msg; } catch (e) { /* ignore */ }
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.templates || templates;
+}
+
+export async function importTemplatesToServer(templates) {
+  return saveTemplatesToServer(templates);
 }
 
 export function matchTemplateByItemNo(templates, itemNo) {

@@ -132,16 +132,9 @@
             <button type="button" class="action-btn reset-btn" :disabled="!selectedTemplate" @click="onResetConfirm">
               🔄 Reset Layout
             </button>
-            <button type="button" class="action-btn export-btn" @click="$emit('export-json')" title="Backup all templates to JSON file">
-              📤 Backup JSON
-            </button>
             <button type="button" class="action-btn import-btn" title="Paste EZPX XML text directly" @click="showPasteEzpxModal = true">
               📋 Paste EZPX Text
             </button>
-            <label class="action-btn import-btn" title="Restore all templates from backup JSON file">
-              📥 Restore JSON
-              <input type="file" accept=".json" style="display:none;" @change="onImport" />
-            </label>
           </div>
           <button type="button" class="btn-close-footer" @click="$emit('close')">Close</button>
         </div>
@@ -193,8 +186,6 @@ const emit = defineEmits([
   'duplicate',
   'delete',
   'reset-defaults',
-  'export-json',
-  'import-json',
   'import-ezpx',
   'paste-ezpx'
 ]);
@@ -275,11 +266,6 @@ async function onResetConfirm() {
   if (confirmed) {
     emit('reset-defaults');
   }
-}
-
-function onImport(event) {
-  emit('import-json', event);
-  event.target.value = '';
 }
 
 function onImportEzpx(event) {

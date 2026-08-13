@@ -55,8 +55,6 @@
       @duplicate="onDuplicateTemplate"
       @delete="onDeleteTemplate"
       @reset-defaults="onResetDefaults"
-      @export-json="onExportJson"
-      @import-json="onImportJson"
       @import-ezpx="onImportEzpx"
       @paste-ezpx="onPasteEzpx"
     />
@@ -80,13 +78,15 @@ import StConfirmDialog from './st/StConfirmDialog.vue';
 import { showStAlert, showStConfirm } from '../utils/stDialog.js';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
-import { compileEZPX, compileEZPXRange } from '../utils/stEzpxCompiler.js';
+import { compileEZPX, compileEZPXRange, buildSerialCsv } from '../utils/stEzpxCompiler.js';
+import { PRINT_LABELS_BAT } from '../utils/stGoLabelBatch.js';
+import JSZip from 'jszip';
 import { parseEzpxXmlToTemplate } from '../utils/stEzpxParser.js';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
 import { generateSerialRange } from '../utils/stSerialRange.js';
 import {
-  loadTemplatesFromStorage,
-  saveTemplatesToStorage,
+  fetchTemplatesFromServer,
+  saveTemplatesToServer,
   matchTemplateByItemNo,
   createInitialDefaultTemplates,
   DEFAULT_ELEMENTS_EN,
@@ -103,9 +103,34 @@ const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const showTemplateModal = ref(false);
 
-const templates = ref(loadTemplatesFromStorage());
-const activeTemplateId = ref(templates.value[0]?.id || '');
+const templates = ref([]);
+const activeTemplateId = ref('');
 const activeLang = ref('EN'); // 'EN' | 'CN'
+const templatesLoaded = ref(false);
+
+// ── Server save (debounced) ────────────────────────────────────────────
+let saveTimer = null;
+function scheduleTemplateSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTemplateNow();
+  }, 800);
+}
+
+async function flushTemplateSave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  await saveTemplateNow();
+}
+
+async function saveTemplateNow() {
+  try {
+    await saveTemplatesToServer(templates.value);
+  } catch (err) {
+    console.error('Failed to save templates to server:', err);
+    showStAlert('Failed to save templates: ' + err.message, 'Save Error', 'danger');
+  }
+}
 
 // ── Computed ───────────────────────────────────────────────────────────
 const activeTemplate = computed(() =>
@@ -170,13 +195,13 @@ function onUpdateTemplateField({ id, name, itemNumbers, config }) {
   tpl.name = name;
   tpl.itemNumbers = itemNumbers;
   tpl.config = { ...config };
-  saveTemplatesToStorage(templates.value);
+  scheduleTemplateSave();
 }
 
 function onCopyEnToCn() {
   if (!activeTemplate.value) return;
   activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(activeTemplate.value.elements_en || []));
-  saveTemplatesToStorage(templates.value);
+  scheduleTemplateSave();
 }
 
 function onCreateNewTemplate() {
@@ -190,7 +215,7 @@ function onCreateNewTemplate() {
   };
   templates.value.push(newTpl);
   activeTemplateId.value = newTpl.id;
-  saveTemplatesToStorage(templates.value);
+  scheduleTemplateSave();
 }
 
 function onDuplicateTemplate() {
@@ -200,7 +225,7 @@ function onDuplicateTemplate() {
   clone.name = clone.name + ' (Copy)';
   templates.value.push(clone);
   activeTemplateId.value = clone.id;
-  saveTemplatesToStorage(templates.value);
+  scheduleTemplateSave();
 }
 
 function onDeleteTemplate() {
@@ -208,7 +233,7 @@ function onDeleteTemplate() {
   const idx = templates.value.findIndex(t => t.id === activeTemplateId.value);
   templates.value.splice(idx, 1);
   activeTemplateId.value = templates.value[Math.max(0, idx - 1)]?.id || templates.value[0]?.id;
-  saveTemplatesToStorage(templates.value);
+  scheduleTemplateSave();
 }
 
 function onResetDefaults() {
@@ -216,7 +241,7 @@ function onResetDefaults() {
   activeTemplate.value.elements_en = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
   activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
   activeTemplate.value.config = { widthMm: 35, heightMm: 22, dpi: 203 };
-  saveTemplatesToStorage(templates.value);
+  scheduleTemplateSave();
 }
 
 function exportSingleTemplateJson() {
@@ -263,52 +288,19 @@ function importSingleTemplateJson(event) {
           activeTemplateId.value = newTpl.id;
         }
 
-        saveTemplatesToStorage(templates.value);
-        showStAlert(`Template layout restored into "${activeTemplate.value?.name}"!`, 'Template Restored', 'success');
+        scheduleTemplateSave();
+        showStAlert(`Template layout imported into "${activeTemplate.value?.name}"!`, 'Template Imported', 'success');
       } else if (Array.isArray(data) && data.length > 0) {
         templates.value = data;
         activeTemplateId.value = data[0].id;
-        saveTemplatesToStorage(templates.value);
-        showStAlert('Full template database restored from backup!', 'Database Restored', 'success');
+        scheduleTemplateSave();
+        showStAlert('All templates imported!', 'Import Successful', 'success');
       } else {
         showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
       }
     } catch (err) {
       console.error('Import template JSON error:', err);
       showStAlert('Failed to parse template JSON file: ' + err.message, 'Import Error', 'danger');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function onExportJson() {
-  const json = JSON.stringify(templates.value, null, 2);
-  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'st_templates_backup.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function onImportJson(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (Array.isArray(data) && data.length > 0) {
-        templates.value = data;
-        activeTemplateId.value = data[0].id;
-        saveTemplatesToStorage(templates.value);
-        showStAlert('Templates restored successfully!', 'JSON Restore', 'success');
-      } else {
-        showStAlert('Invalid JSON: Expected an array of templates.', 'JSON Restore Error', 'warning');
-      }
-    } catch (err) {
-      showStAlert('Failed to parse JSON backup file.', 'JSON Restore Error', 'danger');
     }
   };
   reader.readAsText(file);
@@ -325,7 +317,7 @@ function onImportEzpx(event) {
       if (newTpl && newTpl.elements_en?.length) {
         templates.value.push(newTpl);
         activeTemplateId.value = newTpl.id;
-        saveTemplatesToStorage(templates.value);
+        scheduleTemplateSave();
         showStAlert(`EZPX Template "${newTpl.name}" imported with ${newTpl.elements_en.length} elements!`, 'EZPX Import', 'success');
       } else {
         showStAlert('Could not parse any elements from the provided EZPX file.', 'EZPX Import Failed', 'warning');
@@ -345,7 +337,7 @@ function onPasteEzpx(xmlStr) {
     if (newTpl && newTpl.elements_en?.length) {
       templates.value.push(newTpl);
       activeTemplateId.value = newTpl.id;
-      saveTemplatesToStorage(templates.value);
+      scheduleTemplateSave();
       showStAlert(`EZPX Template "${newTpl.name}" created with ${newTpl.elements_en.length} elements!`, 'EZPX Paste', 'success');
     } else {
       showStAlert('Could not parse any elements from the pasted EZPX text.', 'EZPX Paste Failed', 'warning');
@@ -382,23 +374,34 @@ async function exportEZPX() {
   const range = serialRange.value;
   const firstSN = range[0] || '12345678';
   const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
-  // Use compileEZPXRange so GoLabel auto-increments serial across all labels in range
+  const serials = range.length > 0 ? range : [firstSN];
+
+  // CSV-database mode: GoLabel loads SNs from data.csv (one row per label)
+  // and prints all labels in one run instead of using the ^C00 serial counter.
   const ezpxXml = await compileEZPXRange(
     stElements.value,
     stCanvasConfig.value,
-    range.length > 0 ? range : [firstSN],
-    { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value }
+    serials,
+    { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value, csvDatabase: true }
   );
-  const blob = new Blob([ezpxXml], { type: 'application/xml;charset=utf-8' });
+  const csvContent = buildSerialCsv(serials);
+
+  // Filename shows range: firstSN_to_lastSN when multi
+  const lastSN = range.length > 1 ? range[range.length - 1] : firstSN;
+  const baseName = range.length > 1
+    ? `label_${firstSN.replace(/\s+/g, '_')}_to_${lastSN.replace(/\s+/g, '_')}`
+    : `label_${firstSN.replace(/\s+/g, '_')}`;
+
+  // Package the .ezpx, data.csv and a Windows helper .bat into one ZIP download
+  const zip = new JSZip();
+  zip.file(`${baseName}.ezpx`, ezpxXml);
+  zip.file('data.csv', csvContent);
+  zip.file('print_labels.bat', PRINT_LABELS_BAT);
+  const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  // Filename shows range: firstSN_to_lastSN when multi
-  const lastSN = range.length > 1 ? range[range.length - 1] : firstSN;
-  const fname = range.length > 1
-    ? `label_${firstSN.replace(/\s+/g, '_')}_to_${lastSN.replace(/\s+/g, '_')}.ezpx`
-    : `label_${firstSN.replace(/\s+/g, '_')}.ezpx`;
-  a.download = fname;
+  a.download = `${baseName}.zip`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -424,17 +427,31 @@ function updateCanvas() {
 watch(
   [activeTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, currentPreviewIndex, templates],
   async () => {
-    saveTemplatesToStorage(templates.value);
+    if (templatesLoaded.value) {
+      scheduleTemplateSave();
+    }
     await nextTick();
     updateCanvas();
   },
   { deep: true }
 );
 
-onMounted(() => {
-  nextTick(() => {
-    updateCanvas();
-  });
+onMounted(async () => {
+  try {
+    templates.value = await fetchTemplatesFromServer();
+  } catch (err) {
+    console.error('Failed to load templates from server:', err);
+    templates.value = createInitialDefaultTemplates();
+    showStAlert('Failed to load templates from server: ' + err.message, 'Load Error', 'danger');
+  }
+  if (templates.value.length > 0) {
+    activeTemplateId.value = templates.value[0].id;
+  }
+  // Wait until the deep watcher has run on the freshly loaded data before
+  // enabling saves, so the initial load is not written straight back.
+  await nextTick();
+  templatesLoaded.value = true;
+  updateCanvas();
 });
 
 // ── Multi-Label PDF Download ───────────────────────────────────────────

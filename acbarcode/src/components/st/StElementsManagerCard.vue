@@ -389,10 +389,79 @@ const ElementForm = defineComponent({
       }
 
       if (el.type === 'qrcode') {
-        kids.push(h('div', { class: 'fg' }, [
-          h('label', 'QR Data / URL'),
-          h('input', { type: 'text', value: el.data, onInput: e => el.data = e.target.value })
+        const isSutoMode = !!(el.qrMode === 'suto_protocol' || el.isSutoProtocol);
+
+        kids.push(h('div', { class: 'text-mode-bar' }, [
+          h('span', { class: 'text-mode-label' }, 'QR Mode:'),
+          h('div', { class: 'mode-btn-group' }, [
+            h('button', {
+              type: 'button',
+              class: ['mode-btn', !isSutoMode ? 'active' : ''],
+              onClick: () => {
+                el.qrMode = 'standard';
+                el.isSutoProtocol = false;
+              }
+            }, '📝 Standard QR'),
+            h('button', {
+              type: 'button',
+              class: ['mode-btn', isSutoMode ? 'active' : ''],
+              onClick: () => {
+                el.qrMode = 'suto_protocol';
+                el.isSutoProtocol = true;
+                if (!el.sutoProductType) el.sutoProductType = '{{product}}';
+                if (!el.sutoPrefix) el.sutoPrefix = 'sensor';
+              }
+            }, '🔒 SUTO Protocol')
+          ]),
+          h('button', {
+            type: 'button',
+            class: 'duplicate-el-btn',
+            title: 'Duplicate element with offset (X+1, Y+1 mm)',
+            onClick: () => emit('duplicate-element', el)
+          }, '📋 Duplicate')
         ]));
+
+        if (!isSutoMode) {
+          kids.push(h('div', { class: 'fg' }, [
+            h('label', 'QR Data / URL  (use {{serial}}, {{product}})'),
+            h('input', {
+              type: 'text',
+              value: el.data || '',
+              onInput: e => el.data = e.target.value,
+              placeholder: 'e.g. https://example.com or {{serial}}'
+            })
+          ]));
+        } else {
+          kids.push(h('div', { class: 'opt-mapping-panel' }, [
+            h('div', { class: 'opt-panel-title' }, '🔒 SUTO Sensor License Protocol Configuration'),
+            h('div', { class: 'fg-row' }, [
+              h('div', { class: 'fg fg-grow' }, [
+                h('label', 'Product Type'),
+                h('input', {
+                  type: 'text',
+                  value: el.sutoProductType !== undefined ? el.sutoProductType : '{{product}}',
+                  onInput: e => el.sutoProductType = e.target.value,
+                  placeholder: 'e.g. S4C-APP, WTU, FM20 or {{product}}'
+                })
+              ]),
+              h('div', { class: 'fg' }, [
+                h('label', 'QR Prefix'),
+                h('input', {
+                  type: 'text',
+                  value: el.sutoPrefix || 'sensor',
+                  onInput: e => el.sutoPrefix = e.target.value,
+                  placeholder: 'sensor'
+                })
+              ])
+            ]),
+            h('div', { class: 'suto-preview-banner' }, [
+              h('div', { class: 'banner-title' }, 'Protocol Format Spec:'),
+              h('code', { class: 'banner-code' }, `/${el.sutoPrefix || 'sensor'}/${el.sutoProductType || '{{product}}'}/{serial}/{md5_hash}`),
+              h('div', { class: 'banner-note' }, 'MD5 Salt: "this_is_sensor_salt"')
+            ])
+          ]));
+        }
+
         kids.push(h('div', { class: 'fg-row' }, [
           h('div', { class: 'fg' }, [h('label', 'X mm'), h('input', { type: 'number', step: 0.1, value: el.xMm, onInput: e => el.xMm = +e.target.value })]),
           h('div', { class: 'fg' }, [h('label', 'Y mm'), h('input', { type: 'number', step: 0.1, value: el.yMm, onInput: e => el.yMm = +e.target.value })]),
@@ -819,6 +888,31 @@ const ElementForm = defineComponent({
   font-weight: 700;
   color: #2b6cb0;
   margin-bottom: 2px;
+}
+
+:deep(.suto-preview-banner) {
+  margin-top: 4px;
+  background: #f0fff4;
+  border: 1px solid #c6f6d5;
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+:deep(.banner-title) {
+  font-size: 10px;
+  font-weight: 700;
+  color: #276749;
+}
+:deep(.banner-code) {
+  display: block;
+  font-family: monospace;
+  font-size: 11px;
+  color: #22543d;
+  word-break: break-all;
+  margin: 2px 0;
+}
+:deep(.banner-note) {
+  font-size: 10px;
+  color: #38a169;
 }
 
 :deep(.duplicate-el-btn) {

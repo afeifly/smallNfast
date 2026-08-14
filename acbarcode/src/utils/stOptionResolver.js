@@ -1,3 +1,5 @@
+import { generateSensorQr } from './stSutoProtocol.js';
+
 /**
  * Helper to parse comma/space separated options input string into an array of normalized option codes.
  * e.g. "A1410, A1411" -> ["A1410", "A1411"]
@@ -11,22 +13,38 @@ export function parseOptionCodes(optionsStr = '') {
 }
 
 /**
- * Resolves text for an element, taking into account option code translation rules if enabled.
+ * Resolves text or QR content for an element, taking into account option code translation
+ * rules or SUTO Protocol QR code generation if enabled.
  * 
  * @param {Object} el - Element configuration object
  * @param {Array<string>|string} activeOptions - Active option codes list or string
  * @param {string} serial - Serial number for {{serial}} replacement
  * @param {string} product - Product name for {{product}} replacement
- * @returns {string} Evaluated text value
+ * @returns {string} Evaluated text or QR value
  */
 export function resolveElementText(el, activeOptions = [], serial = '', product = '') {
+  // 1. SUTO Protocol QR Code Mode
+  if (el.type === 'qrcode' && (el.qrMode === 'suto_protocol' || el.isSutoProtocol)) {
+    let pType = el.sutoProductType || '{{product}}';
+    pType = pType
+      .replace(/\{\{product\}\}/g, product || 'S4C-APP')
+      .replace(/\{\{product_no\}\}/g, product || 'S4C-APP')
+      .trim();
+    if (!pType || pType === '{{product}}') {
+      pType = product ? product.split(' ')[0] : 'S4C-APP';
+    }
+    const sn = (serial !== undefined && serial !== '') ? serial : '12345678';
+    const prefix = el.sutoPrefix || 'sensor';
+    return generateSensorQr(pType, sn, prefix);
+  }
+
+  // 2. Option Code Mapping Mode
   const codesList = Array.isArray(activeOptions) 
     ? activeOptions.map(c => String(c).trim().toUpperCase())
     : parseOptionCodes(activeOptions);
 
   let rawText = el.text || el.data || '';
 
-  // If option mapping mode is enabled for this element
   if (el.useOptionMapping || el.isOptionMode) {
     let matchedRule = null;
     if (Array.isArray(el.optionMappings)) {

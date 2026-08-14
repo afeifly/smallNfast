@@ -5,31 +5,13 @@
       v-model:endValue="stEndSerialNumberInput"
       v-model:optionsValue="stOptionsInput"
       :range-count="serialRange.length"
+      :active-template="activeTemplate"
+      :active-sub-template-id="activeSubTemplateId"
+      @update:active-sub-template-id="setActiveSubTemplate($event)"
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
       @open-templates="$emit('open-templates')"
     />
-
-    <!-- Sub-template / label switcher -->
-    <div v-if="activeTemplate" class="st-label-switcher">
-      <span class="switcher-label">Label:</span>
-      <button
-        type="button"
-        class="switcher-btn"
-        :class="{ active: !activeSubTemplateId }"
-        @click="setActiveSubTemplate('')"
-      >Main</button>
-      <button
-        v-for="s in activeTemplate.subTemplates || []"
-        :key="s.id"
-        type="button"
-        class="switcher-btn"
-        :class="{ active: activeSubTemplateId === s.id }"
-        @click="setActiveSubTemplate(s.id)"
-      >{{ s.name }}</button>
-      <span class="switcher-spacer"></span>
-      <button type="button" class="switcher-manage" @click="$emit('open-templates')">✎ Templates</button>
-    </div>
 
     <div class="st-editor-layout">
       <!-- LEFT PANEL: Elements Layer Manager -->
@@ -379,61 +361,8 @@ async function downloadStPDF() {
 .st-designer-container {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
-
-.st-label-switcher {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  padding: 8px 12px;
-}
-
-.switcher-label {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.switcher-btn {
-  padding: 6px 14px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.switcher-btn:hover { background: rgba(0, 0, 0, 0.35); }
-
-.switcher-btn.active {
-  background: #6b46c1;
-  border-color: #6b46c1;
-}
-
-.switcher-spacer { flex: 1; }
-
-.switcher-manage {
-  padding: 6px 14px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  background: transparent;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.switcher-manage:hover { background: rgba(255, 255, 255, 0.12); }
 
 .st-editor-layout {
   display: grid;

@@ -145,12 +145,18 @@
       </div>
     </div>
 
-    <!-- TAB 2: ST Label Designer Component (Admin Only) -->
-    <StLabelDesigner 
-      v-else-if="activeTab === 'st' && isAdmin"
-      @open-odoo-modal="showOdooModal = true"
-      @open-templates="$emit('open-templates')"
-    />
+    <!-- TAB 2: ST Label (Admin Only) -->
+    <div v-else-if="activeTab === 'st' && isAdmin">
+      <StTemplateManagerPage 
+        v-if="stSubTab === 'templates'"
+        @open-in-designer="onOpenInDesigner"
+      />
+      <StLabelDesigner 
+        v-else-if="stSubTab === 'designer'"
+        @open-odoo-modal="showOdooModal = true"
+        @open-templates="stSubTab = 'templates'"
+      />
+    </div>
 
     <!-- Odoo Server Management Modal Component -->
     <OdooServerModal v-model="showOdooModal" />
@@ -202,11 +208,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import JsBarcode from 'jsbarcode';
 import jsPDF from 'jspdf';
 import StLabelDesigner from './StLabelDesigner.vue';
+import StTemplateManagerPage from './st/StTemplateManagerPage.vue';
 import OdooServerModal from './OdooServerModal.vue';
+import { setActiveTemplate } from '../stores/templateStore.js';
 
 // AC Label State Management
 const products = ref([]);
@@ -226,8 +234,22 @@ const isAdmin = ref(sessionStorage.getItem('acbarcode_role') === 'admin');
 const props = defineProps({
   activeTab: { type: String, default: 'maker' }
 });
-const emit = defineEmits(['update:activeTab', 'open-templates']);
+const emit = defineEmits(['update:activeTab']);
 const acSubTab = ref('generator');
+const stSubTab = ref('templates');
+
+watch(() => props.activeTab, (newTab) => {
+  if (newTab === 'st') {
+    stSubTab.value = 'templates';
+  }
+});
+
+function onOpenInDesigner(templateId) {
+  if (templateId) {
+    setActiveTemplate(templateId);
+  }
+  stSubTab.value = 'designer';
+}
 
 // Products CRUD State
 const productSearchQuery = ref('');

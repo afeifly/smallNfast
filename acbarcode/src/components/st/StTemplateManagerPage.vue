@@ -2,10 +2,6 @@
   <div class="tpl-page">
     <div class="tpl-page-header">
       <h2>Template Manager</h2>
-      <p class="tpl-page-sub">
-        Templates are matched by item number and used by the ST Label designer. A template can have
-        one level of sub-templates (extra label designs that share the same product / options / serial data).
-      </p>
     </div>
 
     <div class="tpl-layout">
@@ -46,35 +42,39 @@
               </div>
             </div>
             <div class="card-body">
-              <div class="field-row">
-                <label>Template Name</label>
-                <input type="text" :value="activeTemplate.name" @input="activeTemplate.name = $event.target.value; scheduleSave()" />
-              </div>
-              <div class="field-row">
-                <label>Item Numbers / SKUs</label>
-                <input type="text" :value="itemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
-                <span class="hint">Comma-separated. When a product / serial matches any of these, this template is used.</span>
-              </div>
-              <div class="field-row">
-                <label>Label Size &amp; DPI</label>
-                <div class="dims-inputs">
-                  <input type="number" step="0.1" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
-                  <span class="dim-sep">×</span>
-                  <input type="number" step="0.1" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
-                  <span class="dim-unit">mm</span>
-                  <select :value="activeTemplate.config?.dpi" @change="setConfig('dpi', +$event.target.value)">
-                    <option :value="203">203 DPI</option>
-                    <option :value="300">300 DPI</option>
-                    <option :value="600">600 DPI</option>
-                  </select>
+              <div class="field-grid-2">
+                <div class="field-col">
+                  <label>Template Name</label>
+                  <input type="text" :value="activeTemplate.name" @input="activeTemplate.name = $event.target.value; scheduleSave()" placeholder="e.g. Standard" />
+                </div>
+                <div class="field-col">
+                  <label>Item Numbers / SKUs <span class="hint-inline">(comma-separated)</span></label>
+                  <input type="text" :value="itemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
                 </div>
               </div>
-              <div class="card-actions bottom">
-                <button type="button" class="mini-btn" @click="exportMainJson">📤 Export JSON</button>
-                <label class="mini-btn">
-                  📥 Import JSON
-                  <input type="file" accept=".json" style="display:none" @change="importMainJson" />
-                </label>
+
+              <div class="field-row-tight">
+                <div class="field-col-size">
+                  <label>Label Size &amp; DPI</label>
+                  <div class="dims-inputs">
+                    <input type="number" step="0.1" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
+                    <span class="dim-sep">×</span>
+                    <input type="number" step="0.1" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
+                    <span class="dim-unit">mm</span>
+                    <select :value="activeTemplate.config?.dpi" @change="setConfig('dpi', +$event.target.value)">
+                      <option :value="203">203 DPI</option>
+                      <option :value="300">300 DPI</option>
+                      <option :value="600">600 DPI</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="inline-card-actions">
+                  <button type="button" class="mini-btn" @click="exportMainJson">📤 Export JSON</button>
+                  <label class="mini-btn">
+                    📥 Import JSON
+                    <input type="file" accept=".json" style="display:none" @change="importMainJson" />
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -85,27 +85,21 @@
               <span class="card-title">Sub-Templates ({{ subCount(activeTemplate) }})</span>
               <button type="button" class="mini-btn" @click="addSubTemplate">＋ Add Sub-Template</button>
             </div>
-            <div class="card-body">
-              <p class="hint">
-                Sub-templates are extra labels for the same data — e.g. an outer packaging label, an option board
-                label. Each prints alongside the main label and has its own size / design. One level only.
-              </p>
-              <div v-if="subCount(activeTemplate) === 0" class="tpl-empty small">No sub-templates yet.</div>
-              <div v-for="sub in activeTemplate.subTemplates" :key="sub.id" class="sub-row">
-                <div class="sub-row-main">
-                  <input type="text" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name" />
-                  <div class="sub-dims">
-                    <input type="number" step="0.1" :value="sub.config?.widthMm" @input="setSubConfig(sub.id, 'widthMm', $event.target.value)" />
-                    <span class="dim-sep">×</span>
-                    <input type="number" step="0.1" :value="sub.config?.heightMm" @input="setSubConfig(sub.id, 'heightMm', $event.target.value)" />
-                    <span class="dim-unit">mm</span>
-                    <select :value="sub.config?.dpi" @change="setSubConfig(sub.id, 'dpi', +$event.target.value)">
-                      <option :value="203">203</option>
-                      <option :value="300">300</option>
-                      <option :value="600">600</option>
-                    </select>
-                    <span class="dim-unit">dpi</span>
-                  </div>
+            <div class="card-body tight">
+              <div v-if="subCount(activeTemplate) === 0" class="tpl-empty small">No sub-templates configured.</div>
+              <div v-for="sub in activeTemplate.subTemplates" :key="sub.id" class="sub-row-compact">
+                <input type="text" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name-compact" placeholder="Sub-template name" />
+                <div class="sub-dims-compact">
+                  <input type="number" step="0.1" :value="sub.config?.widthMm" @input="setSubConfig(sub.id, 'widthMm', $event.target.value)" />
+                  <span class="dim-sep">×</span>
+                  <input type="number" step="0.1" :value="sub.config?.heightMm" @input="setSubConfig(sub.id, 'heightMm', $event.target.value)" />
+                  <span class="dim-unit">mm</span>
+                  <select :value="sub.config?.dpi" @change="setSubConfig(sub.id, 'dpi', +$event.target.value)">
+                    <option :value="203">203</option>
+                    <option :value="300">300</option>
+                    <option :value="600">600</option>
+                  </select>
+                  <span class="dim-unit">dpi</span>
                 </div>
                 <button type="button" class="mini-btn danger" @click="removeSubTemplate(sub.id)" title="Remove sub-template">✕</button>
               </div>
@@ -281,24 +275,21 @@ onMounted(async () => {
 
 <style scoped>
 .tpl-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px;
-  font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  padding: 0;
+  font-family: inherit;
+}
+
+.tpl-page-header {
+  margin-bottom: 14px;
 }
 
 .tpl-page-header h2 {
-  margin: 0 0 4px;
-  color: #fff;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.tpl-page-sub {
-  margin: 0 0 20px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.9rem;
-  max-width: 780px;
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 .tpl-layout {
@@ -364,7 +355,7 @@ onMounted(async () => {
 .tpl-edit-pane {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .card {
@@ -380,59 +371,114 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid #e2e8f0;
   background: #f7fafc;
 }
 
-.card-title { font-weight: 700; color: #2d3748; font-size: 0.95rem; }
+.card-title { font-weight: 700; color: #2d3748; font-size: 0.92rem; }
 
 .card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.card-actions.bottom { margin-top: 14px; }
 
-.card-body { padding: 16px; }
+.card-body { padding: 12px 14px; }
+.card-body.tight { padding: 10px 14px; }
 
-.field-row { margin-bottom: 12px; }
-.field-row label { display: block; font-size: 0.8rem; font-weight: 600; color: #4a5568; margin-bottom: 4px; }
-.field-row input[type="text"],
-.field-row input[type="number"],
-.field-row select,
-.sub-name,
-.sub-dims input,
-.sub-dims select {
-  padding: 7px 10px;
+.field-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 600px) {
+  .field-grid-2 { grid-template-columns: 1fr; }
+}
+
+.field-col label,
+.field-col-size label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 4px;
+}
+
+.field-col input[type="text"],
+.field-col input[type="number"],
+.sub-name-compact,
+.sub-dims-compact input,
+.sub-dims-compact select {
+  padding: 6px 9px;
   border: 1px solid #cbd5e0;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   width: 100%;
   box-sizing: border-box;
 }
-.field-row input[type="number"], .sub-dims input { width: 70px; }
 
-.hint { display: block; font-size: 0.74rem; color: #718096; margin-top: 4px; }
+.field-row-tight {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 
-.dims-inputs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.dim-sep { color: #a0aec0; }
-.dim-unit { color: #718096; font-size: 0.82rem; }
+.field-col-size {
+  display: flex;
+  flex-direction: column;
+}
 
-.sub-row {
+.dims-inputs {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid #edf2f7;
-  border-radius: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
-.sub-row-main { flex: 1; }
-.sub-name { margin-bottom: 6px; }
-.sub-dims { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.sub-dims input { width: 60px !important; }
-.sub-dims select { width: 70px !important; }
+.dims-inputs input {
+  width: 65px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+.dims-inputs select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+.dim-sep { color: #a0aec0; font-weight: bold; }
+.dim-unit { color: #718096; font-size: 0.8rem; }
+.hint-inline { font-size: 0.72rem; font-weight: normal; color: #718096; }
+
+.inline-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── Sub-templates compact rows ── */
+.sub-row-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #edf2f7;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #fafbfc;
+}
+.sub-name-compact { flex: 1; min-width: 120px; }
+.sub-dims-compact { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.sub-dims-compact input { width: 55px !important; }
+.sub-dims-compact select { width: 68px !important; }
 
 .mini-btn {
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  font-size: 0.78rem;
   font-weight: 600;
   background: #edf2f7;
   color: #2d3748;
@@ -449,15 +495,15 @@ onMounted(async () => {
 .mini-btn.danger { color: #c53030; border-color: #fed7d7; background: #fff5f5; }
 .mini-btn.danger:hover { background: #fed7d7; }
 
-.open-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.open-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
 
 .primary-btn {
   background: #6b46c1 !important;
   color: #fff !important;
   border: none !important;
-  padding: 12px 24px !important;
+  padding: 10px 20px !important;
   border-radius: 8px !important;
-  font-size: 0.95rem !important;
+  font-size: 0.92rem !important;
   font-weight: 600 !important;
   cursor: pointer;
   width: auto !important;
@@ -470,9 +516,9 @@ onMounted(async () => {
   background: transparent !important;
   color: #fff !important;
   border: 1px solid rgba(255, 255, 255, 0.4) !important;
-  padding: 12px 20px !important;
+  padding: 10px 18px !important;
   border-radius: 8px !important;
-  font-size: 0.9rem !important;
+  font-size: 0.88rem !important;
   font-weight: 600 !important;
   cursor: pointer;
   width: auto !important;

@@ -244,12 +244,13 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   let qlabelShapes = '';
   const productVal = (options && typeof options === 'object' && options.product) ? options.product : '';
   const optionsVal = (options && typeof options === 'object' && options.optionsText) ? options.optionsText : '';
+  const deviceNameVal = (options && typeof options === 'object' && options.deviceName) ? options.deviceName : '';
 
   for (let index = 0; index < elements.length; index++) {
     const el = elements[index];
     if (el.type === 'folder') continue;
 
-    const resolvedText = resolveElementText(el, optionsVal, '', productVal);
+    const resolvedText = resolveElementText(el, optionsVal, '', productVal, deviceNameVal);
     // DispData: always the rendered first SN (for GoLabel preview)
     const dispVal     = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
     const escapedDisp = escapeXml(dispVal);
@@ -508,6 +509,11 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       const y   = mmToDots(el.yMm || 0);
       const mul = el.mul || 4;
 
+      const isSuto = csvDatabase && (el.qrMode === 'suto_protocol' || el.isSutoProtocol);
+      const qrDataVal = isSuto ? '^F01' : escapedData;
+      const qrItemSymbol = isSuto ? 5 : itemSymbol;
+      const qrDataField = isSuto ? 'qr_code' : 'None';
+
       qlabelShapes += `
       <GraphicShape xsi:type="QRCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" Mode="Auto" Type="M" Multiplier="${mul}">
         <qHitOnCircumferance>false</qHitOnCircumferance>
@@ -516,15 +522,15 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
         <Id>${index}</Id>
         <ItemLabel>${escapeXml(el.name || `QRCode_${index}`)}</ItemLabel>
         <ObjectDrawMode>FW</ObjectDrawMode>
-        <DataField>None</DataField>
+        <DataField>${qrDataField}</DataField>
         <Prompt>None</Prompt>
         <DispData>${escapedDisp}</DispData>
         <bRemovePreZeroAndEmpty>false</bRemovePreZeroAndEmpty>
-        <Data>${escapedData}</Data>
+        <Data>${qrDataVal}</Data>
         <ItemInfoList>
           <Item>
-            <ItemSymbol>${itemSymbol}</ItemSymbol>
-            <ItemData>${escapedData}</ItemData>
+            <ItemSymbol>${qrItemSymbol}</ItemSymbol>
+            <ItemData>${qrDataVal}</ItemData>
           </Item>
         </ItemInfoList>
       </GraphicShape>`;
@@ -627,14 +633,44 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
 
 /**
  * Build the data.csv content for CSV-database mode.
- * Header row "sn", one serial number per line (field ^F00 in the EZPX).
+ * Generates serial number column "sn" (^F00) and SUTO Protocol QR code column "qr_code" (^F01) if present.
  */
-export function buildSerialCsv(serialRange = ['3726 0001']) {
+export function buildSerialCsv(serialRange = ['3726 0001'], options = {}) {
   const rows = (Array.isArray(serialRange) && serialRange.length > 0) ? serialRange : ['3726 0001'];
-  const lines = ['sn'];
+  const product = options.product || '';
+  const deviceName = options.deviceName || '';
+  const optionsText = options.optionsText || '';
+
+  // Collect all elements across main template + sub-templates
+  let allElements = [];
+  if (Array.isArray(options.defs)) {
+    allElements = options.defs.flatMap(d => d.elements || []);
+  } else if (Array.isArray(options.allElements)) {
+    allElements = options.allElements;
+  } else if (Array.isArray(options.elements)) {
+    allElements = options.elements;
+  }
+
+  // Find if any element across main or sub-templates is a SUTO Protocol QR code
+  const sutoQrEl = allElements.find(el =>
+    el && el.type === 'qrcode' && (
+      el.qrMode === 'suto_protocol' ||
+      el.isSutoProtocol ||
+      (!el.qrMode && (el.sutoProductType || (el.data && (el.data.includes('sensor') || el.data.includes('{{serial}}') || el.data.includes('{{device_name}}')))))
+    )
+  );
+
+  const lines = [sutoQrEl ? 'sn,qr_code' : 'sn'];
   rows.forEach(sn => {
-    const v = String(sn).trim();
-    lines.push(/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const snVal = String(sn).trim();
+    const escSn = /[",\r\n]/.test(snVal) ? `"${snVal.replace(/"/g, '""')}"` : snVal;
+    if (sutoQrEl) {
+      const qrVal = resolveElementText(sutoQrEl, optionsText, snVal, product, deviceName);
+      const escQr = /[",\r\n]/.test(qrVal) ? `"${qrVal.replace(/"/g, '""')}"` : qrVal;
+      lines.push(`${escSn},${escQr}`);
+    } else {
+      lines.push(escSn);
+    }
   });
   return lines.join('\r\n') + '\r\n';
 }

@@ -22,16 +22,19 @@ export function parseOptionCodes(optionsStr = '') {
  * @param {string} product - Product name for {{product}} replacement
  * @returns {string} Evaluated text or QR value
  */
-export function resolveElementText(el, activeOptions = [], serial = '', product = '') {
+export function resolveElementText(el, activeOptions = [], serial = '', product = '', deviceName = '') {
   // 1. SUTO Protocol QR Code Mode
   if (el.type === 'qrcode' && (el.qrMode === 'suto_protocol' || el.isSutoProtocol)) {
-    let pType = el.sutoProductType || '{{product}}';
+    let pType = el.sutoProductType || '{{device_name}}';
+    const effectiveDevice = deviceName || product || 'S4C-APP';
     pType = pType
-      .replace(/\{\{product\}\}/g, product || 'S4C-APP')
-      .replace(/\{\{product_no\}\}/g, product || 'S4C-APP')
+      .replace(/\{\{device_name\}\}/g, effectiveDevice)
+      .replace(/\{\{product\}\}/g, product || deviceName || 'S4C-APP')
+      .replace(/\{\{product_no\}\}/g, product || deviceName || 'S4C-APP')
       .trim();
-    if (!pType || pType === '{{product}}') {
-      pType = product ? product.split(' ')[0] : 'S4C-APP';
+
+    if (!pType || pType === '{{device_name}}' || pType === '{{product}}') {
+      pType = deviceName || (product ? product.split(' ')[0] : 'S4C-APP');
     }
     const sn = (serial !== undefined && serial !== '') ? serial : '12345678';
     const prefix = el.sutoPrefix || 'sensor';
@@ -71,6 +74,7 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
   // so downstream compilers can inject their own serial command (^C00 / ^F00).
   return rawText
     .replace(/\{\{serial\}\}/g, (serial !== undefined && serial !== '') ? serial : '{{serial}}')
+    .replace(/\{\{device_name\}\}/g, deviceName || product || '')
     .replace(/\{\{product\}\}/g, product || '')
     .replace(/\{\{product_no\}\}/g, product || '')
     .replace(/\{\{options\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''));

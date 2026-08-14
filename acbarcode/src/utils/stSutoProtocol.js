@@ -181,7 +181,7 @@ export function md5(string) {
  */
 export function generateSensorQr(productType = '', serialNumber = '', prefix = DEFAULT_QR_PREFIX) {
   const pType = String(productType || 'S4C-APP').trim();
-  const sn = String(serialNumber || '12345678').trim();
+  const sn = String(serialNumber || '12345678').trim().replace(/\s+/g, '');
   const pr = String(prefix || DEFAULT_QR_PREFIX).trim() || DEFAULT_QR_PREFIX;
 
   const hashInput = `${SENSOR_SALT}/${pType}/${sn}`;

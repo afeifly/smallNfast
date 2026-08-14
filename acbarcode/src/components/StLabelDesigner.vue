@@ -206,8 +206,9 @@ function importSingleTemplateJson(event) {
 // ── EZPL / EZPX / PDF Exports ──────────────────────────────────────────
 const liveEzplCode = computed(() => {
   const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+  const devName = activeTemplate.value?.deviceName || '';
   return serialRange.value
-    .map(sn => compileEZPL(stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value))
+    .map(sn => compileEZPL(stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value, devName))
     .join('\n; ========================\n');
 });
 
@@ -235,15 +236,33 @@ function langElements(container) {
 function buildLabelDefs() {
   const main = activeTemplate.value;
   if (!main) return [];
+  
+  const sanitize = (str, fallback) => {
+    const s = String(str || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+    return s || fallback;
+  };
+
+  const usedFilenames = new Set();
+  const mainBase = sanitize(main.name, 'template');
+  const mainFilename = `${mainBase}_main_label.ezpx`;
+  usedFilenames.add(mainFilename);
+
   const defs = [{
-    filename: 'label.ezpx',
+    filename: mainFilename,
     name: main.name,
     elements: langElements(main),
     config: main.config || { widthMm: 35, heightMm: 22, dpi: 203 }
   }];
+
   (main.subTemplates || []).forEach((sub, i) => {
+    const subBase = sanitize(sub.name, `sub${i + 1}`);
+    let fname = `${subBase}_label.ezpx`;
+    if (usedFilenames.has(fname)) {
+      fname = `${subBase}_${i + 1}_label.ezpx`;
+    }
+    usedFilenames.add(fname);
     defs.push({
-      filename: `label_sub${i + 1}.ezpx`,
+      filename: fname,
       name: sub.name,
       elements: langElements(sub),
       config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 }
@@ -257,7 +276,8 @@ async function exportEZPX() {
   const firstSN = range[0] || '12345678';
   const serials = range.length > 0 ? range : [firstSN];
   const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
-  const opts = { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value, csvDatabase: true };
+  const devName = activeTemplate.value?.deviceName || '';
+  const opts = { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value, deviceName: devName, csvDatabase: true };
 
   // Main + each sub-template produce their own .ezpx, all sharing data.csv
   const defs = buildLabelDefs();
@@ -265,7 +285,12 @@ async function exportEZPX() {
   for (const def of defs) {
     xmls.push(await compileEZPXRange(def.elements, def.config, serials, opts));
   }
-  const csvContent = buildSerialCsv(serials);
+  const csvContent = buildSerialCsv(serials, {
+    defs,
+    product: activeProd,
+    deviceName: devName,
+    optionsText: stOptionsInput.value
+  });
 
   // Filename shows range: firstSN_to_lastSN when multi
   const lastSN = range.length > 1 ? range[range.length - 1] : firstSN;
@@ -300,7 +325,8 @@ function updateCanvas() {
   const canvas = previewCardRef.value?.canvasRef;
   if (canvas) {
     const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
-    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, activeProd, stOptionsInput.value);
+    const devName = activeTemplate.value?.deviceName || '';
+    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, activeProd, stOptionsInput.value, devName);
   }
 }
 
@@ -333,12 +359,13 @@ async function downloadStPDF() {
     const orientation = w >= h ? 'landscape' : 'portrait';
     const pdf = new jsPDF({ unit: 'mm', format: [w, h], orientation });
     const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+    const devName = activeTemplate.value?.deviceName || '';
 
     const offscreenCanvas = document.createElement('canvas');
 
     for (let i = 0; i < range.length; i++) {
       const sn = range[i];
-      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value);
+      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value, devName);
       const dataUrl = offscreenCanvas.toDataURL('image/png');
       if (i > 0) {
         pdf.addPage([w, h], orientation);

@@ -7,9 +7,10 @@ import { resolveElementText } from './stOptionResolver.js';
  * @param {string} serial - Serial number string to substitute for {{serial}}
  * @param {string} product - Product name
  * @param {string} optionsText - Options text
+ * @param {string} deviceName - Device name for SUTO QR code / {{device_name}}
  * @returns {string} Compiled EZPL command stream
  */
-export function compileEZPL(elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '') {
+export function compileEZPL(elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '') {
   const w = config.widthMm || 35;
   const h = config.heightMm || 22;
   const dpi = config.dpi || 203;
@@ -24,7 +25,7 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
 
   elements.forEach((el, index) => {
     if (el.type === 'folder') return;
-    const textVal = resolveElementText(el, optionsText, serial, product);
+    const textVal = resolveElementText(el, optionsText, serial, product, deviceName);
 
     if (el.type === 'text') {
       const x = mmToDots(el.xMm || 0);

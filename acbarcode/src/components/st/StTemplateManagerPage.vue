@@ -42,6 +42,7 @@
               </div>
             </div>
             <div class="card-body">
+              <!-- Line 1: Template Name + Item Numbers / SKUs -->
               <div class="field-grid-2">
                 <div class="field-col">
                   <label>Template Name</label>
@@ -49,12 +50,17 @@
                 </div>
                 <div class="field-col">
                   <label>Item Numbers / SKUs <span class="hint-inline">(comma-separated)</span></label>
-                  <input type="text" :value="itemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
+                  <input type="text" :value="rawItemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
                 </div>
               </div>
 
-              <div class="field-row-tight">
-                <div class="field-col-size">
+              <!-- Line 2: Device Name + Label Size & DPI -->
+              <div class="field-grid-2">
+                <div class="field-col">
+                  <label>Device Name <span class="hint-inline">(for SUTO QR code)</span></label>
+                  <input type="text" :value="activeTemplate.deviceName || ''" @input="activeTemplate.deviceName = $event.target.value; scheduleSave()" placeholder="e.g. S4C-APP or WTU" />
+                </div>
+                <div class="field-col">
                   <label>Label Size &amp; DPI</label>
                   <div class="dims-inputs">
                     <input type="number" step="0.1" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
@@ -68,6 +74,10 @@
                     </select>
                   </div>
                 </div>
+              </div>
+
+              <!-- Line 3: Button group aligned right -->
+              <div class="field-row-actions-right">
                 <div class="inline-card-actions">
                   <button type="button" class="mini-btn" @click="exportMainJson">📤 Export JSON</button>
                   <label class="mini-btn">
@@ -124,7 +134,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import {
   templates,
   activeTemplateId,
@@ -158,7 +168,15 @@ const filteredTemplates = computed(() => {
   );
 });
 
-const itemNumbersText = computed(() => (activeTemplate.value?.itemNumbers || []).join(', '));
+const rawItemNumbersText = ref('');
+
+watch(
+  () => activeTemplate.value?.id,
+  () => {
+    rawItemNumbersText.value = (activeTemplate.value?.itemNumbers || []).join(', ');
+  },
+  { immediate: true }
+);
 
 function subCount(t) {
   return Array.isArray(t?.subTemplates) ? t.subTemplates.length : 0;
@@ -169,9 +187,11 @@ function selectTemplate(id) {
 }
 
 function onItemNumbersInput(e) {
+  const val = e.target.value;
+  rawItemNumbersText.value = val;
   const t = activeTemplate.value;
   if (!t) return;
-  t.itemNumbers = e.target.value.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  t.itemNumbers = val.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
   scheduleSave();
 }
 
@@ -233,10 +253,17 @@ function importMainJson(event) {
     try {
       const data = JSON.parse(e.target.result);
       const t = activeTemplate.value;
-      if (!t) return;
+      if (data.name) t.name = data.name;
+      if (data.itemNumbers && Array.isArray(data.itemNumbers)) t.itemNumbers = data.itemNumbers;
+      if (data.deviceName !== undefined) t.deviceName = data.deviceName;
       t.config = { ...(data.config || { widthMm: 35, heightMm: 22, dpi: 203 }) };
       t.elements_en = JSON.parse(JSON.stringify(data.elements_en || data.elements || DEFAULT_ELEMENTS_EN));
       t.elements_cn = JSON.parse(JSON.stringify(data.elements_cn || data.elements || DEFAULT_ELEMENTS_CN));
+      if (data.subTemplates && Array.isArray(data.subTemplates)) {
+        t.subTemplates = JSON.parse(JSON.stringify(data.subTemplates));
+      }
+      rawItemNumbersText.value = (t.itemNumbers || []).join(', ');
+      scheduleSave();
       await flushTemplateSave();
       showStAlert(`Layout imported into "${t.name}".`, 'Imported', 'success');
     } catch (err) {
@@ -432,26 +459,32 @@ onMounted(async () => {
 .dims-inputs {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 .dims-inputs input {
-  width: 65px;
-  padding: 6px 8px;
+  width: 52px;
+  padding: 5px 6px;
   border: 1px solid #cbd5e0;
   border-radius: 6px;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
+  text-align: center;
 }
 .dims-inputs select {
-  padding: 6px 8px;
+  padding: 5px 6px;
   border: 1px solid #cbd5e0;
   border-radius: 6px;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
 }
 
-.dim-sep { color: #a0aec0; font-weight: bold; }
-.dim-unit { color: #718096; font-size: 0.8rem; }
-.hint-inline { font-size: 0.72rem; font-weight: normal; color: #718096; }
+.dim-sep { color: #a0aec0; font-weight: bold; flex-shrink: 0; }
+.dim-unit { color: #718096; font-size: 0.8rem; flex-shrink: 0; margin-right: 4px; }
+.field-row-actions-right {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
 
 .inline-card-actions {
   display: flex;

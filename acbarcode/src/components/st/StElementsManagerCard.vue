@@ -131,7 +131,17 @@ function addElement(type) {
   else if (type === 'image') { el.name = 'New Image'; el.src = ''; el.xMm = 1; el.yMm = 1; el.widthMm = 10; el.storedName = 'IMG'; el.autoBottomRight = false; }
   else if (type === 'hline') { el.name = 'New Line'; el.xMm = 1; el.yMm = 10; el.x1Mm = (props.canvasConfig.widthMm || 35) - 1; el.thicknessDots = 3; }
   else if (type === 'barcode') { el.name = 'New Barcode'; el.data = '{{serial}}'; el.xMm = 5; el.yMm = 10; el.widthMm = 25; el.heightMm = 8; el.readable = true; }
-  else if (type === 'qrcode') { el.name = 'New QR'; el.data = 'https://example.com'; el.xMm = 25; el.yMm = 10; el.mul = 4; }
+  else if (type === 'qrcode') {
+    el.name = 'New QR';
+    el.qrMode = 'suto_protocol';
+    el.isSutoProtocol = true;
+    el.sutoProductType = '{{device_name}}';
+    el.sutoPrefix = 'sensor';
+    el.data = '';
+    el.xMm = 25;
+    el.yMm = 10;
+    el.mul = 4;
+  }
   props.elements.push(el);
 }
 
@@ -436,12 +446,12 @@ const ElementForm = defineComponent({
             h('div', { class: 'opt-panel-title' }, '🔒 SUTO Sensor License Protocol Configuration'),
             h('div', { class: 'fg-row' }, [
               h('div', { class: 'fg fg-grow' }, [
-                h('label', 'Product Type'),
+                h('label', 'Device / Product Name'),
                 h('input', {
                   type: 'text',
-                  value: el.sutoProductType !== undefined ? el.sutoProductType : '{{product}}',
+                  value: el.sutoProductType !== undefined ? el.sutoProductType : '{{device_name}}',
                   onInput: e => el.sutoProductType = e.target.value,
-                  placeholder: 'e.g. S4C-APP, WTU, FM20 or {{product}}'
+                  placeholder: 'e.g. {{device_name}}, {{product}}, or WTU-100'
                 })
               ]),
               h('div', { class: 'fg' }, [
@@ -456,7 +466,7 @@ const ElementForm = defineComponent({
             ]),
             h('div', { class: 'suto-preview-banner' }, [
               h('div', { class: 'banner-title' }, 'Protocol Format Spec:'),
-              h('code', { class: 'banner-code' }, `/${el.sutoPrefix || 'sensor'}/${el.sutoProductType || '{{product}}'}/{serial}/{md5_hash}`),
+              h('code', { class: 'banner-code' }, `/${el.sutoPrefix || 'sensor'}/${el.sutoProductType || '{{device_name}}'}/{serial}/{md5_hash}`),
               h('div', { class: 'banner-note' }, 'MD5 Salt: "this_is_sensor_salt"')
             ])
           ]));

@@ -21,13 +21,19 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
   // same product / options / serial data, different designs & sizes).
   const defs = [];
 
+  const sanitize = (str, fallback) => {
+    const s = String(str || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+    return s || fallback;
+  };
+
   // 1. If EZPX XML text content was posted directly
   if (templateXml && typeof templateXml === 'string' && templateXml.trim()) {
     try {
       const parsed = parseEzpxXmlToTemplate(templateXml.trim(), 'Posted EZPX Template');
       if (parsed && Array.isArray(parsed.elements_en) && parsed.elements_en.length > 0) {
+        const mainBase = sanitize(parsed.name || productName, 'template');
         defs.push({
-          filename: 'label.ezpx',
+          filename: `${mainBase}_main_label.ezpx`,
           elements: parsed.elements_en,
           config: parsed.config || { widthMm: 35, heightMm: 22, dpi: 203 }
         });
@@ -38,18 +44,31 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
   }
 
   // 2. Otherwise match product against stored templates (SQLite), including sub-templates
+  let matchedDeviceName = '';
   if (defs.length === 0) {
     const storedTemplates = templateStore.getAllTemplates();
     const matched = matchTemplateByItemNo(storedTemplates, productName);
     if (matched) {
+      matchedDeviceName = matched.deviceName || '';
+      const usedFilenames = new Set();
+      const mainBase = sanitize(matched.name, 'template');
+      const mainFilename = `${mainBase}_main_label.ezpx`;
+      usedFilenames.add(mainFilename);
+
       defs.push({
-        filename: 'label.ezpx',
+        filename: mainFilename,
         elements: JSON.parse(JSON.stringify(matched.elements_en || matched.elements || [])),
         config: matched.config || { widthMm: 35, heightMm: 22, dpi: 203 }
       });
       (matched.subTemplates || []).forEach((sub, i) => {
+        const subBase = sanitize(sub.name, `sub${i + 1}`);
+        let fname = `${subBase}_label.ezpx`;
+        if (usedFilenames.has(fname)) {
+          fname = `${subBase}_${i + 1}_label.ezpx`;
+        }
+        usedFilenames.add(fname);
         defs.push({
-          filename: `label_sub${i + 1}.ezpx`,
+          filename: fname,
           elements: JSON.parse(JSON.stringify(sub.elements_en || [])),
           config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 }
         });
@@ -80,11 +99,17 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     const xml = await compileEZPXRange(def.elements, def.config, serials, {
       product: productName,
       optionsText: optionsStr,
+      deviceName: matchedDeviceName,
       csvDatabase: true
     });
     files.push({ filename: def.filename, xml });
   }
-  const csvContent = buildSerialCsv(serials);
+  const csvContent = buildSerialCsv(serials, {
+    defs: defs,
+    product: productName,
+    deviceName: matchedDeviceName,
+    optionsText: optionsStr
+  });
 
   return { files, csvContent };
 }

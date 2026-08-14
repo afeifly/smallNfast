@@ -1,4 +1,4 @@
-import defaultTemplateStandard from '../data/default_template_Standard.json';
+import defaultTemplateStandard from '../data/defaultTemplateStandard.js';
 
 export const DEFAULT_CONFIG = defaultTemplateStandard.config || { widthMm: 35, heightMm: 22, dpi: 300 };
 export const DEFAULT_ELEMENTS_EN = defaultTemplateStandard.elements_en || [];

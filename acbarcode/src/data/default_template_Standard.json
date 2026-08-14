@@ -390,7 +390,11 @@
           "name": "New QR",
           "folderId": null,
           "expanded": true,
-          "data": "https://example.com",
+          "qrMode": "suto_protocol",
+          "isSutoProtocol": true,
+          "sutoProductType": "{{device_name}}",
+          "sutoPrefix": "sensor",
+          "data": "",
           "xMm": 1,
           "yMm": 1,
           "mul": 4

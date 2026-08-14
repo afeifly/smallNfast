@@ -19,15 +19,19 @@ db.exec(`
     elements_en TEXT NOT NULL DEFAULT '[]',
     elements_cn TEXT NOT NULL DEFAULT '[]',
     subTemplates TEXT NOT NULL DEFAULT '[]',
+    deviceName TEXT NOT NULL DEFAULT '',
     created_at TEXT,
     updated_at TEXT
   )
 `);
 
-// Migration for existing databases created before subTemplates existed
+// Migration for existing databases
 const cols = db.prepare('PRAGMA table_info(templates)').all().map(c => c.name);
 if (!cols.includes('subTemplates')) {
   db.exec("ALTER TABLE templates ADD COLUMN subTemplates TEXT NOT NULL DEFAULT '[]'");
+}
+if (!cols.includes('deviceName')) {
+  db.exec("ALTER TABLE templates ADD COLUMN deviceName TEXT NOT NULL DEFAULT ''");
 }
 
 function rowToTemplate(row) {
@@ -35,6 +39,7 @@ function rowToTemplate(row) {
     id: row.id,
     name: row.name,
     itemNumbers: safeParse(row.itemNumbers, []),
+    deviceName: row.deviceName || '',
     config: safeParse(row.config, {}),
     elements_en: safeParse(row.elements_en, []),
     elements_cn: safeParse(row.elements_cn, []),
@@ -68,6 +73,7 @@ function normalizeTemplate(tpl) {
     id: String(tpl.id || ''),
     name: String(tpl.name || 'New Template'),
     itemNumbers: Array.isArray(tpl.itemNumbers) ? tpl.itemNumbers : [],
+    deviceName: String(tpl.deviceName || ''),
     config: (tpl.config && typeof tpl.config === 'object') ? tpl.config : { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: Array.isArray(tpl.elements_en) ? tpl.elements_en : [],
     elements_cn: Array.isArray(tpl.elements_cn) ? tpl.elements_cn : [],
@@ -89,12 +95,13 @@ function insertTemplate(tpl) {
   const t = normalizeTemplate(tpl);
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO templates (id, name, itemNumbers, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT INTO templates (id, name, itemNumbers, deviceName, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `).run({
     id: t.id,
     name: t.name,
     itemNumbers: JSON.stringify(t.itemNumbers),
+    deviceName: t.deviceName,
     config: JSON.stringify(t.config),
     elements_en: JSON.stringify(t.elements_en),
     elements_cn: JSON.stringify(t.elements_cn),
@@ -111,13 +118,14 @@ function updateTemplate(id, tpl) {
   const t = normalizeTemplate({ ...existing, ...tpl, id });
   db.prepare(`
     UPDATE templates
-    SET name = @name, itemNumbers = @itemNumbers, config = @config,
+    SET name = @name, itemNumbers = @itemNumbers, deviceName = @deviceName, config = @config,
         elements_en = @elements_en, elements_cn = @elements_cn, subTemplates = @subTemplates, updated_at = @updated_at
     WHERE id = @id
   `).run({
     id: t.id,
     name: t.name,
     itemNumbers: JSON.stringify(t.itemNumbers),
+    deviceName: t.deviceName,
     config: JSON.stringify(t.config),
     elements_en: JSON.stringify(t.elements_en),
     elements_cn: JSON.stringify(t.elements_cn),
@@ -131,8 +139,8 @@ function replaceAll(templatesList) {
   const list = Array.isArray(templatesList) ? templatesList.map(normalizeTemplate) : [];
   const now = new Date().toISOString();
   const insert = db.prepare(`
-    INSERT OR REPLACE INTO templates (id, name, itemNumbers, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `);
   db.exec('BEGIN');
   try {
@@ -142,6 +150,7 @@ function replaceAll(templatesList) {
         id: t.id,
         name: t.name,
         itemNumbers: JSON.stringify(t.itemNumbers),
+        deviceName: t.deviceName,
         config: JSON.stringify(t.config),
         elements_en: JSON.stringify(t.elements_en),
         elements_cn: JSON.stringify(t.elements_cn),

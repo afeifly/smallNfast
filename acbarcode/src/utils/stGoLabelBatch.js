@@ -104,7 +104,7 @@ echo CSV   : %~dp0data.csv
 rem ---------- 3. Rewrite DataBaseFilePath for EVERY .ezpx & ensure schema.ini ----------
 set "GOLABEL_CSV=%~dp0data.csv"
 set "GOLABEL_SCHEMA=%~dp0schema.ini"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$sf=$env:GOLABEL_SCHEMA; if (-not (Test-Path $sf)) { Set-Content -LiteralPath $sf -Value @('[data.csv]','ColNameHeader=True','Format=Delimited(,)','CharacterSet=1252',('Col1='+[char]34+'sn'+[char]34+' Text')) -Encoding ASCII }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$sf=$env:GOLABEL_SCHEMA; if (-not (Test-Path $sf)) { Set-Content -LiteralPath $sf -Value @('[data.csv]','ColNameHeader=True','Format=Delimited(,)','CharacterSet=1252',('Col1='+[char]34+'sn'+[char]34+' Text'),('Col2='+[char]34+'qr_code'+[char]34+' Text')) -Encoding ASCII }"
 for %%F in (*.ezpx) do powershell -NoProfile -ExecutionPolicy Bypass -Command "$csv=$env:GOLABEL_CSV; $esc=$csv.Replace('$','$$'); $p='%%~fF'; $c=[IO.File]::ReadAllText($p); $c=[regex]::Replace($c,'<DataBaseFilePath>.*?</DataBaseFilePath>|<DataBaseFilePath\\s*/>','<DataBaseFilePath>'+$esc+'</DataBaseFilePath>'); [IO.File]::WriteAllText($p,$c,[Text.Encoding]::UTF8)"
 echo Database path set to: %~dp0data.csv for all .ezpx files
 echo schema.ini ready (created if missing)

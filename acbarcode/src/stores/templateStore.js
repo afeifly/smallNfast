@@ -95,6 +95,7 @@ export function createTemplate() {
     id: generateId(),
     name: 'New Template',
     itemNumbers: [],
+    deviceName: '',
     config: defaultConfig(),
     elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
     elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
@@ -131,11 +132,12 @@ export function deleteTemplate() {
   return true;
 }
 
-export function updateTemplateField({ id, name, itemNumbers, config }) {
+export function updateTemplateField({ id, name, itemNumbers, deviceName, config }) {
   const tpl = templates.value.find(t => t.id === id);
   if (!tpl) return;
   if (name !== undefined) tpl.name = name;
   if (itemNumbers !== undefined) tpl.itemNumbers = itemNumbers;
+  if (deviceName !== undefined) tpl.deviceName = deviceName;
   if (config !== undefined) tpl.config = { ...config };
   scheduleSave();
 }

@@ -7,8 +7,29 @@
       :range-count="serialRange.length"
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
-      @open-template-modal="showTemplateModal = true"
+      @open-templates="$emit('open-templates')"
     />
+
+    <!-- Sub-template / label switcher -->
+    <div v-if="activeTemplate" class="st-label-switcher">
+      <span class="switcher-label">Label:</span>
+      <button
+        type="button"
+        class="switcher-btn"
+        :class="{ active: !activeSubTemplateId }"
+        @click="setActiveSubTemplate('')"
+      >Main</button>
+      <button
+        v-for="s in activeTemplate.subTemplates || []"
+        :key="s.id"
+        type="button"
+        class="switcher-btn"
+        :class="{ active: activeSubTemplateId === s.id }"
+        @click="setActiveSubTemplate(s.id)"
+      >{{ s.name }}</button>
+      <span class="switcher-spacer"></span>
+      <button type="button" class="switcher-manage" @click="$emit('open-templates')">✎ Templates</button>
+    </div>
 
     <div class="st-editor-layout">
       <!-- LEFT PANEL: Elements Layer Manager -->
@@ -20,7 +41,7 @@
       <div class="st-preview-panel">
         <StCanvasConfigCard 
           :config="stCanvasConfig"
-          :template-name="activeTemplate?.name || ''"
+          :template-name="currentLabelName"
           :item-numbers="itemNumbersString"
           :active-lang="activeLang"
           @update:active-lang="activeLang = $event"
@@ -43,22 +64,6 @@
       </div>
     </div>
 
-    <!-- Template Manager Modal -->
-    <StTemplateModal
-      v-if="showTemplateModal"
-      :templates="templates"
-      :active-template-id="activeTemplateId"
-      @close="showTemplateModal = false"
-      @update:active-template-id="activeTemplateId = $event"
-      @update:template-field="onUpdateTemplateField"
-      @create-new="onCreateNewTemplate"
-      @duplicate="onDuplicateTemplate"
-      @delete="onDeleteTemplate"
-      @reset-defaults="onResetDefaults"
-      @import-ezpx="onImportEzpx"
-      @paste-ezpx="onPasteEzpx"
-    />
-
     <!-- Custom Modal Dialogs -->
     <StConfirmDialog />
   </div>
@@ -73,27 +78,30 @@ import StCanvasConfigCard from './st/StCanvasConfigCard.vue';
 import StElementsManagerCard from './st/StElementsManagerCard.vue';
 import StCanvasPreviewCard from './st/StCanvasPreviewCard.vue';
 import StCodePreviewCard from './st/StCodePreviewCard.vue';
-import StTemplateModal from './st/StTemplateModal.vue';
 import StConfirmDialog from './st/StConfirmDialog.vue';
-import { showStAlert, showStConfirm } from '../utils/stDialog.js';
+import { showStAlert } from '../utils/stDialog.js';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
-import { compileEZPX, compileEZPXRange, buildSerialCsv } from '../utils/stEzpxCompiler.js';
+import { compileEZPXRange, buildSerialCsv } from '../utils/stEzpxCompiler.js';
 import { PRINT_LABELS_BAT } from '../utils/stGoLabelBatch.js';
 import JSZip from 'jszip';
-import { parseEzpxXmlToTemplate } from '../utils/stEzpxParser.js';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
 import { generateSerialRange } from '../utils/stSerialRange.js';
+import { matchTemplateByItemNo, DEFAULT_ELEMENTS_EN, DEFAULT_ELEMENTS_CN } from '../utils/stTemplateManager.js';
 import {
-  fetchTemplatesFromServer,
-  saveTemplatesToServer,
-  matchTemplateByItemNo,
-  createInitialDefaultTemplates,
-  DEFAULT_ELEMENTS_EN,
-  DEFAULT_ELEMENTS_CN
-} from '../utils/stTemplateManager.js';
+  templates,
+  activeTemplateId,
+  activeTemplate,
+  activeSubTemplateId,
+  activeSubTemplate,
+  templatesLoaded,
+  loadTemplates,
+  scheduleSave,
+  copyEnToCn as storeCopyEnToCn,
+  setActiveSubTemplate
+} from '../stores/templateStore.js';
 
-defineEmits(['open-odoo-modal']);
+defineEmits(['open-odoo-modal', 'open-templates']);
 
 // ── State ──────────────────────────────────────────────────────────────
 const stSerialNumbersInput = ref('12345678');
@@ -101,49 +109,27 @@ const stEndSerialNumberInput = ref('');
 const stOptionsInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
-const showTemplateModal = ref(false);
-
-const templates = ref([]);
-const activeTemplateId = ref('');
 const activeLang = ref('EN'); // 'EN' | 'CN'
-const templatesLoaded = ref(false);
-
-// ── Server save (debounced) ────────────────────────────────────────────
-let saveTimer = null;
-function scheduleTemplateSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTemplateNow();
-  }, 800);
-}
-
-async function flushTemplateSave() {
-  clearTimeout(saveTimer);
-  saveTimer = null;
-  await saveTemplateNow();
-}
-
-async function saveTemplateNow() {
-  try {
-    await saveTemplatesToServer(templates.value);
-  } catch (err) {
-    console.error('Failed to save templates to server:', err);
-    showStAlert('Failed to save templates: ' + err.message, 'Save Error', 'danger');
-  }
-}
 
 // ── Computed ───────────────────────────────────────────────────────────
-const activeTemplate = computed(() =>
-  templates.value.find(t => t.id === activeTemplateId.value) || templates.value[0]
-);
+const currentLabel = computed(() => activeSubTemplate.value || activeTemplate.value);
 
-const stCanvasConfig = computed(() => activeTemplate.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 });
+const currentLabelName = computed(() => {
+  if (!activeTemplate.value) return '';
+  if (activeSubTemplate.value) {
+    return `${activeTemplate.value.name} / ${activeSubTemplate.value.name}`;
+  }
+  return activeTemplate.value.name;
+});
 
-const stElements = computed(() =>
-  activeLang.value === 'CN'
-    ? (activeTemplate.value?.elements_cn || [])
-    : (activeTemplate.value?.elements_en || [])
-);
+const stCanvasConfig = computed(() => currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 });
+
+const stElements = computed(() => {
+  if (!currentLabel.value) return [];
+  return activeLang.value === 'CN'
+    ? (currentLabel.value.elements_cn || [])
+    : (currentLabel.value.elements_en || []);
+});
 
 const itemNumbersString = computed(() =>
   (activeTemplate.value?.itemNumbers || []).join(', ')
@@ -184,75 +170,23 @@ function fetchFromOdooStub() {
   }
 }
 
-// ── Template Modal Actions ─────────────────────────────────────────────
-function generateId() {
-  return 'tpl_' + Math.random().toString(36).substr(2, 9);
-}
-
-function onUpdateTemplateField({ id, name, itemNumbers, config }) {
-  const tpl = templates.value.find(t => t.id === id);
-  if (!tpl) return;
-  tpl.name = name;
-  tpl.itemNumbers = itemNumbers;
-  tpl.config = { ...config };
-  scheduleTemplateSave();
-}
-
 function onCopyEnToCn() {
-  if (!activeTemplate.value) return;
-  activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(activeTemplate.value.elements_en || []));
-  scheduleTemplateSave();
+  storeCopyEnToCn(currentLabel.value);
+  showStAlert(`Copied EN layout to CN for "${currentLabelName.value}".`, 'Copy EN → CN', 'success');
 }
 
-function onCreateNewTemplate() {
-  const newTpl = {
-    id: generateId(),
-    name: 'New Template',
-    itemNumbers: [],
-    config: { widthMm: 35, heightMm: 22, dpi: 203 },
-    elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
-    elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN))
-  };
-  templates.value.push(newTpl);
-  activeTemplateId.value = newTpl.id;
-  scheduleTemplateSave();
-}
-
-function onDuplicateTemplate() {
-  if (!activeTemplate.value) return;
-  const clone = JSON.parse(JSON.stringify(activeTemplate.value));
-  clone.id = generateId();
-  clone.name = clone.name + ' (Copy)';
-  templates.value.push(clone);
-  activeTemplateId.value = clone.id;
-  scheduleTemplateSave();
-}
-
-function onDeleteTemplate() {
-  if (templates.value.length <= 1) return;
-  const idx = templates.value.findIndex(t => t.id === activeTemplateId.value);
-  templates.value.splice(idx, 1);
-  activeTemplateId.value = templates.value[Math.max(0, idx - 1)]?.id || templates.value[0]?.id;
-  scheduleTemplateSave();
-}
-
-function onResetDefaults() {
-  if (!activeTemplate.value) return;
-  activeTemplate.value.elements_en = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
-  activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
-  activeTemplate.value.config = { widthMm: 35, heightMm: 22, dpi: 203 };
-  scheduleTemplateSave();
-}
-
+// ── Per-label JSON export / import ─────────────────────────────────────
 function exportSingleTemplateJson() {
-  if (!activeTemplate.value) return;
-  const tpl = JSON.parse(JSON.stringify(activeTemplate.value));
-  const jsonStr = JSON.stringify(tpl, null, 2);
+  const label = currentLabel.value;
+  if (!label) return;
+  const data = JSON.parse(JSON.stringify(label));
+  data.name = currentLabelName.value;
+  const jsonStr = JSON.stringify(data, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const safeName = (tpl.name || 'template').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeName = (data.name || 'label').replace(/[^a-zA-Z0-9_-]/g, '_');
   a.download = `template_${safeName}.json`;
   a.click();
   URL.revokeObjectURL(url);
@@ -266,35 +200,16 @@ function importSingleTemplateJson(event) {
     try {
       const data = JSON.parse(e.target.result);
       if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const label = currentLabel.value;
+        if (!label) return;
         const importedConfig = data.config || { widthMm: 35, heightMm: 22, dpi: 203 };
         const importedEn = data.elements_en || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
         const importedCn = data.elements_cn || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
-
-        if (activeTemplate.value) {
-          // Preserve current template name & itemNumbers intact! Only update label size/DPI config and element layers
-          activeTemplate.value.config = { ...importedConfig };
-          activeTemplate.value.elements_en = JSON.parse(JSON.stringify(importedEn));
-          activeTemplate.value.elements_cn = JSON.parse(JSON.stringify(importedCn));
-        } else {
-          const newTpl = {
-            id: data.id || generateId(),
-            name: data.name || 'Imported Template',
-            itemNumbers: Array.isArray(data.itemNumbers) ? data.itemNumbers : [],
-            config: importedConfig,
-            elements_en: importedEn,
-            elements_cn: importedCn
-          };
-          templates.value.push(newTpl);
-          activeTemplateId.value = newTpl.id;
-        }
-
-        scheduleTemplateSave();
-        showStAlert(`Template layout imported into "${activeTemplate.value?.name}"!`, 'Template Imported', 'success');
-      } else if (Array.isArray(data) && data.length > 0) {
-        templates.value = data;
-        activeTemplateId.value = data[0].id;
-        scheduleTemplateSave();
-        showStAlert('All templates imported!', 'Import Successful', 'success');
+        label.config = { ...importedConfig };
+        label.elements_en = JSON.parse(JSON.stringify(importedEn));
+        label.elements_cn = JSON.parse(JSON.stringify(importedCn));
+        scheduleSave();
+        showStAlert(`Layout imported into "${currentLabelName.value}"!`, 'Template Imported', 'success');
       } else {
         showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
       }
@@ -304,48 +219,6 @@ function importSingleTemplateJson(event) {
     }
   };
   reader.readAsText(file);
-}
-
-function onImportEzpx(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const xmlStr = e.target.result;
-      const newTpl = parseEzpxXmlToTemplate(xmlStr, file.name);
-      if (newTpl && newTpl.elements_en?.length) {
-        templates.value.push(newTpl);
-        activeTemplateId.value = newTpl.id;
-        scheduleTemplateSave();
-        showStAlert(`EZPX Template "${newTpl.name}" imported with ${newTpl.elements_en.length} elements!`, 'EZPX Import', 'success');
-      } else {
-        showStAlert('Could not parse any elements from the provided EZPX file.', 'EZPX Import Failed', 'warning');
-      }
-    } catch (err) {
-      console.error('EZPX import error:', err);
-      showStAlert('Failed to parse EZPX file: ' + err.message, 'EZPX Import Error', 'danger');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function onPasteEzpx(xmlStr) {
-  if (!xmlStr || typeof xmlStr !== 'string' || !xmlStr.trim()) return;
-  try {
-    const newTpl = parseEzpxXmlToTemplate(xmlStr.trim(), 'Pasted EZPX Template');
-    if (newTpl && newTpl.elements_en?.length) {
-      templates.value.push(newTpl);
-      activeTemplateId.value = newTpl.id;
-      scheduleTemplateSave();
-      showStAlert(`EZPX Template "${newTpl.name}" created with ${newTpl.elements_en.length} elements!`, 'EZPX Paste', 'success');
-    } else {
-      showStAlert('Could not parse any elements from the pasted EZPX text.', 'EZPX Paste Failed', 'warning');
-    }
-  } catch (err) {
-    console.error('EZPX paste error:', err);
-    showStAlert('Failed to parse EZPX XML text: ' + err.message, 'EZPX Paste Error', 'danger');
-  }
 }
 
 // ── EZPL / EZPX / PDF Exports ──────────────────────────────────────────
@@ -370,20 +243,46 @@ function exportEZPL() {
   URL.revokeObjectURL(url);
 }
 
+function langElements(container) {
+  return activeLang.value === 'CN'
+    ? (container.elements_cn || [])
+    : (container.elements_en || []);
+}
+
+// Build one label definition per label design (main + each sub-template).
+function buildLabelDefs() {
+  const main = activeTemplate.value;
+  if (!main) return [];
+  const defs = [{
+    filename: 'label.ezpx',
+    name: main.name,
+    elements: langElements(main),
+    config: main.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+  }];
+  (main.subTemplates || []).forEach((sub, i) => {
+    defs.push({
+      filename: `label_sub${i + 1}.ezpx`,
+      name: sub.name,
+      elements: langElements(sub),
+      config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+    });
+  });
+  return defs;
+}
+
 async function exportEZPX() {
   const range = serialRange.value;
   const firstSN = range[0] || '12345678';
-  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
   const serials = range.length > 0 ? range : [firstSN];
+  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+  const opts = { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value, csvDatabase: true };
 
-  // CSV-database mode: GoLabel loads SNs from data.csv (one row per label)
-  // and prints all labels in one run instead of using the ^C00 serial counter.
-  const ezpxXml = await compileEZPXRange(
-    stElements.value,
-    stCanvasConfig.value,
-    serials,
-    { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value, csvDatabase: true }
-  );
+  // Main + each sub-template produce their own .ezpx, all sharing data.csv
+  const defs = buildLabelDefs();
+  const xmls = [];
+  for (const def of defs) {
+    xmls.push(await compileEZPXRange(def.elements, def.config, serials, opts));
+  }
   const csvContent = buildSerialCsv(serials);
 
   // Filename shows range: firstSN_to_lastSN when multi
@@ -392,9 +291,8 @@ async function exportEZPX() {
     ? `label_${firstSN.replace(/\s+/g, '_')}_to_${lastSN.replace(/\s+/g, '_')}`
     : `label_${firstSN.replace(/\s+/g, '_')}`;
 
-  // Package the .ezpx, data.csv and a Windows helper .bat into one ZIP download
   const zip = new JSZip();
-  zip.file(`${baseName}.ezpx`, ezpxXml);
+  defs.forEach((def, i) => zip.file(def.filename, xmls[i]));
   zip.file('data.csv', csvContent);
   zip.file('print_labels.bat', PRINT_LABELS_BAT);
   const blob = await zip.generateAsync({ type: 'blob' });
@@ -425,10 +323,10 @@ function updateCanvas() {
 }
 
 watch(
-  [activeTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, currentPreviewIndex, templates],
+  [activeTemplateId, activeSubTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, currentPreviewIndex, templates],
   async () => {
     if (templatesLoaded.value) {
-      scheduleTemplateSave();
+      scheduleSave();
     }
     await nextTick();
     updateCanvas();
@@ -437,20 +335,8 @@ watch(
 );
 
 onMounted(async () => {
-  try {
-    templates.value = await fetchTemplatesFromServer();
-  } catch (err) {
-    console.error('Failed to load templates from server:', err);
-    templates.value = createInitialDefaultTemplates();
-    showStAlert('Failed to load templates from server: ' + err.message, 'Load Error', 'danger');
-  }
-  if (templates.value.length > 0) {
-    activeTemplateId.value = templates.value[0].id;
-  }
-  // Wait until the deep watcher has run on the freshly loaded data before
-  // enabling saves, so the initial load is not written straight back.
+  if (!templatesLoaded.value) await loadTemplates();
   await nextTick();
-  templatesLoaded.value = true;
   updateCanvas();
 });
 
@@ -495,6 +381,59 @@ async function downloadStPDF() {
   flex-direction: column;
   gap: 1.5rem;
 }
+
+.st-label-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.switcher-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.switcher-btn {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.switcher-btn:hover { background: rgba(0, 0, 0, 0.35); }
+
+.switcher-btn.active {
+  background: #6b46c1;
+  border-color: #6b46c1;
+}
+
+.switcher-spacer { flex: 1; }
+
+.switcher-manage {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.switcher-manage:hover { background: rgba(255, 255, 255, 0.12); }
 
 .st-editor-layout {
   display: grid;

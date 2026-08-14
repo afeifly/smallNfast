@@ -84,7 +84,8 @@ echo GoLabel: %GOLABEL%
 
 rem ---------- 2. Find .ezpx and data.csv in this folder ----------
 set "EZPX="
-for %%F in (*.ezpx) do if not defined EZPX set "EZPX=%%~fF"
+if exist "%~dp0label.ezpx" set "EZPX=%~dp0label.ezpx"
+if not defined EZPX for %%F in (*.ezpx) do if not defined EZPX set "EZPX=%%~fF"
 if defined EZPX goto have_ezpx
 echo No .ezpx file found in: %cd%
 pause
@@ -100,12 +101,12 @@ exit /b 1
 echo Label : %EZPX%
 echo CSV   : %~dp0data.csv
 
-rem ---------- 3. Rewrite DataBaseFilePath to absolute path & ensure schema.ini ----------
+rem ---------- 3. Rewrite DataBaseFilePath for EVERY .ezpx & ensure schema.ini ----------
 set "GOLABEL_CSV=%~dp0data.csv"
-set "GOLABEL_EZPX=%EZPX%"
 set "GOLABEL_SCHEMA=%~dp0schema.ini"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$csv=$env:GOLABEL_CSV; $esc=$csv.Replace('$','$$'); $p=$env:GOLABEL_EZPX; $c=[IO.File]::ReadAllText($p); $c=[regex]::Replace($c,'<DataBaseFilePath>.*?</DataBaseFilePath>|<DataBaseFilePath\\s*/>','<DataBaseFilePath>'+$esc+'</DataBaseFilePath>'); [IO.File]::WriteAllText($p,$c,[Text.Encoding]::UTF8); $sf=$env:GOLABEL_SCHEMA; if (-not (Test-Path $sf)) { Set-Content -LiteralPath $sf -Value @('[data.csv]','ColNameHeader=True','Format=Delimited(,)','CharacterSet=1252',('Col1='+[char]34+'sn'+[char]34+' Text')) -Encoding ASCII }"
-echo Database path set to: %~dp0data.csv
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$sf=$env:GOLABEL_SCHEMA; if (-not (Test-Path $sf)) { Set-Content -LiteralPath $sf -Value @('[data.csv]','ColNameHeader=True','Format=Delimited(,)','CharacterSet=1252',('Col1='+[char]34+'sn'+[char]34+' Text')) -Encoding ASCII }"
+for %%F in (*.ezpx) do powershell -NoProfile -ExecutionPolicy Bypass -Command "$csv=$env:GOLABEL_CSV; $esc=$csv.Replace('$','$$'); $p='%%~fF'; $c=[IO.File]::ReadAllText($p); $c=[regex]::Replace($c,'<DataBaseFilePath>.*?</DataBaseFilePath>|<DataBaseFilePath\\s*/>','<DataBaseFilePath>'+$esc+'</DataBaseFilePath>'); [IO.File]::WriteAllText($p,$c,[Text.Encoding]::UTF8)"
+echo Database path set to: %~dp0data.csv for all .ezpx files
 echo schema.ini ready (created if missing)
 
 rem ---------- 4. Launch GoLabel ----------

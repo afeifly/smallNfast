@@ -39,8 +39,8 @@
       </button>
     </div>
     <div class="st-header-right">
-      <button type="button" class="template-mgr-btn" @click="$emit('open-template-modal')">
-        📋 Template Manager
+      <button type="button" class="template-mgr-btn" @click="$emit('open-templates')">
+        ✎ Templates
       </button>
       <!-- Temporarily hidden per user request -->
       <button type="button" class="manage-odoo-btn" v-if="false" @click="$emit('open-odoo-modal')">
@@ -70,7 +70,7 @@ defineProps({
   }
 });
 
-defineEmits(['update:modelValue', 'update:endValue', 'update:optionsValue', 'fetch-odoo', 'open-odoo-modal', 'open-template-modal']);
+defineEmits(['update:modelValue', 'update:endValue', 'update:optionsValue', 'fetch-odoo', 'open-odoo-modal', 'open-templates']);
 </script>
 
 <style scoped>

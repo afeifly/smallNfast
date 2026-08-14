@@ -13,36 +13,53 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     ? serialNumbers.map(s => String(s).trim())
     : ['12345678'];
 
-  let elements;
-  let canvasConfig = { widthMm: 35, heightMm: 22, dpi: 203 };
   const productName = String(product || 'S695 4120').trim();
+
+  // Build label definitions: { filename, elements, config }.
+  // A posted template_xml produces a single label; a matched stored template
+  // produces the main label plus one label per sub-template (all sharing the
+  // same product / options / serial data, different designs & sizes).
+  const defs = [];
 
   // 1. If EZPX XML text content was posted directly
   if (templateXml && typeof templateXml === 'string' && templateXml.trim()) {
     try {
       const parsed = parseEzpxXmlToTemplate(templateXml.trim(), 'Posted EZPX Template');
       if (parsed && Array.isArray(parsed.elements_en) && parsed.elements_en.length > 0) {
-        elements = parsed.elements_en;
-        if (parsed.config) canvasConfig = parsed.config;
+        defs.push({
+          filename: 'label.ezpx',
+          elements: parsed.elements_en,
+          config: parsed.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+        });
       }
     } catch (e) {
       console.warn('Failed to parse posted templateXml:', e);
     }
   }
 
-  // 2. If no direct templateXml was provided, try matching product against stored templates (SQLite)
-  if (!elements || elements.length === 0) {
+  // 2. Otherwise match product against stored templates (SQLite), including sub-templates
+  if (defs.length === 0) {
     const storedTemplates = templateStore.getAllTemplates();
     const matched = matchTemplateByItemNo(storedTemplates, productName);
     if (matched) {
-      elements = JSON.parse(JSON.stringify(matched.elements_en || matched.elements || []));
-      if (matched.config) canvasConfig = matched.config;
+      defs.push({
+        filename: 'label.ezpx',
+        elements: JSON.parse(JSON.stringify(matched.elements_en || matched.elements || [])),
+        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+      });
+      (matched.subTemplates || []).forEach((sub, i) => {
+        defs.push({
+          filename: `label_sub${i + 1}.ezpx`,
+          elements: JSON.parse(JSON.stringify(sub.elements_en || [])),
+          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+        });
+      });
     }
   }
 
-  // 3. If still no elements, no posted template nor a stored template matched the product.
-  //    Error out instead of silently using the hardcoded default template.
-  if (!elements || elements.length === 0) {
+  // 3. If still no label definitions, no posted template nor a stored template matched
+  //    the product. Error out instead of silently using the hardcoded default template.
+  if (defs.length === 0) {
     const err = new Error(`No template found for product "${productName}". Make sure the product matches a template's item numbers, or post template_xml.`);
     err.status = 404;
     throw err;
@@ -56,15 +73,20 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     : 'Standard';
 
   // CSV-database mode: the EZPX references data.csv (one label per row) instead of the
-  // ^C00 serial counter, matching the frontend export workflow.
-  const ezpxXml = await compileEZPXRange(elements, canvasConfig, serials, {
-    product: productName,
-    optionsText: optionsStr,
-    csvDatabase: true
-  });
+  // ^C00 serial counter, matching the frontend export workflow. Each label definition
+  // (main + subs) becomes its own .ezpx sharing the same data.csv.
+  const files = [];
+  for (const def of defs) {
+    const xml = await compileEZPXRange(def.elements, def.config, serials, {
+      product: productName,
+      optionsText: optionsStr,
+      csvDatabase: true
+    });
+    files.push({ filename: def.filename, xml });
+  }
   const csvContent = buildSerialCsv(serials);
 
-  return { ezpxXml, csvContent };
+  return { files, csvContent };
 }
 
 module.exports = {

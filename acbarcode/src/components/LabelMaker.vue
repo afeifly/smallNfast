@@ -149,6 +149,7 @@
     <StLabelDesigner 
       v-else-if="activeTab === 'st' && isAdmin"
       @open-odoo-modal="showOdooModal = true"
+      @open-templates="$emit('open-templates')"
     />
 
     <!-- Odoo Server Management Modal Component -->
@@ -225,7 +226,7 @@ const isAdmin = ref(sessionStorage.getItem('acbarcode_role') === 'admin');
 const props = defineProps({
   activeTab: { type: String, default: 'maker' }
 });
-const emit = defineEmits(['update:activeTab']);
+const emit = defineEmits(['update:activeTab', 'open-templates']);
 const acSubTab = ref('generator');
 
 // Products CRUD State
@@ -618,7 +619,6 @@ async function deleteProduct(itemNumber) {
   margin: 0 auto;
   padding: 24px;
   font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
 }
 

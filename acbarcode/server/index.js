@@ -539,7 +539,8 @@ app.put('/api/templates', adminAuth, (req, res) => {
     itemNumbers: (t && Array.isArray(t.itemNumbers)) ? t.itemNumbers : [],
     config: (t && t.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: (t && Array.isArray(t.elements_en)) ? t.elements_en : [],
-    elements_cn: (t && Array.isArray(t.elements_cn)) ? t.elements_cn : []
+    elements_cn: (t && Array.isArray(t.elements_cn)) ? t.elements_cn : [],
+    subTemplates: (t && Array.isArray(t.subTemplates)) ? t.subTemplates : []
   }));
   const saved = templateStore.replaceAll(prepared);
   res.json({ message: `${saved.length} template(s) imported`, templates: saved });
@@ -552,7 +553,8 @@ app.post('/api/templates', adminAuth, (req, res) => {
     itemNumbers: (req.body && Array.isArray(req.body.itemNumbers)) ? req.body.itemNumbers : [],
     config: (req.body && req.body.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: (req.body && Array.isArray(req.body.elements_en)) ? req.body.elements_en : [],
-    elements_cn: (req.body && Array.isArray(req.body.elements_cn)) ? req.body.elements_cn : []
+    elements_cn: (req.body && Array.isArray(req.body.elements_cn)) ? req.body.elements_cn : [],
+    subTemplates: (req.body && Array.isArray(req.body.subTemplates)) ? req.body.subTemplates : []
   };
   res.status(201).json(templateStore.insertTemplate(t));
 });
@@ -1038,13 +1040,15 @@ async function handleStLabel(req, res) {
       return res.status(400).json({ error: 'Missing required field: serial_numbers must be a non-empty array' });
     }
 
-    const { ezpxXml, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);
+    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);
 
-    // Package the .ezpx, data.csv and the Windows helper .bat into one ZIP,
-    // since the EZPX now loads serials from the CSV database.
+    // Package the label .ezpx file(s) (main + one per sub-template), the shared
+    // data.csv and the Windows helper .bat into one ZIP.
     const { PRINT_LABELS_BAT } = await import('../src/utils/stGoLabelBatch.js');
     const zip = new JSZip();
-    zip.file('label_all.ezpx', ezpxXml);
+    for (const f of files) {
+      zip.file(f.filename, f.xml);
+    }
     zip.file('data.csv', csvContent);
     zip.file('print_labels.bat', PRINT_LABELS_BAT);
     const pkgBuffer = await zip.generateAsync({ type: 'nodebuffer' });

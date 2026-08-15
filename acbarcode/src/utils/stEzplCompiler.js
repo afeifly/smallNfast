@@ -84,7 +84,8 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
     } else if (el.type === 'qrcode') {
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
-      const mul = el.mul || 4;
+      const rawMul = Number(el.mul) || 4;
+      const mul = Math.max(1, rawMul - 1);
       const len = textVal.length;
       ezpl += `W${x},${y},2,2,M,8,${mul},${len},0\n`;
       ezpl += `${textVal}\n`;

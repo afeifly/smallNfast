@@ -1,3 +1,6 @@
+import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
+
 export function escapeXml(str) {
   if (!str) return '';
   return String(str)
@@ -14,6 +17,115 @@ export function measureTextWidthDots(text, fontPt = 4, dpi = 203) {
   const totalWidthPt = text.length * avgCharWidthPt;
   const dots = Math.round((totalWidthPt / 72) * dpi);
   return Math.max(15, dots);
+}
+
+export async function getQrCodeBase64(text, mul = 4) {
+  if (!text) return { data: '' };
+  try {
+    const dataUrl = await QRCode.toDataURL(text, {
+      margin: 1,
+      scale: Math.max(2, Math.min(10, mul || 4)),
+      errorCorrectionLevel: 'M'
+    });
+    const b64 = dataUrl.split(',')[1] || '';
+    return { data: b64 };
+  } catch (e) {
+    console.warn('QRCode generation failed for text:', text, e);
+    return { data: '' };
+  }
+}
+
+export async function getBarcodeBase64(text, heightDots = 40, readable = true) {
+  if (!text) return { data: '', width: 0, height: 0 };
+  if (typeof window !== 'undefined') {
+    try {
+      const canvas = document.createElement('canvas');
+      JsBarcode(canvas, text, {
+        format: 'CODE128',
+        width: 2,
+        height: Math.max(10, heightDots),
+        displayValue: !!readable,
+        fontSize: 12,
+        margin: 2
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      return {
+        data: dataUrl.split(',')[1] || '',
+        width: canvas.width,
+        height: canvas.height
+      };
+    } catch (e) {
+      console.warn('Browser barcode generation failed:', e);
+      return { data: '', width: 0, height: 0 };
+    }
+  }
+
+  // Node.js environment
+  try {
+    const zlib = (await import('zlib')).default || (await import('zlib'));
+    const CODE128 = JsBarcode.getModule('CODE128');
+    const encoder = new CODE128(text, { format: 'CODE128' });
+    const encoded = encoder.encode();
+    const bits = encoded.data;
+    const moduleWidth = 2;
+    const quietZone = 10;
+    const totalModules = bits.length + (quietZone * 2);
+    const width = totalModules * moduleWidth;
+    const height = Math.max(20, heightDots);
+
+    const crc32 = (buf) => {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++) {
+        crc ^= buf[i];
+        for (let j = 0; j < 8; j++) {
+          crc = (crc >>> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
+        }
+      }
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    };
+
+    const makeChunk = (type, data) => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length, 0);
+      const typeBuf = Buffer.from(type, 'ascii');
+      const body = Buffer.concat([typeBuf, data]);
+      const crcBuf = Buffer.alloc(4);
+      crcBuf.writeUInt32BE(crc32(body), 0);
+      return Buffer.concat([len, body, crcBuf]);
+    };
+
+    const sig = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 0;
+    ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+    const ihdrChunk = makeChunk('IHDR', ihdr);
+
+    const rowLen = 1 + width;
+    const raw = Buffer.alloc(rowLen * height);
+    for (let y = 0; y < height; y++) {
+      raw[y * rowLen] = 0;
+      for (let x = 0; x < width; x++) {
+        const mod = Math.floor(x / moduleWidth) - quietZone;
+        raw[y * rowLen + 1 + x] = (mod >= 0 && mod < bits.length && bits[mod] === '1') ? 0 : 255;
+      }
+    }
+
+    const idatChunk = makeChunk('IDAT', zlib.deflateSync(raw));
+    const iendChunk = makeChunk('IEND', Buffer.alloc(0));
+    const pngBuf = Buffer.concat([sig, ihdrChunk, idatChunk, iendChunk]);
+
+    return {
+      data: pngBuf.toString('base64'),
+      width,
+      height
+    };
+  } catch (e) {
+    console.warn('Node.js barcode generation failed:', e);
+    return { data: '', width: 0, height: 0 };
+  }
 }
 
 const imageCache = new Map();
@@ -345,37 +457,106 @@ export async function compileEZPX(elements, config, serial = '3726 0001') {
         <Binverse>false</Binverse>
       </GraphicShape>`;
     } else if (el.type === 'barcode') {
-      const x = mmToDots(el.xMm || 0);
-      const y = mmToDots(el.yMm || 0);
+      const x          = mmToDots(el.xMm || 0);
+      const y          = mmToDots(el.yMm || 0);
       const heightDots = mmToDots(el.heightMm || 10);
-      const readable = el.readable ? 'true' : 'false';
+      const readable   = el.readable !== false;
+      const captionAlign = readable ? 'BottomAndLeft' : 'None';
+      let narrow = 3;
+      if (el.widthMm) {
+        const totalModules = (escapedText.length * 11) + 35;
+        narrow = Math.max(1, Math.round(mmToDots(el.widthMm) / totalModules));
+      }
+      const totalModules = (escapedText.length * 11) + 35;
+      const wDots = el.widthMm ? mmToDots(el.widthMm) : (totalModules * narrow);
+      const hDots = heightDots + (readable ? 36 : 0);
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Barcode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}">
+      <GraphicShape xsi:type="BarCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="Arial,12&#xD;&#xA;" Symbology="Code128Auto" CaptionAlignment="${captionAlign}" Height="${heightDots}" Width="8" Narrow="${narrow}" BearerBarStyle="3" BearerBarWidth="5" QuietZoneWidth="9" BoxThickness="3" Offset="1" bDisplayChecksum="false" bDisplayStartStopChar="false" bBuiltinFont="true" bSetBuiltinFontSize="false" Code128Subset="Auto">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
         <Id>${index}</Id>
-        <ItemLabel>${escapeXml(el.name || `Barcode_${index}`)}</ItemLabel>
+        <ItemLabel>${escapeXml(el.name || `BarCode_${index}`)}</ItemLabel>
         <ObjectDrawMode>FW</ObjectDrawMode>
         <Name>B</Name>
         <GroupID>0</GroupID>
         <GroupSelected>false</GroupSelected>
+        <CharTruncateRule>
+          <TrimLeft>false</TrimLeft>
+          <TrimRight>false</TrimRight>
+          <RemoveCharLeft>false</RemoveCharLeft>
+          <RemoveCharLeftNo>0</RemoveCharLeftNo>
+          <RemoveCharRight>false</RemoveCharRight>
+          <RemoveCharRightNo>0</RemoveCharRightNo>
+          <KeepCharLeft>false</KeepCharLeft>
+          <KeepCharLeftNo>6</KeepCharLeftNo>
+          <KeepCharRight>false</KeepCharRight>
+          <KeepCharRightNo>6</KeepCharRightNo>
+          <RemoveDotZero>false</RemoveDotZero>
+        </CharTruncateRule>
+        <bReplaceSpecialCharFromDB>false</bReplaceSpecialCharFromDB>
+        <ScriptCode_Base64 />
+        <CharFilterRule>None</CharFilterRule>
+        <LinkMode>OriginalData</LinkMode>
+        <GraphicMode>false</GraphicMode>
+        <ReplaceInfoItems />
+        <FormatType>None</FormatType>
+        <P1 />
+        <P2 />
+        <P3 />
+        <P4 />
+        <Culture>zh-CN</Culture>
+        <calendar>GregorianCalendar</calendar>
+        <GetAiFromDigitalLink>false</GetAiFromDigitalLink>
+        <DataField>None</DataField>
+        <Prompt>None</Prompt>
+        <BoundRectWidth>${wDots}</BoundRectWidth>
         <DispData>${escapedText}</DispData>
+        <bRemovePreZeroAndEmpty>false</bRemovePreZeroAndEmpty>
         <Data>${escapedText}</Data>
-        <BarCodeType>Code128_Auto</BarCodeType>
-        <Height>${heightDots}</Height>
-        <NarrowBar>2</NarrowBar>
-        <WideBar>5</WideBar>
-        <PrintText>${readable}</PrintText>
+        <ItemInfoList>
+          <Item>
+            <ItemSymbol>1</ItemSymbol>
+            <ItemData>${escapedText}</ItemData>
+          </Item>
+        </ItemInfoList>
+        <BoundRectHeight>${hDots}</BoundRectHeight>
+        <BoundRect>
+          <Location>
+            <X>${x}</X>
+            <Y>${y}</Y>
+          </Location>
+          <Size>
+            <Width>${wDots}</Width>
+            <Height>${hDots}</Height>
+          </Size>
+          <X>${x}</X>
+          <Y>${y}</Y>
+          <Width>${wDots}</Width>
+          <Height>${hDots}</Height>
+        </BoundRect>
+        <CheckDigitType>MOD_43</CheckDigitType>
+        <Use_ITF_T2>true</Use_ITF_T2>
+        <CustomizeGuardBar>false</CustomizeGuardBar>
+        <GuardBarHeight>0</GuardBarHeight>
+        <ISBT_AutoCheckSum>true</ISBT_AutoCheckSum>
+        <UPC_SplitCodeText>true</UPC_SplitCodeText>
+        <UPC_ShrinkSplitText>false</UPC_ShrinkSplitText>
+        <UPC_HideCheckDigit>false</UPC_HideCheckDigit>
       </GraphicShape>`;
+
     } else if (el.type === 'qrcode') {
-      const x = mmToDots(el.xMm || 0);
-      const y = mmToDots(el.yMm || 0);
-      const mul = el.mul || 4;
+      const x   = mmToDots(el.xMm || 0);
+      const y   = mmToDots(el.yMm || 0);
+      const rawMul = Number(el.mul) || 4;
+      const goLabelMultiple = Math.max(1, rawMul - 1);
+      const sizeMm = el.widthMm || (rawMul * 2.5) || 10;
+      const wDots = mmToDots(sizeMm);
+      const hDots = mmToDots(sizeMm);
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Barcode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}">
+      <GraphicShape xsi:type="QRCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Center" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" bSingleLine="false" CaptionWidth="150" bGS1="false" DigitalLink="false" CaptionAlignment="None" FontCmd="Arial,12&#xD;&#xA;" Mode="Auto" Type="2" ErrorCorrectionLevel="77" QrcodeVersion="0" Mask="8" Multiple="${goLabelMultiple}" IsUTF8="true" CodePage="65001">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -385,13 +566,124 @@ export async function compileEZPX(elements, config, serial = '3726 0001') {
         <Name>W</Name>
         <GroupID>0</GroupID>
         <GroupSelected>false</GroupSelected>
+        <CharTruncateRule>
+          <TrimLeft>false</TrimLeft>
+          <TrimRight>false</TrimRight>
+          <RemoveCharLeft>false</RemoveCharLeft>
+          <RemoveCharLeftNo>0</RemoveCharLeftNo>
+          <RemoveCharRight>false</RemoveCharRight>
+          <RemoveCharRightNo>0</RemoveCharRightNo>
+          <KeepCharLeft>false</KeepCharLeft>
+          <KeepCharLeftNo>6</KeepCharLeftNo>
+          <KeepCharRight>false</KeepCharRight>
+          <KeepCharRightNo>6</KeepCharRightNo>
+          <RemoveDotZero>false</RemoveDotZero>
+        </CharTruncateRule>
+        <bReplaceSpecialCharFromDB>false</bReplaceSpecialCharFromDB>
+        <ScriptCode_Base64 />
+        <CharFilterRule>None</CharFilterRule>
+        <LinkMode>OriginalData</LinkMode>
+        <GraphicMode>false</GraphicMode>
+        <ReplaceInfoItems />
+        <FormatType>None</FormatType>
+        <P1 />
+        <P2 />
+        <P3 />
+        <P4 />
+        <Culture>zh-CN</Culture>
+        <calendar>GregorianCalendar</calendar>
+        <GetAiFromDigitalLink>false</GetAiFromDigitalLink>
+        <DataField>None</DataField>
+        <Prompt>None</Prompt>
+        <BoundRectWidth>${wDots}</BoundRectWidth>
         <DispData>${escapedText}</DispData>
+        <bRemovePreZeroAndEmpty>false</bRemovePreZeroAndEmpty>
         <Data>${escapedText}</Data>
-        <BarCodeType>QRCode</BarCodeType>
-        <Height>100</Height>
-        <NarrowBar>${mul}</NarrowBar>
-        <WideBar>${mul}</WideBar>
-        <PrintText>false</PrintText>
+        <ItemInfoList>
+          <Item>
+            <ItemSymbol>1</ItemSymbol>
+            <ItemData>${escapedText}</ItemData>
+          </Item>
+        </ItemInfoList>
+        <BoundRectHeight>${hDots}</BoundRectHeight>
+        <BoundRect>
+          <Location>
+            <X>${x}</X>
+            <Y>${y}</Y>
+          </Location>
+          <Size>
+            <Width>${wDots}</Width>
+            <Height>${hDots}</Height>
+          </Size>
+          <X>${x}</X>
+          <Y>${y}</Y>
+          <Width>${wDots}</Width>
+          <Height>${hDots}</Height>
+        </BoundRect>
+        <BLegacy>true</BLegacy>
+        <MultiLineCaption Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" Alignment="Left" AlignPointX="0" AlignPointY="0" FontScript="Default" FontCmd="Microsoft Sans Serif,24&#xD;&#xA;" LineSpacing="Single" LineHeight="0" Multiple="10" DotBeforePara="0" DotAfterPara="0" FontWidth="24" BTrueType="true">
+          <qHitOnCircumferance>false</qHitOnCircumferance>
+          <Selected>false</Selected>
+          <iBackground_color>4294967295</iBackground_color>
+          <Id>${index}</Id>
+          <ItemLabel>W${index}</ItemLabel>
+          <ObjectDrawMode>FW</ObjectDrawMode>
+          <Name>W</Name>
+          <GroupID>0</GroupID>
+          <GroupSelected>false</GroupSelected>
+          <CharTruncateRule>
+            <TrimLeft>false</TrimLeft>
+            <TrimRight>false</TrimRight>
+            <RemoveCharLeft>false</RemoveCharLeft>
+            <RemoveCharLeftNo>0</RemoveCharLeftNo>
+            <RemoveCharRight>false</RemoveCharRight>
+            <RemoveCharRightNo>0</RemoveCharRightNo>
+            <KeepCharLeft>false</KeepCharLeft>
+            <KeepCharLeftNo>6</KeepCharLeftNo>
+            <KeepCharRight>false</KeepCharRight>
+            <KeepCharRightNo>6</KeepCharRightNo>
+            <RemoveDotZero>false</RemoveDotZero>
+          </CharTruncateRule>
+          <bReplaceSpecialCharFromDB>false</bReplaceSpecialCharFromDB>
+          <CharFilterRule>None</CharFilterRule>
+          <LinkMode>OriginalData</LinkMode>
+          <GraphicMode>false</GraphicMode>
+          <ReplaceInfoItems />
+          <FormatType>None</FormatType>
+          <P1 />
+          <P2 />
+          <P3 />
+          <P4 />
+          <Culture>zh-CN</Culture>
+          <calendar>GregorianCalendar</calendar>
+          <GetAiFromDigitalLink>false</GetAiFromDigitalLink>
+          <DataField>None</DataField>
+          <Prompt>None</Prompt>
+          <BoundRectWidth>${wDots}</BoundRectWidth>
+          <DispData>${escapedText}</DispData>
+          <bRemovePreZeroAndEmpty>false</bRemovePreZeroAndEmpty>
+          <Data>${escapedText}</Data>
+          <ItemInfoList />
+          <BoundRectHeight>${hDots}</BoundRectHeight>
+          <BoundRect>
+            <Location>
+              <X>0</X>
+              <Y>0</Y>
+            </Location>
+            <Size>
+              <Width>${wDots}</Width>
+              <Height>${hDots}</Height>
+            </Size>
+            <X>0</X>
+            <Y>0</Y>
+            <Width>${wDots}</Width>
+            <Height>${hDots}</Height>
+          </BoundRect>
+          <WrapMode>WordWrap</WrapMode>
+          <SplitDataByAI>false</SplitDataByAI>
+          <TextSpace>0</TextSpace>
+        </MultiLineCaption>
+        <bWrapBarCodeWidth>false</bWrapBarCodeWidth>
       </GraphicShape>`;
     }
   }

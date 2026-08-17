@@ -63,6 +63,9 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
 
     if (matchedRule && matchedRule.text !== undefined) {
       rawText = matchedRule.text;
+    } else if (el.useDefaultText === false) {
+      // Required option (no fallback): show nothing when no code matches.
+      rawText = '';
     } else if (el.defaultText !== undefined && el.defaultText !== '') {
       rawText = el.defaultText;
     } else {

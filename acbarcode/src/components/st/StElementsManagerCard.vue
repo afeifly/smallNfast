@@ -335,13 +335,22 @@ const ElementForm = defineComponent({
               }, '➕ Add Option Rule')
             ]),
             h('div', { class: 'fg default-fallback-fg' }, [
-              h('label', 'Default Fallback Text (if no code matches)'),
-              h('input', {
-                type: 'text',
-                value: el.defaultText || '',
-                onInput: e => el.defaultText = e.target.value,
-                placeholder: 'e.g. Standard'
-              })
+              h('label', { class: 'cb' }, [
+                h('input', {
+                  type: 'checkbox',
+                  checked: el.useDefaultText !== false,
+                  onChange: e => el.useDefaultText = e.target.checked
+                }),
+                ' Enable Default Fallback Text (if no code matches)'
+              ]),
+              el.useDefaultText === false
+                ? h('div', { class: 'fallback-disabled-hint' }, 'Required option — one of the codes above must be selected.')
+                : h('input', {
+                    type: 'text',
+                    value: el.defaultText || '',
+                    onInput: e => el.defaultText = e.target.value,
+                    placeholder: 'e.g. Standard'
+                  })
             ])
           ]));
         }
@@ -849,6 +858,23 @@ const ElementForm = defineComponent({
 }
 :deep(.default-fallback-fg) {
   margin-top: 4px;
+}
+:deep(.default-fallback-fg .cb) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 4px;
+}
+:deep(.fallback-disabled-hint) {
+  font-size: 0.76rem;
+  color: #e53e3e;
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  border-radius: 6px;
+  padding: 6px 9px;
 }
 
 /* ── Text Content Mode Selector ────────────────────── */

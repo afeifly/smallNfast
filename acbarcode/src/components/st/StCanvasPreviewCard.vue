@@ -27,7 +27,7 @@
         📥 Import JSON
         <input type="file" accept=".json" style="display:none;" @change="$emit('import-template-json', $event)" />
       </label>
-      <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf')">
+      <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf', $event)">
         📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount} Pages)` : '' }}
       </button>
     </div>

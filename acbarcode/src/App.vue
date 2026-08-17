@@ -38,6 +38,7 @@
       </div>
     </header>
     <LabelMaker v-model:active-tab="activeTab" />
+    <StConfirmDialog />
   </template>
 </template>
 
@@ -45,6 +46,7 @@
 import { ref, onMounted } from 'vue';
 import LoginPage from './components/LoginPage.vue';
 import LabelMaker from './components/LabelMaker.vue';
+import StConfirmDialog from './components/st/StConfirmDialog.vue';
 
 const isAuthenticated = ref(false);
 const currentRole = ref('user');

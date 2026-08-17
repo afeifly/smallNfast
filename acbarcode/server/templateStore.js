@@ -20,6 +20,7 @@ db.exec(`
     elements_cn TEXT NOT NULL DEFAULT '[]',
     subTemplates TEXT NOT NULL DEFAULT '[]',
     deviceName TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
     created_at TEXT,
     updated_at TEXT
   )
@@ -33,6 +34,9 @@ if (!cols.includes('subTemplates')) {
 if (!cols.includes('deviceName')) {
   db.exec("ALTER TABLE templates ADD COLUMN deviceName TEXT NOT NULL DEFAULT ''");
 }
+if (!cols.includes('note')) {
+  db.exec("ALTER TABLE templates ADD COLUMN note TEXT NOT NULL DEFAULT ''");
+}
 
 function rowToTemplate(row) {
   return {
@@ -40,6 +44,7 @@ function rowToTemplate(row) {
     name: row.name,
     itemNumbers: safeParse(row.itemNumbers, []),
     deviceName: row.deviceName || '',
+    note: row.note || '',
     config: safeParse(row.config, {}),
     elements_en: safeParse(row.elements_en, []),
     elements_cn: safeParse(row.elements_cn, []),
@@ -62,6 +67,7 @@ function normalizeSubTemplate(sub) {
   return {
     id: String((sub && sub.id) || ''),
     name: String((sub && sub.name) || 'Sub Template'),
+    note: String((sub && sub.note) || ''),
     config: (sub && sub.config && typeof sub.config === 'object') ? sub.config : { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: (sub && Array.isArray(sub.elements_en)) ? sub.elements_en : [],
     elements_cn: (sub && Array.isArray(sub.elements_cn)) ? sub.elements_cn : []
@@ -74,6 +80,7 @@ function normalizeTemplate(tpl) {
     name: String(tpl.name || 'New Template'),
     itemNumbers: Array.isArray(tpl.itemNumbers) ? tpl.itemNumbers : [],
     deviceName: String(tpl.deviceName || ''),
+    note: String(tpl.note || ''),
     config: (tpl.config && typeof tpl.config === 'object') ? tpl.config : { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: Array.isArray(tpl.elements_en) ? tpl.elements_en : [],
     elements_cn: Array.isArray(tpl.elements_cn) ? tpl.elements_cn : [],
@@ -95,13 +102,14 @@ function insertTemplate(tpl) {
   const t = normalizeTemplate(tpl);
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO templates (id, name, itemNumbers, deviceName, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @deviceName, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT INTO templates (id, name, itemNumbers, deviceName, note, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `).run({
     id: t.id,
     name: t.name,
     itemNumbers: JSON.stringify(t.itemNumbers),
     deviceName: t.deviceName,
+    note: t.note,
     config: JSON.stringify(t.config),
     elements_en: JSON.stringify(t.elements_en),
     elements_cn: JSON.stringify(t.elements_cn),
@@ -118,7 +126,7 @@ function updateTemplate(id, tpl) {
   const t = normalizeTemplate({ ...existing, ...tpl, id });
   db.prepare(`
     UPDATE templates
-    SET name = @name, itemNumbers = @itemNumbers, deviceName = @deviceName, config = @config,
+    SET name = @name, itemNumbers = @itemNumbers, deviceName = @deviceName, note = @note, config = @config,
         elements_en = @elements_en, elements_cn = @elements_cn, subTemplates = @subTemplates, updated_at = @updated_at
     WHERE id = @id
   `).run({
@@ -126,6 +134,7 @@ function updateTemplate(id, tpl) {
     name: t.name,
     itemNumbers: JSON.stringify(t.itemNumbers),
     deviceName: t.deviceName,
+    note: t.note,
     config: JSON.stringify(t.config),
     elements_en: JSON.stringify(t.elements_en),
     elements_cn: JSON.stringify(t.elements_cn),
@@ -139,8 +148,8 @@ function replaceAll(templatesList) {
   const list = Array.isArray(templatesList) ? templatesList.map(normalizeTemplate) : [];
   const now = new Date().toISOString();
   const insert = db.prepare(`
-    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @deviceName, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, note, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `);
   db.exec('BEGIN');
   try {
@@ -151,6 +160,7 @@ function replaceAll(templatesList) {
         name: t.name,
         itemNumbers: JSON.stringify(t.itemNumbers),
         deviceName: t.deviceName,
+        note: t.note,
         config: JSON.stringify(t.config),
         elements_en: JSON.stringify(t.elements_en),
         elements_cn: JSON.stringify(t.elements_cn),

@@ -41,6 +41,11 @@
       <span class="info-label">ITEMS</span>
       <span class="info-value" :title="itemNumbers || '—'">{{ itemNumbers || '—' }}</span>
       <span class="info-metric">{{ config.dpi }} <small>DPI</small></span>
+
+      <!-- Note row (purpose / usage hint) -->
+      <span v-if="templateNote" class="info-label">NOTE</span>
+      <span v-if="templateNote" class="info-value note-value" :title="templateNote">{{ templateNote }}</span>
+      <span v-if="templateNote" class="info-metric"></span>
     </div>
   </div>
 </template>
@@ -52,6 +57,7 @@ defineProps({
   config: { type: Object, required: true },
   templateName: { type: String, default: '' },
   itemNumbers: { type: String, default: '' },
+  templateNote: { type: String, default: '' },
   activeLang: { type: String, default: 'EN' }
 });
 
@@ -191,6 +197,11 @@ async function onCopyFromEn() {
   text-overflow: ellipsis;
   min-width: 0;
   cursor: default;
+}
+
+.note-value {
+  font-style: italic;
+  color: #718096;
 }
 
 .info-metric {

@@ -96,6 +96,7 @@ export function createTemplate() {
     name: 'New Template',
     itemNumbers: [],
     deviceName: '',
+    note: '',
     config: defaultConfig(),
     elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
     elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
@@ -132,12 +133,13 @@ export function deleteTemplate() {
   return true;
 }
 
-export function updateTemplateField({ id, name, itemNumbers, deviceName, config }) {
+export function updateTemplateField({ id, name, itemNumbers, deviceName, note, config }) {
   const tpl = templates.value.find(t => t.id === id);
   if (!tpl) return;
   if (name !== undefined) tpl.name = name;
   if (itemNumbers !== undefined) tpl.itemNumbers = itemNumbers;
   if (deviceName !== undefined) tpl.deviceName = deviceName;
+  if (note !== undefined) tpl.note = note;
   if (config !== undefined) tpl.config = { ...config };
   scheduleSave();
 }
@@ -166,6 +168,7 @@ export function addSubTemplate() {
   const sub = {
     id: generateId(),
     name: 'Sub Template',
+    note: '',
     config: defaultConfig(),
     elements_en: [],
     elements_cn: []
@@ -182,6 +185,7 @@ export function updateSubTemplate(subId, patch) {
   const sub = tpl.subTemplates.find(s => s.id === subId);
   if (!sub) return;
   if (patch.name !== undefined) sub.name = patch.name;
+  if (patch.note !== undefined) sub.note = patch.note;
   if (patch.config !== undefined) sub.config = { ...patch.config };
   scheduleSave();
 }

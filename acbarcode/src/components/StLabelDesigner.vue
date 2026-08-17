@@ -24,6 +24,7 @@
         <StCanvasConfigCard 
           :config="stCanvasConfig"
           :template-name="currentLabelName"
+          :template-note="currentLabelNote"
           :item-numbers="itemNumbersString"
           :active-lang="activeLang"
           @update:active-lang="activeLang = $event"
@@ -47,7 +48,6 @@
     </div>
 
     <!-- Custom Modal Dialogs -->
-    <StConfirmDialog />
   </div>
 </template>
 
@@ -60,8 +60,7 @@ import StCanvasConfigCard from './st/StCanvasConfigCard.vue';
 import StElementsManagerCard from './st/StElementsManagerCard.vue';
 import StCanvasPreviewCard from './st/StCanvasPreviewCard.vue';
 import StCodePreviewCard from './st/StCodePreviewCard.vue';
-import StConfirmDialog from './st/StConfirmDialog.vue';
-import { showStAlert } from '../utils/stDialog.js';
+import { showStAlert, showStConfirm } from '../utils/stDialog.js';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
 import { compileEZPXRange, buildSerialCsv } from '../utils/stEzpxCompiler.js';
@@ -103,6 +102,8 @@ const currentLabelName = computed(() => {
   }
   return activeTemplate.value.name;
 });
+
+const currentLabelNote = computed(() => currentLabel.value?.note || '');
 
 const stCanvasConfig = computed(() => currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 });
 
@@ -178,12 +179,22 @@ function importSingleTemplateJson(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = JSON.parse(e.target.result);
       if (data && typeof data === 'object' && !Array.isArray(data)) {
         const label = currentLabel.value;
         if (!label) return;
+        const ok = await showStConfirm({
+          title: 'Import JSON Layout',
+          message: `Importing will OVERWRITE the current layout of "${currentLabelName.value}" (elements EN/CN, size/DPI). Continue?`,
+          confirmText: 'Import & Overwrite',
+          type: 'warning'
+        });
+        if (!ok) {
+          event.target.value = '';
+          return;
+        }
         const importedConfig = data.config || { widthMm: 35, heightMm: 22, dpi: 203 };
         const importedEn = data.elements_en || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
         const importedCn = data.elements_cn || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
@@ -199,6 +210,7 @@ function importSingleTemplateJson(event) {
       console.error('Import template JSON error:', err);
       showStAlert('Failed to parse template JSON file: ' + err.message, 'Import Error', 'danger');
     }
+    event.target.value = '';
   };
   reader.readAsText(file);
 }

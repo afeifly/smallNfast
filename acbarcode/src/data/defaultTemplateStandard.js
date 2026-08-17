@@ -6,6 +6,7 @@ export default {
     "S695 4036",
     "S403"
   ],
+  note: "Default standard flow sensor label (35×22mm @300 DPI). Used for S695/S403 series.",
   config: {
     widthMm: 35,
     heightMm: 22,
@@ -40,6 +41,7 @@ export default {
     {
       id: "tpl_bkla22gkq",
       name: "Sub Template",
+      note: "Smaller 22×22mm square label for SUTO QR code printing.",
       config: { widthMm: 22, heightMm: 22, dpi: 300 },
       elements_en: [
         { id: "f_var", type: "folder", name: "Variable Data", expanded: true },

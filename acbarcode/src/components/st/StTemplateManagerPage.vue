@@ -38,7 +38,6 @@
                 <button type="button" class="mini-btn" @click="createTemplate">＋ New</button>
                 <button type="button" class="mini-btn" @click="duplicateTemplate">📋 Duplicate</button>
                 <button type="button" class="mini-btn danger" :disabled="templates.length <= 1" @click="onDelete">🗑️ Delete</button>
-                <button type="button" class="mini-btn" @click="onReset">🔄 Reset</button>
               </div>
             </div>
             <div class="card-body">
@@ -76,16 +75,17 @@
                 </div>
               </div>
 
-              <!-- Line 3: Button group aligned right -->
-              <div class="field-row-actions-right">
-                <div class="inline-card-actions">
-                  <button type="button" class="mini-btn" @click="exportMainJson">📤 Export JSON</button>
-                  <label class="mini-btn">
-                    📥 Import JSON
-                    <input type="file" accept=".json" style="display:none" @change="importMainJson" />
-                  </label>
-                </div>
+              <!-- Line 3: Note (what this template is for) -->
+              <div class="field-col">
+                <label>Note <span class="hint-inline">(purpose / usage hint, visible in designer)</span></label>
+                <textarea
+                  rows="2"
+                  :value="activeTemplate.note || ''"
+                  @input="activeTemplate.note = $event.target.value; scheduleSave()"
+                  placeholder="e.g. Standard flow sensor label, used for S695 4035 / S403. Created by admin."
+                ></textarea>
               </div>
+
             </div>
           </div>
 
@@ -98,7 +98,10 @@
             <div class="card-body tight">
               <div v-if="subCount(activeTemplate) === 0" class="tpl-empty small">No sub-templates configured.</div>
               <div v-for="sub in activeTemplate.subTemplates" :key="sub.id" class="sub-row-compact">
-                <input type="text" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name-compact" placeholder="Sub-template name" />
+                <div class="sub-fields">
+                  <input type="text" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name-compact" placeholder="Sub-template name" />
+                  <input type="text" :value="sub.note || ''" @input="sub.note = $event.target.value; scheduleSave()" class="sub-note-compact" placeholder="Note (what this sub-template is for)" />
+                </div>
                 <div class="sub-dims-compact">
                   <input type="number" step="0.1" :value="sub.config?.widthMm" @input="setSubConfig(sub.id, 'widthMm', $event.target.value)" />
                   <span class="dim-sep">×</span>
@@ -142,16 +145,13 @@ import {
   templatesLoaded,
   loadTemplates,
   scheduleSave,
-  flushTemplateSave,
   createTemplate,
   duplicateTemplate,
   deleteTemplate,
-  resetTemplateDefaults,
   addSubTemplate,
   removeSubTemplate,
   setActiveTemplate
 } from '../../stores/templateStore.js';
-import { DEFAULT_ELEMENTS_EN, DEFAULT_ELEMENTS_CN } from '../../utils/stTemplateManager.js';
 import { parseEzpxXmlToTemplate } from '../../utils/stEzpxParser.js';
 import { showStAlert, showStConfirm } from '../../utils/stDialog.js';
 
@@ -221,57 +221,6 @@ async function onDelete() {
     type: 'danger'
   });
   if (ok) deleteTemplate();
-}
-
-async function onReset() {
-  const ok = await showStConfirm({
-    title: 'Reset Layout',
-    message: `Reset "${activeTemplate.value?.name}" to factory defaults? All layer edits will be lost.`,
-    confirmText: 'Reset',
-    type: 'warning'
-  });
-  if (ok) resetTemplateDefaults();
-}
-
-function exportMainJson() {
-  const t = activeTemplate.value;
-  if (!t) return;
-  const blob = new Blob([JSON.stringify(t, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `template_${(t.name || 'template').replace(/[^a-zA-Z0-9_-]/g, '_')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function importMainJson(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const data = JSON.parse(e.target.result);
-      const t = activeTemplate.value;
-      if (data.name) t.name = data.name;
-      if (data.itemNumbers && Array.isArray(data.itemNumbers)) t.itemNumbers = data.itemNumbers;
-      if (data.deviceName !== undefined) t.deviceName = data.deviceName;
-      t.config = { ...(data.config || { widthMm: 35, heightMm: 22, dpi: 203 }) };
-      t.elements_en = JSON.parse(JSON.stringify(data.elements_en || data.elements || DEFAULT_ELEMENTS_EN));
-      t.elements_cn = JSON.parse(JSON.stringify(data.elements_cn || data.elements || DEFAULT_ELEMENTS_CN));
-      if (data.subTemplates && Array.isArray(data.subTemplates)) {
-        t.subTemplates = JSON.parse(JSON.stringify(data.subTemplates));
-      }
-      rawItemNumbersText.value = (t.itemNumbers || []).join(', ');
-      scheduleSave();
-      await flushTemplateSave();
-      showStAlert(`Layout imported into "${t.name}".`, 'Imported', 'success');
-    } catch (err) {
-      showStAlert('Failed to parse JSON: ' + err.message, 'Import Error', 'danger');
-    }
-    event.target.value = '';
-  };
-  reader.readAsText(file);
 }
 
 function onPasteEzpx() {
@@ -432,7 +381,9 @@ onMounted(async () => {
 
 .field-col input[type="text"],
 .field-col input[type="number"],
+.field-col textarea,
 .sub-name-compact,
+.sub-note-compact,
 .sub-dims-compact input,
 .sub-dims-compact select {
   padding: 6px 9px;
@@ -441,6 +392,12 @@ onMounted(async () => {
   font-size: 0.88rem;
   width: 100%;
   box-sizing: border-box;
+}
+
+.field-col textarea {
+  resize: vertical;
+  min-height: 48px;
+  font-family: inherit;
 }
 
 .field-row-tight {
@@ -503,8 +460,11 @@ onMounted(async () => {
   border-radius: 6px;
   margin-bottom: 6px;
   background: #fafbfc;
+  flex-wrap: wrap;
 }
-.sub-name-compact { flex: 1; min-width: 120px; }
+.sub-fields { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+.sub-name-compact { flex: 1; }
+.sub-note-compact { color: #718096; font-size: 0.82rem; }
 .sub-dims-compact { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .sub-dims-compact input { width: 55px !important; }
 .sub-dims-compact select { width: 68px !important; }

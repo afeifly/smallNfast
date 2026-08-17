@@ -1,2 +1,8 @@
 node_modules/
 venv
+server/tmp/
+
+# Runtime SQLite data — regenerated from seed defaults on startup
+server/data/templates.db
+server/data/templates.db-wal
+server/data/templates.db-shm

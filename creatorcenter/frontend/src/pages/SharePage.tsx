@@ -6,6 +6,7 @@ import * as api from "../api/client";
 import type { SharedProject } from "../api/client";
 import * as React from "react";
 import mermaid from "mermaid";
+import { remarkMathPlugin, rehypeKatexPlugin } from "../markdown/katex";
 
 const MermaidCode = ({ code }: { code: string }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -393,7 +394,7 @@ export default function SharePage() {
           {/* Rendered content */}
           <div className="prose prose-slate max-w-none pt-2">
             {project.content_type === "markdown" ? (
-              <MDEditor.Markdown source={project.content} components={codeComponent} />
+              <MDEditor.Markdown source={project.content} components={codeComponent} remarkPlugins={[remarkMathPlugin]} rehypePlugins={[rehypeKatexPlugin]} />
             ) : (
               <DocxDocumentRenderer contentJson={project.content} />
             )}

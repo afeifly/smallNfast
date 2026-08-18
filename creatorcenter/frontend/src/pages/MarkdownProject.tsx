@@ -17,6 +17,7 @@ import { Eye, PenLine, List, Download, ImageIcon, Scissors, ChevronDown, Check, 
 import * as React from "react";
 import axios from "axios";
 import mermaid from "mermaid";
+import { remarkMathPlugin, rehypeKatexPlugin } from "../markdown/katex";
 
 type Mode = "preview" | "edit" | "segments";
 
@@ -510,7 +511,7 @@ export default function MarkdownProject() {
       {mode === "preview" && (
         <div className="flex-1 overflow-auto px-4 py-4">
           <div className={`${wideMode ? "max-w-7xl" : "max-w-4xl"} mx-auto border border-gray-200 rounded-lg bg-white p-6 transition-all duration-200`}>
-            <MDEditor.Markdown source={project.markdown_content || "*No content yet*"} components={codeComponent} />
+            <MDEditor.Markdown source={project.markdown_content || "*No content yet*"} components={codeComponent} remarkPlugins={[remarkMathPlugin]} rehypePlugins={[rehypeKatexPlugin]} />
           </div>
         </div>
       )}
@@ -522,7 +523,7 @@ export default function MarkdownProject() {
             onChange={handleEditorChange}
             height="100%"
             visibleDragbar={false}
-            previewOptions={{ components: codeComponent }}
+            previewOptions={{ components: codeComponent, remarkPlugins: [remarkMathPlugin], rehypePlugins: [rehypeKatexPlugin] }}
           />
         </div>
       )}

@@ -64,7 +64,7 @@ import { showStAlert, showStConfirm } from '../utils/stDialog.js';
 
 import { compileEZPL } from '../utils/stEzplCompiler.js';
 import { compileEZPXRange, buildSerialCsv } from '../utils/stEzpxCompiler.js';
-import { PRINT_LABELS_BAT } from '../utils/stGoLabelBatch.js';
+import { START_BAT } from '../utils/stGoLabelBatch.js';
 import JSZip from 'jszip';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
 import { generateSerialRange } from '../utils/stSerialRange.js';
@@ -257,7 +257,7 @@ function buildLabelDefs() {
 
   const usedFilenames = new Set();
   const mainBase = sanitize(main.name, 'template');
-  const mainFilename = `${mainBase}_main_label.ezpx`;
+  const mainFilename = `${mainBase}_main_label.ezpx.tmp`;
   usedFilenames.add(mainFilename);
 
   const defs = [{
@@ -269,9 +269,9 @@ function buildLabelDefs() {
 
   (main.subTemplates || []).forEach((sub, i) => {
     const subBase = sanitize(sub.name, `sub${i + 1}`);
-    let fname = `${subBase}_label.ezpx`;
+    let fname = `${subBase}_label.ezpx.tmp`;
     if (usedFilenames.has(fname)) {
-      fname = `${subBase}_${i + 1}_label.ezpx`;
+      fname = `${subBase}_${i + 1}_label.ezpx.tmp`;
     }
     usedFilenames.add(fname);
     defs.push({
@@ -314,7 +314,7 @@ async function exportEZPX() {
   const zip = new JSZip();
   defs.forEach((def, i) => zip.file(def.filename, xmls[i]));
   zip.file('data.csv', csvContent);
-  zip.file('print_labels.bat', PRINT_LABELS_BAT);
+  zip.file('0_start.bat', START_BAT);
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

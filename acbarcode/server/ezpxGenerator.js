@@ -33,7 +33,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       if (parsed && Array.isArray(parsed.elements_en) && parsed.elements_en.length > 0) {
         const mainBase = sanitize(parsed.name || productName, 'template');
         defs.push({
-          filename: `${mainBase}_main_label.ezpx`,
+          filename: `${mainBase}_main_label.ezpx.tmp`,
           elements: parsed.elements_en,
           config: parsed.config || { widthMm: 35, heightMm: 22, dpi: 203 }
         });
@@ -52,7 +52,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       matchedDeviceName = matched.deviceName || '';
       const usedFilenames = new Set();
       const mainBase = sanitize(matched.name, 'template');
-      const mainFilename = `${mainBase}_main_label.ezpx`;
+      const mainFilename = `${mainBase}_main_label.ezpx.tmp`;
       usedFilenames.add(mainFilename);
 
       defs.push({
@@ -62,9 +62,9 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       });
       (matched.subTemplates || []).forEach((sub, i) => {
         const subBase = sanitize(sub.name, `sub${i + 1}`);
-        let fname = `${subBase}_label.ezpx`;
+        let fname = `${subBase}_label.ezpx.tmp`;
         if (usedFilenames.has(fname)) {
-          fname = `${subBase}_${i + 1}_label.ezpx`;
+          fname = `${subBase}_${i + 1}_label.ezpx.tmp`;
         }
         usedFilenames.add(fname);
         defs.push({

@@ -1048,13 +1048,13 @@ async function handleStLabel(req, res) {
 
     // Package the label .ezpx file(s) (main + one per sub-template), the shared
     // data.csv and the Windows helper .bat into one ZIP.
-    const { PRINT_LABELS_BAT } = await import('../src/utils/stGoLabelBatch.js');
+    const { START_BAT } = await import('../src/utils/stGoLabelBatch.js');
     const zip = new JSZip();
     for (const f of files) {
       zip.file(f.filename, f.xml);
     }
     zip.file('data.csv', csvContent);
-    zip.file('print_labels.bat', PRINT_LABELS_BAT);
+    zip.file('0_start.bat', START_BAT);
     const pkgBuffer = await zip.generateAsync({ type: 'nodebuffer' });
 
     res.setHeader('Content-Type', 'application/zip');

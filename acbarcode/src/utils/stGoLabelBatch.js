@@ -15,8 +15,8 @@
  * On the first run GoLabel may ask to confirm the CSV file; after that it
  * saves a schema.ini next to data.csv and auto-connects on later runs.
  */
-export const PRINT_LABELS_BAT = `@echo off
-setlocal EnableExtensions
+export const START_BAT = `@echo off
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 title GoLabel Label Print
 
@@ -29,10 +29,6 @@ rem ---------- 1. Find GoLabel.exe ----------
 set "GOLABEL="
 set "PF=%ProgramFiles%"
 set "PF86=%ProgramFiles(x86)%"
-
-rem remembered path from a previous run
-if exist "%~dp0golabel_path.txt" for /f "usebackq delims=" %%L in ("%~dp0golabel_path.txt") do set "GOLABEL=%%L"
-if defined GOLABEL goto verify
 
 rem common install locations
 if exist "%PF%\\GoLabel\\GoLabel.exe" set "GOLABEL=%PF%\\GoLabel\\GoLabel.exe"
@@ -72,47 +68,55 @@ echo GoLabel.exe was not found automatically.
 set /p "GOLABEL=Enter full path to GoLabel.exe: "
 
 :verify
-if exist "%GOLABEL%" goto saveit
+if exist "%GOLABEL%" goto found
 echo.
 echo GoLabel.exe not found at: %GOLABEL%
 pause
 exit /b 1
 
-:saveit
-echo %GOLABEL%>"%~dp0golabel_path.txt"
+:found
 echo GoLabel: %GOLABEL%
 
-rem ---------- 2. Find .ezpx and data.csv in this folder ----------
-set "EZPX="
-if exist "%~dp0label.ezpx" set "EZPX=%~dp0label.ezpx"
-if not defined EZPX for %%F in (*.ezpx) do if not defined EZPX set "EZPX=%%~fF"
-if defined EZPX goto have_ezpx
-echo No .ezpx file found in: %cd%
-pause
-exit /b 1
-
-:have_ezpx
+rem ---------- 2. Check data.csv exists ----------
 if exist "%~dp0data.csv" goto have_csv
 echo data.csv not found in: %cd%
+echo.
+echo Files currently in this folder:
+dir /b
 pause
 exit /b 1
 
 :have_csv
-echo Label : %EZPX%
-echo CSV   : %~dp0data.csv
+echo Preparing label files for GoLabel...
 
-rem ---------- 3. Rewrite DataBaseFilePath for EVERY .ezpx & ensure schema.ini ----------
+rem ---------- 3. Rewrite DataBaseFilePath for every label & ensure schema.ini ----------
+rem This works on the first run (files are .ezpx.tmp) and on later runs after the
+rem folder was moved (files are already .ezpx, only the path needs re-fixing).
 set "GOLABEL_CSV=%~dp0data.csv"
 set "GOLABEL_SCHEMA=%~dp0schema.ini"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$sf=$env:GOLABEL_SCHEMA; if (-not (Test-Path $sf)) { Set-Content -LiteralPath $sf -Value @('[data.csv]','ColNameHeader=True','Format=Delimited(,)','CharacterSet=1252',('Col1='+[char]34+'sn'+[char]34+' Text'),('Col2='+[char]34+'qr_code'+[char]34+' Text')) -Encoding ASCII }"
+for %%F in (*.ezpx.tmp) do powershell -NoProfile -ExecutionPolicy Bypass -Command "$csv=$env:GOLABEL_CSV; $esc=$csv.Replace('$','$$'); $p='%%~fF'; $c=[IO.File]::ReadAllText($p); $c=[regex]::Replace($c,'<DataBaseFilePath>.*?</DataBaseFilePath>|<DataBaseFilePath\\s*/>','<DataBaseFilePath>'+$esc+'</DataBaseFilePath>'); [IO.File]::WriteAllText($p,$c,[Text.Encoding]::UTF8)"
 for %%F in (*.ezpx) do powershell -NoProfile -ExecutionPolicy Bypass -Command "$csv=$env:GOLABEL_CSV; $esc=$csv.Replace('$','$$'); $p='%%~fF'; $c=[IO.File]::ReadAllText($p); $c=[regex]::Replace($c,'<DataBaseFilePath>.*?</DataBaseFilePath>|<DataBaseFilePath\\s*/>','<DataBaseFilePath>'+$esc+'</DataBaseFilePath>'); [IO.File]::WriteAllText($p,$c,[Text.Encoding]::UTF8)"
-echo Database path set to: %~dp0data.csv for all .ezpx files
-echo schema.ini ready (created if missing)
+echo Database path set to: %~dp0data.csv for all label files
 
-rem ---------- 4. Launch GoLabel ----------
-echo.
-echo Starting GoLabel...
-start "" "%GOLABEL%" "%EZPX%"
+rem ---------- 4. Rename .ezpx.tmp -> .ezpx (if any), then open the main label ----------
+for /f "delims=" %%F in ('dir /b /a-d *.ezpx.tmp 2^>nul') do ren "%%~F" "%%~nF"
+if exist *.ezpx.tmp echo Renamed .ezpx.tmp files to .ezpx
+
+set "MAIN="
+for /f "delims=" %%F in ('dir /b /a-d *_main_label.ezpx 2^>nul') do if not defined MAIN set "MAIN=%%~fF"
+if defined MAIN goto open_main
+for /f "delims=" %%F in ('dir /b /a-d *.ezpx 2^>nul') do if not defined MAIN set "MAIN=%%~fF"
+if defined MAIN goto open_main
+echo No .ezpx file found in: %cd%
+pause
+exit /b 1
+
+:open_main
+echo Opening main label: %MAIN%
+start "" "%GOLABEL%" "%MAIN%"
+
+:done
 echo.
 echo Done. If GoLabel asks for the database file the first time,
 echo choose data.csv in this folder - it will be remembered after that.

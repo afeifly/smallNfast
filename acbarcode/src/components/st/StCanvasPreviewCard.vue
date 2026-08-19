@@ -17,25 +17,64 @@
     </div>
 
     <div class="st-action-toolbar">
-      <button type="button" class="action-btn primary-ezpx" @click="$emit('export-ezpx')">
-        📦 Export .ezpx
-      </button>
-      <button type="button" class="action-btn export-json-btn" @click="$emit('export-template-json')" title="Save current template design as JSON file">
-        📤 Export JSON
-      </button>
+      <!-- ── 1. Export Dropdown (3 types: .ezpx, .ezpl, .json) ──── -->
+      <div class="export-dropdown-wrapper" ref="dropdownWrapperRef">
+        <button
+          type="button"
+          class="action-btn export-trigger-btn"
+          :class="{ active: isDropdownOpen }"
+          @click="isDropdownOpen = !isDropdownOpen"
+        >
+          <span class="btn-main-icon">📤</span>
+          <span>Export</span>
+          <span class="arrow-indicator">{{ isDropdownOpen ? '▴' : '▾' }}</span>
+        </button>
+
+        <transition name="dropdown-fade">
+          <div v-if="isDropdownOpen" class="export-menu">
+            <button type="button" class="export-menu-item ezpx-opt" @click="handleAction('export-ezpx')">
+              <span class="item-icon">📦</span>
+              <div class="item-desc">
+                <span class="item-title">.ezpx Package</span>
+                <span class="item-sub">GoLabel batch zip with data.csv</span>
+              </div>
+            </button>
+
+            <button type="button" class="export-menu-item ezpl-opt" @click="handleAction('export-ezpl')">
+              <span class="item-icon">🖨️</span>
+              <div class="item-desc">
+                <span class="item-title">.ezpl Print File</span>
+                <span class="item-sub">Graphic stream for Godex printers</span>
+              </div>
+            </button>
+
+            <button type="button" class="export-menu-item json-opt" @click="handleAction('export-template-json')">
+              <span class="item-icon">📄</span>
+              <div class="item-desc">
+                <span class="item-title">.json Template</span>
+                <span class="item-sub">Save layout & design configuration</span>
+              </div>
+            </button>
+          </div>
+        </transition>
+      </div>
+
+      <!-- ── 2. Import JSON Button ──────────────────────────────── -->
       <label class="action-btn import-json-btn" title="Load template design from JSON file into current editor">
         📥 Import JSON
         <input type="file" accept=".json" style="display:none;" @change="$emit('import-template-json', $event)" />
       </label>
+
+      <!-- ── 3. Download PDF Button (Standalone) ─────────────────── -->
       <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf', $event)">
-        📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount} Pages)` : '' }}
+        📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount})` : '' }}
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 
 defineProps({
   config: {
@@ -56,8 +95,9 @@ defineProps({
   }
 });
 
-defineEmits([
+const emit = defineEmits([
   'export-ezpx',
+  'export-ezpl',
   'download-pdf',
   'export-template-json',
   'import-template-json',
@@ -66,6 +106,27 @@ defineEmits([
 ]);
 
 const canvasRef = ref(null);
+const dropdownWrapperRef = ref(null);
+const isDropdownOpen = ref(false);
+
+function handleAction(actionName) {
+  isDropdownOpen.value = false;
+  emit(actionName);
+}
+
+function handleClickOutside(event) {
+  if (dropdownWrapperRef.value && !dropdownWrapperRef.value.contains(event.target)) {
+    isDropdownOpen.value = false;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
+});
 
 defineExpose({
   canvasRef
@@ -175,61 +236,157 @@ defineExpose({
   border-radius: 4px;
 }
 
+/* ── Action Toolbar & Dropdown ────────────────────────────── */
 .st-action-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
+  align-items: center;
+  gap: 0.75rem;
   margin-top: 1.25rem;
 }
 
+.export-dropdown-wrapper {
+  position: relative;
+  flex: 1;
+}
+
 .action-btn {
-  padding: 0.6rem 1rem !important;
-  font-size: 0.9rem !important;
+  padding: 0.65rem 0.9rem !important;
+  font-size: 0.88rem !important;
   font-weight: 600 !important;
   border-radius: 8px !important;
   cursor: pointer;
-  flex: 1;
-  min-width: 130px;
-  text-align: center;
   border: none;
-}
-
-.primary-ezpx {
-  background: #805ad5 !important;
-  color: white !important;
-}
-
-.primary-ezpx:hover {
-  background: #6b46c1 !important;
-}
-
-.pdf-btn {
-  background: #e53e3e !important;
-  color: white !important;
-}
-
-.pdf-btn:hover {
-  background: #c53030 !important;
-}
-
-.export-json-btn {
-  background: #2b6cb0 !important;
-  color: white !important;
-}
-
-.export-json-btn:hover {
-  background: #2c5282 !important;
-}
-
-.import-json-btn {
-  background: #4a5568 !important;
-  color: white !important;
+  width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.45rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.export-trigger-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.35);
+}
+
+.export-trigger-btn:hover {
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.45);
+  transform: translateY(-1px);
+}
+
+.export-trigger-btn.active {
+  box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.3);
+}
+
+.arrow-indicator {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.import-json-btn {
+  flex: 1;
+  background: #4a5568 !important;
+  color: white !important;
+  box-shadow: 0 2px 8px rgba(74, 85, 104, 0.25);
 }
 
 .import-json-btn:hover {
   background: #2d3748 !important;
+  transform: translateY(-1px);
+}
+
+.pdf-btn {
+  flex: 1.15;
+  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%) !important;
+  color: white !important;
+  box-shadow: 0 2px 8px rgba(229, 62, 62, 0.3);
+}
+
+.pdf-btn:hover {
+  background: linear-gradient(135deg, #c53030 0%, #9b2c2c 100%) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Dropdown Menu ────────────────────────────────────────── */
+.export-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  min-width: 290px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  width: 100%;
+}
+
+.export-menu-item:hover {
+  background: #f7fafc;
+}
+
+.export-menu-item.ezpx-opt:hover { background: #faf5ff; }
+.export-menu-item.ezpl-opt:hover { background: #f0fff4; }
+.export-menu-item.pdf-opt:hover { background: #fff5f5; }
+.export-menu-item.json-opt:hover { background: #ebf8ff; }
+
+.item-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.item-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.item-sub {
+  font-size: 0.74rem;
+  color: #718096;
+}
+
+.menu-separator {
+  height: 1px;
+  background: #edf2f7;
+  margin: 4px 6px;
+}
+
+/* Transition */
+.dropdown-fade-enter-active,
+.dropdown-fade-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dropdown-fade-enter-from,
+.dropdown-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 </style>

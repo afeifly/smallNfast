@@ -92,6 +92,6 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
     }
   });
 
-  ezpl += `E\n~P1\n`;
+  ezpl += `E\n`;
   return ezpl;
 }

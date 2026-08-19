@@ -24,7 +24,7 @@ export function getCachedImage(src) {
 
 export async function renderStCanvasDynamic(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '') {
   if (!canvas) return;
-  const dpi = PRINTER_DPI;
+  const dpi = config.dpi || PRINTER_DPI || 203;
   const mmToPx = (mm) => Math.round((mm / 25.4) * dpi);
   const ptToPx = (pt) => Math.round((pt / 72) * dpi);
 

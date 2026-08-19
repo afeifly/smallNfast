@@ -39,11 +39,11 @@
           @prev-page="prevPreviewPage"
           @next-page="nextPreviewPage"
           @export-ezpx="exportEZPX"
+          @export-ezpl="exportGraphicEZPL"
           @download-pdf="onDownloadPdf"
           @export-template-json="exportSingleTemplateJson"
           @import-template-json="importSingleTemplateJson"
         />
-        <StCodePreviewCard :code="liveEzplCode" />
       </div>
     </div>
 
@@ -59,10 +59,9 @@ import StHeaderActions from './st/StHeaderActions.vue';
 import StCanvasConfigCard from './st/StCanvasConfigCard.vue';
 import StElementsManagerCard from './st/StElementsManagerCard.vue';
 import StCanvasPreviewCard from './st/StCanvasPreviewCard.vue';
-import StCodePreviewCard from './st/StCodePreviewCard.vue';
 import { showStAlert, showStConfirm } from '../utils/stDialog.js';
 
-import { compileEZPL } from '../utils/stEzplCompiler.js';
+import { compileGraphicEZPLRange } from '../utils/stEzplGraphicCompiler.js';
 import { compileEZPXRange, buildSerialCsv } from '../utils/stEzpxCompiler.js';
 import { START_BAT } from '../utils/stGoLabelBatch.js';
 import JSZip from 'jszip';
@@ -106,7 +105,7 @@ const currentLabelName = computed(() => {
 
 const currentLabelNote = computed(() => currentLabel.value?.note || '');
 
-const stCanvasConfig = computed(() => currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 });
+const stCanvasConfig = computed(() => currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 300 });
 
 const stElements = computed(() => {
   if (!currentLabel.value) return [];
@@ -217,27 +216,40 @@ function importSingleTemplateJson(event) {
 }
 
 // ── EZPL / EZPX / PDF Exports ──────────────────────────────────────────
-const liveEzplCode = computed(() => {
-  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
-  const devName = activeTemplate.value?.deviceName || '';
-  return serialRange.value
-    .map(sn => compileEZPL(stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value, devName))
-    .join('\n; ========================\n');
-});
 
-function exportEZPL() {
-  const ezplText = liveEzplCode.value;
-  const blob = new Blob([ezplText], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const rangeName = serialRange.value.length > 1
-    ? `${serialRange.value[0]}_to_${serialRange.value[serialRange.value.length - 1]}`
-    : serialRange.value[0];
-  a.download = `ST_Labels_${rangeName.replace(/\s+/g, '_')}.ezpl`;
+/**
+ * Graphic EZPL export — renders the full label canvas (including Chinese text, images,
+ * barcodes, QR codes) as a 1-bit bitmap graphic per serial, then downloads a binary
+ * EZPL file using native GW (Graphic Write) commands. No printer font required,
+ * no Flash storage needed.
+ */
+async function exportGraphicEZPL() {
+  const range = serialRange.value;
+  if (!range.length) return;
+
+  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+  const devName    = activeTemplate.value?.deviceName || '';
+
+  // Returns a binary Blob (GW command contains raw bitmap bytes)
+  const blob = await compileGraphicEZPLRange(
+    stElements.value,
+    stCanvasConfig.value,
+    range,
+    { product: activeProd, optionsText: stOptionsInput.value, deviceName: devName }
+  );
+
+  const rangeName = range.length > 1
+    ? `${range[0]}_to_${range[range.length - 1]}`
+    : range[0];
+
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `ST_Labels_Graphic_${rangeName.replace(/\s+/g, '_')}.ezpl`;
   a.click();
   URL.revokeObjectURL(url);
 }
+
 
 function langElements(container) {
   return activeLang.value === 'CN'
@@ -489,7 +501,7 @@ async function downloadOptionsScenarioPDF() {
   const rowsPerPage = 3;
   const cellW = (pageW - margin * 2 - gap * (cols - 1)) / cols;
   const cellH = (pageH - margin * 2 - gap * (rowsPerPage - 1)) / rowsPerPage;
-  const imgBoxH = cellH - 14;
+  let imgBoxH = cellH - 14;
   let imgBoxW = imgBoxH * labelAspect;
   // Guard: keep the image inside the right half of the cell, preserving aspect ratio.
   if (imgBoxW > (cellW - 40)) {
@@ -590,7 +602,7 @@ async function downloadStPDF() {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
   gap: 1.5rem;
-  align-items: stretch;
+  align-items: start;
 }
 
 @media (max-width: 960px) {
@@ -599,10 +611,19 @@ async function downloadStPDF() {
   }
 }
 
-.st-editor-panel, .st-preview-panel {
+.st-editor-panel {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.st-preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: sticky;
+  top: 1rem;
+  z-index: 10;
 }
 
 .st-editor-panel > * {

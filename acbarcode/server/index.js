@@ -1011,11 +1011,11 @@ app.post('/api/odoo/test-search', async (req, res) => {
 });
 
 // ── Web API: POST /st_label ─────────────────────────────────────────────
-const { generateStEzpxXml } = require('./ezpxGenerator');
+const { generateStEzpxXml, generateStEzplJson } = require('./ezpxGenerator');
 
 /**
  * POST /st_label and POST /api/st_label
- * Generates printable labels as a downloadable EZPX file based on webapi.md spec.
+ * Generates printable labels as a downloadable EZPX ZIP file or EZPL JSON grouping.
  */
 async function handleStLabel(req, res) {
   try {
@@ -1042,6 +1042,18 @@ async function handleStLabel(req, res) {
 
     if (!serial_numbers || !Array.isArray(serial_numbers) || serial_numbers.length === 0) {
       return res.status(400).json({ error: 'Missing required field: serial_numbers must be a non-empty array' });
+    }
+
+    // Check if JSON response format is requested (for Odoo / direct printing integration)
+    const isJsonRequested =
+      req.query.format === 'json' ||
+      req.query.type === 'json' ||
+      (typeof req.body === 'object' && req.body && (req.body.format === 'json' || req.body.response_type === 'json')) ||
+      (req.headers.accept && req.headers.accept.includes('application/json') && !req.headers.accept.includes('*/*') && !req.headers.accept.includes('application/zip'));
+
+    if (isJsonRequested) {
+      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml);
+      return res.status(200).json(ezplJson);
     }
 
     const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);

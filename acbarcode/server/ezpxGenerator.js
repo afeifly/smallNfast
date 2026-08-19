@@ -114,6 +114,106 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
   return { files, csvContent };
 }
 
+async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null) {
+  const { compileEZPL } = await import('../src/utils/stEzplCompiler.js');
+  const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
+  const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
+
+  const serials = (Array.isArray(serialNumbers) && serialNumbers.length > 0)
+    ? serialNumbers.map(s => String(s).trim())
+    : ['12345678'];
+
+  const productName = String(product || 'S695 4120').trim();
+  const defs = [];
+
+  // 1. If EZPX XML text content was posted directly
+  if (templateXml && typeof templateXml === 'string' && templateXml.trim()) {
+    try {
+      const parsed = parseEzpxXmlToTemplate(templateXml.trim(), 'Posted EZPX Template');
+      if (parsed && Array.isArray(parsed.elements_en) && parsed.elements_en.length > 0) {
+        defs.push({
+          id: 'main',
+          name: parsed.name || productName,
+          type: 'main',
+          elements: parsed.elements_en,
+          config: parsed.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to parse posted templateXml:', e);
+    }
+  }
+
+  // 2. Otherwise match product against stored templates (SQLite), including sub-templates
+  let matchedDeviceName = '';
+  if (defs.length === 0) {
+    const storedTemplates = templateStore.getAllTemplates();
+    const matched = matchTemplateByItemNo(storedTemplates, productName);
+    if (matched) {
+      matchedDeviceName = matched.deviceName || '';
+      defs.push({
+        id: 'main',
+        name: matched.name,
+        type: 'main',
+        elements: JSON.parse(JSON.stringify(matched.elements_en || matched.elements || [])),
+        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+      });
+      (matched.subTemplates || []).forEach((sub, i) => {
+        defs.push({
+          id: `sub_${sub.id || i + 1}`,
+          name: sub.name,
+          type: 'sub',
+          elements: JSON.parse(JSON.stringify(sub.elements_en || [])),
+          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+        });
+      });
+    }
+  }
+
+  if (defs.length === 0) {
+    const err = new Error(`No template found for product "${productName}". Make sure the product matches a template's item numbers, or post template_xml.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const optionsStr = Array.isArray(options) && options.length > 0
+    ? options.join(', ')
+    : 'Standard';
+
+  const { generateGraphicEZPLForSerials } = require('./serverGraphicCompiler');
+
+  const templatesResult = [];
+  for (const def of defs) {
+    const graphicResult = await generateGraphicEZPLForSerials(
+      def.elements,
+      def.config,
+      serials,
+      { product: productName, optionsText: optionsStr, deviceName: matchedDeviceName }
+    );
+
+    templatesResult.push({
+      id: def.id,
+      name: def.name,
+      type: def.type,
+      config: def.config,
+      total_labels: graphicResult.items.length,
+      items: graphicResult.items,
+      all_ezpl_base64: graphicResult.all_ezpl_base64,
+      all_ezpl: graphicResult.all_ezpl
+    });
+  }
+
+  return {
+    product: productName,
+    options: optionsStr,
+    device_name: matchedDeviceName,
+    total_serials: serials.length,
+    templates: templatesResult
+  };
+}
+
 module.exports = {
-  generateStEzpxXml
+  generateStEzpxXml,
+  generateStEzplJson
 };
+

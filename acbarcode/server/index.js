@@ -1015,7 +1015,7 @@ app.post('/api/odoo/test-search', async (req, res) => {
 });
 
 // ── Web API: POST /st_label ─────────────────────────────────────────────
-const { generateStEzpxXml, generateStEzplJson } = require('./ezpxGenerator');
+const { generateStEzpxXml, generateStEzplJson, generateStDeliveryMultiProductEzplJson } = require('./ezpxGenerator');
 
 /**
  * POST /st_label and POST /api/st_label
@@ -1023,7 +1023,7 @@ const { generateStEzpxXml, generateStEzplJson } = require('./ezpxGenerator');
  */
 async function handleStLabel(req, res) {
   try {
-    let product, serial_numbers, options, template_xml;
+    let product, serial_numbers, options, template_xml, lang;
 
     if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
       // Raw XML POST body
@@ -1031,6 +1031,7 @@ async function handleStLabel(req, res) {
       product = req.query.product || 'S695 4120';
       serial_numbers = req.query.serial_numbers ? req.query.serial_numbers.split(',') : ['12345678'];
       options = req.query.options ? req.query.options.split(',') : [];
+      lang = req.query.lang || req.query.language || 'en';
     } else {
       // JSON body payload
       const body = req.body || {};
@@ -1038,7 +1039,10 @@ async function handleStLabel(req, res) {
       serial_numbers = body.serial_numbers;
       options = body.options;
       template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
+      lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
     }
+
+    const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
 
     if (!product || typeof product !== 'string' || !product.trim()) {
       return res.status(400).json({ error: 'Missing required field: product' });
@@ -1048,19 +1052,20 @@ async function handleStLabel(req, res) {
       return res.status(400).json({ error: 'Missing required field: serial_numbers must be a non-empty array' });
     }
 
-    // Check if JSON response format is requested (for Odoo / direct printing integration)
-    const isJsonRequested =
-      req.query.format === 'json' ||
-      req.query.type === 'json' ||
-      (typeof req.body === 'object' && req.body && (req.body.format === 'json' || req.body.response_type === 'json')) ||
-      (req.headers.accept && req.headers.accept.includes('application/json') && !req.headers.accept.includes('*/*') && !req.headers.accept.includes('application/zip'));
+    // Default format is JSON wrapping EZPL (Odoo / direct printing integration).
+    // ZIP package is returned only if explicitly requested (format: 'zip').
+    const isZipRequested =
+      req.query.format === 'zip' ||
+      req.query.type === 'zip' ||
+      (typeof req.body === 'object' && req.body && (req.body.format === 'zip' || req.body.response_type === 'zip')) ||
+      (req.headers.accept && req.headers.accept.includes('application/zip') && !req.headers.accept.includes('application/json'));
 
-    if (isJsonRequested) {
-      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml);
+    if (!isZipRequested) {
+      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang);
       return res.status(200).json(ezplJson);
     }
 
-    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml);
+    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml, normalizedLang);
 
     // Package the label .ezpx file(s) (main + one per sub-template), the shared
     // data.csv and the Windows helper .bat into one ZIP.
@@ -1083,8 +1088,66 @@ async function handleStLabel(req, res) {
   }
 }
 
+/**
+ * POST /st_label_delivery and POST /api/st_label_delivery
+ * Generates delivery labels specifically using the special Delivery Template,
+ * supporting multi-product payload structure with top-level origin.
+ * Defaults to JSON wrapping EZPL streams.
+ */
+async function handleStLabelDelivery(req, res) {
+  try {
+    let origin, products, lang, template_xml;
+
+    if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
+      template_xml = req.body;
+      origin = req.query.origin || req.query.order || '';
+      lang = req.query.lang || req.query.language || 'en';
+      products = [{
+        categ: req.query.categ || req.query.device_name || '',
+        product: req.query.product || 'Delivery',
+        serial_numbers: req.query.serial_numbers ? req.query.serial_numbers.split(',') : ['12345678'],
+        options_text: req.query.options || ''
+      }];
+    } else {
+      const body = req.body || {};
+      origin = body.origin || body.order || req.query.origin || '';
+      lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
+      template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
+
+      if (Array.isArray(body.products) && body.products.length > 0) {
+        products = body.products;
+      } else {
+        // Fallback for single product payload
+        products = [{
+          categ: body.categ || body.category || body.device_name || body.deviceName || '',
+          product: body.product || body.item_number || body.item_no || 'Delivery',
+          serial_numbers: body.serial_numbers || body.serials || ['12345678'],
+          options_text: body.options_text || body.optionsText || body.options || ''
+        }];
+      }
+    }
+
+    const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
+
+    const ezplJson = await generateStDeliveryMultiProductEzplJson({
+      origin,
+      products,
+      lang: normalizedLang,
+      templateXml: template_xml
+    });
+
+    return res.status(200).json(ezplJson);
+  } catch (err) {
+    console.error('Error handling /st_label_delivery:', err);
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message });
+  }
+}
+
 app.post('/st_label', handleStLabel);
 app.post('/api/st_label', handleStLabel);
+app.post('/st_label_delivery', handleStLabelDelivery);
+app.post('/api/st_label_delivery', handleStLabelDelivery);
 
 // Serve frontend build in production
 const clientDist = path.join(__dirname, '..', 'dist');

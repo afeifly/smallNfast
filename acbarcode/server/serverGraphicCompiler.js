@@ -44,7 +44,7 @@ async function getCachedServerImage(src) {
 /**
  * Server-side canvas renderer using @napi-rs/canvas
  */
-async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '') {
+async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '', extra = {}) {
   const { resolveElementText } = await import('../src/utils/stOptionResolver.js');
 
   const dpi = config.dpi || PRINTER_DPI;
@@ -63,7 +63,7 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
 
   for (const el of elements) {
     if (el.type === 'folder') continue;
-    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName);
+    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName, extra);
 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);
@@ -98,7 +98,7 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
         let y = mmToPx(el.yMm || 0);
         if (el.autoBottomRight) {
           x = W - imgW - mmToPx(1);
-          y = H - imgH - mmToPx(1);
+          y = H - imgH - mmToPx(0.5);
         }
         ctx.drawImage(img, x, y, imgW, imgH);
       }
@@ -287,7 +287,10 @@ function compileCanvasToGraphicBuffer(canvas, config = {}, opts = {}) {
  * Server-side Graphic EZPL Generator
  */
 async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}, opts = {}) {
-  const { product = '', optionsText = '', deviceName = '' } = ctx;
+  const globalProduct = ctx.product || '';
+  const globalOptionsText = ctx.optionsText || '';
+  const globalDeviceName = ctx.deviceName || ctx.categ || '';
+  const globalOrigin = ctx.origin || '';
 
   const effectiveConfig = {
     widthMm: config?.widthMm || 35,
@@ -303,8 +306,26 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
   const allBuffers = [];
 
   for (let i = 0; i < serials.length; i++) {
-    const sn = serials[i];
-    await renderNodeCanvas(canvas, elements, effectiveConfig, sn, product, optionsText, deviceName);
+    const item = serials[i];
+    const isObj = (typeof item === 'object' && item !== null);
+    const sn = isObj ? String(item.serial || item.serial_number || '').trim() : String(item).trim();
+    const itemProduct = (isObj && item.product !== undefined) ? item.product : globalProduct;
+    const itemOptions = (isObj && (item.options_text !== undefined || item.optionsText !== undefined || item.options !== undefined))
+      ? (item.options_text || item.optionsText || item.options)
+      : globalOptionsText;
+    const itemDevice = (isObj && (item.categ !== undefined || item.deviceName !== undefined || item.device_name !== undefined))
+      ? (item.categ || item.deviceName || item.device_name)
+      : globalDeviceName;
+    const itemOrigin = (isObj && item.origin !== undefined) ? item.origin : globalOrigin;
+
+    const extra = {
+      origin: itemOrigin,
+      categ: itemDevice,
+      order: itemOrigin,
+      ...(isObj ? item : {})
+    };
+
+    await renderNodeCanvas(canvas, elements, effectiveConfig, sn, itemProduct, itemOptions, itemDevice, extra);
     const graphicName = `LBL${i % 99}`;
     const buf = compileCanvasToGraphicBuffer(canvas, effectiveConfig, { ...opts, name: graphicName });
     
@@ -312,11 +333,17 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
     const nodeBuf = Buffer.from(buf);
     allBuffers.push(nodeBuf);
 
-    items.push({
+    const outItem = {
       serial: sn,
       ezpl_base64: nodeBuf.toString('base64'),
       ezpl: nodeBuf.toString('latin1')
-    });
+    };
+    if (itemOrigin) outItem.origin = itemOrigin;
+    if (itemDevice) outItem.categ = itemDevice;
+    if (itemProduct) outItem.product = itemProduct;
+    if (itemOptions) outItem.options = Array.isArray(itemOptions) ? itemOptions.join(', ') : itemOptions;
+
+    items.push(outItem);
   }
 
   const combinedBuffer = Buffer.concat(allBuffers);

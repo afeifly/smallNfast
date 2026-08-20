@@ -22,22 +22,34 @@ export function parseOptionCodes(optionsStr = '') {
  * @param {string} product - Product name for {{product}} replacement
  * @returns {string} Evaluated text or QR value
  */
-export function resolveElementText(el, activeOptions = [], serial = '', product = '', deviceName = '') {
+export function resolveElementText(el, activeOptions = [], serial = '', product = '', deviceName = '', extra = {}) {
+  const extraObj = (extra && typeof extra === 'object') ? extra : {};
+  const originVal = extraObj.origin || extraObj.order || '';
+  const categVal = extraObj.categ || deviceName || '';
+
   // 1. SUTO Protocol QR Code Mode
   if (el.type === 'qrcode' && (el.qrMode === 'suto_protocol' || el.isSutoProtocol)) {
     let pType = el.sutoProductType || '{{device_name}}';
-    const effectiveDevice = deviceName || product || 'S4C-APP';
+    const effectiveDevice = categVal || deviceName || product || 'S4C-APP';
     pType = pType
       .replace(/\{\{device_name\}\}/g, effectiveDevice)
-      .replace(/\{\{product\}\}/g, product || deviceName || 'S4C-APP')
-      .replace(/\{\{product_no\}\}/g, product || deviceName || 'S4C-APP')
+      .replace(/\{\{categ\}\}/g, effectiveDevice)
+      .replace(/\{\{origin\}\}/g, originVal)
+      .replace(/\{\{order\}\}/g, originVal)
+      .replace(/\{\{product\}\}/g, product || effectiveDevice || 'S4C-APP')
+      .replace(/\{\{product_no\}\}/g, product || effectiveDevice || 'S4C-APP')
+      .replace(/\{\{item_no\}\}/g, product || effectiveDevice || 'S4C-APP')
+      .replace(/\{\{itemNo\}\}/g, product || effectiveDevice || 'S4C-APP')
       .trim();
 
     if (!pType || pType === '{{device_name}}' || pType === '{{product}}') {
-      pType = deviceName || (product ? product.split(' ')[0] : 'S4C-APP');
+      pType = effectiveDevice || (product ? product.split(' ')[0] : 'S4C-APP');
     }
     const sn = (serial !== undefined && serial !== '') ? serial : '12345678';
-    const prefix = el.sutoPrefix || 'sensor';
+    let prefix = el.sutoPrefix || 'sensor';
+    if (originVal) {
+      prefix = prefix.replace(/\{\{origin\}\}/g, originVal).replace(/\{\{order\}\}/g, originVal);
+    }
     return generateSensorQr(pType, sn, prefix);
   }
 
@@ -75,10 +87,17 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
 
   // Replace placeholders. Preserve {{serial}} when no serial value is supplied
   // so downstream compilers can inject their own serial command (^C00 / ^F00).
+  const snVal = (serial !== undefined && serial !== '') ? serial : '{{serial}}';
   return rawText
-    .replace(/\{\{serial\}\}/g, (serial !== undefined && serial !== '') ? serial : '{{serial}}')
-    .replace(/\{\{device_name\}\}/g, deviceName || product || '')
+    .replace(/\{\{serial\}\}/g, snVal)
+    .replace(/\{\{sn\}\}/g, snVal)
+    .replace(/\{\{origin\}\}/g, originVal)
+    .replace(/\{\{order\}\}/g, originVal)
+    .replace(/\{\{categ\}\}/g, categVal)
+    .replace(/\{\{device_name\}\}/g, deviceName || categVal || product || '')
     .replace(/\{\{product\}\}/g, product || '')
     .replace(/\{\{product_no\}\}/g, product || '')
+    .replace(/\{\{item_no\}\}/g, product || '')
+    .replace(/\{\{itemNo\}\}/g, product || '')
     .replace(/\{\{options\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''));
 }

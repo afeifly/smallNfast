@@ -296,10 +296,16 @@ async function seedIfEmpty() {
   await ensureDeliveryTemplate();
 }
 
+function getDeliveryTemplate() {
+  const all = getAllTemplates();
+  return all.find(t => isSpecialTemplate(t)) || all[0] || null;
+}
+
 module.exports = {
   isSpecialTemplate,
   getAllTemplates,
   getTemplateById,
+  getDeliveryTemplate,
   insertTemplate,
   updateTemplate,
   replaceAll,

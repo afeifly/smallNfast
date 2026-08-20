@@ -22,7 +22,7 @@ export function getCachedImage(src) {
   });
 }
 
-export async function renderStCanvasDynamic(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '') {
+export async function renderStCanvasDynamic(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '', extra = {}) {
   if (!canvas) return;
   const dpi = config.dpi || PRINTER_DPI || 203;
   const mmToPx = (mm) => Math.round((mm / 25.4) * dpi);
@@ -40,7 +40,7 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
 
   for (const el of elements) {
     if (el.type === 'folder') continue;
-    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName);
+    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName, extra);
 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);

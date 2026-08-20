@@ -32,6 +32,8 @@
             @keydown.stop
             placeholder="Folder name"
           />
+          <button class="row-btn move-btn" :disabled="isFirstInGroup(folder)" @click.stop="moveElement(folder, -1)" title="Move Folder Up">▲</button>
+          <button class="row-btn move-btn" :disabled="isLastInGroup(folder)" @click.stop="moveElement(folder, 1)" title="Move Folder Down">▼</button>
           <span class="child-count">{{ folderChildCount(folder.id) }}</span>
           <button class="row-btn danger" @click.stop="deleteFolder(folder)" title="Remove folder">✕</button>
         </div>
@@ -48,11 +50,18 @@
               <span class="el-type-dot" :class="child.type"></span>
               <span class="el-label">{{ child.name || child.type }}</span>
               <span class="el-hint">{{ shortHint(child) }}</span>
+              <button class="row-btn move-btn" :disabled="isFirstInGroup(child)" @click.stop="moveElement(child, -1)" title="Move Up">▲</button>
+              <button class="row-btn move-btn" :disabled="isLastInGroup(child)" @click.stop="moveElement(child, 1)" title="Move Down">▼</button>
               <button class="row-btn duplicate-btn" @click.stop="duplicateElement(child)" title="Duplicate Element (X,Y +1mm)">📋</button>
               <button class="row-btn danger" @click.stop="deleteById(child.id)" title="Delete">✕</button>
             </div>
             <div v-show="child.expanded" class="el-detail">
-              <ElementForm :el="child" :folders="folders" @image-upload="onImageUpload" @duplicate-element="duplicateElement" :canvasConfig="canvasConfig" />
+              <ElementForm 
+                :el="child" 
+                :folders="folders" 
+                @image-upload="onImageUpload" 
+                :canvasConfig="canvasConfig" 
+              />
             </div>
           </div>
           <div v-if="folderChildCount(folder.id) === 0" class="empty-hint">Empty folder</div>
@@ -70,11 +79,18 @@
           <span class="el-type-dot" :class="el.type"></span>
           <span class="el-label">{{ el.name || el.type }}</span>
           <span class="el-hint">{{ shortHint(el) }}</span>
+          <button class="row-btn move-btn" :disabled="isFirstInGroup(el)" @click.stop="moveElement(el, -1)" title="Move Up">▲</button>
+          <button class="row-btn move-btn" :disabled="isLastInGroup(el)" @click.stop="moveElement(el, 1)" title="Move Down">▼</button>
           <button class="row-btn duplicate-btn" @click.stop="duplicateElement(el)" title="Duplicate Element (X,Y +1mm)">📋</button>
           <button class="row-btn danger" @click.stop="deleteById(el.id)" title="Delete">✕</button>
         </div>
         <div v-show="el.expanded" class="el-detail">
-          <ElementForm :el="el" :folders="folders" @image-upload="onImageUpload" @duplicate-element="duplicateElement" :canvasConfig="canvasConfig" />
+          <ElementForm 
+            :el="el" 
+            :folders="folders" 
+            @image-upload="onImageUpload" 
+            :canvasConfig="canvasConfig" 
+          />
         </div>
       </div>
 
@@ -119,6 +135,72 @@ function shortHint(el) {
   if (el.type === 'qrcode') return el.data ? el.data.substring(0, 22) : '';
   if (el.type === 'hline') return `${el.xMm}→${el.x1Mm || ''}mm`;
   return '';
+}
+
+function isFirstInGroup(el) {
+  if (!el) return true;
+  if (el.type === 'folder') {
+    return folders.value[0]?.id === el.id;
+  }
+  const siblings = el.folderId ? folderChildren(el.folderId) : rootElements.value;
+  return siblings[0]?.id === el.id;
+}
+
+function isLastInGroup(el) {
+  if (!el) return true;
+  if (el.type === 'folder') {
+    return folders.value[folders.value.length - 1]?.id === el.id;
+  }
+  const siblings = el.folderId ? folderChildren(el.folderId) : rootElements.value;
+  return siblings[siblings.length - 1]?.id === el.id;
+}
+
+function moveElement(targetEl, dir) {
+  if (!targetEl) return;
+
+  if (targetEl.type === 'folder') {
+    const folderList = folders.value;
+    const fIdx = folderList.findIndex(f => f.id === targetEl.id);
+    if (fIdx === -1) return;
+    const targetFIdx = fIdx + dir;
+    if (targetFIdx < 0 || targetFIdx >= folderList.length) return;
+
+    const neighborFolder = folderList[targetFIdx];
+    const targetBlock = props.elements.filter(e => e.id === targetEl.id || e.folderId === targetEl.id);
+    const remaining = props.elements.filter(e => e.id !== targetEl.id && e.folderId !== targetEl.id);
+    const neighborIdx = remaining.findIndex(e => e.id === neighborFolder.id);
+    if (neighborIdx === -1) return;
+
+    if (dir < 0) {
+      remaining.splice(neighborIdx, 0, ...targetBlock);
+    } else {
+      let insertIdx = neighborIdx + 1;
+      while (insertIdx < remaining.length && remaining[insertIdx].folderId === neighborFolder.id) {
+        insertIdx++;
+      }
+      remaining.splice(insertIdx, 0, ...targetBlock);
+    }
+
+    props.elements.splice(0, props.elements.length, ...remaining);
+    return;
+  }
+
+  // Sibling element move (inside folder or root)
+  const fid = targetEl.folderId || null;
+  const siblings = fid ? folderChildren(fid) : rootElements.value;
+  const sIdx = siblings.findIndex(e => e.id === targetEl.id);
+  if (sIdx === -1) return;
+  const targetSIdx = sIdx + dir;
+  if (targetSIdx < 0 || targetSIdx >= siblings.length) return;
+
+  const neighbor = siblings[targetSIdx];
+  const fromPos = props.elements.findIndex(e => e.id === targetEl.id);
+  const toPos = props.elements.findIndex(e => e.id === neighbor.id);
+
+  if (fromPos !== -1 && toPos !== -1) {
+    const [moved] = props.elements.splice(fromPos, 1);
+    props.elements.splice(toPos, 0, moved);
+  }
 }
 
 /* ── ACTIONS ────────────────────────────────────────────── */
@@ -214,7 +296,7 @@ const ElementForm = defineComponent({
     folders: Array,
     canvasConfig: Object,
   },
-  emits: ['image-upload', 'duplicate-element'],
+  emits: ['image-upload'],
   setup(props, { emit }) {
     function input(opts) {
       const attrs = { ...opts };
@@ -276,13 +358,7 @@ const ElementForm = defineComponent({
                 }
               }
             }, '🔀 Option Code')
-          ]),
-          h('button', {
-            type: 'button',
-            class: 'duplicate-el-btn',
-            title: 'Duplicate element with offset (X+1, Y+1 mm)',
-            onClick: () => emit('duplicate-element', el)
-          }, '📋 Duplicate')
+          ])
         ]));
 
         if (!isOptionMode) {
@@ -438,13 +514,7 @@ const ElementForm = defineComponent({
                 if (!el.sutoPrefix) el.sutoPrefix = 'sensor';
               }
             }, '🔒 SUTO Protocol')
-          ]),
-          h('button', {
-            type: 'button',
-            class: 'duplicate-el-btn',
-            title: 'Duplicate element with offset (X+1, Y+1 mm)',
-            onClick: () => emit('duplicate-element', el)
-          }, '📋 Duplicate')
+          ])
         ]));
 
         if (!isSutoMode) {
@@ -628,6 +698,9 @@ const ElementForm = defineComponent({
 .el-row:hover .row-btn { opacity: 1; }
 .row-btn.danger:hover { color: #e53e3e !important; background: #fff5f5 !important; }
 .row-btn.duplicate-btn:hover { color: #2b6cb0 !important; background: #ebf8ff !important; }
+.row-btn.move-btn { font-size: 10px !important; padding: 2px 3px !important; }
+.row-btn.move-btn:hover:not(:disabled) { color: #2b6cb0 !important; background: #ebf8ff !important; }
+.row-btn.move-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
 /* ── FOLDER CHILDREN ────────────────────────────────────── */
 .folder-children {
@@ -958,8 +1031,40 @@ const ElementForm = defineComponent({
   color: #38a169;
 }
 
-:deep(.duplicate-el-btn) {
+:deep(.order-action-group) {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:deep(.order-el-btn) {
+  background: #f7fafc !important;
+  color: #2b6cb0 !important;
+  border: 1px solid #cbd5e0 !important;
+  padding: 3px 8px !important;
+  border-radius: 5px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+:deep(.order-el-btn:hover:not(:disabled)) {
+  background: #ebf8ff !important;
+  border-color: #3182ce !important;
+}
+:deep(.order-el-btn:disabled) {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+:deep(.duplicate-el-btn) {
   background: #f7fafc !important;
   color: #2b6cb0 !important;
   border: 1px solid #cbd5e0 !important;

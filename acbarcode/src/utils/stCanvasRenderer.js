@@ -45,7 +45,7 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);
       const fontWeight = el.bold ? 'bold' : 'normal';
-      ctx.font = `${fontWeight} ${fontSizePx}px "Arial", "Helvetica", sans-serif`;
+      ctx.font = `${fontWeight} ${fontSizePx}px "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", "Arial", "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
 
@@ -81,28 +81,69 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
     } else if (el.type === 'barcode') {
       try {
         const offscreenCanvas = document.createElement('canvas');
+        const barHeightPx = mmToPx(el.heightMm || 10);
+
+        // Render barcode bars ONLY (without embedded text) so text is not stretched by drawImage
         JsBarcode(offscreenCanvas, textVal, {
           format: 'CODE128',
           width: 2,
-          height: mmToPx(el.heightMm || 10),
-          displayValue: el.readable !== false,
-          fontSize: ptToPx(4),
+          height: barHeightPx,
+          displayValue: false,
           margin: 0
         });
+
         const drawW = el.widthMm ? mmToPx(el.widthMm) : offscreenCanvas.width;
-        const drawH = offscreenCanvas.height;
-        ctx.drawImage(offscreenCanvas, mmToPx(el.xMm), mmToPx(el.yMm), drawW, drawH);
+        const xPx = mmToPx(el.xMm || 0);
+        const yPx = mmToPx(el.yMm || 0);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(offscreenCanvas, xPx, yPx, drawW, barHeightPx);
+
+        let totalH = barHeightPx;
+
+        // Render human-readable text directly on canvas with natural aspect ratio (un-stretched)
+        if (el.readable !== false && textVal) {
+          const fontPt = el.fontSize || 4.5;
+          const fontSizePx = ptToPx(fontPt);
+          // Medium / semi-bold (600) by default for great readability without blurriness, or 700 for full bold
+          const fontWeight = el.bold === false ? '500' : (el.bold === true ? '700' : '600');
+          ctx.font = `${fontWeight} ${fontSizePx}px "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Arial", "Helvetica Neue", sans-serif`;
+          ctx.fillStyle = '#000000';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const textX = xPx + (drawW / 2);
+          const textY = yPx + barHeightPx + mmToPx(0.5);
+          ctx.fillText(textVal, textX, textY);
+          totalH += mmToPx(0.5) + fontSizePx;
+        }
+
+        // Draw border box around barcode if border option is enabled
+        if (el.border) {
+          const padPx = mmToPx(0.6);
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = el.borderThickness || 1;
+          ctx.strokeRect(
+            xPx - padPx,
+            yPx - padPx,
+            drawW + (padPx * 2),
+            totalH + (padPx * 2)
+          );
+        }
       } catch (e) {
         console.warn('Barcode render error:', e);
       }
     } else if (el.type === 'qrcode') {
       try {
         const offscreenCanvas = document.createElement('canvas');
+        const qrWidthMm = el.widthMm || ((el.mul || 4) * 2.5);
+        const qrSizePx = mmToPx(qrWidthMm);
         await QRCode.toCanvas(offscreenCanvas, textVal, {
-          width: mmToPx((el.mul || 4) * 2.5),
-          margin: 0
+          width: qrSizePx,
+          margin: 0,
+          errorCorrectionLevel: 'M',
+          color: { dark: '#000000', light: '#ffffff' }
         });
-        ctx.drawImage(offscreenCanvas, mmToPx(el.xMm), mmToPx(el.yMm));
+        ctx.drawImage(offscreenCanvas, mmToPx(el.xMm), mmToPx(el.yMm), qrSizePx, qrSizePx);
       } catch (e) {
         console.warn('QR render error:', e);
       }

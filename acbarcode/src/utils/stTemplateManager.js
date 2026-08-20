@@ -4,18 +4,44 @@ export const DEFAULT_CONFIG = defaultTemplateStandard.config || { widthMm: 35, h
 export const DEFAULT_ELEMENTS_EN = defaultTemplateStandard.elements_en || [];
 export const DEFAULT_ELEMENTS_CN = defaultTemplateStandard.elements_cn || [];
 
+export function isSpecialTemplate(t) {
+  if (!t) return false;
+  return Boolean(
+    t.isSpecial ||
+    t.id === 'tpl_delivery' ||
+    t.id === 'tpl_std_flow' ||
+    t.name === 'Delivery Template' ||
+    t.name === 'Deliver label'
+  );
+}
+
+export function sortTemplatesWithDeliveryFirst(templatesList) {
+  if (!Array.isArray(templatesList)) return [];
+  const special = [];
+  const regular = [];
+  for (const t of templatesList) {
+    if (isSpecialTemplate(t)) {
+      special.push({ ...t, isSpecial: true });
+    } else {
+      regular.push(t);
+    }
+  }
+  return [...special, ...regular];
+}
+
 export function createInitialDefaultTemplates() {
   return [
     {
-      id: 'tpl_std_flow',
-      name: 'Standard Flow Sensor',
+      id: 'tpl_delivery',
+      name: 'Delivery Template',
+      isSpecial: true,
       itemNumbers: ['S695 4035', 'S695 4036', 'S403'],
       deviceName: '',
-      note: 'Default standard flow sensor label (35×22mm @300 DPI). Used for S695/S403 series.',
+      note: 'Default SUTO-iTEC Delivery label template (35×22mm @300 DPI). Always pinned to top and protected.',
       config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
       elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
       elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
-      subTemplates: []
+      subTemplates: JSON.parse(JSON.stringify(defaultTemplateStandard.subTemplates || []))
     },
     {
       id: 'tpl_high_temp',

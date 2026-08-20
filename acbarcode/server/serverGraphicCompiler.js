@@ -104,18 +104,46 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
       }
     } else if (el.type === 'barcode') {
       try {
-        const barcodeCanvas = createCanvas(100, 100);
+        const barHeightPx = mmToPx(el.heightMm || 10);
+        const barcodeCanvas = createCanvas(100, barHeightPx);
         JsBarcode(barcodeCanvas, textVal, {
           format: 'CODE128',
           width: 2,
-          height: mmToPx(el.heightMm || 10),
-          displayValue: el.readable !== false,
-          fontSize: ptToPx(4),
+          height: barHeightPx,
+          displayValue: false,
           margin: 0
         });
         const drawW = el.widthMm ? mmToPx(el.widthMm) : barcodeCanvas.width;
-        const drawH = barcodeCanvas.height;
-        ctx.drawImage(barcodeCanvas, mmToPx(el.xMm), mmToPx(el.yMm), drawW, drawH);
+        const xPx = mmToPx(el.xMm || 0);
+        const yPx = mmToPx(el.yMm || 0);
+        ctx.drawImage(barcodeCanvas, xPx, yPx, drawW, barHeightPx);
+
+        let totalH = barHeightPx;
+        if (el.readable !== false && textVal) {
+          const fontPt = el.fontSize || 4.5;
+          const fontSizePx = ptToPx(fontPt);
+          const fontWeight = el.bold === false ? '500' : (el.bold === true ? '700' : '600');
+          ctx.font = `${fontWeight} ${fontSizePx}px "Segoe UI", Arial, sans-serif`;
+          ctx.fillStyle = '#000000';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const textX = xPx + (drawW / 2);
+          const textY = yPx + barHeightPx + mmToPx(0.5);
+          ctx.fillText(textVal, textX, textY);
+          totalH += mmToPx(0.5) + fontSizePx;
+        }
+
+        if (el.border) {
+          const padPx = mmToPx(0.6);
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = el.borderThickness || 1;
+          ctx.strokeRect(
+            xPx - padPx,
+            yPx - padPx,
+            drawW + (padPx * 2),
+            totalH + (padPx * 2)
+          );
+        }
       } catch (e) {
         console.warn('Barcode render error on server:', e.message);
       }

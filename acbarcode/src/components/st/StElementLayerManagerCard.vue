@@ -217,11 +217,32 @@
               </div>
             </div>
 
-            <div class="form-field checkbox-field">
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="el.readable" /> 
-                <span>Show Human Readable Text</span>
-              </label>
+            <div class="form-grid grid-3">
+              <div class="form-field checkbox-field">
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="el.readable" /> 
+                  <span>Show Text</span>
+                </label>
+              </div>
+              <div v-if="el.readable !== false" class="form-field checkbox-field">
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="el.bold" /> 
+                  <span>Bold</span>
+                </label>
+              </div>
+              <div class="form-field checkbox-field">
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="el.border" /> 
+                  <span>Border Box</span>
+                </label>
+              </div>
+            </div>
+
+            <div v-if="el.readable !== false" class="form-grid grid-2">
+              <div class="form-field">
+                <label>Text Font Size (pt)</label>
+                <input type="number" step="0.5" v-model.number="el.fontSize" placeholder="5" min="2" max="24" />
+              </div>
             </div>
           </template>
 

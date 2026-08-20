@@ -3,6 +3,8 @@ import {
   fetchTemplatesFromServer,
   saveTemplatesToServer,
   createInitialDefaultTemplates,
+  isSpecialTemplate,
+  sortTemplatesWithDeliveryFirst,
   DEFAULT_CONFIG,
   DEFAULT_ELEMENTS_EN,
   DEFAULT_ELEMENTS_CN
@@ -28,10 +30,11 @@ export const activeSubTemplate = computed(() => {
 
 export async function loadTemplates() {
   try {
-    templates.value = await fetchTemplatesFromServer();
+    const data = await fetchTemplatesFromServer();
+    templates.value = sortTemplatesWithDeliveryFirst(data);
   } catch (err) {
     console.error('Failed to load templates from server:', err);
-    templates.value = createInitialDefaultTemplates();
+    templates.value = sortTemplatesWithDeliveryFirst(createInitialDefaultTemplates());
   }
   if (templates.value.length > 0 && !templates.value.find(t => t.id === activeTemplateId.value)) {
     activeTemplateId.value = templates.value[0].id;
@@ -97,12 +100,14 @@ export function createTemplate() {
     itemNumbers: [],
     deviceName: '',
     note: '',
+    isSpecial: false,
     config: defaultConfig(),
     elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
     elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
     subTemplates: []
   };
   templates.value.push(newTpl);
+  templates.value = sortTemplatesWithDeliveryFirst(templates.value);
   activeSubTemplateId.value = '';
   activeTemplateId.value = newTpl.id;
   scheduleSave();
@@ -114,9 +119,11 @@ export function duplicateTemplate() {
   if (!tpl) return null;
   const clone = JSON.parse(JSON.stringify(tpl));
   clone.id = generateId();
+  clone.isSpecial = false;
   clone.name = clone.name + ' (Copy)';
   clone.subTemplates = (clone.subTemplates || []).map(s => ({ ...s, id: generateId() }));
   templates.value.push(clone);
+  templates.value = sortTemplatesWithDeliveryFirst(templates.value);
   activeSubTemplateId.value = '';
   activeTemplateId.value = clone.id;
   scheduleSave();
@@ -125,8 +132,12 @@ export function duplicateTemplate() {
 
 export function deleteTemplate() {
   if (templates.value.length <= 1) return false;
+  const tpl = activeTemplate.value;
+  if (isSpecialTemplate(tpl)) return false;
   const idx = templates.value.findIndex(t => t.id === activeTemplateId.value);
+  if (idx === -1) return false;
   templates.value.splice(idx, 1);
+  templates.value = sortTemplatesWithDeliveryFirst(templates.value);
   activeSubTemplateId.value = '';
   activeTemplateId.value = templates.value[Math.max(0, idx - 1)]?.id || templates.value[0]?.id;
   scheduleSave();

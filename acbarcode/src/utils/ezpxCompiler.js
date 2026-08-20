@@ -45,7 +45,10 @@ export async function getBarcodeBase64(text, heightDots = 40, readable = true) {
         width: 2,
         height: Math.max(10, heightDots),
         displayValue: !!readable,
-        fontSize: 12,
+        font: 'Arial',
+        fontOptions: 'bold',
+        fontSize: 14,
+        textMargin: 3,
         margin: 2
       });
       const dataUrl = canvas.toDataURL('image/png');
@@ -470,9 +473,11 @@ export async function compileEZPX(elements, config, serial = '3726 0001') {
       const totalModules = (escapedText.length * 11) + 35;
       const wDots = el.widthMm ? mmToDots(el.widthMm) : (totalModules * narrow);
       const hDots = heightDots + (readable ? 36 : 0);
+      const barcodeFontPt = Math.max(8, Math.round((el.fontSize || 5) * 1.8));
+      const barcodeFontCmd = `Arial,${barcodeFontPt},B\r\n`;
 
       qlabelShapes += `
-      <GraphicShape xsi:type="BarCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="Arial,12&#xD;&#xA;" Symbology="Code128Auto" CaptionAlignment="${captionAlign}" Height="${heightDots}" Width="8" Narrow="${narrow}" BearerBarStyle="3" BearerBarWidth="5" QuietZoneWidth="9" BoxThickness="3" Offset="1" bDisplayChecksum="false" bDisplayStartStopChar="false" bBuiltinFont="true" bSetBuiltinFontSize="false" Code128Subset="Auto">
+      <GraphicShape xsi:type="BarCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(barcodeFontCmd)}" Symbology="Code128Auto" CaptionAlignment="${captionAlign}" Height="${heightDots}" Width="8" Narrow="${narrow}" BearerBarStyle="3" BearerBarWidth="5" QuietZoneWidth="9" BoxThickness="3" Offset="1" bDisplayChecksum="false" bDisplayStartStopChar="false" bBuiltinFont="false" bSetBuiltinFontSize="false" Code128Subset="Auto">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>

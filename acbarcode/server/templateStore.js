@@ -21,6 +21,7 @@ db.exec(`
     subTemplates TEXT NOT NULL DEFAULT '[]',
     deviceName TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
+    isSpecial INTEGER NOT NULL DEFAULT 0,
     created_at TEXT,
     updated_at TEXT
   )
@@ -37,6 +38,20 @@ if (!cols.includes('deviceName')) {
 if (!cols.includes('note')) {
   db.exec("ALTER TABLE templates ADD COLUMN note TEXT NOT NULL DEFAULT ''");
 }
+if (!cols.includes('isSpecial')) {
+  db.exec("ALTER TABLE templates ADD COLUMN isSpecial INTEGER NOT NULL DEFAULT 0");
+}
+
+function isSpecialTemplate(tpl) {
+  if (!tpl) return false;
+  return Boolean(
+    tpl.isSpecial ||
+    tpl.id === 'tpl_delivery' ||
+    tpl.id === 'tpl_std_flow' ||
+    tpl.name === 'Delivery Template' ||
+    tpl.name === 'Deliver label'
+  );
+}
 
 function rowToTemplate(row) {
   return {
@@ -45,6 +60,7 @@ function rowToTemplate(row) {
     itemNumbers: safeParse(row.itemNumbers, []),
     deviceName: row.deviceName || '',
     note: row.note || '',
+    isSpecial: isSpecialTemplate(row),
     config: safeParse(row.config, {}),
     elements_en: safeParse(row.elements_en, []),
     elements_cn: safeParse(row.elements_cn, []),
@@ -75,12 +91,18 @@ function normalizeSubTemplate(sub) {
 }
 
 function normalizeTemplate(tpl) {
+  const special = isSpecialTemplate(tpl);
+  let name = String(tpl.name || 'New Template');
+  if (special && (name === 'Standard Flow Sensor' || name === 'Deliver label')) {
+    name = 'Delivery Template';
+  }
   return {
     id: String(tpl.id || ''),
-    name: String(tpl.name || 'New Template'),
+    name,
     itemNumbers: Array.isArray(tpl.itemNumbers) ? tpl.itemNumbers : [],
     deviceName: String(tpl.deviceName || ''),
     note: String(tpl.note || ''),
+    isSpecial: special ? 1 : 0,
     config: (tpl.config && typeof tpl.config === 'object') ? tpl.config : { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: Array.isArray(tpl.elements_en) ? tpl.elements_en : [],
     elements_cn: Array.isArray(tpl.elements_cn) ? tpl.elements_cn : [],
@@ -88,9 +110,23 @@ function normalizeTemplate(tpl) {
   };
 }
 
+function sortDeliveryFirst(list) {
+  if (!Array.isArray(list)) return [];
+  const special = [];
+  const regular = [];
+  for (const t of list) {
+    if (isSpecialTemplate(t)) {
+      special.push({ ...t, isSpecial: true });
+    } else {
+      regular.push(t);
+    }
+  }
+  return [...special, ...regular];
+}
+
 function getAllTemplates() {
   const rows = db.prepare('SELECT * FROM templates ORDER BY created_at ASC').all();
-  return rows.map(rowToTemplate);
+  return sortDeliveryFirst(rows.map(rowToTemplate));
 }
 
 function getTemplateById(id) {
@@ -102,14 +138,15 @@ function insertTemplate(tpl) {
   const t = normalizeTemplate(tpl);
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO templates (id, name, itemNumbers, deviceName, note, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `).run({
     id: t.id,
     name: t.name,
     itemNumbers: JSON.stringify(t.itemNumbers),
     deviceName: t.deviceName,
     note: t.note,
+    isSpecial: t.isSpecial,
     config: JSON.stringify(t.config),
     elements_en: JSON.stringify(t.elements_en),
     elements_cn: JSON.stringify(t.elements_cn),
@@ -126,7 +163,7 @@ function updateTemplate(id, tpl) {
   const t = normalizeTemplate({ ...existing, ...tpl, id });
   db.prepare(`
     UPDATE templates
-    SET name = @name, itemNumbers = @itemNumbers, deviceName = @deviceName, note = @note, config = @config,
+    SET name = @name, itemNumbers = @itemNumbers, deviceName = @deviceName, note = @note, isSpecial = @isSpecial, config = @config,
         elements_en = @elements_en, elements_cn = @elements_cn, subTemplates = @subTemplates, updated_at = @updated_at
     WHERE id = @id
   `).run({
@@ -135,6 +172,7 @@ function updateTemplate(id, tpl) {
     itemNumbers: JSON.stringify(t.itemNumbers),
     deviceName: t.deviceName,
     note: t.note,
+    isSpecial: t.isSpecial,
     config: JSON.stringify(t.config),
     elements_en: JSON.stringify(t.elements_en),
     elements_cn: JSON.stringify(t.elements_cn),
@@ -146,21 +184,23 @@ function updateTemplate(id, tpl) {
 
 function replaceAll(templatesList) {
   const list = Array.isArray(templatesList) ? templatesList.map(normalizeTemplate) : [];
+  const sorted = sortDeliveryFirst(list);
   const now = new Date().toISOString();
   const insert = db.prepare(`
-    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, note, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `);
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM templates').run();
-    for (const t of list) {
+    for (const t of sorted) {
       insert.run({
         id: t.id,
         name: t.name,
         itemNumbers: JSON.stringify(t.itemNumbers),
         deviceName: t.deviceName,
         note: t.note,
+        isSpecial: t.isSpecial,
         config: JSON.stringify(t.config),
         elements_en: JSON.stringify(t.elements_en),
         elements_cn: JSON.stringify(t.elements_cn),
@@ -178,6 +218,10 @@ function replaceAll(templatesList) {
 }
 
 function deleteTemplate(id) {
+  const tpl = getTemplateById(id);
+  if (tpl && isSpecialTemplate(tpl)) {
+    return false; // Delivery Template cannot be deleted
+  }
   const result = db.prepare('DELETE FROM templates WHERE id = ?').run(String(id));
   return result.changes > 0;
 }
@@ -215,16 +259,45 @@ function removeSubTemplate(templateId, subId) {
   return true;
 }
 
-async function seedIfEmpty() {
-  if (count() > 0) return;
-  const { createInitialDefaultTemplates } = await import('../src/utils/stTemplateManager.js');
-  const defaults = createInitialDefaultTemplates();
-  if (Array.isArray(defaults) && defaults.length > 0) {
-    replaceAll(defaults);
+async function ensureDeliveryTemplate() {
+  const rows = db.prepare('SELECT * FROM templates').all();
+  const deliveryRow = rows.find(r => isSpecialTemplate(r));
+
+  if (deliveryRow) {
+    // Update existing row if needed to ensure name is 'Delivery Template' and isSpecial is 1
+    db.prepare(`
+      UPDATE templates 
+      SET isSpecial = 1, name = CASE WHEN name = 'Standard Flow Sensor' OR name = 'Deliver label' THEN 'Delivery Template' ELSE name END
+      WHERE id = ?
+    `).run(deliveryRow.id);
+  } else {
+    // Insert initial default delivery template
+    try {
+      const { createInitialDefaultTemplates } = await import('../src/utils/stTemplateManager.js');
+      const defaults = createInitialDefaultTemplates();
+      const deliveryTpl = defaults.find(t => isSpecialTemplate(t)) || defaults[0];
+      if (deliveryTpl) {
+        insertTemplate(deliveryTpl);
+      }
+    } catch (e) {
+      console.error('Failed to import default delivery template:', e);
+    }
   }
 }
 
+async function seedIfEmpty() {
+  if (count() === 0) {
+    const { createInitialDefaultTemplates } = await import('../src/utils/stTemplateManager.js');
+    const defaults = createInitialDefaultTemplates();
+    if (Array.isArray(defaults) && defaults.length > 0) {
+      replaceAll(defaults);
+    }
+  }
+  await ensureDeliveryTemplate();
+}
+
 module.exports = {
+  isSpecialTemplate,
   getAllTemplates,
   getTemplateById,
   insertTemplate,
@@ -235,5 +308,6 @@ module.exports = {
   addSubTemplate,
   updateSubTemplate,
   removeSubTemplate,
+  ensureDeliveryTemplate,
   seedIfEmpty
 };

@@ -13,10 +13,13 @@
             v-for="t in filteredTemplates"
             :key="t.id"
             class="tpl-item"
-            :class="{ selected: t.id === activeTemplateId }"
+            :class="{ selected: t.id === activeTemplateId, 'is-special': isSpecialTemplate(t) }"
             @click="selectTemplate(t.id)"
           >
-            <div class="tpl-item-name">{{ t.name }}</div>
+            <div class="tpl-item-header">
+              <div class="tpl-item-name">{{ t.name }}</div>
+              <span v-if="isSpecialTemplate(t)" class="special-tag" title="Delivery Template (Protected)">Special</span>
+            </div>
             <div class="tpl-item-items">{{ (t.itemNumbers || []).join(', ') || '—' }}</div>
             <div class="tpl-item-meta">
               <span>{{ t.config?.widthMm }}×{{ t.config?.heightMm }}mm · {{ t.config?.dpi }}dpi</span>
@@ -33,11 +36,22 @@
           <!-- Main template -->
           <div class="card">
             <div class="card-head">
-              <span class="card-title">Main Template</span>
+              <div class="card-title-group">
+                <span class="card-title">Main Template</span>
+                <span v-if="isSpecialTemplate(activeTemplate)" class="special-pill-badge" title="System default delivery template">⭐ Special / Delivery</span>
+              </div>
               <div class="card-actions">
                 <button type="button" class="mini-btn" @click="createTemplate">＋ New</button>
                 <button type="button" class="mini-btn" @click="duplicateTemplate">📋 Duplicate</button>
-                <button type="button" class="mini-btn danger" :disabled="templates.length <= 1" @click="onDelete">🗑️ Delete</button>
+                <button 
+                  type="button" 
+                  class="mini-btn danger" 
+                  :disabled="isSpecialTemplate(activeTemplate) || templates.length <= 1" 
+                  :title="isSpecialTemplate(activeTemplate) ? 'Delivery Template cannot be deleted' : 'Delete template'"
+                  @click="onDelete"
+                >
+                  🗑️ Delete
+                </button>
               </div>
             </div>
             <div class="card-body">
@@ -152,6 +166,7 @@ import {
   removeSubTemplate,
   setActiveTemplate
 } from '../../stores/templateStore.js';
+import { isSpecialTemplate, sortTemplatesWithDeliveryFirst } from '../../utils/stTemplateManager.js';
 import { parseEzpxXmlToTemplate } from '../../utils/stEzpxParser.js';
 import { showStAlert, showStConfirm } from '../../utils/stDialog.js';
 
@@ -161,11 +176,12 @@ const searchQuery = ref('');
 
 const filteredTemplates = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  if (!q) return templates.value;
-  return templates.value.filter(t =>
+  if (!q) return sortTemplatesWithDeliveryFirst(templates.value);
+  const matched = templates.value.filter(t =>
     (t.name || '').toLowerCase().includes(q) ||
     (t.itemNumbers || []).some(n => String(n).toLowerCase().includes(q))
   );
+  return sortTemplatesWithDeliveryFirst(matched);
 });
 
 const rawItemNumbersText = ref('');
@@ -213,6 +229,10 @@ function setSubConfig(subId, key, val) {
 }
 
 async function onDelete() {
+  if (!activeTemplate.value || isSpecialTemplate(activeTemplate.value)) {
+    showStAlert('The Delivery Template is a system default template and cannot be deleted.', 'Cannot Delete', 'warning');
+    return;
+  }
   if (templates.value.length <= 1) return;
   const ok = await showStConfirm({
     title: 'Delete Template',
@@ -303,17 +323,57 @@ onMounted(async () => {
 }
 
 .tpl-item {
+  position: relative;
   padding: 10px 12px;
   border-bottom: 1px solid #f0f2f5;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: all 0.15s ease;
 }
 
 .tpl-item:hover { background: #f0f9ff; }
 .tpl-item.selected { background: #ebf8ff; border-left: 3px solid #3182ce; }
 
+.tpl-item.is-special {
+  border-left: 3px solid #805ad5;
+  background: #faf8ff;
+}
+
+.tpl-item.is-special:hover {
+  background: #f3f0ff;
+}
+
+.tpl-item.is-special.selected {
+  background: #ebf8ff;
+  border-left: 3px solid #3182ce;
+}
+
+.tpl-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
 .tpl-item-name { font-weight: 600; color: #2d3748; font-size: 0.92rem; }
 .tpl-item.selected .tpl-item-name { color: #2b6cb0; }
+.tpl-item.is-special .tpl-item-name { color: #44337a; }
+.tpl-item.is-special.selected .tpl-item-name { color: #2b6cb0; }
+
+.special-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #6b46c1;
+  background: #ede9fe;
+  border: 1px solid #ddd6fe;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
 .tpl-item-items { font-size: 0.78rem; color: #718096; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tpl-item-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 0.75rem; color: #a0aec0; }
 .sub-badge { background: #553c9a; color: #fff; border-radius: 10px; padding: 1px 8px; font-size: 0.7rem; font-weight: 600; }
@@ -352,7 +412,23 @@ onMounted(async () => {
   background: #f7fafc;
 }
 
+.card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .card-title { font-weight: 700; color: #2d3748; font-size: 0.92rem; }
+
+.special-pill-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #553c9a;
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+  border-radius: 12px;
+  padding: 1px 8px;
+}
 
 .card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 

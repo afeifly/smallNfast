@@ -403,7 +403,14 @@ const ElementForm = defineComponent({
           h('div', { class: 'fg' }, [h('label', 'Y mm'), h('input', { type: 'number', step: 0.1, value: el.yMm, onInput: e => el.yMm = +e.target.value })]),
           h('div', { class: 'fg' }, [h('label', 'W mm'), h('input', { type: 'number', step: 0.1, value: el.widthMm, onInput: e => el.widthMm = +e.target.value })]),
           h('div', { class: 'fg' }, [h('label', 'H mm'), h('input', { type: 'number', step: 0.1, value: el.heightMm, onInput: e => el.heightMm = +e.target.value })]),
-          h('div', { class: 'fg' }, [h('label', { class: 'cb' }, [h('input', { type: 'checkbox', checked: el.readable, onChange: e => el.readable = e.target.checked }), ' Text'])])
+          h('div', { class: 'fg' }, [h('label', { class: 'cb' }, [h('input', { type: 'checkbox', checked: el.readable !== false, onChange: e => el.readable = e.target.checked }), ' Text'])]),
+          el.readable !== false
+            ? h('div', { class: 'fg' }, [h('label', { class: 'cb' }, [h('input', { type: 'checkbox', checked: el.bold !== false, onChange: e => el.bold = e.target.checked }), ' Bold'])])
+            : null,
+          h('div', { class: 'fg' }, [h('label', { class: 'cb' }, [h('input', { type: 'checkbox', checked: !!el.border, onChange: e => el.border = e.target.checked }), ' Border'])]),
+          el.readable !== false
+            ? h('div', { class: 'fg' }, [h('label', 'Font pt'), h('input', { type: 'number', step: 0.5, value: el.fontSize || 4.5, min: 2, max: 24, onInput: e => el.fontSize = +e.target.value })])
+            : null
         ]));
       }
 

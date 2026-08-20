@@ -1,12 +1,13 @@
 export default {
-  id: "tpl_std_flow",
-  name: "Standard Flow Sensor",
+  id: "tpl_delivery",
+  name: "Delivery Template",
+  isSpecial: true,
   itemNumbers: [
     "S695 4035",
     "S695 4036",
     "S403"
   ],
-  note: "Default standard flow sensor label (35×22mm @300 DPI). Used for S695/S403 series.",
+  note: "Default SUTO-iTEC Delivery label template (35×22mm @300 DPI). Always pinned to top and protected.",
   config: {
     widthMm: 35,
     heightMm: 22,

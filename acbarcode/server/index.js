@@ -572,11 +572,15 @@ app.put('/api/templates/:id', adminAuth, (req, res) => {
 });
 
 app.delete('/api/templates/:id', adminAuth, (req, res) => {
+  const tpl = templateStore.getTemplateById(req.params.id);
+  if (tpl && templateStore.isSpecialTemplate(tpl)) {
+    return res.status(400).json({ error: 'The Delivery Template cannot be deleted' });
+  }
   if (templateStore.count() <= 1) {
     return res.status(400).json({ error: 'Cannot delete the last template' });
   }
   if (!templateStore.deleteTemplate(req.params.id)) {
-    return res.status(404).json({ error: `Template with id ${req.params.id} not found` });
+    return res.status(404).json({ error: `Template with id ${req.params.id} not found or protected` });
   }
   res.json({ message: 'Template deleted successfully' });
 });

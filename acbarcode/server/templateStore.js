@@ -116,9 +116,9 @@ function sortDeliveryFirst(list) {
   const regular = [];
   for (const t of list) {
     if (isSpecialTemplate(t)) {
-      special.push({ ...t, isSpecial: true });
+      special.push({ ...t, isSpecial: 1 });
     } else {
-      regular.push(t);
+      regular.push({ ...t, isSpecial: 0 });
     }
   }
   return [...special, ...regular];
@@ -141,16 +141,16 @@ function insertTemplate(tpl) {
     INSERT INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
     VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
   `).run({
-    id: t.id,
-    name: t.name,
-    itemNumbers: JSON.stringify(t.itemNumbers),
-    deviceName: t.deviceName,
-    note: t.note,
-    isSpecial: t.isSpecial,
-    config: JSON.stringify(t.config),
-    elements_en: JSON.stringify(t.elements_en),
-    elements_cn: JSON.stringify(t.elements_cn),
-    subTemplates: JSON.stringify(t.subTemplates),
+    id: String(t.id || ''),
+    name: String(t.name || ''),
+    itemNumbers: JSON.stringify(t.itemNumbers || []),
+    deviceName: String(t.deviceName || ''),
+    note: String(t.note || ''),
+    isSpecial: t.isSpecial ? 1 : 0,
+    config: JSON.stringify(t.config || {}),
+    elements_en: JSON.stringify(t.elements_en || []),
+    elements_cn: JSON.stringify(t.elements_cn || []),
+    subTemplates: JSON.stringify(t.subTemplates || []),
     created_at: now,
     updated_at: now
   });
@@ -167,16 +167,16 @@ function updateTemplate(id, tpl) {
         elements_en = @elements_en, elements_cn = @elements_cn, subTemplates = @subTemplates, updated_at = @updated_at
     WHERE id = @id
   `).run({
-    id: t.id,
-    name: t.name,
-    itemNumbers: JSON.stringify(t.itemNumbers),
-    deviceName: t.deviceName,
-    note: t.note,
-    isSpecial: t.isSpecial,
-    config: JSON.stringify(t.config),
-    elements_en: JSON.stringify(t.elements_en),
-    elements_cn: JSON.stringify(t.elements_cn),
-    subTemplates: JSON.stringify(t.subTemplates),
+    id: String(t.id || ''),
+    name: String(t.name || ''),
+    itemNumbers: JSON.stringify(t.itemNumbers || []),
+    deviceName: String(t.deviceName || ''),
+    note: String(t.note || ''),
+    isSpecial: t.isSpecial ? 1 : 0,
+    config: JSON.stringify(t.config || {}),
+    elements_en: JSON.stringify(t.elements_en || []),
+    elements_cn: JSON.stringify(t.elements_cn || []),
+    subTemplates: JSON.stringify(t.subTemplates || []),
     updated_at: new Date().toISOString()
   });
   return getTemplateById(t.id);
@@ -195,16 +195,16 @@ function replaceAll(templatesList) {
     db.prepare('DELETE FROM templates').run();
     for (const t of sorted) {
       insert.run({
-        id: t.id,
-        name: t.name,
-        itemNumbers: JSON.stringify(t.itemNumbers),
-        deviceName: t.deviceName,
-        note: t.note,
-        isSpecial: t.isSpecial,
-        config: JSON.stringify(t.config),
-        elements_en: JSON.stringify(t.elements_en),
-        elements_cn: JSON.stringify(t.elements_cn),
-        subTemplates: JSON.stringify(t.subTemplates),
+        id: String(t.id || ''),
+        name: String(t.name || ''),
+        itemNumbers: JSON.stringify(t.itemNumbers || []),
+        deviceName: String(t.deviceName || ''),
+        note: String(t.note || ''),
+        isSpecial: t.isSpecial ? 1 : 0,
+        config: JSON.stringify(t.config || {}),
+        elements_en: JSON.stringify(t.elements_en || []),
+        elements_cn: JSON.stringify(t.elements_cn || []),
+        subTemplates: JSON.stringify(t.subTemplates || []),
         created_at: now,
         updated_at: now
       });

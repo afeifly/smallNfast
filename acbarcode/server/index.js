@@ -525,64 +525,89 @@ app.delete('/api/products/:item', adminAuth, (req, res) => {
 // DELETE /api/templates/:id  ->  delete one template (keep >= 1), admin only
 
 app.get('/api/templates', (req, res) => {
-  res.json(templateStore.getAllTemplates());
+  try {
+    res.json(templateStore.getAllTemplates());
+  } catch (err) {
+    console.error('Error getting templates:', err);
+    res.status(500).json({ error: err.message || 'Failed to get templates' });
+  }
 });
 
 app.put('/api/templates', adminAuth, (req, res) => {
-  const list = req.body;
-  if (!Array.isArray(list)) {
-    return res.status(400).json({ error: 'Expected a JSON array of templates' });
+  try {
+    const list = req.body;
+    if (!Array.isArray(list)) {
+      return res.status(400).json({ error: 'Expected a JSON array of templates' });
+    }
+    const prepared = list.map(t => ({
+      id: (t && t.id) ? String(t.id) : crypto.randomUUID(),
+      name: (t && t.name) || 'New Template',
+      itemNumbers: (t && Array.isArray(t.itemNumbers)) ? t.itemNumbers : [],
+      deviceName: (t && t.deviceName) ? String(t.deviceName) : '',
+      note: (t && t.note) ? String(t.note) : '',
+      config: (t && t.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
+      elements_en: (t && Array.isArray(t.elements_en)) ? t.elements_en : [],
+      elements_cn: (t && Array.isArray(t.elements_cn)) ? t.elements_cn : [],
+      subTemplates: (t && Array.isArray(t.subTemplates)) ? t.subTemplates : []
+    }));
+    const saved = templateStore.replaceAll(prepared);
+    res.json({ message: `${saved.length} template(s) imported`, templates: saved });
+  } catch (err) {
+    console.error('Error saving templates:', err);
+    res.status(500).json({ error: err.message || 'Failed to save templates' });
   }
-  const prepared = list.map(t => ({
-    id: (t && t.id) ? String(t.id) : crypto.randomUUID(),
-    name: (t && t.name) || 'New Template',
-    itemNumbers: (t && Array.isArray(t.itemNumbers)) ? t.itemNumbers : [],
-    deviceName: (t && t.deviceName) ? String(t.deviceName) : '',
-    note: (t && t.note) ? String(t.note) : '',
-    config: (t && t.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
-    elements_en: (t && Array.isArray(t.elements_en)) ? t.elements_en : [],
-    elements_cn: (t && Array.isArray(t.elements_cn)) ? t.elements_cn : [],
-    subTemplates: (t && Array.isArray(t.subTemplates)) ? t.subTemplates : []
-  }));
-  const saved = templateStore.replaceAll(prepared);
-  res.json({ message: `${saved.length} template(s) imported`, templates: saved });
 });
 
 app.post('/api/templates', adminAuth, (req, res) => {
-  const t = {
-    id: crypto.randomUUID(),
-    name: (req.body && req.body.name) || 'New Template',
-    itemNumbers: (req.body && Array.isArray(req.body.itemNumbers)) ? req.body.itemNumbers : [],
-    deviceName: (req.body && req.body.deviceName) ? String(req.body.deviceName) : '',
-    note: (req.body && req.body.note) ? String(req.body.note) : '',
-    config: (req.body && req.body.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
-    elements_en: (req.body && Array.isArray(req.body.elements_en)) ? req.body.elements_en : [],
-    elements_cn: (req.body && Array.isArray(req.body.elements_cn)) ? req.body.elements_cn : [],
-    subTemplates: (req.body && Array.isArray(req.body.subTemplates)) ? req.body.subTemplates : []
-  };
-  res.status(201).json(templateStore.insertTemplate(t));
+  try {
+    const t = {
+      id: crypto.randomUUID(),
+      name: (req.body && req.body.name) || 'New Template',
+      itemNumbers: (req.body && Array.isArray(req.body.itemNumbers)) ? req.body.itemNumbers : [],
+      deviceName: (req.body && req.body.deviceName) ? String(req.body.deviceName) : '',
+      note: (req.body && req.body.note) ? String(req.body.note) : '',
+      config: (req.body && req.body.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
+      elements_en: (req.body && Array.isArray(req.body.elements_en)) ? req.body.elements_en : [],
+      elements_cn: (req.body && Array.isArray(req.body.elements_cn)) ? req.body.elements_cn : [],
+      subTemplates: (req.body && Array.isArray(req.body.subTemplates)) ? req.body.subTemplates : []
+    };
+    res.status(201).json(templateStore.insertTemplate(t));
+  } catch (err) {
+    console.error('Error creating template:', err);
+    res.status(500).json({ error: err.message || 'Failed to create template' });
+  }
 });
 
 app.put('/api/templates/:id', adminAuth, (req, res) => {
-  const updated = templateStore.updateTemplate(req.params.id, req.body || {});
-  if (!updated) {
-    return res.status(404).json({ error: `Template with id ${req.params.id} not found` });
+  try {
+    const updated = templateStore.updateTemplate(req.params.id, req.body || {});
+    if (!updated) {
+      return res.status(404).json({ error: `Template with id ${req.params.id} not found` });
+    }
+    res.json(updated);
+  } catch (err) {
+    console.error('Error updating template:', err);
+    res.status(500).json({ error: err.message || 'Failed to update template' });
   }
-  res.json(updated);
 });
 
 app.delete('/api/templates/:id', adminAuth, (req, res) => {
-  const tpl = templateStore.getTemplateById(req.params.id);
-  if (tpl && templateStore.isSpecialTemplate(tpl)) {
-    return res.status(400).json({ error: 'The Delivery Template cannot be deleted' });
+  try {
+    const tpl = templateStore.getTemplateById(req.params.id);
+    if (tpl && templateStore.isSpecialTemplate(tpl)) {
+      return res.status(400).json({ error: 'The Delivery Template cannot be deleted' });
+    }
+    if (templateStore.count() <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last template' });
+    }
+    if (!templateStore.deleteTemplate(req.params.id)) {
+      return res.status(404).json({ error: `Template with id ${req.params.id} not found or protected` });
+    }
+    res.json({ message: 'Template deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting template:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete template' });
   }
-  if (templateStore.count() <= 1) {
-    return res.status(400).json({ error: 'Cannot delete the last template' });
-  }
-  if (!templateStore.deleteTemplate(req.params.id)) {
-    return res.status(404).json({ error: `Template with id ${req.params.id} not found or protected` });
-  }
-  res.json({ message: 'Template deleted successfully' });
 });
 
 // ST Label PDF Generation API

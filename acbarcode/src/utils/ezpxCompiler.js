@@ -190,9 +190,45 @@ export function compileEZPL(elements, config, serial = '3726 0001') {
         fontCmd = 'AE';
         mul = Math.max(1, Math.round(size / 6));
       }
-      ezpl += `${fontCmd},${x},${y},${mul},${mul},0,0,${textVal}\n`;
-      if (el.bold) {
-        ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,0,${textVal}\n`;
+
+      const endX = el.endXMm !== undefined ? el.endXMm : el.x1Mm;
+      if (endX && endX > el.xMm) {
+        const maxW = endX - el.xMm;
+        const charW = size * 0.3; // approximate character width in mm
+        const charsPerLine = Math.max(1, Math.floor(maxW / charW));
+        const lines = [];
+        const words = textVal.split(' ');
+        let currentLine = '';
+        for (const word of words) {
+          if (currentLine.length + word.length + 1 > charsPerLine) {
+            if (currentLine) {
+              lines.push(currentLine);
+              currentLine = word;
+            } else {
+              lines.push(word);
+              currentLine = '';
+            }
+          } else {
+            currentLine = currentLine ? (currentLine + ' ' + word) : word;
+          }
+        }
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+
+        const lineHeightDots = mmToDots(size * 0.45);
+        for (let i = 0; i < lines.length; i++) {
+          const lineY = y + i * lineHeightDots;
+          ezpl += `${fontCmd},${x},${lineY},${mul},${mul},0,0,${lines[i]}\n`;
+          if (el.bold) {
+            ezpl += `${fontCmd},${x + 1},${lineY},${mul},${mul},0,0,${lines[i]}\n`;
+          }
+        }
+      } else {
+        ezpl += `${fontCmd},${x},${y},${mul},${mul},0,0,${textVal}\n`;
+        if (el.bold) {
+          ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,0,${textVal}\n`;
+        }
       }
     } else if (el.type === 'hline' || el.type === 'vline') {
       const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);
@@ -264,11 +300,21 @@ export async function compileEZPX(elements, config, serial = '3726 0001') {
       const fontCmdStr = el.bold ? `Arial,${fontPt},B\r\n` : `Arial,${fontPt}\r\n`;
 
       const fontHeightPx = Math.round((fontPt / 72) * ezpxDpi * 1.2);
-      const rectH = Math.max(12, fontHeightPx);
-      const rectW = measureTextWidthDots(textVal, fontPt, ezpxDpi);
-
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
+
+      const endX = el.endXMm !== undefined ? el.endXMm : el.x1Mm;
+      let rectW, rectH;
+      if (endX && endX > el.xMm) {
+        const maxWDots = mmToDots(endX - el.xMm);
+        rectW = maxWDots;
+        const rawW = measureTextWidthDots(textVal, fontPt, ezpxDpi);
+        const estimatedLines = Math.max(1, Math.ceil(rawW / maxWDots));
+        rectH = Math.max(12, fontHeightPx * estimatedLines);
+      } else {
+        rectW = measureTextWidthDots(textVal, fontPt, ezpxDpi);
+        rectH = Math.max(12, fontHeightPx);
+      }
 
       qlabelShapes += `
       <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="1000" TextSpace="0" bSpaceCropping="false">

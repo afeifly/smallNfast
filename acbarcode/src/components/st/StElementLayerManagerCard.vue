@@ -96,10 +96,14 @@
               />
             </div>
 
-            <div class="form-grid grid-3">
+            <div class="form-grid grid-4">
               <div class="form-field">
                 <label>X Position (mm)</label>
                 <input type="number" step="0.1" v-model.number="el.xMm" />
+              </div>
+              <div class="form-field">
+                <label>End X Position (mm)</label>
+                <input type="number" step="0.1" v-model.number="el.endXMm" placeholder="Max width" />
               </div>
               <div class="form-field">
                 <label>Y Position (mm)</label>
@@ -364,6 +368,7 @@ function addStElement(type) {
     newEl.text = 'New Text Label';
     newEl.xMm = 5;
     newEl.yMm = 5;
+    newEl.endXMm = props.canvasWidthMm || 35;
     newEl.fontSize = 5;
     newEl.bold = false;
   } else if (type === 'image') {
@@ -725,6 +730,10 @@ function onStImageUpload(element, event) {
 
 .grid-3 {
   grid-template-columns: repeat(3, 1fr);
+}
+
+.grid-4 {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .form-field {

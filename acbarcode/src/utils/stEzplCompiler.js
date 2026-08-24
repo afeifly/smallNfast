@@ -43,9 +43,45 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
         fontCmd = 'AE';
         mul = Math.max(1, Math.round(size / 6));
       }
-      ezpl += `${fontCmd},${x},${y},${mul},${mul},0,0,${textVal}\n`;
-      if (el.bold) {
-        ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,0,${textVal}\n`;
+
+      const endX = el.endXMm !== undefined ? el.endXMm : el.x1Mm;
+      if (endX && endX > el.xMm) {
+        const maxW = endX - el.xMm;
+        const charW = size * 0.3; // approximate character width in mm
+        const charsPerLine = Math.max(1, Math.floor(maxW / charW));
+        const lines = [];
+        const words = textVal.split(' ');
+        let currentLine = '';
+        for (const word of words) {
+          if (currentLine.length + word.length + 1 > charsPerLine) {
+            if (currentLine) {
+              lines.push(currentLine);
+              currentLine = word;
+            } else {
+              lines.push(word);
+              currentLine = '';
+            }
+          } else {
+            currentLine = currentLine ? (currentLine + ' ' + word) : word;
+          }
+        }
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+
+        const lineHeightDots = mmToDots(size * 0.45);
+        for (let i = 0; i < lines.length; i++) {
+          const lineY = y + i * lineHeightDots;
+          ezpl += `${fontCmd},${x},${lineY},${mul},${mul},0,0,${lines[i]}\n`;
+          if (el.bold) {
+            ezpl += `${fontCmd},${x + 1},${lineY},${mul},${mul},0,0,${lines[i]}\n`;
+          }
+        }
+      } else {
+        ezpl += `${fontCmd},${x},${y},${mul},${mul},0,0,${textVal}\n`;
+        if (el.bold) {
+          ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,0,${textVal}\n`;
+        }
       }
     } else if (el.type === 'hline' || el.type === 'vline') {
       const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);

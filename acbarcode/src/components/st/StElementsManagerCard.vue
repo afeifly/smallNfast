@@ -209,7 +209,7 @@ function generateId() { return 'el_' + Math.random().toString(36).substr(2, 9); 
 function addElement(type) {
   const el = { id: generateId(), type, name: '', folderId: null, expanded: true };
   if (type === 'folder') { el.name = `Folder ${folders.value.length + 1}`; el.expanded = true; }
-  else if (type === 'text') { el.name = 'New Text'; el.text = ''; el.xMm = 1; el.yMm = 5; el.fontSize = 5; el.bold = false; }
+  else if (type === 'text') { el.name = 'New Text'; el.text = ''; el.xMm = 1; el.yMm = 5; el.endXMm = props.canvasConfig.widthMm || 35; el.fontSize = 5; el.bold = false; }
   else if (type === 'image') { el.name = 'New Image'; el.src = ''; el.xMm = 1; el.yMm = 1; el.widthMm = 10; el.storedName = 'IMG'; el.autoBottomRight = false; }
   else if (type === 'hline') { el.name = 'New Line'; el.xMm = 1; el.yMm = 10; el.x1Mm = (props.canvasConfig.widthMm || 35) - 1; el.thicknessDots = 3; }
   else if (type === 'barcode') { el.name = 'New Barcode'; el.data = '{{serial}}'; el.xMm = 5; el.yMm = 10; el.widthMm = 25; el.heightMm = 8; el.readable = true; }
@@ -434,6 +434,7 @@ const ElementForm = defineComponent({
         // Shared position & font properties
         kids.push(h('div', { class: 'fg-row' }, [
           h('div', { class: 'fg' }, [h('label', 'X mm'), h('input', { type: 'number', step: 0.1, value: el.xMm, onInput: e => el.xMm = +e.target.value })]),
+          h('div', { class: 'fg' }, [h('label', 'End X mm'), h('input', { type: 'number', step: 0.1, value: el.endXMm !== undefined ? el.endXMm : '', onInput: e => el.endXMm = e.target.value === '' ? undefined : +e.target.value, placeholder: 'Max width' })]),
           h('div', { class: 'fg' }, [h('label', 'Y mm'), h('input', { type: 'number', step: 0.1, value: el.yMm, onInput: e => el.yMm = +e.target.value })]),
           h('div', { class: 'fg' }, [h('label', 'Size pt'), h('input', { type: 'number', step: 0.5, value: el.fontSize, onInput: e => el.fontSize = +e.target.value, min: 2, max: 36 })]),
           h('div', { class: 'fg' }, [h('label', { class: 'cb' }, [h('input', { type: 'checkbox', checked: el.bold, onChange: e => el.bold = e.target.checked }), ' Bold'])])

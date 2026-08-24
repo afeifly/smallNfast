@@ -48,9 +48,69 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
       ctx.font = `${fontWeight} ${fontSizePx}px "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", "Arial", "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
-
       ctx.textAlign = 'left';
-      ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
+
+      const endX = el.endXMm !== undefined ? el.endXMm : el.x1Mm; // Support both endXMm and x1Mm
+      if (endX && endX > el.xMm) {
+        const maxWPx = mmToPx(endX - el.xMm);
+        const lines = [];
+        const paragraphs = String(textVal).split('\n');
+        for (const para of paragraphs) {
+          if (!para) {
+            lines.push('');
+            continue;
+          }
+          const tokens = para.match(/[\u4e00-\u9fa5\u3040-\u30ff\uff00-\uffef]|[^\s\u4e00-\u9fa5\u3040-\u30ff\uff00-\uffef]+|\s+/g) || [para];
+          let currentLine = '';
+          for (const token of tokens) {
+            if (token.trim() === '' && currentLine === '') {
+              continue;
+            }
+            const testLine = currentLine + token;
+            if (ctx.measureText(testLine).width <= maxWPx) {
+              currentLine = testLine;
+            } else {
+              if (currentLine) {
+                lines.push(currentLine);
+              }
+              currentLine = token;
+              if (ctx.measureText(currentLine).width > maxWPx) {
+                if (currentLine.trim() === '') {
+                  currentLine = '';
+                  continue;
+                }
+                let word = currentLine;
+                currentLine = '';
+                for (let i = 0; i < word.length; i++) {
+                  const char = word[i];
+                  const testCharLine = currentLine + char;
+                  if (ctx.measureText(testCharLine).width <= maxWPx) {
+                    currentLine = testCharLine;
+                  } else {
+                    if (currentLine) {
+                      lines.push(currentLine);
+                    }
+                    currentLine = char;
+                  }
+                }
+              }
+            }
+          }
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+        }
+
+        const trimmedLines = lines.map(line => line.trimEnd());
+        const lineHeightPx = Math.round(fontSizePx * 1.2);
+        const xPx = mmToPx(el.xMm);
+        const startYPx = mmToPx(el.yMm);
+        for (let i = 0; i < trimmedLines.length; i++) {
+          ctx.fillText(trimmedLines[i], xPx, startYPx + i * lineHeightPx);
+        }
+      } else {
+        ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
+      }
     } else if (el.type === 'hline' || el.type === 'vline') {
       const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);
       ctx.beginPath();

@@ -27,6 +27,18 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS request_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint TEXT NOT NULL,
+    method TEXT NOT NULL,
+    headers TEXT NOT NULL,
+    query TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )
+`);
+
 // Migration for existing databases
 const cols = db.prepare('PRAGMA table_info(templates)').all().map(c => c.name);
 if (!cols.includes('subTemplates')) {
@@ -301,6 +313,49 @@ function getDeliveryTemplate() {
   return all.find(t => isSpecialTemplate(t)) || all[0] || null;
 }
 
+function logRequest(endpoint, method, headers, query, body) {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO request_history (endpoint, method, headers, query, body, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    String(endpoint || ''),
+    String(method || 'POST'),
+    JSON.stringify(headers || {}),
+    JSON.stringify(query || {}),
+    typeof body === 'string' ? body : JSON.stringify(body || {}),
+    now
+  );
+
+  // Clean up to keep only the latest 50 entries
+  db.prepare(`
+    DELETE FROM request_history
+    WHERE id NOT IN (
+      SELECT id FROM request_history
+      ORDER BY id DESC
+      LIMIT 50
+    )
+  `).run();
+}
+
+function getRequestHistory() {
+  const rows = db.prepare(`
+    SELECT id, endpoint, method, headers, query, body, created_at
+    FROM request_history
+    ORDER BY id DESC
+    LIMIT 50
+  `).all();
+  return rows.map(r => ({
+    id: r.id,
+    endpoint: r.endpoint,
+    method: r.method,
+    headers: safeParse(r.headers, {}),
+    query: safeParse(r.query, {}),
+    body: safeParse(r.body, r.body),
+    createdAt: r.created_at
+  }));
+}
+
 module.exports = {
   isSpecialTemplate,
   getAllTemplates,
@@ -315,5 +370,7 @@ module.exports = {
   updateSubTemplate,
   removeSubTemplate,
   ensureDeliveryTemplate,
-  seedIfEmpty
+  seedIfEmpty,
+  logRequest,
+  getRequestHistory
 };

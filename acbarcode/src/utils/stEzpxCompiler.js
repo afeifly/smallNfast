@@ -394,10 +394,21 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       const fontPt      = el.fontSize || 4;
       const fontCmdStr  = el.bold ? `Arial,${fontPt},B\r\n` : `Arial,${fontPt}\r\n`;
       const fontHeightPx = Math.round((fontPt / 72) * ezpxDpi * 1.2);
-      const rectH = Math.max(12, fontHeightPx);
-      const rectW = measureTextWidthDots(dispVal, fontPt, ezpxDpi);
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
+
+      const endX = el.endXMm !== undefined ? el.endXMm : el.x1Mm;
+      let rectW, rectH;
+      if (endX && endX > el.xMm) {
+        const maxWDots = mmToDots(endX - el.xMm);
+        rectW = maxWDots;
+        const rawW = measureTextWidthDots(dispVal, fontPt, ezpxDpi);
+        const estimatedLines = Math.max(1, Math.ceil(rawW / maxWDots));
+        rectH = Math.max(12, fontHeightPx * estimatedLines);
+      } else {
+        rectW = measureTextWidthDots(dispVal, fontPt, ezpxDpi);
+        rectH = Math.max(12, fontHeightPx);
+      }
 
       qlabelShapes += `
       <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="1000" TextSpace="0" bSpaceCropping="false">

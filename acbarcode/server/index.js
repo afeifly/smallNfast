@@ -610,10 +610,22 @@ app.delete('/api/templates/:id', adminAuth, (req, res) => {
   }
 });
 
+app.get('/api/request-history', (req, res) => {
+  try {
+    const history = templateStore.getRequestHistory();
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ST Label PDF Generation API
 // GET /api/st-label?sn=12345678 or GET /api/st-label?sn=12345678&sn=87654321
 // POST /api/st-label with JSON { "serials": ["12345678", "87654321"] }
 const handleStLabelRequest = (req, res) => {
+  if (req.method === 'POST') {
+    templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
+  }
   let serials = [];
 
   if (req.method === 'POST' && req.body) {
@@ -1047,6 +1059,9 @@ const { generateStEzpxXml, generateStEzplJson, generateStDeliveryMultiProductEzp
  * Generates printable labels as a downloadable EZPX ZIP file or EZPL JSON grouping.
  */
 async function handleStLabel(req, res) {
+  if (req.method === 'POST') {
+    templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
+  }
   try {
     let product, serial_numbers, options, template_xml, lang;
 
@@ -1120,6 +1135,9 @@ async function handleStLabel(req, res) {
  * Defaults to JSON wrapping EZPL streams.
  */
 async function handleStLabelDelivery(req, res) {
+  if (req.method === 'POST') {
+    templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
+  }
   try {
     let origin, products, lang, template_xml;
 

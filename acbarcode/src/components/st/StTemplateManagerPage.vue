@@ -139,6 +139,7 @@
               Open in Designer →
             </button>
             <button type="button" class="ghost-btn" @click="onPasteEzpx">📋 Paste EZPX Text</button>
+            <button type="button" class="ghost-btn" @click="openRequestHistory">📜 Request History</button>
           </div>
         </template>
 
@@ -147,6 +148,62 @@
         </div>
       </section>
     </div>
+
+    <!-- Request History Modal Overlay -->
+    <transition name="modal-fade">
+      <div v-if="isHistoryOpen" class="st-modal-overlay" @click.self="isHistoryOpen = false">
+        <div class="st-modal-container history-modal">
+          <div class="st-modal-header">
+            <h3>📜 Print Request History (Latest 50 HTTP POSTs)</h3>
+            <button type="button" class="close-modal-btn" @click="isHistoryOpen = false">✕</button>
+          </div>
+          <div class="st-modal-body custom-scrollbar">
+            <div class="history-controls">
+              <input v-model="historyFilter" type="text" placeholder="🔍 Filter by product or serial..." class="history-search" />
+              <button type="button" class="mini-btn refresh-btn" @click="fetchHistory">🔄 Refresh</button>
+            </div>
+            
+            <div v-if="loadingHistory" class="history-loading">
+              Loading print request history...
+            </div>
+            <div v-else-if="filteredHistory.length === 0" class="history-empty">
+              No matching print requests logged.
+            </div>
+            <div v-else class="history-list">
+              <div v-for="log in filteredHistory" :key="log.id" class="history-card" :class="{ expanded: expandedLogId === log.id }">
+                <div class="history-card-header" @click="toggleLogExpand(log.id)">
+                  <div class="log-meta">
+                    <span class="log-method">{{ log.method }}</span>
+                    <span class="log-path" :class="getPathClass(log.endpoint)">{{ log.endpoint }}</span>
+                    <span class="log-time">{{ formatLogTime(log.createdAt) }}</span>
+                  </div>
+                  <div class="log-summary">
+                    <strong v-if="log.body && log.body.product">📦 {{ log.body.product }}</strong>
+                    <span v-if="log.body && log.body.serial_numbers"> ({{ log.body.serial_numbers.length }} SNs: {{ log.body.serial_numbers.join(', ') }})</span>
+                    <span v-else-if="log.body && log.body.serials"> ({{ log.body.serials.length }} SNs: {{ log.body.serials.join(', ') }})</span>
+                  </div>
+                  <span class="expand-indicator">{{ expandedLogId === log.id ? '▴' : '▾' }}</span>
+                </div>
+                <div v-if="expandedLogId === log.id" class="history-card-body">
+                  <div class="inspector-section">
+                    <h4>Headers</h4>
+                    <pre class="code-view"><code>{{ JSON.stringify(log.headers, null, 2) }}</code></pre>
+                  </div>
+                  <div class="inspector-section">
+                    <h4>Query Parameters</h4>
+                    <pre class="code-view"><code>{{ JSON.stringify(log.query, null, 2) }}</code></pre>
+                  </div>
+                  <div class="inspector-section">
+                    <h4>Request Body</h4>
+                    <pre class="code-view"><code>{{ typeof log.body === 'string' ? log.body : JSON.stringify(log.body, null, 2) }}</code></pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -263,6 +320,65 @@ function onPasteEzpx() {
     showStAlert('Failed to parse EZPX XML: ' + err.message, 'Paste Error', 'danger');
   }
 }
+
+const isHistoryOpen = ref(false);
+const historyList = ref([]);
+const loadingHistory = ref(false);
+const historyFilter = ref('');
+const expandedLogId = ref(null);
+
+async function fetchHistory() {
+  loadingHistory.value = true;
+  try {
+    const res = await fetch('/api/request-history');
+    if (res.ok) {
+      historyList.value = await res.json();
+    } else {
+      console.error('Failed to fetch request history');
+    }
+  } catch (err) {
+    console.error('Error fetching history:', err);
+  } finally {
+    loadingHistory.value = false;
+  }
+}
+
+function openRequestHistory() {
+  isHistoryOpen.value = true;
+  fetchHistory();
+}
+
+function toggleLogExpand(id) {
+  expandedLogId.value = expandedLogId.value === id ? null : id;
+}
+
+function getPathClass(endpoint) {
+  if (!endpoint) return 'path-other';
+  if (endpoint.includes('delivery')) return 'path-delivery';
+  if (endpoint.includes('st_label') || endpoint.includes('st-label')) return 'path-std';
+  return 'path-other';
+}
+
+function formatLogTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' ' + d.toLocaleDateString();
+  } catch (e) {
+    return isoStr;
+  }
+}
+
+const filteredHistory = computed(() => {
+  const q = historyFilter.value.trim().toLowerCase();
+  if (!q) return historyList.value;
+  return historyList.value.filter(log => {
+    const product = (log.body?.product || '').toLowerCase();
+    const serials = JSON.stringify(log.body?.serial_numbers || log.body?.serials || []).toLowerCase();
+    const endpoint = (log.endpoint || '').toLowerCase();
+    return product.includes(q) || serials.includes(q) || endpoint.includes(q);
+  });
+});
 
 onMounted(async () => {
   if (!templatesLoaded.value) await loadTemplates();
@@ -594,4 +710,231 @@ onMounted(async () => {
   box-shadow: none !important;
 }
 .ghost-btn:hover { background: rgba(255, 255, 255, 0.12) !important; }
+
+/* ── Modal overlay ── */
+.st-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.st-modal-container.history-modal {
+  background: #1e293b;
+  color: #f8fafc;
+  width: 90%;
+  max-width: 850px;
+  max-height: 85vh;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.st-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.st-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.close-modal-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+.close-modal-btn:hover {
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.st-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.history-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.history-search {
+  flex: 1;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+.history-search:focus {
+  border-color: #38bdf8;
+}
+
+.refresh-btn {
+  background: #38bdf8 !important;
+  color: #0f172a !important;
+  border: none !important;
+  font-weight: 600 !important;
+  padding: 8px 16px !important;
+  border-radius: 8px !important;
+}
+.refresh-btn:hover {
+  background: #0ea5e9 !important;
+}
+
+.history-loading, .history-empty {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-card {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+.history-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.history-card-header {
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.log-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+
+.log-method {
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.log-path {
+  font-family: monospace;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.log-path.path-std {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+.log-path.path-delivery {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+.log-path.path-other {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+.log-time {
+  color: #64748b;
+}
+
+.log-summary {
+  flex: 1;
+  font-size: 0.88rem;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 200px;
+}
+
+.expand-indicator {
+  color: #64748b;
+  font-weight: bold;
+}
+
+.history-card-body {
+  padding: 16px;
+  background: #0b0f19;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inspector-section h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+
+.code-view {
+  margin: 0;
+  background: #020617;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 10px;
+  overflow-x: auto;
+  max-height: 200px;
+}
+
+.code-view code {
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 0.82rem;
+  color: #38bdf8;
+}
+
+/* Modal fade animations */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
 </style>

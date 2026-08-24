@@ -88,7 +88,7 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
   // Replace placeholders. Preserve {{serial}} when no serial value is supplied
   // so downstream compilers can inject their own serial command (^C00 / ^F00).
   const snVal = (serial !== undefined && serial !== '') ? serial : '{{serial}}';
-  return rawText
+  let resolved = rawText
     .replace(/\{\{serial\}\}/g, snVal)
     .replace(/\{\{sn\}\}/g, snVal)
     .replace(/\{\{origin\}\}/g, originVal)
@@ -99,5 +99,16 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     .replace(/\{\{product_no\}\}/g, product || '')
     .replace(/\{\{item_no\}\}/g, product || '')
     .replace(/\{\{itemNo\}\}/g, product || '')
+    .replace(/\{\{options_text\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''))
+    .replace(/\{\{optionsText\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''))
     .replace(/\{\{options\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''));
+
+  for (const [key, value] of Object.entries(extraObj)) {
+    if (value !== undefined && value !== null) {
+      const reg = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      resolved = resolved.replace(reg, String(value));
+    }
+  }
+
+  return resolved;
 }

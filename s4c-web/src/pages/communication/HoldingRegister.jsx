@@ -50,7 +50,7 @@ const HoldingRegister = () => {
   (currentConfig?.cfgsensor || []).forEach(sensor => {
     (sensor.cfgchannel || []).forEach((ch) => {
       const locationText = getChannelLocation(String(ch.CreateTime));
-      const rawType = ch.ValueType || ch.OutputValueType || ch.InputValueType || 8;
+      const rawType = ch.OutputValueType || ch.ValueType || ch.InputValueType || 8;
       const channelData = {
         location: locationText,
         sensorDescription: sensor.Description || sensor.Name || '---',
@@ -74,7 +74,7 @@ const HoldingRegister = () => {
   // Extract Option Board channels (analog sensor)
   optionBoardItems.forEach(item => {
     const locationText = getChannelLocation(String(item.CreateTime));
-    const rawType = item.ValueType || item.OutputValueType || item.InputValueType || 8;
+    const rawType = item.OutputValueType || item.ValueType || item.InputValueType || 8;
     analogChannels.push({
       location: locationText,
       sensorDescription: item.SensorDescription || '---',
@@ -86,12 +86,12 @@ const HoldingRegister = () => {
     });
   });
 
-  // Combine channels in requested order: suto sensor, 3-Party senser, analog sensor, virtual channel
+  // Combine channels in requested order: suto sensor, 3-Party sensor, virtual channel, analog sensor
   const orderedChannels = [
     ...sutoChannels,
     ...thirdPartyChannels,
-    ...analogChannels,
-    ...virtualChannels
+    ...virtualChannels,
+    ...analogChannels
   ];
 
   // Assign holding register value: every channel from 0 add + 2 n (0, 2, 4, 6, ...)

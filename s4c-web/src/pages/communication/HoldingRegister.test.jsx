@@ -120,8 +120,8 @@ describe('HoldingRegister', () => {
     // Header row is index 0
     // SUTO row is index 1
     // 3-Party row is index 2
-    // Analog row is index 3
-    // Virtual row is index 4
+    // Virtual row is index 3
+    // Analog row is index 4
 
     // Verify ordering and register values (0, 2, 4, 6)
     // SUTO Chan 1 row
@@ -138,18 +138,18 @@ describe('HoldingRegister', () => {
     expect(cells2[2].textContent).toBe('3-Party Chan 1');
     expect(cells2[3].textContent).toBe('2'); // 2 * 1
 
-    // Analog Chan 1 row
+    // Virtual Chan 1 row
     const cells3 = rows[3].querySelectorAll('td');
-    expect(cells3[0].textContent).toBe('LocC/PointC');
-    expect(cells3[1].textContent).toBe('Option Board Analog');
-    expect(cells3[2].textContent).toBe('Analog Chan 1');
+    expect(cells3[0].textContent).toBe('LocD/PointD');
+    expect(cells3[1].textContent).toBe('Virtual Sensor');
+    expect(cells3[2].textContent).toBe('Virtual Chan 1');
     expect(cells3[3].textContent).toBe('4'); // 2 * 2
 
-    // Virtual Chan 1 row
+    // Analog Chan 1 row
     const cells4 = rows[4].querySelectorAll('td');
-    expect(cells4[0].textContent).toBe('LocD/PointD');
-    expect(cells4[1].textContent).toBe('Virtual Sensor');
-    expect(cells4[2].textContent).toBe('Virtual Chan 1');
+    expect(cells4[0].textContent).toBe('LocC/PointC');
+    expect(cells4[1].textContent).toBe('Option Board Analog');
+    expect(cells4[2].textContent).toBe('Analog Chan 1');
     expect(cells4[3].textContent).toBe('6'); // 2 * 3
   });
 });

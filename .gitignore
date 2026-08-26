@@ -23,3 +23,9 @@ frontend/dist/
 build/bin/
 */dist/
 
+# Print bridge (PyInstaller)
+acbarcode/pytool/build/
+acbarcode/pytool/*.spec
+acbarcode/pytool/print_bridge.ico
+acbarcode/pytool/print_bridge.json
+

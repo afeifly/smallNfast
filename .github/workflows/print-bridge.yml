@@ -1,0 +1,55 @@
+name: Build Print Bridge (Windows exe)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'acbarcode/pytool/**'
+      - '.github/workflows/print-bridge.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'acbarcode/pytool/**'
+      - '.github/workflows/print-bridge.yml'
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: acbarcode/pytool
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: acbarcode/pytool/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Generate app icon
+        run: python build_icon.py
+
+      - name: Build exe with PyInstaller
+        run: python -m PyInstaller --onefile --windowed --noconfirm --name ZicoPrintBridge --icon print_bridge.ico --hidden-import win32print --hidden-import win32api --hidden-import win32con --hidden-import pywintypes --hidden-import pystray._win32 print_bridge.py
+
+      - name: Upload exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZicoPrintBridge-windows-x64
+          path: acbarcode/pytool/dist/ZicoPrintBridge.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/print-bridge-')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: acbarcode/pytool/dist/ZicoPrintBridge.exe

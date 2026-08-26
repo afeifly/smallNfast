@@ -611,7 +611,7 @@ class StatusWindow:
         ).pack(anchor=tk.W)
 
         info = tk.Frame(header)
-        info.pack(anchor=tk.W, pady=(6, 0))
+        info.pack(anchor=tk.W, pady=6)
 
         tk.Label(
             info,
@@ -642,7 +642,7 @@ class StatusWindow:
             font=("Consolas", 9),
             fg="#333333",
         )
-        self.lbl_counts.pack(anchor=tk.W, pady=(6, 0))
+        self.lbl_counts.pack(anchor=tk.W, pady=6)
 
         tk.Label(
             header,
@@ -650,9 +650,9 @@ class StatusWindow:
             % os.path.join(app_base(), "print_bridge.log"),
             font=("Consolas", 8),
             fg="#888888",
-        ).pack(anchor=tk.W, pady=(2, 0))
+        ).pack(anchor=tk.W, pady=2)
 
-        log_frame = tk.Frame(self.root, padx=12, pady=(0, 8))
+        log_frame = tk.Frame(self.root, padx=12, pady=8)
         log_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         scrollbar = tk.Scrollbar(log_frame)

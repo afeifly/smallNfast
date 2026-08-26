@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pystray
@@ -590,6 +591,7 @@ class StatusWindow:
         self.root.minsize(600, 420)
         self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray)
         self.last_printer_check = 0.0
+        self.events = deque(maxlen=MAX_LOG_ROWS)
         self.build_ui()
         self.refresh_printers()
         self.refresh_status()
@@ -729,36 +731,43 @@ class StatusWindow:
         self.lbl_counts.config(text=counts)
 
     def add_event(self, ts, kind, message):
-        self.log_text.configure(state=tk.NORMAL)
-        self.log_text.insert(tk.END, "%-8s " % ts, ("time",))
-        self.log_text.insert(tk.END, "[%-5s] " % kind, (kind,))
-        self.log_text.insert(tk.END, message + "\n", ("msg",))
+        self.events.append((ts, kind, message))
+        self.render_events()
 
-        if self.log_text.index("end-1c").split(".")[0] > str(MAX_LOG_ROWS):
-            self.log_text.delete("1.0", "2.0")
+    def render_events(self):
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+
+        for ts, kind, message in reversed(self.events):
+            self.log_text.insert(tk.END, "%-8s " % ts, ("time",))
+            self.log_text.insert(tk.END, "[%-5s] " % kind, (kind,))
+            self.log_text.insert(tk.END, message + "\n", ("msg",))
 
         self.log_text.configure(state=tk.DISABLED)
-        self.log_text.see(tk.END)
+        self.log_text.see("1.0")
 
     def poll(self):
         try:
-            while True:
-                item = EVENT_QUEUE.get_nowait()
-                if item[0] == "CMD":
-                    self.handle_command(item[1])
-                else:
-                    ts, kind, message = item
-                    self.add_event(ts, kind, message)
-        except queue.Empty:
-            pass
+            try:
+                while True:
+                    item = EVENT_QUEUE.get_nowait()
+                    if item[0] == "CMD":
+                        self.handle_command(item[1])
+                    else:
+                        ts, kind, message = item
+                        self.add_event(ts, kind, message)
+            except queue.Empty:
+                pass
 
-        now = time.time()
-        if now - self.last_printer_check >= 5:
-            self.refresh_printers()
-        else:
-            self.refresh_status()
-
-        self.root.after(100, self.poll)
+            now = time.time()
+            if now - self.last_printer_check >= 5:
+                self.refresh_printers()
+            else:
+                self.refresh_status()
+        except Exception as error:
+            record("ERROR", "UI poll error: %s" % error)
+        finally:
+            self.root.after(100, self.poll)
 
     def handle_command(self, command):
         if command == "show":

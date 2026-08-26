@@ -29,3 +29,7 @@ acbarcode/pytool/*.spec
 acbarcode/pytool/print_bridge.ico
 acbarcode/pytool/print_bridge.json
 
+# Python cache
+__pycache__/
+*.py[cod]
+

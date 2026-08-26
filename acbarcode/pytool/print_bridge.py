@@ -590,7 +590,6 @@ class StatusWindow:
         self.root.geometry("760x540")
         self.root.minsize(600, 420)
         self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray)
-        self.last_printer_check = 0.0
         self.events = deque(maxlen=MAX_LOG_ROWS)
         self.build_ui()
         self.refresh_printers()
@@ -694,21 +693,24 @@ class StatusWindow:
 
     def refresh_printers(self):
         global PRINTER_FOUND
+        printers = []
         try:
             printers = enum_printers()
             PRINTER_FOUND = CONFIG["printer_name"] in printers
-            record(
-                "INFO",
-                "Printer check: %s found, %d printer(s) detected"
-                % (
-                    CONFIG["printer_name"],
-                    len(printers),
-                ),
-            )
         except Exception as error:
             PRINTER_FOUND = False
             record("ERROR", "EnumPrinters failed: %s" % error)
-        self.last_printer_check = time.time()
+
+        record(
+            "INFO",
+            "Printer check: %s %s, %d printer(s) detected"
+            % (
+                CONFIG["printer_name"],
+                "found" if PRINTER_FOUND else "NOT found",
+                len(printers),
+            ),
+        )
+
         self.refresh_status()
 
     def refresh_status(self):
@@ -759,11 +761,7 @@ class StatusWindow:
             except queue.Empty:
                 pass
 
-            now = time.time()
-            if now - self.last_printer_check >= 5:
-                self.refresh_printers()
-            else:
-                self.refresh_status()
+            self.refresh_status()
         except Exception as error:
             record("ERROR", "UI poll error: %s" % error)
         finally:

@@ -48,7 +48,7 @@ jobs:
           echo "VERSION_UNDERSCORE=$version_underscore" >> $env:GITHUB_OUTPUT
 
       - name: Build exe with PyInstaller
-        run: python -m PyInstaller --onefile --windowed --noconfirm --name labelprint_bridge --icon print_bridge.ico --hidden-import win32print --hidden-import win32api --hidden-import win32con --hidden-import pywintypes --hidden-import pystray._win32 print_bridge.py
+        run: python -m PyInstaller --onefile --windowed --noconfirm --name labelprint_bridge --icon print_bridge.ico --add-data "version.json;." --hidden-import win32print --hidden-import win32api --hidden-import win32con --hidden-import pywintypes --hidden-import pystray._win32 print_bridge.py
 
       - name: Rename exe with version
         shell: pwsh

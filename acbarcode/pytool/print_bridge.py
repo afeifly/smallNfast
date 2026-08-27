@@ -30,7 +30,11 @@ def app_base():
 
 
 def load_version():
-    version_file = os.path.join(app_base(), "version.json")
+    if getattr(sys, "frozen", False):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    version_file = os.path.join(base, "version.json")
     if os.path.exists(version_file):
         try:
             with open(version_file, encoding="utf-8") as handle:
@@ -529,7 +533,7 @@ class StatusWindow:
 
         tk.Label(
             header,
-            text="%s v%s" % (APP_NAME, VERSION),
+            text=APP_NAME,
             font=("Segoe UI", 12, "bold"),
         ).pack(anchor=tk.W)
 

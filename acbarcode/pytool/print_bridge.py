@@ -14,15 +14,34 @@ import pystray
 import win32print
 from PIL import Image, ImageDraw, ImageTk
 
-APP_NAME = "Zico Barcode Print Bridge"
+APP_NAME = "Label Print Bridge"
 DEFAULTS = {
     "host": "127.0.0.1",
     "port": 8799,
     "printer_name": "Godex G530",
     "allowed_origin": "https://odoo.suto-itec.com.cn",
-    "auto_start": True,
 }
-AUTOSTART_NAME = "ZicoPrintBridge"
+
+
+def app_base():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def load_version():
+    version_file = os.path.join(app_base(), "version.json")
+    if os.path.exists(version_file):
+        try:
+            with open(version_file, encoding="utf-8") as handle:
+                data = json.load(handle)
+                return data.get("version", "0.0.0")
+        except Exception:
+            pass
+    return "0.0.0"
+
+
+VERSION = load_version()
 DEDUP_WINDOW = 1.5
 MAX_LOG_ROWS = 100
 TAG_COLORS = {
@@ -53,19 +72,13 @@ EVENT_QUEUE = queue.Queue()
 LAST_REQUEST = [None, 0.0]
 
 
-def app_base():
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
-
-
 def config_path():
-    return os.path.join(app_base(), "print_bridge.json")
+    return os.path.join(app_base(), "labelprint_bridge.json")
 
 
 def fallback_log_dir():
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    path = os.path.join(base, "ZicoPrintBridge")
+    path = os.path.join(base, "LabelPrintBridge")
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -73,14 +86,14 @@ def fallback_log_dir():
 def write_log_file(line):
     with LOG_LOCK:
         try:
-            path = os.path.join(app_base(), "print_bridge.log")
+            path = os.path.join(app_base(), "labelprint_bridge.log")
             with open(path, "a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
             return
         except OSError:
             pass
         try:
-            path = os.path.join(fallback_log_dir(), "print_bridge.log")
+            path = os.path.join(fallback_log_dir(), "labelprint_bridge.log")
             with open(path, "a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
         except OSError:
@@ -151,82 +164,6 @@ def save_config():
             "Failed to write config %s: %s"
             % (config_path(), error),
         )
-
-
-def run_key_path():
-    return r"Software\Microsoft\Windows\CurrentVersion\Run"
-
-
-def autostart_command():
-    if not getattr(sys, "frozen", False):
-        return None
-    return '"%s" --autostart' % sys.executable
-
-
-def get_autostart_enabled():
-    try:
-        import winreg
-    except ImportError:
-        return False
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            run_key_path(),
-            0,
-            winreg.KEY_READ,
-        ) as key:
-            try:
-                winreg.QueryValueEx(key, AUTOSTART_NAME)
-                return True
-            except FileNotFoundError:
-                return False
-    except OSError:
-        return False
-
-
-def set_autostart(enabled):
-    command = autostart_command()
-    if command is None:
-        return False
-    try:
-        import winreg
-    except ImportError:
-        return False
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            run_key_path(),
-            0,
-            winreg.KEY_SET_VALUE,
-        ) as key:
-            if enabled:
-                winreg.SetValueEx(
-                    key,
-                    AUTOSTART_NAME,
-                    0,
-                    winreg.REG_SZ,
-                    command,
-                )
-            else:
-                try:
-                    winreg.DeleteValue(key, AUTOSTART_NAME)
-                except FileNotFoundError:
-                    pass
-        return True
-    except OSError as error:
-        record("ERROR", "Set autostart failed: %s" % error)
-        return False
-
-
-def sync_autostart():
-    if autostart_command() is None:
-        record(
-            "INFO",
-            "Auto start only available when packaged as exe",
-        )
-        return
-    if get_autostart_enabled() != bool(CONFIG.get("auto_start")):
-        set_autostart(bool(CONFIG.get("auto_start")))
 
 
 def enum_printers():
@@ -365,7 +302,8 @@ class PrintBridgeHandler(BaseHTTPRequestHandler):
             200,
             {
                 "ok": True,
-                "service": "zico_barcode_print_bridge",
+                "service": "label_print_bridge",
+                "version": VERSION,
                 "default_printer": CONFIG["printer_name"],
                 "printer_found": PRINTER_FOUND,
                 "printers": printers,
@@ -562,22 +500,6 @@ def show_window_action(icon_item, item):
     EVENT_QUEUE.put(("CMD", "show"))
 
 
-def toggle_autostart_action(icon_item, item):
-    enabled = not get_autostart_enabled()
-    if set_autostart(enabled):
-        CONFIG["auto_start"] = enabled
-        save_config()
-        notify(
-            "Auto start",
-            "Start with Windows: %s" % ("on" if enabled else "off"),
-        )
-    else:
-        notify(
-            "Auto start",
-            "Only works when running the packaged exe.",
-        )
-
-
 def exit_action(icon_item, item):
     EVENT_QUEUE.put(("CMD", "exit"))
 
@@ -607,7 +529,7 @@ class StatusWindow:
 
         tk.Label(
             header,
-            text=APP_NAME,
+            text="%s v%s" % (APP_NAME, VERSION),
             font=("Segoe UI", 12, "bold"),
         ).pack(anchor=tk.W)
 
@@ -648,7 +570,7 @@ class StatusWindow:
         tk.Label(
             header,
             text="Log file: %s"
-            % os.path.join(app_base(), "print_bridge.log"),
+            % os.path.join(app_base(), "labelprint_bridge.log"),
             font=("Consolas", 8),
             fg="#888888",
         ).pack(anchor=tk.W, pady=2)
@@ -779,7 +701,7 @@ class StatusWindow:
         self.root.withdraw()
         notify(
             "Still running",
-            "Zico Print Bridge is running in the system tray.",
+            "Label Print Bridge is running in the system tray.",
         )
 
     def request_exit(self):
@@ -788,7 +710,6 @@ class StatusWindow:
 
 def main():
     load_config()
-    sync_autostart()
 
     global server, icon
 
@@ -826,23 +747,11 @@ def main():
         title=APP_NAME,
         menu=pystray.Menu(
             pystray.MenuItem("Show window", show_window_action),
-            pystray.MenuItem(
-                "Start with Windows",
-                toggle_autostart_action,
-                checked=lambda item: get_autostart_enabled(),
-            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", exit_action),
         ),
     )
     icon.run_detached()
-
-    if "--autostart" in sys.argv:
-        window.root.withdraw()
-        notify(
-            "Auto started",
-            "Zico Print Bridge is running in the system tray.",
-        )
 
     try:
         window.root.mainloop()

@@ -1,0 +1,53 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pytool/requirements.txt
+          pip install pyinstaller
+
+      - name: Get version from version.json
+        id: version
+        run: |
+          $version = (Get-Content pytool/version.json | ConvertFrom-Json).version
+          $version_underscore = $version -replace '\.', '_'
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "VERSION_UNDERSCORE=$version_underscore" >> $env:GITHUB_OUTPUT
+
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --windowed --name labelprint_bridge pytool/print_bridge.py
+
+      - name: Rename executable with version
+        run: |
+          $version = "${{ steps.version.outputs.VERSION_UNDERSCORE }}"
+          Rename-Item -Path "dist/labelprint_bridge.exe" -NewName "labelprint_bridge_${version}.exe"
+
+      - name: Copy version.json to dist
+        run: |
+          Copy-Item -Path "pytool/version.json" -Destination "dist/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: labelprint_bridge-windows-x64
+          path: dist/

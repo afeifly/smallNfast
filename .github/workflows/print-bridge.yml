@@ -38,18 +38,37 @@ jobs:
       - name: Generate app icon
         run: python build_icon.py
 
+      - name: Get version from version.json
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content version.json | ConvertFrom-Json).version
+          $version_underscore = $version -replace '\.', '_'
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "VERSION_UNDERSCORE=$version_underscore" >> $env:GITHUB_OUTPUT
+
       - name: Build exe with PyInstaller
-        run: python -m PyInstaller --onefile --windowed --noconfirm --name ZicoPrintBridge --icon print_bridge.ico --hidden-import win32print --hidden-import win32api --hidden-import win32con --hidden-import pywintypes --hidden-import pystray._win32 print_bridge.py
+        run: python -m PyInstaller --onefile --windowed --noconfirm --name labelprint_bridge --icon print_bridge.ico --hidden-import win32print --hidden-import win32api --hidden-import win32con --hidden-import pywintypes --hidden-import pystray._win32 print_bridge.py
+
+      - name: Rename exe with version
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION_UNDERSCORE }}"
+          Rename-Item -Path "dist/labelprint_bridge.exe" -NewName "labelprint_bridge_${version}.exe"
+
+      - name: Copy version.json to dist
+        shell: pwsh
+        run: Copy-Item -Path "version.json" -Destination "dist/"
 
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ZicoPrintBridge-windows-x64
-          path: acbarcode/pytool/dist/ZicoPrintBridge.exe
+          name: labelprint_bridge-windows-x64
+          path: acbarcode/pytool/dist/labelprint_bridge_*.exe
           if-no-files-found: error
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/print-bridge-')
         uses: softprops/action-gh-release@v2
         with:
-          files: acbarcode/pytool/dist/ZicoPrintBridge.exe
+          files: acbarcode/pytool/dist/labelprint_bridge_*.exe

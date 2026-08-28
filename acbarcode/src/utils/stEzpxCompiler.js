@@ -289,6 +289,9 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   // csvDatabase: generate a CSV-database EZPX (SNs loaded from data.csv, one label per row)
   // instead of the GoLabel ^C00 serial counter.
   const csvDatabase = !!options.csvDatabase;
+  const extraObj = (options && typeof options === 'object' && options.extra && typeof options.extra === 'object')
+    ? options.extra
+    : {};
 
   const w = config.widthMm  || 35;
   const h = config.heightMm || 22;
@@ -364,7 +367,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     const el = elements[index];
     if (el.type === 'folder') continue;
 
-    const resolvedText = resolveElementText(el, optionsVal, '', productVal, deviceNameVal);
+    const resolvedText = resolveElementText(el, optionsVal, '', productVal, deviceNameVal, extraObj);
     // DispData: always the rendered first SN (for GoLabel preview)
     const dispVal     = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
     const escapedDisp = escapeXml(dispVal);
@@ -938,6 +941,9 @@ export function buildSerialCsv(serialRange = ['3726 0001'], options = {}) {
   const product = options.product || '';
   const deviceName = options.deviceName || '';
   const optionsText = options.optionsText || '';
+  const extraObj = (options && typeof options === 'object' && options.extra && typeof options.extra === 'object')
+    ? options.extra
+    : {};
 
   // Collect all elements across main template + sub-templates
   let allElements = [];
@@ -963,7 +969,7 @@ export function buildSerialCsv(serialRange = ['3726 0001'], options = {}) {
     const snVal = String(sn).trim();
     const escSn = /[",\r\n]/.test(snVal) ? `"${snVal.replace(/"/g, '""')}"` : snVal;
     if (sutoQrEl) {
-      const qrVal = resolveElementText(sutoQrEl, optionsText, snVal, product, deviceName);
+      const qrVal = resolveElementText(sutoQrEl, optionsText, snVal, product, deviceName, extraObj);
       const escQr = /[",\r\n]/.test(qrVal) ? `"${qrVal.replace(/"/g, '""')}"` : qrVal;
       lines.push(`${escSn},${escQr}`);
     } else {

@@ -157,6 +157,9 @@ export function compileCanvasToGraphicEZPL(canvas, config = {}, opts = {}) {
  */
 export async function compileGraphicEZPLRange(elements, config, serials, ctx = {}, opts = {}) {
   const { product = '', optionsText = '', deviceName = '' } = ctx;
+  const extraObj = (ctx && typeof ctx === 'object' && ctx.extra && typeof ctx.extra === 'object')
+    ? ctx.extra
+    : { origin: ctx.origin || '', order_id: ctx.order_id || '' };
 
   const effectiveConfig = {
     widthMm: config?.widthMm || 35,
@@ -169,7 +172,7 @@ export async function compileGraphicEZPLRange(elements, config, serials, ctx = {
 
   for (let i = 0; i < serials.length; i++) {
     const sn = serials[i];
-    await renderStCanvasDynamic(offscreen, elements, effectiveConfig, sn, product, optionsText, deviceName);
+    await renderStCanvasDynamic(offscreen, elements, effectiveConfig, sn, product, optionsText, deviceName, extraObj);
     const graphicName = `LBL${i % 99}`;
     parts.push(compileCanvasToGraphicEZPL(offscreen, effectiveConfig, { ...opts, name: graphicName }));
   }

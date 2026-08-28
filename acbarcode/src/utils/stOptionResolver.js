@@ -25,6 +25,7 @@ export function parseOptionCodes(optionsStr = '') {
 export function resolveElementText(el, activeOptions = [], serial = '', product = '', deviceName = '', extra = {}) {
   const extraObj = (extra && typeof extra === 'object') ? extra : {};
   const originVal = extraObj.origin || extraObj.order || '';
+  const orderIdVal = extraObj.order_id || extraObj.orderId || extraObj.delivery_order || extraObj.dn || '';
   const categVal = extraObj.categ || deviceName || '';
 
   // 1. SUTO Protocol QR Code Mode
@@ -36,6 +37,8 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
       .replace(/\{\{categ\}\}/g, effectiveDevice)
       .replace(/\{\{origin\}\}/g, originVal)
       .replace(/\{\{order\}\}/g, originVal)
+      .replace(/\{\{order_id\}\}/g, orderIdVal)
+      .replace(/\{\{orderId\}\}/g, orderIdVal)
       .replace(/\{\{product\}\}/g, product || effectiveDevice || 'S4C-APP')
       .replace(/\{\{product_no\}\}/g, product || effectiveDevice || 'S4C-APP')
       .replace(/\{\{item_no\}\}/g, product || effectiveDevice || 'S4C-APP')
@@ -47,8 +50,12 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     }
     const sn = (serial !== undefined && serial !== '') ? serial : '12345678';
     let prefix = el.sutoPrefix || 'sensor';
-    if (originVal) {
-      prefix = prefix.replace(/\{\{origin\}\}/g, originVal).replace(/\{\{order\}\}/g, originVal);
+    if (originVal || orderIdVal) {
+      prefix = prefix
+        .replace(/\{\{origin\}\}/g, originVal)
+        .replace(/\{\{order\}\}/g, originVal)
+        .replace(/\{\{order_id\}\}/g, orderIdVal)
+        .replace(/\{\{orderId\}\}/g, orderIdVal);
     }
     return generateSensorQr(pType, sn, prefix);
   }
@@ -93,6 +100,8 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     .replace(/\{\{sn\}\}/g, snVal)
     .replace(/\{\{origin\}\}/g, originVal)
     .replace(/\{\{order\}\}/g, originVal)
+    .replace(/\{\{order_id\}\}/g, orderIdVal)
+    .replace(/\{\{orderId\}\}/g, orderIdVal)
     .replace(/\{\{categ\}\}/g, categVal)
     .replace(/\{\{device_name\}\}/g, deviceName || categVal || product || '')
     .replace(/\{\{product\}\}/g, product || '')

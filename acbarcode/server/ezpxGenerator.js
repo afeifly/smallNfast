@@ -34,7 +34,7 @@ function getTemplateElements(tpl, lang = 'en') {
   return [];
 }
 
-async function generateStEzpxXml(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null) {
+async function generateStEzpxXml(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '') {
   const { compileEZPXRange, buildSerialCsv } = await import('../src/utils/stEzpxCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -127,6 +127,8 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     ? options.join(', ')
     : 'Standard';
 
+  const extra = { origin: origin || '', order_id: order_id || '' };
+
   // CSV-database mode: the EZPX references data.csv (one label per row) instead of the
   // ^C00 serial counter, matching the frontend export workflow. Each label definition
   // (main + subs) becomes its own .ezpx sharing the same data.csv.
@@ -136,7 +138,8 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       product: productName,
       optionsText: optionsStr,
       deviceName: matchedDeviceName,
-      csvDatabase: true
+      csvDatabase: true,
+      extra
     });
     files.push({ filename: def.filename, xml });
   }
@@ -144,13 +147,14 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     defs: defs,
     product: productName,
     deviceName: matchedDeviceName,
-    optionsText: optionsStr
+    optionsText: optionsStr,
+    extra
   });
 
   return { files, csvContent };
 }
 
-async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null) {
+async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '') {
   const { compileEZPL } = await import('../src/utils/stEzplCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -230,7 +234,13 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
       def.elements,
       def.config,
       serials,
-      { product: productName, optionsText: optionsStr, deviceName: matchedDeviceName }
+      {
+        product: productName,
+        optionsText: optionsStr,
+        deviceName: matchedDeviceName,
+        origin: origin || '',
+        order_id: order_id || ''
+      }
     );
 
     templatesResult.push({
@@ -250,6 +260,8 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
     lang: (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en',
     options: optionsStr,
     device_name: matchedDeviceName,
+    origin: origin || '',
+    order_id: order_id || '',
     total_serials: serials.length,
     templates: templatesResult
   };
@@ -258,7 +270,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
 /**
  * Generates multi-product EZPL JSON for delivery orders with top-level origin and product array.
  */
-async function generateStDeliveryMultiProductEzplJson({ origin = '', products = [], lang = 'en', templateXml = null }) {
+async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = '', products = [], lang = 'en', templateXml = null }) {
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
 
@@ -329,6 +341,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', products = 
     for (const sn of rawSerials) {
       flatItems.push({
         origin: String(origin || '').trim(),
+        order_id: String(order_id || '').trim(),
         categ,
         product,
         serial: String(sn).trim(),
@@ -340,6 +353,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', products = 
   if (flatItems.length === 0) {
     flatItems.push({
       origin: String(origin || '').trim(),
+      order_id: String(order_id || '').trim(),
       categ: '',
       product: 'Delivery',
       serial: '12345678',
@@ -355,7 +369,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', products = 
       def.elements,
       def.config,
       flatItems,
-      { origin: String(origin || '').trim() }
+      { origin: String(origin || '').trim(), order_id: String(order_id || '').trim() }
     );
 
     templatesResult.push({
@@ -372,6 +386,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', products = 
 
   return {
     origin: String(origin || '').trim(),
+    order_id: String(order_id || '').trim(),
     lang: normalizedLang,
     total_products: products.length,
     total_labels: flatItems.length,

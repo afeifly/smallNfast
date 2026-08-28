@@ -1063,7 +1063,7 @@ async function handleStLabel(req, res) {
     templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
   }
   try {
-    let product, serial_numbers, options, template_xml, lang;
+    let product, serial_numbers, options, template_xml, lang, origin, order_id;
 
     if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
       // Raw XML POST body
@@ -1072,6 +1072,8 @@ async function handleStLabel(req, res) {
       serial_numbers = req.query.serial_numbers ? req.query.serial_numbers.split(',') : ['12345678'];
       options = req.query.options ? req.query.options.split(',') : [];
       lang = req.query.lang || req.query.language || 'en';
+      origin = req.query.origin || req.query.order || '';
+      order_id = req.query.order_id || req.query.orderId || req.query.delivery_order || req.query.dn || '';
     } else {
       // JSON body payload
       const body = req.body || {};
@@ -1080,6 +1082,8 @@ async function handleStLabel(req, res) {
       options = body.options;
       template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
       lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
+      origin = body.origin || body.order || req.query.origin || '';
+      order_id = body.order_id || body.orderId || body.delivery_order || body.dn || req.query.order_id || req.query.orderId || '';
     }
 
     const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
@@ -1101,11 +1105,11 @@ async function handleStLabel(req, res) {
       (req.headers.accept && req.headers.accept.includes('application/zip') && !req.headers.accept.includes('application/json'));
 
     if (!isZipRequested) {
-      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang);
+      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id);
       return res.status(200).json(ezplJson);
     }
 
-    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml, normalizedLang);
+    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id);
 
     // Package the label .ezpx file(s) (main + one per sub-template), the shared
     // data.csv and the Windows helper .bat into one ZIP.
@@ -1139,11 +1143,12 @@ async function handleStLabelDelivery(req, res) {
     templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
   }
   try {
-    let origin, products, lang, template_xml;
+    let origin, order_id, products, lang, template_xml;
 
     if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
       template_xml = req.body;
       origin = req.query.origin || req.query.order || '';
+      order_id = req.query.order_id || req.query.orderId || req.query.delivery_order || req.query.dn || '';
       lang = req.query.lang || req.query.language || 'en';
       products = [{
         categ: req.query.categ || req.query.device_name || '',
@@ -1154,6 +1159,7 @@ async function handleStLabelDelivery(req, res) {
     } else {
       const body = req.body || {};
       origin = body.origin || body.order || req.query.origin || '';
+      order_id = body.order_id || body.orderId || body.delivery_order || body.dn || req.query.order_id || req.query.orderId || '';
       lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
       template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
 
@@ -1174,6 +1180,7 @@ async function handleStLabelDelivery(req, res) {
 
     const ezplJson = await generateStDeliveryMultiProductEzplJson({
       origin,
+      order_id,
       products,
       lang: normalizedLang,
       templateXml: template_xml

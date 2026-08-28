@@ -291,6 +291,7 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
   const globalOptionsText = ctx.optionsText || '';
   const globalDeviceName = ctx.deviceName || ctx.categ || '';
   const globalOrigin = ctx.origin || '';
+  const globalOrderId = ctx.order_id || ctx.orderId || ctx.delivery_order || ctx.dn || '';
 
   const effectiveConfig = {
     widthMm: config?.widthMm || 35,
@@ -317,11 +318,15 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
       ? (item.categ || item.deviceName || item.device_name)
       : globalDeviceName;
     const itemOrigin = (isObj && item.origin !== undefined) ? item.origin : globalOrigin;
+    const itemOrderId = (isObj && (item.order_id !== undefined || item.orderId !== undefined || item.delivery_order !== undefined || item.dn !== undefined))
+      ? (item.order_id || item.orderId || item.delivery_order || item.dn)
+      : globalOrderId;
 
     const extra = {
       origin: itemOrigin,
       categ: itemDevice,
       order: itemOrigin,
+      order_id: itemOrderId,
       ...(isObj ? item : {})
     };
 
@@ -339,6 +344,7 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
       ezpl: nodeBuf.toString('latin1')
     };
     if (itemOrigin) outItem.origin = itemOrigin;
+    if (itemOrderId) outItem.order_id = itemOrderId;
     if (itemDevice) outItem.categ = itemDevice;
     if (itemProduct) outItem.product = itemProduct;
     if (itemOptions) outItem.options = Array.isArray(itemOptions) ? itemOptions.join(', ') : itemOptions;

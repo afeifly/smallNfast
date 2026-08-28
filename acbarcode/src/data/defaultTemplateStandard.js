@@ -16,6 +16,7 @@ export default {
   elements_en: [
     { id: "f_var", type: "folder", name: "Variable Data", expanded: true },
     { id: "f_fixed", type: "folder", name: "Fixed Layout", expanded: true },
+    { id: "el_order_id", type: "text", name: "Delivery Order", folderId: "f_var", text: "DN: {{order_id}}", xMm: 1, yMm: 4.8, fontSize: 4, bold: true, expanded: false },
     { id: "el_origin", type: "text", name: "Order / Origin", folderId: "f_var", text: "Order: {{origin}}", xMm: 1, yMm: 5.5, fontSize: 4, bold: true, expanded: false },
     { id: "el_item_no", type: "text", name: "Item No.", folderId: "f_var", text: "Item No.: {{product}}", xMm: 1, yMm: 7.2, fontSize: 4, bold: true, expanded: false },
     { id: "el_serial", type: "text", name: "Serial No.", folderId: "f_var", text: "Serial No.: {{serial}}", xMm: 1, yMm: 8.9, fontSize: 4, bold: true, expanded: false },
@@ -29,6 +30,7 @@ export default {
     { id: "el_header_url", type: "text", name: "Header URL", text: "www.suto-itec.cn", xMm: 15.5, yMm: 1.8, fontSize: 5, bold: true, expanded: false },
     { id: "el_divider", type: "hline", name: "Top Divider Line", xMm: 1, yMm: 4.2, x1Mm: 34, thicknessDots: 9, expanded: false },
     { id: "el_origin", type: "text", name: "发货单号", text: "单号: {{origin}}", xMm: 1, yMm: 4.8, fontSize: 4, bold: true, expanded: false },
+    { id: "el_order_id", type: "text", name: "送货单号", text: "送货单: {{order_id}}", xMm: 1, yMm: 5.5, fontSize: 4, bold: true, expanded: false },
     { id: "el_model", type: "text", name: "Model Title", text: "型号: {{categ}}", xMm: 1, yMm: 6.3, fontSize: 4, bold: true, expanded: false },
     { id: "el_item_no", type: "text", name: "Item No.", text: "订货号: {{product}}", xMm: 1, yMm: 7.8, fontSize: 4, bold: true, expanded: false },
     { id: "el_serial", type: "text", name: "Serial No.", text: "序列号: {{serial}}", xMm: 1, yMm: 9.3, fontSize: 4, bold: true, expanded: false },

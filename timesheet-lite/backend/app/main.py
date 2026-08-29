@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+from pathlib import Path
+from starlette.responses import FileResponse
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.database import create_db_and_tables, get_session, engine
 from app.api import auth, projects, timesheets, reports, activity_logs, users, settings, cost_centers
 
@@ -21,6 +25,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# The built frontend calls /api/... but the backend routes are mounted without
+# the /api prefix. Strip it here so the FastAPI app can serve both the API and
+# the static frontend from a single port/process (no vite proxy needed).
+@app.middleware("http")
+async def strip_api_prefix(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/"):
+        request.scope["path"] = path[len("/api"):] or "/"
+        request.scope["raw_path"] = request.scope["raw_path"][len(b"/api"):]
+    return await call_next(request)
+
+
+FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
@@ -99,4 +118,18 @@ def on_startup():
 
 @app.get("/")
 def read_root():
+    if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
+        return FileResponse(str(FRONTEND_DIST / "index.html"))
     return {"message": "Welcome to the Timesheet System API"}
+
+
+# Serve the built frontend in production (single app serving both API + UI)
+if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = FRONTEND_DIST / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIST / "index.html"))

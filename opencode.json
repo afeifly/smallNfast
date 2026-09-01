@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "csd": {
+      "type": "local",
+      "command": ["node", "/Users/ex/project/smallNfast/tools/csd-mcp/src/index.js"],
+      "enabled": true
+    }
+  }
+}

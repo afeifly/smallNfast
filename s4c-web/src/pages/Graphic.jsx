@@ -201,7 +201,7 @@ const GraphicView = ({ graphic, sensors, onAddChannel, isMini = false }) => {
               ) : (
                 <>
                   <div className="channel-tab-name" style={{ fontSize: isMini ? '10px' : '18px', color: 'white', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>{slot.label}</div>
-                  <div style={{ fontSize: isMini ? '8px' : '12px', color: 'rgba(255,255,255,0.85)' }}>{slot.unit}</div>
+                  <div className="channel-tab-unit" style={{ fontSize: isMini ? '8px' : '12px', color: 'rgba(255,255,255,0.85)' }}>{slot.unit}</div>
                 </>
               )}
             </div>

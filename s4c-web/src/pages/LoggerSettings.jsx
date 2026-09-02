@@ -9,11 +9,6 @@ import './LoggerSettings.css';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MODE_OPTIONS = [
-  { value: 0, label: 'Manual Start' },
-  { value: 1, label: 'Scheduled Start' },
-];
-
 const RATE_OPTIONS = [1, 5, 10, 30, 60, 300];
 
 const CFGLOGGER_PATHS = [
@@ -332,7 +327,7 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
       const stopMs = rawStop > 0 && rawStop < 1e11 ? rawStop * 1000 : ((rawStop && rawStop !== 40971867110000) ? rawStop : getDefaultStopTimeMs(startMs));
 
       const enableStopTime = (mode === 2) || (mode === 1 && rawStop > 0 && rawStop !== 40971867110000);
-      const startupType = (mode === 1) ? 1 : 0;
+      const startupType = 1;
 
       setForm({
         startupType,
@@ -350,11 +345,11 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
 
   const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const handleStartupTypeChange = (type) => {
+  const handleStartupTypeChange = () => {
     setForm(prev => ({
       ...prev,
-      startupType: type,
-      starttime: (type === 1 && !prev.starttime) ? getNextHourMs() : prev.starttime,
+      startupType: 1,
+      starttime: !prev.starttime ? getNextHourMs() : prev.starttime,
     }));
   };
 
@@ -431,10 +426,9 @@ const EditLoggerDrawer = ({ isOpen, onClose, rawLogger, allChannels, channelIdTo
               <select
                 className="drawer-select"
                 style={{ appearance: 'auto', paddingRight: '10px' }}
-                value={form.startupType}
-                onChange={e => handleStartupTypeChange(Number(e.target.value))}
+                value={1}
+                disabled
               >
-                <option value={0}>{t('Manual Start')}</option>
                 <option value={1}>{t('Scheduled Start')}</option>
               </select>
             </div>

@@ -459,10 +459,19 @@
 .channel-tab-name {
   font-weight: 700;
   width: 100%;
-  text-align: center;
+  text-align: left;
+  padding: 0 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.channel-tab-unit {
+  width: 100%;
+  text-align: right;
+  padding: 0 6px;
+  box-sizing: border-box;
 }
 
 /* Chart Canvas Area */

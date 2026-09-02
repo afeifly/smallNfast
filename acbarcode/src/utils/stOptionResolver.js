@@ -13,6 +13,47 @@ export function parseOptionCodes(optionsStr = '') {
 }
 
 /**
+ * Checks if an input option code matches a rule pattern.
+ * Supports:
+ * 1. Exact match: e.g. "A1410" matches "A1410"
+ * 2. Positional wildcard using 'X' or '?': e.g. rule "A13X2" matches input "A1322", "A1302", etc.
+ * 3. Multi-character wildcard using '*': e.g. rule "A13*" matches "A1322"
+ * 4. Comma-separated rule codes: e.g. "A13X2, A14X2"
+ */
+export function matchesOptionRule(rulePattern, inputCode) {
+  if (!rulePattern || !inputCode) return false;
+  const patterns = String(rulePattern).split(/[,;\s]+/).map(p => p.trim().toUpperCase()).filter(Boolean);
+  const input = String(inputCode).trim().toUpperCase();
+
+  return patterns.some(pattern => {
+    if (pattern === input) return true;
+
+    // Positional wildcard using 'X' or '?'
+    if (pattern.length === input.length && (pattern.includes('X') || pattern.includes('?'))) {
+      for (let i = 0; i < pattern.length; i++) {
+        const p = pattern[i];
+        if (p !== 'X' && p !== '?' && p !== input[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Multi-character wildcard using '*'
+    if (pattern.includes('*')) {
+      const regexStr = '^' + pattern.split('*').map(s => s.replace(/[-[\]{}()+?.,\\^$|#\s]/g, '\\$&').replace(/X/g, '.')).join('.*') + '$';
+      try {
+        return new RegExp(regexStr).test(input);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    return false;
+  });
+}
+
+/**
  * Resolves text or QR content for an element, taking into account option code translation
  * rules or SUTO Protocol QR code generation if enabled.
  * 
@@ -94,7 +135,7 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
       rawText = '';
     }
   }
-  // 3. Option Code Mapping Mode
+  // 3. Option Code Mapping Mode (supports exact codes and wildcards like A13X2)
   else if (el.textType === 'option' || el.useOptionMapping || el.isOptionMode) {
     const codesList = Array.isArray(activeOptions) 
       ? activeOptions.map(c => String(c).trim().toUpperCase())
@@ -102,12 +143,23 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
 
     let matchedRule = null;
     if (Array.isArray(el.optionMappings)) {
+      // Pass 1: exact match
       for (const rule of el.optionMappings) {
         if (!rule || !rule.code) continue;
         const targetCode = String(rule.code).trim().toUpperCase();
         if (codesList.includes(targetCode)) {
           matchedRule = rule;
-          break; // Match first matching option code rule
+          break;
+        }
+      }
+      // Pass 2: wildcard match (e.g. A13X2 matches A1322, A15X1 matches A1501)
+      if (!matchedRule) {
+        for (const rule of el.optionMappings) {
+          if (!rule || !rule.code) continue;
+          if (codesList.some(c => matchesOptionRule(rule.code, c))) {
+            matchedRule = rule;
+            break;
+          }
         }
       }
     }

@@ -419,7 +419,7 @@ const ElementForm = defineComponent({
                   class: 'opt-code-input',
                   value: rule.code || '',
                   onInput: e => rule.code = e.target.value,
-                  placeholder: 'e.g. A1411'
+                  placeholder: 'e.g. A1411 or A13X2'
                 }),
                 h('input', {
                   type: 'text',

@@ -30,6 +30,30 @@
           placeholder="A1410, A1411" 
           class="sn-input options-input"
         />
+        <label for="st-product-select" class="sn-label prod-label">Prod:</label>
+        <select
+          v-if="availableProducts.length > 0"
+          id="st-product-select"
+          class="sn-input prod-dropdown"
+          :value="productValue"
+          @change="$emit('update:productValue', $event.target.value)"
+          title="Active product / item number"
+        >
+          <option v-if="productValue && !availableProducts.includes(productValue)" :value="productValue">
+            {{ productValue }}
+          </option>
+          <option v-for="p in availableProducts" :key="p" :value="p">{{ p }}</option>
+        </select>
+        <input 
+          v-else
+          id="st-product-input"
+          type="text" 
+          :value="productValue" 
+          @input="$emit('update:productValue', $event.target.value)"
+          placeholder="e.g. S695 4035" 
+          class="sn-input prod-input"
+          title="Active product / item number"
+        />
         <span v-if="rangeCount > 1" class="range-badge" title="Total labels in this batch">
           📦 {{ rangeCount }} Labels
         </span>
@@ -103,6 +127,14 @@ defineProps({
   activeSubTemplateId: {
     type: String,
     default: ''
+  },
+  productValue: {
+    type: String,
+    default: ''
+  },
+  availableProducts: {
+    type: Array,
+    default: () => []
   }
 });
 
@@ -110,6 +142,7 @@ defineEmits([
   'update:modelValue',
   'update:endValue',
   'update:optionsValue',
+  'update:productValue',
   'update:activeSubTemplateId',
   'fetch-odoo',
   'open-odoo-modal',
@@ -174,7 +207,7 @@ defineEmits([
   box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
 }
 
-.end-label, .opt-label {
+.end-label, .opt-label, .prod-label {
   margin-left: 0.2rem;
 }
 
@@ -184,6 +217,10 @@ defineEmits([
 
 .options-input {
   width: 110px;
+}
+
+.prod-dropdown, .prod-input {
+  width: 130px;
 }
 
 .range-badge {

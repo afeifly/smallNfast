@@ -4,6 +4,8 @@
       v-model="stSerialNumbersInput" 
       v-model:endValue="stEndSerialNumberInput"
       v-model:optionsValue="stOptionsInput"
+      v-model:productValue="stProductInput"
+      :available-products="allAvailableProducts"
       :range-count="serialRange.length"
       :active-template="activeTemplate"
       :active-sub-template-id="activeSubTemplateId"
@@ -16,7 +18,11 @@
     <div class="st-editor-layout">
       <!-- LEFT PANEL: Elements Layer Manager -->
       <div class="st-editor-panel">
-        <StElementsManagerCard :elements="stElements" :canvasConfig="stCanvasConfig" />
+        <StElementsManagerCard 
+          :elements="stElements" 
+          :canvasConfig="stCanvasConfig" 
+          :available-products="allAvailableProducts"
+        />
       </div>
 
       <!-- RIGHT PANEL: Template Basic Infos & Live Canvas Preview & Code Stream -->
@@ -88,6 +94,7 @@ defineEmits(['open-odoo-modal', 'open-templates']);
 const stSerialNumbersInput = ref('12345678');
 const stEndSerialNumberInput = ref('');
 const stOptionsInput = ref('');
+const stProductInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const activeLang = ref('EN'); // 'EN' | 'CN'
@@ -116,6 +123,28 @@ const stElements = computed(() => {
 
 const itemNumbersString = computed(() =>
   (activeTemplate.value?.itemNumbers || []).join(', ')
+);
+
+const allAvailableProducts = computed(() => {
+  return activeTemplate.value?.itemNumbers || [];
+});
+
+const activeProd = computed(() => {
+  return stProductInput.value || activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+});
+
+watch(
+  () => activeTemplate.value?.itemNumbers,
+  (items) => {
+    if (Array.isArray(items) && items.length > 0) {
+      if (!stProductInput.value || !items.includes(stProductInput.value)) {
+        stProductInput.value = items[0];
+      }
+    } else if (!stProductInput.value) {
+      stProductInput.value = 'S695 4035 (Air)';
+    }
+  },
+  { immediate: true }
 );
 
 const serialRange = computed(() =>
@@ -227,15 +256,15 @@ async function exportGraphicEZPL() {
   const range = serialRange.value;
   if (!range.length) return;
 
-  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
-  const devName    = activeTemplate.value?.deviceName || '';
+  const currentProduct = activeProd.value;
+  const devName        = activeTemplate.value?.deviceName || '';
 
   // Returns a binary Blob (GW command contains raw bitmap bytes)
   const blob = await compileGraphicEZPLRange(
     stElements.value,
     stCanvasConfig.value,
     range,
-    { product: activeProd, optionsText: stOptionsInput.value, deviceName: devName }
+    { product: currentProduct, optionsText: stOptionsInput.value, deviceName: devName }
   );
 
   const rangeName = range.length > 1
@@ -300,9 +329,9 @@ async function exportEZPX() {
   const range = serialRange.value;
   const firstSN = range[0] || '12345678';
   const serials = range.length > 0 ? range : [firstSN];
-  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+  const currentProduct = activeProd.value;
   const devName = activeTemplate.value?.deviceName || '';
-  const opts = { labelsPerCut: 0, product: activeProd, optionsText: stOptionsInput.value, deviceName: devName, csvDatabase: true };
+  const opts = { labelsPerCut: 0, product: currentProduct, optionsText: stOptionsInput.value, deviceName: devName, csvDatabase: true };
 
   // Main + each sub-template produce their own .ezpx, all sharing data.csv
   const defs = buildLabelDefs();
@@ -312,7 +341,7 @@ async function exportEZPX() {
   }
   const csvContent = buildSerialCsv(serials, {
     defs,
-    product: activeProd,
+    product: currentProduct,
     deviceName: devName,
     optionsText: stOptionsInput.value
   });
@@ -349,14 +378,14 @@ async function copyEZPL() {
 function updateCanvas() {
   const canvas = previewCardRef.value?.canvasRef;
   if (canvas) {
-    const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+    const currentProduct = activeProd.value;
     const devName = activeTemplate.value?.deviceName || '';
-    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, activeProd, stOptionsInput.value, devName);
+    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, currentProduct, stOptionsInput.value, devName);
   }
 }
 
 watch(
-  [activeTemplateId, activeSubTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, currentPreviewIndex, templates],
+  [activeTemplateId, activeSubTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, stProductInput, currentPreviewIndex, templates],
   async () => {
     if (templatesLoaded.value) {
       scheduleSave();
@@ -473,17 +502,17 @@ async function downloadOptionsScenarioPDF() {
 
   const config = currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 };
   const firstSN = serialRange.value[0] || '12345678';
-  const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+  const currentProduct = activeProd.value;
   const devName = activeTemplate.value?.deviceName || '';
 
   const offscreenCanvas = document.createElement('canvas');
   const renderedScenarios = [];
   for (const sc of scenarios) {
     const optionsText = sc.codes.join(', ');
-    await renderStCanvasDynamic(offscreenCanvas, langElements(label), config, firstSN, activeProd, optionsText, devName);
+    await renderStCanvasDynamic(offscreenCanvas, langElements(label), config, firstSN, currentProduct, optionsText, devName);
     const dataUrl = offscreenCanvas.toDataURL('image/png');
     const rows = optElements.map(el => {
-      const resolved = resolveElementText(el, sc.codes, firstSN, activeProd, devName);
+      const resolved = resolveElementText(el, sc.codes, firstSN, currentProduct, devName);
       return { name: el.name || el.type || 'element', text: resolved };
     });
     renderedScenarios.push({ codes: sc.codes, dataUrl, rows });
@@ -565,14 +594,14 @@ async function downloadStPDF() {
     const h = stCanvasConfig.value.heightMm || 22;
     const orientation = w >= h ? 'landscape' : 'portrait';
     const pdf = new jsPDF({ unit: 'mm', format: [w, h], orientation });
-    const activeProd = activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+    const currentProduct = activeProd.value;
     const devName = activeTemplate.value?.deviceName || '';
 
     const offscreenCanvas = document.createElement('canvas');
 
     for (let i = 0; i < range.length; i++) {
       const sn = range[i];
-      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, activeProd, stOptionsInput.value, devName);
+      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, currentProduct, stOptionsInput.value, devName);
       const dataUrl = offscreenCanvas.toDataURL('image/png');
       if (i > 0) {
         pdf.addPage([w, h], orientation);

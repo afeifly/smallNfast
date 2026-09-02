@@ -61,6 +61,7 @@
                 :folders="folders" 
                 @image-upload="onImageUpload" 
                 :canvasConfig="canvasConfig" 
+                :availableProducts="availableProducts"
               />
             </div>
           </div>
@@ -90,6 +91,7 @@
             :folders="folders" 
             @image-upload="onImageUpload" 
             :canvasConfig="canvasConfig" 
+            :availableProducts="availableProducts"
           />
         </div>
       </div>
@@ -114,7 +116,8 @@ import { showStConfirm } from '../../utils/stDialog.js';
 /* ── PROPS ──────────────────────────────────────────────── */
 const props = defineProps({
   elements: { type: Array, required: true },
-  canvasConfig: { type: Object, required: true }
+  canvasConfig: { type: Object, required: true },
+  availableProducts: { type: Array, default: () => [] }
 });
 
 /* ── COMPUTED ───────────────────────────────────────────── */
@@ -129,7 +132,17 @@ function folderChildCount(fid) {
 }
 
 function shortHint(el) {
-  if (el.type === 'text') return el.text ? `"${el.text.substring(0, 28)}"` : '';
+  if (el.type === 'text') {
+    if (el.textType === 'product' || el.useProductMapping || el.isProductMode) {
+      const count = (el.productMappings || []).length;
+      return `📦 ${count} product rule${count === 1 ? '' : 's'}`;
+    }
+    if (el.textType === 'option' || el.useOptionMapping || el.isOptionMode) {
+      const count = (el.optionMappings || []).length;
+      return `🔀 ${count} opt rule${count === 1 ? '' : 's'}`;
+    }
+    return el.text ? `"${el.text.substring(0, 28)}"` : '';
+  }
   if (el.type === 'image') return el.storedName || '';
   if (el.type === 'barcode') return el.data || '';
   if (el.type === 'qrcode') return el.data ? el.data.substring(0, 22) : '';
@@ -295,6 +308,7 @@ const ElementForm = defineComponent({
     el: Object,
     folders: Array,
     canvasConfig: Object,
+    availableProducts: { type: Array, default: () => [] }
   },
   emits: ['image-upload'],
   setup(props, { emit }) {
@@ -333,42 +347,64 @@ const ElementForm = defineComponent({
       ]));
 
       if (el.type === 'text') {
-        const isOptionMode = !!(el.useOptionMapping || el.isOptionMode);
+        const isProductMode = !!(el.textType === 'product' || el.useProductMapping || el.isProductMode);
+        const isOptionMode = !isProductMode && !!(el.textType === 'option' || el.useOptionMapping || el.isOptionMode);
+        const isNormalMode = !isProductMode && !isOptionMode;
 
-        // Content Type Mode Bar
+        // Content Type Mode Bar: Normal Text | Option Code | Product Type
         kids.push(h('div', { class: 'text-mode-bar' }, [
           h('span', { class: 'text-mode-label' }, 'Text Type:'),
           h('div', { class: 'mode-btn-group' }, [
             h('button', {
               type: 'button',
-              class: ['mode-btn', !isOptionMode ? 'active' : ''],
+              class: ['mode-btn', isNormalMode ? 'active' : ''],
               onClick: () => {
+                el.textType = 'normal';
                 el.useOptionMapping = false;
                 el.isOptionMode = false;
+                el.useProductMapping = false;
+                el.isProductMode = false;
               }
             }, '📝 Normal Text'),
             h('button', {
               type: 'button',
               class: ['mode-btn', isOptionMode ? 'active' : ''],
               onClick: () => {
+                el.textType = 'option';
                 el.useOptionMapping = true;
                 el.isOptionMode = true;
+                el.useProductMapping = false;
+                el.isProductMode = false;
                 if (!Array.isArray(el.optionMappings)) {
                   el.optionMappings = [];
                 }
               }
-            }, '🔀 Option Code')
+            }, '🔀 Option Code'),
+            h('button', {
+              type: 'button',
+              class: ['mode-btn', isProductMode ? 'active' : ''],
+              onClick: () => {
+                el.textType = 'product';
+                el.useProductMapping = true;
+                el.isProductMode = true;
+                el.useOptionMapping = false;
+                el.isOptionMode = false;
+                if (!Array.isArray(el.productMappings)) {
+                  el.productMappings = [];
+                }
+              }
+            }, '📦 Product Type')
           ])
         ]));
 
-        if (!isOptionMode) {
+        if (isNormalMode) {
           // Normal mode: Standard text input
           kids.push(h('div', { class: 'fg' }, [
             h('label', 'Text  (use {{serial}}, {{product}})'),
             h('input', { type: 'text', value: el.text || '', onInput: e => el.text = e.target.value, placeholder: 'e.g. {{product}} / {{serial}}' })
           ]));
-        } else {
-          // Option Code Mode: Automatic {{options}} in background, no text input field needed!
+        } else if (isOptionMode) {
+          // Option Code Mode: Automatic {{options}} in background
           kids.push(h('div', { class: 'opt-mapping-panel' }, [
             h('div', { class: 'opt-panel-title' }, '🔀 Option Code Translation Rules'),
             h('div', { class: 'opt-rules-header' }, [
@@ -421,6 +457,107 @@ const ElementForm = defineComponent({
               ]),
               el.useDefaultText === false
                 ? h('div', { class: 'fallback-disabled-hint' }, 'Required option — one of the codes above must be selected.')
+                : h('input', {
+                    type: 'text',
+                    value: el.defaultText || '',
+                    onInput: e => el.defaultText = e.target.value,
+                    placeholder: 'e.g. Standard'
+                  })
+            ])
+          ]));
+        } else if (isProductMode) {
+          // Product Type Mode: Translation rules with dropdown list choose
+          const prodList = (Array.isArray(props.availableProducts) && props.availableProducts.length > 0)
+            ? props.availableProducts
+            : [];
+
+          const getDropdownOptions = (ruleProd) => {
+            const list = [...prodList];
+            if (ruleProd && !list.includes(ruleProd)) {
+              list.unshift(ruleProd);
+            }
+            return list;
+          };
+
+          kids.push(h('div', { class: 'opt-mapping-panel prod-mapping-panel' }, [
+            h('div', { class: 'opt-panel-title' }, '📦 Product Type Translation Rules'),
+            h('div', { class: 'opt-rules-header' }, [
+              h('span', { class: 'opt-col-title' }, 'Product Type'),
+              h('span', { class: 'opt-col-title' }, 'Display Text'),
+              h('span', { class: 'opt-col-title action-col' }, '')
+            ]),
+            ...(Array.isArray(el.productMappings) ? el.productMappings : []).map((rule, rIdx) => {
+              const ruleProdOptions = getDropdownOptions(rule.product);
+              return h('div', { class: 'opt-rule-row prod-rule-row', key: rIdx }, [
+                rule.isCustom
+                  ? h('div', { class: 'custom-prod-wrap', style: { display: 'flex', gap: '4px', alignItems: 'center' } }, [
+                      h('input', {
+                        type: 'text',
+                        class: 'opt-code-input',
+                        value: rule.product || '',
+                        onInput: e => rule.product = e.target.value,
+                        placeholder: 'Enter product code'
+                      }),
+                      h('button', {
+                        type: 'button',
+                        class: 'row-btn',
+                        style: { padding: '2px 6px', fontSize: '11px', cursor: 'pointer', height: '24px' },
+                        title: 'Switch to dropdown list',
+                        onClick: () => { rule.isCustom = false; }
+                      }, '▾')
+                    ])
+                  : h('select', {
+                      class: 'opt-code-input prod-select',
+                      value: rule.product || '',
+                      onChange: e => {
+                        if (e.target.value === '__custom__') {
+                          rule.isCustom = true;
+                        } else {
+                          rule.product = e.target.value;
+                        }
+                      }
+                    }, [
+                      h('option', { value: '', disabled: true }, '-- Select Product --'),
+                      ...ruleProdOptions.map(p => h('option', { value: p }, p)),
+                      h('option', { value: '__custom__' }, '✏️ + Custom Product...')
+                    ]),
+                h('input', {
+                  type: 'text',
+                  class: 'opt-text-input',
+                  value: rule.text || '',
+                  onInput: e => rule.text = e.target.value,
+                  placeholder: 'Display text (e.g. Thermal Mass Flow)'
+                }),
+                h('button', {
+                  type: 'button',
+                  class: 'opt-del-btn',
+                  title: 'Delete Rule',
+                  onClick: () => el.productMappings.splice(rIdx, 1)
+                }, '✕')
+              ]);
+            }),
+            h('div', { class: 'opt-actions-row' }, [
+              h('button', {
+                type: 'button',
+                class: 'add-opt-rule-btn',
+                onClick: () => {
+                  if (!Array.isArray(el.productMappings)) el.productMappings = [];
+                  const nextProd = prodList.find(p => !el.productMappings.some(r => r.product === p)) || prodList[0] || '';
+                  el.productMappings.push({ product: nextProd, text: '' });
+                }
+              }, '➕ Add Product Rule')
+            ]),
+            h('div', { class: 'fg default-fallback-fg' }, [
+              h('label', { class: 'cb' }, [
+                h('input', {
+                  type: 'checkbox',
+                  checked: el.useDefaultText !== false,
+                  onChange: e => el.useDefaultText = e.target.checked
+                }),
+                ' Enable Default Fallback Text (if no product matches)'
+              ]),
+              el.useDefaultText === false
+                ? h('div', { class: 'fallback-disabled-hint' }, 'Required product — one of the product types above must match.')
                 : h('input', {
                     type: 'text',
                     value: el.defaultText || '',

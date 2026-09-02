@@ -60,14 +60,46 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     return generateSensorQr(pType, sn, prefix);
   }
 
-  // 2. Option Code Mapping Mode
-  const codesList = Array.isArray(activeOptions) 
-    ? activeOptions.map(c => String(c).trim().toUpperCase())
-    : parseOptionCodes(activeOptions);
-
   let rawText = el.text || el.data || '';
 
-  if (el.useOptionMapping || el.isOptionMode) {
+  // 2. Product Type Mapping Mode
+  if (el.textType === 'product' || el.useProductMapping || el.isProductMode) {
+    const targetProd = String(product || '').trim().toUpperCase();
+    let matchedRule = null;
+    if (Array.isArray(el.productMappings)) {
+      // Pass 1: exact match
+      matchedRule = el.productMappings.find(r => {
+        if (!r) return false;
+        const p = String(r.product || r.code || '').trim().toUpperCase();
+        return p && p === targetProd;
+      });
+      // Pass 2: substring / contains match if exact not found
+      if (!matchedRule && targetProd) {
+        matchedRule = el.productMappings.find(r => {
+          if (!r) return false;
+          const p = String(r.product || r.code || '').trim().toUpperCase();
+          return p && (targetProd.includes(p) || p.includes(targetProd));
+        });
+      }
+    }
+
+    if (matchedRule && matchedRule.text !== undefined) {
+      rawText = matchedRule.text;
+    } else if (el.useDefaultText === false) {
+      // Required product (no fallback): show nothing when no product matches.
+      rawText = '';
+    } else if (el.defaultText !== undefined && el.defaultText !== '') {
+      rawText = el.defaultText;
+    } else {
+      rawText = '';
+    }
+  }
+  // 3. Option Code Mapping Mode
+  else if (el.textType === 'option' || el.useOptionMapping || el.isOptionMode) {
+    const codesList = Array.isArray(activeOptions) 
+      ? activeOptions.map(c => String(c).trim().toUpperCase())
+      : parseOptionCodes(activeOptions);
+
     let matchedRule = null;
     if (Array.isArray(el.optionMappings)) {
       for (const rule of el.optionMappings) {

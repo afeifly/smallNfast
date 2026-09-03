@@ -154,7 +154,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
   return { files, csvContent };
 }
 
-async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '') {
+async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true) {
   const { compileEZPL } = await import('../src/utils/stEzplCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -239,7 +239,8 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
         optionsText: optionsStr,
         deviceName: matchedDeviceName,
         origin: origin || '',
-        order_id: order_id || ''
+        order_id: order_id || '',
+        preview: preview !== false
       }
     );
 
@@ -270,7 +271,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
 /**
  * Generates multi-product EZPL JSON for delivery orders with top-level origin and product array.
  */
-async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = '', products = [], lang = 'en', templateXml = null }) {
+async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = '', products = [], lang = 'en', templateXml = null, preview = true }) {
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
 
@@ -369,7 +370,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
       def.elements,
       def.config,
       flatItems,
-      { origin: String(origin || '').trim(), order_id: String(order_id || '').trim() }
+      { origin: String(origin || '').trim(), order_id: String(order_id || '').trim(), preview: preview !== false }
     );
 
     templatesResult.push({

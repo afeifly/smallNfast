@@ -111,13 +111,13 @@ describe('LoggerSettings Page', () => {
     expect(channels[0].Logger).toBe(true);
     // Verify channel 1 (not in channelArray) has Logger: false
     expect(channels[1].Logger).toBe(false);
-    // Verify status is 1 when channel size > 0
-    expect(logger.status).toBe(1);
-    // Verify stoptime is set to 40971867110000 for manual start (mode 0)
+    // Verify status is 0 for Scheduled Start (mode 1)
+    expect(logger.status).toBe(0);
+    // Verify stoptime is set to 40971867110000 when stop time is not enabled
     expect(logger.stoptime).toBe(40971867110000);
   });
 
-  it('supports Manual Start with Stop time enabled (mode 2)', () => {
+  it('locks the Startup mode to Scheduled Start in the edit drawer', () => {
     render(
       <LanguageProvider>
         <LoggerSettings />
@@ -127,23 +127,16 @@ describe('LoggerSettings Page', () => {
     const editBtn = document.querySelector('.btn-header-edit');
     fireEvent.click(editBtn);
 
-    // Keep Manual Start (value 0) and enable Stop time switch
-    const switchEl = document.querySelector('.logger-switch');
-    fireEvent.click(switchEl);
-
-    // Click Submit
-    const saveBtn = screen.getByText('Submit');
-    fireEvent.click(saveBtn);
-
-    expect(mockSetConfigData).toHaveBeenCalled();
-    const logger = mockSetConfigData.mock.calls[0][0].configs['config/cfglogger.json'].logger;
-
-    // Mode 2 expected when Manual Start + Stop time enabled
-    expect(logger.mode).toBe(2);
-    expect(logger.status).toBe(1);
+    // Startup mode select is fixed to Scheduled Start and disabled
+    const select = document.querySelector('.drawer-select');
+    expect(select).not.toBeNull();
+    expect(select.value).toBe('1');
+    expect(select.disabled).toBe(true);
+    expect(select.options.length).toBe(1);
+    expect(screen.getByDisplayValue('Scheduled Start')).toBeInTheDocument();
   });
 
-  it('sets stoptime to 40971867110000 when selecting Scheduled Start (mode 1) without stop time enabled', () => {
+  it('sets stoptime to 40971867110000 when Scheduled Start (mode 1) is saved without stop time enabled', () => {
     render(
       <LanguageProvider>
         <LoggerSettings />
@@ -153,11 +146,7 @@ describe('LoggerSettings Page', () => {
     const editBtn = document.querySelector('.btn-header-edit');
     fireEvent.click(editBtn);
 
-    // Select Scheduled Start (value 1)
-    const select = screen.getByDisplayValue('Manual Start');
-    fireEvent.change(select, { target: { value: '1' } });
-
-    // Click Submit
+    // Startup mode is fixed to Scheduled Start; submit without enabling stop time
     const saveBtn = screen.getByText('Submit');
     fireEvent.click(saveBtn);
 
@@ -169,7 +158,7 @@ describe('LoggerSettings Page', () => {
     expect(logger.status).toBe(0);
   });
 
-  it('keeps mode 1 and status 0 when selecting Scheduled Start with Stop time enabled', () => {
+  it('keeps mode 1 and status 0 when saving Scheduled Start with Stop time enabled', () => {
     render(
       <LanguageProvider>
         <LoggerSettings />
@@ -178,10 +167,6 @@ describe('LoggerSettings Page', () => {
 
     const editBtn = document.querySelector('.btn-header-edit');
     fireEvent.click(editBtn);
-
-    // Select Scheduled Start (value 1)
-    const select = screen.getByDisplayValue('Manual Start');
-    fireEvent.change(select, { target: { value: '1' } });
 
     // Enable Stop time switch
     const switchEl = document.querySelector('.logger-switch');

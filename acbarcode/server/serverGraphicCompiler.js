@@ -338,8 +338,10 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
     const nodeBuf = Buffer.from(buf);
     allBuffers.push(nodeBuf);
 
+    const includePreview = ctx.preview !== false;
     const outItem = {
       serial: sn,
+      ...(includePreview ? { preview_image: canvas.toDataURL('image/png') } : {}),
       ezpl_base64: nodeBuf.toString('base64'),
       ezpl: nodeBuf.toString('latin1')
     };

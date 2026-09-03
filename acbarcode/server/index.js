@@ -1104,8 +1104,15 @@ async function handleStLabel(req, res) {
       (typeof req.body === 'object' && req.body && (req.body.format === 'zip' || req.body.response_type === 'zip')) ||
       (req.headers.accept && req.headers.accept.includes('application/zip') && !req.headers.accept.includes('application/json'));
 
+    let preview = true;
+    if (req.query.preview !== undefined) {
+      preview = req.query.preview !== 'false' && req.query.preview !== '0';
+    } else if (typeof req.body === 'object' && req.body && req.body.preview !== undefined) {
+      preview = req.body.preview !== false && req.body.preview !== 'false' && req.body.preview !== 0 && req.body.preview !== '0';
+    }
+
     if (!isZipRequested) {
-      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id);
+      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id, preview);
       return res.status(200).json(ezplJson);
     }
 
@@ -1178,12 +1185,20 @@ async function handleStLabelDelivery(req, res) {
 
     const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
 
+    let preview = true;
+    if (req.query.preview !== undefined) {
+      preview = req.query.preview !== 'false' && req.query.preview !== '0';
+    } else if (typeof req.body === 'object' && req.body && req.body.preview !== undefined) {
+      preview = req.body.preview !== false && req.body.preview !== 'false' && req.body.preview !== 0 && req.body.preview !== '0';
+    }
+
     const ezplJson = await generateStDeliveryMultiProductEzplJson({
       origin,
       order_id,
       products,
       lang: normalizedLang,
-      templateXml: template_xml
+      templateXml: template_xml,
+      preview
     });
 
     return res.status(200).json(ezplJson);

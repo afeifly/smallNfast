@@ -16,6 +16,7 @@ Generates printable labels as either a downloadable GoLabel ZIP package or struc
 | `serial_numbers` | array of strings | **Yes** | Array of serial number strings (e.g. `["12345678", "12345679"]`) |
 | `lang` | string | No | Language for template elements: `"cn"` (Chinese) or `"en"` (English). Defaults to `"en"` |
 | `options` | array of strings | No | Optional variant codes (e.g. `["A1410", "A1404"]`) |
+| `preview` | boolean | No | Include PNG preview image (`data:image/png;base64,...`) per item. Defaults to `true` |
 | `format` | string | No | Response format: `"json"` (default, JSON wrapping EZPL for direct printing) or `"zip"` (GoLabel ZIP package) |
 | `template_xml` | string | No | Custom EZPX XML template override |
 
@@ -23,7 +24,7 @@ Generates printable labels as either a downloadable GoLabel ZIP package or struc
 
 ## 2. JSON Response Mode (`format: "json"`)
 
-Designed for **Odoo / automated print agents**. Returns the compiled EZPL commands grouped by template type (Main label and Sub-templates).
+Designed for **Odoo / automated print agents**. Returns the compiled EZPL commands and visual preview images grouped by template type (Main label and Sub-templates).
 
 ### Request Example (JSON Mode)
 ```bash
@@ -33,7 +34,8 @@ curl -X POST https://acbarcode.suto-portal.com/st_label \
     "product": "S695 4035",
     "serial_numbers": ["12345678", "12345679"],
     "options": ["A1410"],
-    "format": "json"
+    "format": "json",
+    "preview": true
   }'
 ```
 
@@ -51,14 +53,19 @@ curl -X POST https://acbarcode.suto-portal.com/st_label \
       "type": "main",
       "config": { "widthMm": 35, "heightMm": 22, "dpi": 300 },
       "total_labels": 2,
+      "all_ezpl_base64": "XlEyMiwzCl5XMzUK...",
       "all_ezpl": "^Q22,3\n^W35\n^H10\n^S4\n^L\n...\nE\n^Q22,3\n...",
       "items": [
         {
           "serial": "12345678",
+          "preview_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+          "ezpl_base64": "XlEyMiwzCl5XMzUK...",
           "ezpl": "^Q22,3\n^W35\n^H10\n^S4\n^L\n...\nE\n"
         },
         {
           "serial": "12345679",
+          "preview_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+          "ezpl_base64": "XlEyMiwzCl5XMzUK...",
           "ezpl": "^Q22,3\n^W35\n^H10\n^S4\n^L\n...\nE\n"
         }
       ]
@@ -141,6 +148,8 @@ curl -X POST https://acbarcode.suto-portal.com/st_label_delivery \
           "product": "S695 4100",
           "serial": "3025 0001",
           "options": "1-1.6,A1007,A1008",
+          "preview_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+          "ezpl_base64": "XlEyMiwz...",
           "ezpl": "^Q22,3\n^W35\n^H10\n^S4\n^L\n...\nE\n"
         },
         {
@@ -149,6 +158,8 @@ curl -X POST https://acbarcode.suto-portal.com/st_label_delivery \
           "product": "S695 4100",
           "serial": "3025 0002",
           "options": "1-1.6,A1007,A1008",
+          "preview_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+          "ezpl_base64": "XlEyMiwz...",
           "ezpl": "^Q22,3\n...\n"
         }
       ]

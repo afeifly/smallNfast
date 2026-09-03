@@ -398,7 +398,8 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
 
     if (el.type === 'text') {
       const fontPt      = el.fontSize || 4;
-      const fontCmdStr  = el.bold ? `Arial,${fontPt},B\r\n` : `Arial,${fontPt}\r\n`;
+      const fontFam     = el.fontFamily || 'Segoe UI';
+      const fontCmdStr  = el.bold ? `${fontFam},${fontPt},B\r\n` : `${fontFam},${fontPt}\r\n`;
       const fontHeightPx = Math.round((fontPt / 72) * ezpxDpi * 1.2);
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);

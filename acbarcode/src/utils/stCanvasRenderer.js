@@ -65,7 +65,8 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);
       const fontWeight = el.bold ? 'bold' : 'normal';
-      ctx.font = `${fontWeight} ${fontSizePx}px "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", "Arial", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      const customFont = el.fontFamily ? `"${el.fontFamily}", ` : '';
+      ctx.font = `${fontWeight} ${fontSizePx}px ${customFont}"Noto Sans", "DejaVu Sans", "Segoe UI", "Lucida Grande", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';

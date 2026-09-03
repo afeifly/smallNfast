@@ -519,6 +519,72 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
         <Width>${wVal}</Width>
       </GraphicShape>`;
 
+    } else if (el.type === 'table') {
+      const x0 = mmToDots(el.xMm || 0);
+      const y0 = mmToDots(el.yMm || 0);
+      const totalW = mmToDots(el.widthMm !== undefined ? el.widthMm : 30);
+      const totalH = mmToDots(el.heightMm !== undefined ? el.heightMm : 10);
+      const numRows = Math.max(1, parseInt(el.rows) || 2);
+      const numCols = Math.max(1, parseInt(el.cols) || 2);
+      const thickness = Math.max(1, el.thicknessDots || el.lineWidth || 2);
+
+      let lineCounter = 0;
+      const makeLineXml = (lx, ly, lw, lh, isVert) => {
+        lineCounter++;
+        return `
+      <GraphicShape xsi:type="Line" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${lx}" Y="${ly}" Alignment="Left" AlignPointX="${lx}" AlignPointY="${ly}">
+        <qHitOnCircumferance>false</qHitOnCircumferance>
+        <Selected>false</Selected>
+        <iBackground_color>4294967295</iBackground_color>
+        <Id>${index}_${lineCounter}</Id>
+        <ItemLabel>${escapeXml(el.name || 'Table')}_L${lineCounter}</ItemLabel>
+        <ObjectDrawMode>FW</ObjectDrawMode>
+        <Name>L</Name>
+        <GroupID>0</GroupID>
+        <GroupSelected>false</GroupSelected>
+        <lineShape>${isVert ? 'VLine' : 'HLine'}</lineShape>
+        <Height>${lh}</Height>
+        <Operation>111</Operation>
+        <Width>${lw}</Width>
+      </GraphicShape>`;
+      };
+
+      // Outer border: top, bottom, left, right
+      qlabelShapes += makeLineXml(x0, y0, totalW, thickness, false);
+      qlabelShapes += makeLineXml(x0, y0 + totalH - thickness, totalW, thickness, false);
+      qlabelShapes += makeLineXml(x0, y0, thickness, totalH, true);
+      qlabelShapes += makeLineXml(x0 + totalW - thickness, y0, thickness, totalH, true);
+
+      // Horizontal dividers
+      if (el.rowHeights) {
+        const customHeights = String(el.rowHeights).split(/[,;]+/).map(v => mmToDots(parseFloat(v.trim()))).filter(v => !isNaN(v) && v > 0);
+        let currY = y0;
+        for (let r = 0; r < customHeights.length && currY + customHeights[r] < y0 + totalH; r++) {
+          currY += customHeights[r];
+          qlabelShapes += makeLineXml(x0, currY, totalW, thickness, false);
+        }
+      } else {
+        for (let r = 1; r < numRows; r++) {
+          const currY = y0 + Math.round((totalH * r) / numRows);
+          qlabelShapes += makeLineXml(x0, currY, totalW, thickness, false);
+        }
+      }
+
+      // Vertical dividers
+      if (el.colWidths) {
+        const customWidths = String(el.colWidths).split(/[,;]+/).map(v => mmToDots(parseFloat(v.trim()))).filter(v => !isNaN(v) && v > 0);
+        let currX = x0;
+        for (let c = 0; c < customWidths.length && currX + customWidths[c] < x0 + totalW; c++) {
+          currX += customWidths[c];
+          qlabelShapes += makeLineXml(currX, y0, thickness, totalH, true);
+        }
+      } else {
+        for (let c = 1; c < numCols; c++) {
+          const currX = x0 + Math.round((totalW * c) / numCols);
+          qlabelShapes += makeLineXml(currX, y0, thickness, totalH, true);
+        }
+      }
+
     } else if (el.type === 'image') {
       const imgInfo    = await getImageBase64(el.src);
       const base64Data = imgInfo.data;

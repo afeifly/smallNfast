@@ -8,6 +8,7 @@
       <div class="add-toolbar">
         <button type="button" class="add-btn" @click="addElement('folder')">+ Folder</button>
         <button type="button" class="add-btn" @click="addElement('text')">+ Text</button>
+        <button type="button" class="add-btn" @click="addElement('table')">+ Table</button>
         <button type="button" class="add-btn" @click="addElement('image')">+ Image</button>
         <button type="button" class="add-btn" @click="addElement('hline')">+ Line</button>
         <button type="button" class="add-btn" @click="addElement('barcode')">+ Barcode</button>
@@ -60,6 +61,7 @@
                 :el="child" 
                 :folders="folders" 
                 @image-upload="onImageUpload" 
+                @unpack-table="unpackTable" 
                 :canvasConfig="canvasConfig" 
                 :availableProducts="availableProducts"
               />
@@ -90,6 +92,7 @@
             :el="el" 
             :folders="folders" 
             @image-upload="onImageUpload" 
+            @unpack-table="unpackTable" 
             :canvasConfig="canvasConfig" 
             :availableProducts="availableProducts"
           />
@@ -101,6 +104,7 @@
     <div class="add-toolbar bottom-toolbar">
       <button type="button" class="add-btn" @click="addElement('folder')">+ Folder</button>
       <button type="button" class="add-btn" @click="addElement('text')">+ Text</button>
+      <button type="button" class="add-btn" @click="addElement('table')">+ Table</button>
       <button type="button" class="add-btn" @click="addElement('image')">+ Image</button>
       <button type="button" class="add-btn" @click="addElement('hline')">+ Line</button>
       <button type="button" class="add-btn" @click="addElement('barcode')">+ Barcode</button>
@@ -144,6 +148,7 @@ function shortHint(el) {
     return el.text ? `"${el.text.substring(0, 28)}"` : '';
   }
   if (el.type === 'image') return el.storedName || '';
+  if (el.type === 'table') return `▦ ${el.cols || 2}×${el.rows || 2} (${el.widthMm || 0}×${el.heightMm || 0}mm)`;
   if (el.type === 'barcode') return el.data || '';
   if (el.type === 'qrcode') return el.data ? el.data.substring(0, 22) : '';
   if (el.type === 'hline') return `${el.xMm}→${el.x1Mm || ''}mm`;
@@ -224,6 +229,16 @@ function addElement(type) {
   if (type === 'folder') { el.name = `Folder ${folders.value.length + 1}`; el.expanded = true; }
   else if (type === 'text') { el.name = 'New Text'; el.text = ''; el.xMm = 1; el.yMm = 5; el.endXMm = props.canvasConfig.widthMm || 35; el.fontSize = 5; el.bold = false; }
   else if (type === 'image') { el.name = 'New Image'; el.src = ''; el.xMm = 1; el.yMm = 1; el.widthMm = 10; el.storedName = 'IMG'; el.autoBottomRight = false; }
+  else if (type === 'table') {
+    el.name = 'New Table';
+    el.xMm = 1;
+    el.yMm = 6;
+    el.widthMm = Math.max(10, (props.canvasConfig.widthMm || 35) - 2);
+    el.heightMm = 10;
+    el.rows = 2;
+    el.cols = 2;
+    el.thicknessDots = 2;
+  }
   else if (type === 'hline') { el.name = 'New Line'; el.xMm = 1; el.yMm = 10; el.x1Mm = (props.canvasConfig.widthMm || 35) - 1; el.thicknessDots = 3; }
   else if (type === 'barcode') { el.name = 'New Barcode'; el.data = '{{serial}}'; el.xMm = 5; el.yMm = 10; el.widthMm = 25; el.heightMm = 8; el.readable = true; }
   else if (type === 'qrcode') {
@@ -279,6 +294,160 @@ async function deleteById(id, confirmDelete = true) {
   }
 }
 
+function unpackTable(tableEl) {
+  if (!tableEl) return;
+  const idx = props.elements.findIndex(e => e.id === tableEl.id);
+  if (idx === -1) return;
+
+  const folderId = generateId();
+  const folder = {
+    id: folderId,
+    type: 'folder',
+    name: `${tableEl.name || 'Table'} (Lines)`,
+    expanded: true
+  };
+
+  const x0 = tableEl.xMm || 0;
+  const y0 = tableEl.yMm || 0;
+  const totalW = tableEl.widthMm !== undefined ? tableEl.widthMm : 30;
+  const totalH = tableEl.heightMm !== undefined ? tableEl.heightMm : 10;
+  const numRows = Math.max(1, parseInt(tableEl.rows) || 2);
+  const numCols = Math.max(1, parseInt(tableEl.cols) || 2);
+  const thickness = Math.max(1, tableEl.thicknessDots || tableEl.lineWidth || 2);
+
+  const lines = [];
+
+  // Top border
+  lines.push({
+    id: generateId(),
+    type: 'hline',
+    name: 'Top Border',
+    folderId,
+    xMm: x0,
+    yMm: y0,
+    x1Mm: x0 + totalW,
+    thicknessDots: thickness,
+    expanded: false
+  });
+  // Bottom border
+  lines.push({
+    id: generateId(),
+    type: 'hline',
+    name: 'Bottom Border',
+    folderId,
+    xMm: x0,
+    yMm: y0 + totalH,
+    x1Mm: x0 + totalW,
+    thicknessDots: thickness,
+    expanded: false
+  });
+  // Left border
+  lines.push({
+    id: generateId(),
+    type: 'vline',
+    name: 'Left Border',
+    folderId,
+    xMm: x0,
+    yMm: y0,
+    y1Mm: y0 + totalH,
+    heightMm: totalH,
+    lineShape: 'VLine',
+    thicknessDots: thickness,
+    expanded: false
+  });
+  // Right border
+  lines.push({
+    id: generateId(),
+    type: 'vline',
+    name: 'Right Border',
+    folderId,
+    xMm: x0 + totalW,
+    yMm: y0,
+    y1Mm: y0 + totalH,
+    heightMm: totalH,
+    lineShape: 'VLine',
+    thicknessDots: thickness,
+    expanded: false
+  });
+
+  // Horizontal row dividers
+  if (tableEl.rowHeights) {
+    const customHeights = String(tableEl.rowHeights).split(/[,;]+/).map(v => parseFloat(v.trim())).filter(v => !isNaN(v) && v > 0);
+    let currY = y0;
+    for (let r = 0; r < customHeights.length && currY + customHeights[r] < y0 + totalH; r++) {
+      currY += customHeights[r];
+      lines.push({
+        id: generateId(),
+        type: 'hline',
+        name: `Row Line ${r + 1}`,
+        folderId,
+        xMm: x0,
+        yMm: Math.round(currY * 10) / 10,
+        x1Mm: x0 + totalW,
+        thicknessDots: thickness,
+        expanded: false
+      });
+    }
+  } else {
+    for (let r = 1; r < numRows; r++) {
+      const currY = Math.round((y0 + (totalH * r) / numRows) * 10) / 10;
+      lines.push({
+        id: generateId(),
+        type: 'hline',
+        name: `Row Line ${r}`,
+        folderId,
+        xMm: x0,
+        yMm: currY,
+        x1Mm: x0 + totalW,
+        thicknessDots: thickness,
+        expanded: false
+      });
+    }
+  }
+
+  // Vertical col dividers
+  if (tableEl.colWidths) {
+    const customWidths = String(tableEl.colWidths).split(/[,;]+/).map(v => parseFloat(v.trim())).filter(v => !isNaN(v) && v > 0);
+    let currX = x0;
+    for (let c = 0; c < customWidths.length && currX + customWidths[c] < x0 + totalW; c++) {
+      currX += customWidths[c];
+      lines.push({
+        id: generateId(),
+        type: 'vline',
+        name: `Col Line ${c + 1}`,
+        folderId,
+        xMm: Math.round(currX * 10) / 10,
+        yMm: y0,
+        y1Mm: y0 + totalH,
+        heightMm: totalH,
+        lineShape: 'VLine',
+        thicknessDots: thickness,
+        expanded: false
+      });
+    }
+  } else {
+    for (let c = 1; c < numCols; c++) {
+      const currX = Math.round((x0 + (totalW * c) / numCols) * 10) / 10;
+      lines.push({
+        id: generateId(),
+        type: 'vline',
+        name: `Col Line ${c}`,
+        folderId,
+        xMm: currX,
+        yMm: y0,
+        y1Mm: y0 + totalH,
+        heightMm: totalH,
+        lineShape: 'VLine',
+        thicknessDots: thickness,
+        expanded: false
+      });
+    }
+  }
+
+  // Replace table with folder and lines
+  props.elements.splice(idx, 1, folder, ...lines);
+}
+
 async function deleteFolder(folder) {
   const folderName = folder.name || 'this folder';
   const confirmed = await showStConfirm({
@@ -310,7 +479,7 @@ const ElementForm = defineComponent({
     canvasConfig: Object,
     availableProducts: { type: Array, default: () => [] }
   },
-  emits: ['image-upload'],
+  emits: ['image-upload', 'unpack-table'],
   setup(props, { emit }) {
     function input(opts) {
       const attrs = { ...opts };
@@ -595,6 +764,50 @@ const ElementForm = defineComponent({
         kids.push(h('label', { class: 'cb' }, [h('input', { type: 'checkbox', checked: el.autoBottomRight, onChange: e => el.autoBottomRight = e.target.checked }), ' Align Bottom-Right']));
       }
 
+      if (el.type === 'table') {
+        kids.push(h('div', { class: 'table-grid-panel' }, [
+          h('div', { class: 'fg-row' }, [
+            h('div', { class: 'fg' }, [h('label', 'X mm'), h('input', { type: 'number', step: 0.1, value: el.xMm, onInput: e => el.xMm = +e.target.value })]),
+            h('div', { class: 'fg' }, [h('label', 'Y mm'), h('input', { type: 'number', step: 0.1, value: el.yMm, onInput: e => el.yMm = +e.target.value })]),
+            h('div', { class: 'fg' }, [h('label', 'Width mm'), h('input', { type: 'number', step: 0.1, value: el.widthMm !== undefined ? el.widthMm : 30, onInput: e => el.widthMm = +e.target.value })]),
+            h('div', { class: 'fg' }, [h('label', 'Height mm'), h('input', { type: 'number', step: 0.1, value: el.heightMm !== undefined ? el.heightMm : 10, onInput: e => el.heightMm = +e.target.value })])
+          ]),
+          h('div', { class: 'fg-row' }, [
+            h('div', { class: 'fg' }, [h('label', 'Columns (Cols)'), h('input', { type: 'number', min: 1, max: 20, value: el.cols || 2, onInput: e => el.cols = Math.max(1, +e.target.value) })]),
+            h('div', { class: 'fg' }, [h('label', 'Rows'), h('input', { type: 'number', min: 1, max: 20, value: el.rows || 2, onInput: e => el.rows = Math.max(1, +e.target.value) })]),
+            h('div', { class: 'fg' }, [h('label', 'Line Width (dots)'), h('input', { type: 'number', min: 1, max: 20, value: el.thicknessDots || el.lineWidth || 2, onInput: e => { el.thicknessDots = +e.target.value; el.lineWidth = +e.target.value; } })])
+          ]),
+          h('div', { class: 'fg-row' }, [
+            h('div', { class: 'fg fg-grow' }, [
+              h('label', 'Custom Col Widths (mm, opt)'),
+              h('input', {
+                type: 'text',
+                value: el.colWidths || '',
+                onInput: e => el.colWidths = e.target.value,
+                placeholder: 'e.g. 10, 15, 8 (or leave empty for equal)'
+              })
+            ]),
+            h('div', { class: 'fg fg-grow' }, [
+              h('label', 'Custom Row Heights (mm, opt)'),
+              h('input', {
+                type: 'text',
+                value: el.rowHeights || '',
+                onInput: e => el.rowHeights = e.target.value,
+                placeholder: 'e.g. 5, 5, 5 (or leave empty for equal)'
+              })
+            ])
+          ]),
+          h('div', { class: 'table-actions-row' }, [
+            h('button', {
+              type: 'button',
+              class: 'unpack-table-btn',
+              title: 'Convert this table into a folder with individual lines',
+              onClick: () => emit('unpack-table', el)
+            }, '✂️ Unpack Table to Lines (Folder)')
+          ])
+        ]));
+      }
+
       if (el.type === 'hline' || el.type === 'vline') {
         kids.push(h('div', { class: 'fg-row' }, [
           h('div', { class: 'fg' }, [h('label', 'Shape'), h('select', { value: el.lineShape || 'HLine', onChange: e => el.lineShape = e.target.value }, [h('option', { value: 'HLine' }, 'Horizontal'), h('option', { value: 'VLine' }, 'Vertical')])]),
@@ -867,6 +1080,7 @@ const ElementForm = defineComponent({
 }
 .el-row:hover { background: #edf2f7; }
 .el-row.accent-text { border-left-color: #3182ce; }
+.el-row.accent-table { border-left-color: #319795; }
 .el-row.accent-image { border-left-color: #38a169; }
 .el-row.accent-hline { border-left-color: #d69e2e; }
 .el-row.accent-barcode { border-left-color: #805ad5; }
@@ -878,6 +1092,7 @@ const ElementForm = defineComponent({
   flex-shrink: 0;
 }
 .el-type-dot.text { background: #3182ce; }
+.el-type-dot.table { background: #319795; }
 .el-type-dot.image { background: #38a169; }
 .el-type-dot.hline { background: #d69e2e; }
 .el-type-dot.barcode { background: #805ad5; }
@@ -1218,5 +1433,35 @@ const ElementForm = defineComponent({
 :deep(.duplicate-el-btn:hover) {
   background: #ebf8ff !important;
   border-color: #3182ce !important;
+}
+
+/* ── TABLE ACTIONS & PANEL ─────────────────────────────── */
+:deep(.table-grid-panel) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:deep(.table-actions-row) {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+:deep(.unpack-table-btn) {
+  background: #edf2f7 !important;
+  color: #2d3748 !important;
+  border: 1px dashed #a0aec0 !important;
+  padding: 5px 10px !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.15s ease;
+}
+:deep(.unpack-table-btn:hover) {
+  background: #e2e8f0 !important;
+  border-color: #4a5568 !important;
+  color: #1a202c !important;
 }
 </style>

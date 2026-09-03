@@ -95,6 +95,50 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
         const endX = mmToDots(el.x1Mm !== undefined ? el.x1Mm : w);
         ezpl += `Lo,${x},${y},${endX},${y + thickness}\n`;
       }
+    } else if (el.type === 'table') {
+      const x0 = mmToDots(el.xMm || 0);
+      const y0 = mmToDots(el.yMm || 0);
+      const totalW = mmToDots(el.widthMm !== undefined ? el.widthMm : 30);
+      const totalH = mmToDots(el.heightMm !== undefined ? el.heightMm : 10);
+      const numRows = Math.max(1, parseInt(el.rows) || 2);
+      const numCols = Math.max(1, parseInt(el.cols) || 2);
+      const thickness = Math.max(1, el.thicknessDots || el.lineWidth || 2);
+
+      // Outer box 4 borders
+      ezpl += `Lo,${x0},${y0},${x0 + totalW},${y0 + thickness}\n`;
+      ezpl += `Lo,${x0},${y0 + totalH - thickness},${x0 + totalW},${y0 + totalH}\n`;
+      ezpl += `Lo,${x0},${y0},${x0 + thickness},${y0 + totalH}\n`;
+      ezpl += `Lo,${x0 + totalW - thickness},${y0},${x0 + totalW},${y0 + totalH}\n`;
+
+      // Horizontal dividers
+      if (el.rowHeights) {
+        const customHeights = String(el.rowHeights).split(/[,;]+/).map(v => mmToDots(parseFloat(v.trim()))).filter(v => !isNaN(v) && v > 0);
+        let currY = y0;
+        for (let r = 0; r < customHeights.length && currY + customHeights[r] < y0 + totalH; r++) {
+          currY += customHeights[r];
+          ezpl += `Lo,${x0},${currY},${x0 + totalW},${currY + thickness}\n`;
+        }
+      } else {
+        for (let r = 1; r < numRows; r++) {
+          const currY = y0 + Math.round((totalH * r) / numRows);
+          ezpl += `Lo,${x0},${currY},${x0 + totalW},${currY + thickness}\n`;
+        }
+      }
+
+      // Vertical dividers
+      if (el.colWidths) {
+        const customWidths = String(el.colWidths).split(/[,;]+/).map(v => mmToDots(parseFloat(v.trim()))).filter(v => !isNaN(v) && v > 0);
+        let currX = x0;
+        for (let c = 0; c < customWidths.length && currX + customWidths[c] < x0 + totalW; c++) {
+          currX += customWidths[c];
+          ezpl += `Lo,${currX},${y0},${currX + thickness},${y0 + totalH}\n`;
+        }
+      } else {
+        for (let c = 1; c < numCols; c++) {
+          const currX = x0 + Math.round((totalW * c) / numCols);
+          ezpl += `Lo,${currX},${y0},${currX + thickness},${y0 + totalH}\n`;
+        }
+      }
     } else if (el.type === 'image') {
       const widthMm = el.widthMm || 10;
       const heightMm = el.heightMm || 3.8;

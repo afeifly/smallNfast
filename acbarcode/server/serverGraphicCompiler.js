@@ -87,6 +87,62 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = el.thicknessDots || 3;
       ctx.stroke();
+    } else if (el.type === 'table') {
+      const x0 = mmToPx(el.xMm || 0);
+      const y0 = mmToPx(el.yMm || 0);
+      const totalW = mmToPx(el.widthMm !== undefined ? el.widthMm : 30);
+      const totalH = mmToPx(el.heightMm !== undefined ? el.heightMm : 10);
+      const numRows = Math.max(1, parseInt(el.rows) || 2);
+      const numCols = Math.max(1, parseInt(el.cols) || 2);
+      const lineW = Math.max(1, el.thicknessDots || el.lineWidth || 2);
+
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = lineW;
+
+      // Outer bounding box
+      ctx.strokeRect(x0, y0, totalW, totalH);
+
+      // Horizontal dividers (between rows)
+      if (el.rowHeights) {
+        const customHeights = String(el.rowHeights).split(/[,;]+/).map(v => mmToPx(parseFloat(v.trim()))).filter(v => !isNaN(v) && v > 0);
+        let currY = y0;
+        for (let r = 0; r < customHeights.length && currY + customHeights[r] < y0 + totalH; r++) {
+          currY += customHeights[r];
+          ctx.beginPath();
+          ctx.moveTo(x0, currY);
+          ctx.lineTo(x0 + totalW, currY);
+          ctx.stroke();
+        }
+      } else {
+        for (let r = 1; r < numRows; r++) {
+          const currY = y0 + Math.round((totalH * r) / numRows);
+          ctx.beginPath();
+          ctx.moveTo(x0, currY);
+          ctx.lineTo(x0 + totalW, currY);
+          ctx.stroke();
+        }
+      }
+
+      // Vertical dividers (between columns)
+      if (el.colWidths) {
+        const customWidths = String(el.colWidths).split(/[,;]+/).map(v => mmToPx(parseFloat(v.trim()))).filter(v => !isNaN(v) && v > 0);
+        let currX = x0;
+        for (let c = 0; c < customWidths.length && currX + customWidths[c] < x0 + totalW; c++) {
+          currX += customWidths[c];
+          ctx.beginPath();
+          ctx.moveTo(currX, y0);
+          ctx.lineTo(currX, y0 + totalH);
+          ctx.stroke();
+        }
+      } else {
+        for (let c = 1; c < numCols; c++) {
+          const currX = x0 + Math.round((totalW * c) / numCols);
+          ctx.beginPath();
+          ctx.moveTo(currX, y0);
+          ctx.lineTo(currX, y0 + totalH);
+          ctx.stroke();
+        }
+      }
     } else if (el.type === 'image' && el.src) {
       const img = await getCachedServerImage(el.src);
       if (img && (img.width > 0 || img.naturalWidth > 0)) {

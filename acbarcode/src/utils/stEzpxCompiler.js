@@ -283,7 +283,7 @@ export async function compileEZPX(elements = [], config = {}, serial = '3726 000
  * @param {Object}   options     - { labelsPerCut: 0 = no cut }
  */
 export async function compileEZPXRange(elements = [], config = {}, serialRange = ['3726 0001'], options = {}) {
-  const firstSN    = serialRange[0] || '3726 0001';
+  const firstSN = serialRange[0] || '3726 0001';
   const totalCount = serialRange.length;
   const labelsPerCut = options.labelsPerCut ?? 0;
   // csvDatabase: generate a CSV-database EZPX (SNs loaded from data.csv, one label per row)
@@ -293,11 +293,11 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     ? options.extra
     : {};
 
-  const w = config.widthMm  || 35;
+  const w = config.widthMm || 35;
   const h = config.heightMm || 22;
   const ezpxDpi = config.dpi || 203;
   let printerModel = 'G500';
-  if (ezpxDpi === 300)      printerModel = 'EZ-1300+';
+  if (ezpxDpi === 300) printerModel = 'EZ-1300+';
   else if (ezpxDpi === 600) printerModel = 'RT863i+';
   const mmToDots = (mm) => Math.round((mm / 25.4) * ezpxDpi);
 
@@ -309,23 +309,23 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
 
   const lastSN = serialRange[totalCount - 1] || firstSN;
 
-  let serialPrefix   = '';
+  let serialPrefix = '';
   let serialStartStr = firstSN;
   let serialStartNum = 0;
-  let serialEndStr   = firstSN;
-  let serialStep     = 1;
+  let serialEndStr = firstSN;
+  let serialStep = 1;
   const hasSerialRange = totalCount > 1;
 
   if (hasSerialRange) {
-    const p0   = parseTrail(firstSN);
-    const p1   = parseTrail(serialRange[1] || firstSN);
+    const p0 = parseTrail(firstSN);
+    const p1 = parseTrail(serialRange[1] || firstSN);
     const pEnd = parseTrail(lastSN);
     if (p0 && p1) {
-      serialPrefix   = p0.prefix;
+      serialPrefix = p0.prefix;
       serialStartStr = p0.digits;          // e.g. "0001" or "12345678"
       serialStartNum = p0.val;
-      serialEndStr   = pEnd ? pEnd.digits : p0.digits; // e.g. "0003" or "12345680"
-      serialStep     = p1.val - p0.val;
+      serialEndStr = pEnd ? pEnd.digits : p0.digits; // e.g. "0003" or "12345680"
+      serialStep = p1.val - p0.val;
       if (serialStep < 1) serialStep = 1;
     }
   }
@@ -355,7 +355,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   ).join('\n      ');
 
   const nullString100 = Array(100).fill('<string xsi:nil="true" />').join('\n      ');
-  const falseBool100  = Array(100).fill('<boolean>false</boolean>').join('\n      ');
+  const falseBool100 = Array(100).fill('<boolean>false</boolean>').join('\n      ');
 
   // ── Build qlabel shapes ───────────────────────────────────────────────
   let qlabelShapes = '';
@@ -372,7 +372,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
 
     const resolvedText = resolveElementText(el, optionsVal, '', productVal, deviceNameVal, extraObj);
     // DispData: always the rendered first SN (for GoLabel preview)
-    const dispVal     = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
+    const dispVal = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
     const escapedDisp = escapeXml(dispVal);
 
     // elUsesSerial: element references {{serial}}; in CSV-DB mode always (field ^F00),
@@ -380,8 +380,8 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     const elUsesSerial = csvDatabase ? usesSerial(el) : (hasSerialRange && usesSerial(el));
 
     // Data / ItemData: DB field ref ^F00 in CSV mode, ^C00 counter otherwise
-    const serialRef  = csvDatabase ? '^F00' : counterStr;
-    const dataVal    = elUsesSerial
+    const serialRef = csvDatabase ? '^F00' : counterStr;
+    const dataVal = elUsesSerial
       ? resolvedText.replace(/\{\{serial\}\}/g, serialRef)
       : dispVal;
     const escapedData = escapeXml(dataVal);
@@ -397,9 +397,9 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     const itemSymbol = elUsesSerial ? (csvDatabase ? 5 : 2) : 1;
 
     if (el.type === 'text') {
-      const fontPt      = el.fontSize || 4;
-      const fontFam     = el.fontFamily || 'Segoe UI';
-      const fontCmdStr  = el.bold ? `${fontFam},${fontPt},B\r\n` : `${fontFam},${fontPt}\r\n`;
+      const fontPt = el.fontSize || 4;
+      const fontFam = el.fontFamily || 'Segoe UI';
+      const fontCmdStr = el.bold ? `${fontFam},${fontPt},B\r\n` : `${fontFam},${fontPt}\r\n`;
       const fontHeightPx = Math.round((fontPt / 72) * ezpxDpi * 1.2);
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
@@ -590,19 +590,19 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       }
 
     } else if (el.type === 'image') {
-      const imgInfo    = await getImageBase64(el.src);
+      const imgInfo = await getImageBase64(el.src);
       const base64Data = imgInfo.data;
-      const widthMm    = el.widthMm || 10;
+      const widthMm = el.widthMm || 10;
       let heightMm;
-      if (el.heightMm)             heightMm = el.heightMm;
-      else if (imgInfo.width > 0)  heightMm = widthMm * (imgInfo.height / imgInfo.width);
-      else                         heightMm = widthMm * 0.45;
+      if (el.heightMm) heightMm = el.heightMm;
+      else if (imgInfo.width > 0) heightMm = widthMm * (imgInfo.height / imgInfo.width);
+      else heightMm = widthMm * 0.45;
 
       let xMm = el.xMm || 0, yMm = el.yMm || 0;
       if (el.autoBottomRight) { xMm = w - widthMm - 1; yMm = h - heightMm - 1; }
 
-      const x     = mmToDots(xMm);
-      const y     = mmToDots(yMm);
+      const x = mmToDots(xMm);
+      const y = mmToDots(yMm);
       const wDots = mmToDots(widthMm);
       const hDots = mmToDots(heightMm);
       const graphicName = (el.storedName || el.name || `Graphic_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -670,10 +670,10 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       </GraphicShape>`;
 
     } else if (el.type === 'barcode') {
-      const x          = mmToDots(el.xMm || 0);
-      const y          = mmToDots(el.yMm || 0);
+      const x = mmToDots(el.xMm || 0);
+      const y = mmToDots(el.yMm || 0);
       const heightDots = mmToDots(el.heightMm || 10);
-      const readable   = el.readable !== false;
+      const readable = el.readable !== false;
       const captionAlign = readable ? 'BottomAndLeft' : 'None';
       let narrow = 3;
       if (el.widthMm) {
@@ -762,8 +762,8 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       </GraphicShape>`;
 
     } else if (el.type === 'qrcode') {
-      const x   = mmToDots(el.xMm || 0);
-      const y   = mmToDots(el.yMm || 0);
+      const x = mmToDots(el.xMm || 0);
+      const y = mmToDots(el.yMm || 0);
       const rawMul = Number(el.mul) || 4;
       const goLabelMultiple = Math.max(1, rawMul - 1);
       const sizeMm = el.widthMm || (rawMul * 2.5) || 10;

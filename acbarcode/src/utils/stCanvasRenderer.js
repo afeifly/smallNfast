@@ -66,7 +66,7 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
       const fontSizePx = ptToPx(el.fontSize || 4);
       const fontWeight = el.bold ? 'bold' : 'normal';
       const customFont = el.fontFamily ? `"${el.fontFamily}", ` : '';
-      ctx.font = `${fontWeight} ${fontSizePx}px ${customFont}"Noto Sans", "DejaVu Sans", "Segoe UI", "Lucida Grande", -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      ctx.font = `${fontWeight} ${fontSizePx}px ${customFont}"Noto Sans", "Noto Sans SC", "Segoe UI", "Arial", "Helvetica", "DejaVu Sans", "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
@@ -130,7 +130,13 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
           ctx.fillText(trimmedLines[i], xPx, startYPx + i * lineHeightPx);
         }
       } else {
-        ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
+        const maxFitW = Math.max(10, mmToPx((config.widthMm || 35) - (el.xMm || 0) - 0.4));
+        const measuredW = ctx.measureText(textVal).width;
+        if (measuredW > maxFitW) {
+          ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm), maxFitW);
+        } else {
+          ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
+        }
       }
     } else if (el.type === 'hline' || el.type === 'vline') {
       const isVertical = el.lineShape === 'VLine' || el.type === 'vline' || (el.x1Mm !== undefined && el.x1Mm === el.xMm);

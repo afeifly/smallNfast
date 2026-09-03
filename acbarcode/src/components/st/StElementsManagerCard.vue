@@ -769,23 +769,6 @@ const ElementForm = defineComponent({
 
         // Shared position & font properties
         kids.push(h('div', { class: 'fg-row' }, [
-          h('div', { class: 'fg fg-grow' }, [
-            h('label', 'Font Family'),
-            h('select', {
-              value: el.fontFamily || 'Segoe UI',
-              onChange: e => el.fontFamily = e.target.value
-            }, [
-              h('option', { value: 'Segoe UI' }, 'Segoe UI (Recommended - Subscripts & Symbols: CO₂, °C, m³)'),
-              h('option', { value: 'Arial' }, 'Arial (Standard Latin)'),
-              h('option', { value: 'Helvetica' }, 'Helvetica'),
-              h('option', { value: 'Microsoft YaHei' }, 'Microsoft YaHei (微软雅黑 - Chinese & Symbols)'),
-              h('option', { value: 'PingFang SC' }, 'PingFang SC (苹方)'),
-              h('option', { value: 'Consolas' }, 'Consolas (Monospace)')
-            ])
-          ])
-        ]));
-
-        kids.push(h('div', { class: 'fg-row' }, [
           h('div', { class: 'fg' }, [h('label', 'X mm'), h('input', { type: 'number', step: 0.1, value: el.xMm, onInput: e => el.xMm = +e.target.value })]),
           h('div', { class: 'fg' }, [h('label', 'End X mm'), h('input', { type: 'number', step: 0.1, value: el.endXMm !== undefined ? el.endXMm : '', onInput: e => el.endXMm = e.target.value === '' ? undefined : +e.target.value, placeholder: 'Max width' })]),
           h('div', { class: 'fg' }, [h('label', 'Y mm'), h('input', { type: 'number', step: 0.1, value: el.yMm, onInput: e => el.yMm = +e.target.value })]),

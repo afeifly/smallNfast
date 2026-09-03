@@ -40,6 +40,26 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
 
   for (const el of elements) {
     if (el.type === 'folder') continue;
+
+    const rot = (parseInt(el.rotation, 10) || 0) % 360;
+    const hasRot = rot !== 0;
+    if (hasRot) {
+      ctx.save();
+      let originXMm = el.xMm || 0;
+      let originYMm = el.yMm || 0;
+      if (el.type === 'image' && el.autoBottomRight) {
+        const widthMm = el.widthMm || 10;
+        const heightMm = el.heightMm || 3.8;
+        originXMm = Math.max(0, config.widthMm - widthMm - 1);
+        originYMm = Math.max(0, config.heightMm - heightMm - 1);
+      }
+      const px = mmToPx(originXMm);
+      const py = mmToPx(originYMm);
+      ctx.translate(px, py);
+      ctx.rotate((rot * Math.PI) / 180);
+      ctx.translate(-px, -py);
+    }
+
     const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName, extra);
 
     if (el.type === 'text') {
@@ -263,6 +283,10 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
       } catch (e) {
         console.warn('QR render error:', e);
       }
+    }
+
+    if (hasRot) {
+      ctx.restore();
     }
   }
 }

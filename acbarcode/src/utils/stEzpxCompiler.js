@@ -367,6 +367,9 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     const el = elements[index];
     if (el.type === 'folder') continue;
 
+    const rotDeg = ((parseInt(el.rotation, 10) || 0) % 360 + 360) % 360;
+    const angleDir = `Angle${rotDeg}`;
+
     const resolvedText = resolveElementText(el, optionsVal, '', productVal, deviceNameVal, extraObj);
     // DispData: always the rendered first SN (for GoLabel preview)
     const dispVal     = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
@@ -414,7 +417,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       }
 
       qlabelShapes += `
-      <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="1000" TextSpace="0" bSpaceCropping="false">
+      <GraphicShape xsi:type="WindowText" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="false" bFill="true" Direction="${angleDir}" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(fontCmdStr)}" FontHeight="1000" FontWidth="1000" TextSpace="0" bSpaceCropping="false">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -503,7 +506,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
         hVal = el.thicknessDots || 5;
       }
       qlabelShapes += `
-      <GraphicShape xsi:type="Line" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}">
+      <GraphicShape xsi:type="Line" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="${angleDir}" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -604,7 +607,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       const graphicName = (el.storedName || el.name || `Graphic_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
 
       qlabelShapes += `
-      <GraphicShape xsi:type="Image" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FixedRatio="false">
+      <GraphicShape xsi:type="Image" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="${angleDir}" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FixedRatio="false">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -683,7 +686,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       const barcodeFontCmd = `Arial,${barcodeFontPt},B\r\n`;
 
       qlabelShapes += `
-      <GraphicShape xsi:type="BarCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(barcodeFontCmd)}" Symbology="Code128Auto" CaptionAlignment="${captionAlign}" Height="${heightDots}" Width="8" Narrow="${narrow}" BearerBarStyle="3" BearerBarWidth="5" QuietZoneWidth="9" BoxThickness="3" Offset="1" bDisplayChecksum="false" bDisplayStartStopChar="false" bBuiltinFont="false" bSetBuiltinFontSize="false" Code128Subset="Auto">
+      <GraphicShape xsi:type="BarCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="${angleDir}" X="${x}" Y="${y}" Alignment="Left" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" FontCmd="${escapeXml(barcodeFontCmd)}" Symbology="Code128Auto" CaptionAlignment="${captionAlign}" Height="${heightDots}" Width="8" Narrow="${narrow}" BearerBarStyle="3" BearerBarWidth="5" QuietZoneWidth="9" BoxThickness="3" Offset="1" bDisplayChecksum="false" bDisplayStartStopChar="false" bBuiltinFont="false" bSetBuiltinFontSize="false" Code128Subset="Auto">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>
@@ -772,7 +775,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
       const qrDataField = isSuto ? 'qr_code' : 'None';
 
       qlabelShapes += `
-      <GraphicShape xsi:type="QRCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="Angle0" X="${x}" Y="${y}" Alignment="Center" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" bSingleLine="false" CaptionWidth="150" bGS1="false" DigitalLink="false" CaptionAlignment="None" FontCmd="Arial,12&#xD;&#xA;" Mode="Auto" Type="2" ErrorCorrectionLevel="77" QrcodeVersion="0" Mask="8" Multiple="${goLabelMultiple}" IsUTF8="true" CodePage="65001">
+      <GraphicShape xsi:type="QRCode" Style="Cross" IsPrint="true" PageAlignment="None" Locked="false" bStroke="true" bFill="true" Direction="${angleDir}" X="${x}" Y="${y}" Alignment="Center" AlignPointX="${x}" AlignPointY="${y}" FontScript="Default" bSingleLine="false" CaptionWidth="150" bGS1="false" DigitalLink="false" CaptionAlignment="None" FontCmd="Arial,12&#xD;&#xA;" Mode="Auto" Type="2" ErrorCorrectionLevel="77" QrcodeVersion="0" Mask="8" Multiple="${goLabelMultiple}" IsUTF8="true" CodePage="65001">
         <qHitOnCircumferance>false</qHitOnCircumferance>
         <Selected>false</Selected>
         <iBackground_color>4294967295</iBackground_color>

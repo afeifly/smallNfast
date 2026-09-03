@@ -70,17 +70,19 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
         }
 
         const lineHeightDots = mmToDots(size * 0.45);
+        const ezplRot = Math.round(((el.rotation || 0) % 360) / 90) % 4;
         for (let i = 0; i < lines.length; i++) {
           const lineY = y + i * lineHeightDots;
-          ezpl += `${fontCmd},${x},${lineY},${mul},${mul},0,0,${lines[i]}\n`;
+          ezpl += `${fontCmd},${x},${lineY},${mul},${mul},0,${ezplRot},${lines[i]}\n`;
           if (el.bold) {
-            ezpl += `${fontCmd},${x + 1},${lineY},${mul},${mul},0,0,${lines[i]}\n`;
+            ezpl += `${fontCmd},${x + 1},${lineY},${mul},${mul},0,${ezplRot},${lines[i]}\n`;
           }
         }
       } else {
-        ezpl += `${fontCmd},${x},${y},${mul},${mul},0,0,${textVal}\n`;
+        const ezplRot = Math.round(((el.rotation || 0) % 360) / 90) % 4;
+        ezpl += `${fontCmd},${x},${y},${mul},${mul},0,${ezplRot},${textVal}\n`;
         if (el.bold) {
-          ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,0,${textVal}\n`;
+          ezpl += `${fontCmd},${x + 1},${y},${mul},${mul},0,${ezplRot},${textVal}\n`;
         }
       }
     } else if (el.type === 'hline' || el.type === 'vline') {
@@ -154,20 +156,22 @@ export function compileEZPL(elements = [], config = {}, serial = '3726 0001', pr
       const y = mmToDots(el.yMm || 0);
       const heightDots = mmToDots(el.heightMm || 10);
       const readable = el.readable ? 1 : 0;
+      const ezplRot = Math.round(((el.rotation || 0) % 360) / 90) % 4;
       let narrow = 2;
       if (el.widthMm) {
         const totalModules = (textVal.length * 11) + 35;
         narrow = Math.max(1, Math.round(mmToDots(el.widthMm) / totalModules));
       }
       const wide = Math.max(narrow + 1, Math.round(narrow * 2.5));
-      ezpl += `BQ,${x},${y},${narrow},${wide},${heightDots},0,${readable},${textVal}\n`;
+      ezpl += `BQ,${x},${y},${narrow},${wide},${heightDots},${ezplRot},${readable},${textVal}\n`;
     } else if (el.type === 'qrcode') {
       const x = mmToDots(el.xMm || 0);
       const y = mmToDots(el.yMm || 0);
+      const ezplRot = Math.round(((el.rotation || 0) % 360) / 90) % 4;
       const rawMul = Number(el.mul) || 4;
       const mul = Math.max(1, rawMul - 1);
       const len = textVal.length;
-      ezpl += `W${x},${y},2,2,M,8,${mul},${len},0\n`;
+      ezpl += `W${x},${y},2,2,M,8,${mul},${len},${ezplRot}\n`;
       ezpl += `${textVal}\n`;
     }
   });

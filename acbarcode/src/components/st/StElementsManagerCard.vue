@@ -50,9 +50,11 @@
               <span class="chevron sm">{{ child.expanded ? '▾' : '▸' }}</span>
               <span class="el-type-dot" :class="child.type"></span>
               <span class="el-label">{{ child.name || child.type }}</span>
+              <span v-if="child.rotation" class="rot-pill">{{ child.rotation }}°</span>
               <span class="el-hint">{{ shortHint(child) }}</span>
               <button class="row-btn move-btn" :disabled="isFirstInGroup(child)" @click.stop="moveElement(child, -1)" title="Move Up">▲</button>
               <button class="row-btn move-btn" :disabled="isLastInGroup(child)" @click.stop="moveElement(child, 1)" title="Move Down">▼</button>
+              <button class="row-btn rotate-btn" @click.stop="rotateElement(child)" :title="'Rotate 90° (Current: ' + (child.rotation || 0) + '°)'">🔄</button>
               <button class="row-btn duplicate-btn" @click.stop="duplicateElement(child)" title="Duplicate Element (X,Y +1mm)">📋</button>
               <button class="row-btn danger" @click.stop="deleteById(child.id)" title="Delete">✕</button>
             </div>
@@ -81,9 +83,11 @@
           <span class="chevron sm">{{ el.expanded ? '▾' : '▸' }}</span>
           <span class="el-type-dot" :class="el.type"></span>
           <span class="el-label">{{ el.name || el.type }}</span>
+          <span v-if="el.rotation" class="rot-pill">{{ el.rotation }}°</span>
           <span class="el-hint">{{ shortHint(el) }}</span>
           <button class="row-btn move-btn" :disabled="isFirstInGroup(el)" @click.stop="moveElement(el, -1)" title="Move Up">▲</button>
           <button class="row-btn move-btn" :disabled="isLastInGroup(el)" @click.stop="moveElement(el, 1)" title="Move Down">▼</button>
+          <button class="row-btn rotate-btn" @click.stop="rotateElement(el)" :title="'Rotate 90° (Current: ' + (el.rotation || 0) + '°)'">🔄</button>
           <button class="row-btn duplicate-btn" @click.stop="duplicateElement(el)" title="Duplicate Element (X,Y +1mm)">📋</button>
           <button class="row-btn danger" @click.stop="deleteById(el.id)" title="Delete">✕</button>
         </div>
@@ -274,6 +278,11 @@ function duplicateElement(targetEl) {
   } else {
     props.elements.push(clone);
   }
+}
+
+function rotateElement(el) {
+  if (!el) return;
+  el.rotation = ((parseInt(el.rotation, 10) || 0) + 90) % 360;
 }
 
 async function deleteById(id, confirmDelete = true) {
@@ -513,6 +522,27 @@ const ElementForm = defineComponent({
               ])
             ])
           : null
+      ]));
+
+      // Rotation control row (0°, 90°, 180°, 270°)
+      const currentRot = (parseInt(el.rotation, 10) || 0) % 360;
+      kids.push(h('div', { class: 'rot-control-row' }, [
+        h('span', { class: 'rot-label' }, 'Rotation:'),
+        h('div', { class: 'rot-btn-group' }, [
+          ...[0, 90, 180, 270].map(deg =>
+            h('button', {
+              type: 'button',
+              class: ['rot-preset-btn', currentRot === deg ? 'active' : ''],
+              onClick: () => el.rotation = deg
+            }, `${deg}°`)
+          ),
+          h('button', {
+            type: 'button',
+            class: 'rot-step-btn',
+            title: 'Rotate 90° clockwise',
+            onClick: () => el.rotation = (currentRot + 90) % 360
+          }, '🔄 +90°')
+        ])
       ]));
 
       if (el.type === 'text') {
@@ -1048,6 +1078,7 @@ const ElementForm = defineComponent({
 .folder-row:hover .row-btn,
 .el-row:hover .row-btn { opacity: 1; }
 .row-btn.danger:hover { color: #e53e3e !important; background: #fff5f5 !important; }
+.row-btn.rotate-btn:hover { color: #dd6b20 !important; background: #fffaf0 !important; }
 .row-btn.duplicate-btn:hover { color: #2b6cb0 !important; background: #ebf8ff !important; }
 .row-btn.move-btn { font-size: 10px !important; padding: 2px 3px !important; }
 .row-btn.move-btn:hover:not(:disabled) { color: #2b6cb0 !important; background: #ebf8ff !important; }
@@ -1463,5 +1494,77 @@ const ElementForm = defineComponent({
   background: #e2e8f0 !important;
   border-color: #4a5568 !important;
   color: #1a202c !important;
+}
+
+/* ── ROTATION CONTROLS & BADGES ─────────────────────────── */
+.rot-pill {
+  font-size: 9px;
+  font-weight: 700;
+  color: #c05621;
+  background: #feebc8;
+  padding: 1px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  line-height: 1.1;
+}
+
+:deep(.rot-control-row) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 4px 8px;
+  background: #edf2f7;
+  border-radius: 6px;
+}
+:deep(.rot-label) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5568;
+}
+:deep(.rot-btn-group) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+:deep(.rot-preset-btn) {
+  background: #ffffff !important;
+  color: #4a5568 !important;
+  border: 1px solid #cbd5e0 !important;
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.12s;
+}
+:deep(.rot-preset-btn:hover) {
+  border-color: #3182ce !important;
+  color: #2b6cb0 !important;
+}
+:deep(.rot-preset-btn.active) {
+  background: #3182ce !important;
+  color: white !important;
+  border-color: #3182ce !important;
+}
+:deep(.rot-step-btn) {
+  background: #feebc8 !important;
+  color: #c05621 !important;
+  border: 1px solid #fbd38d !important;
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  width: auto !important;
+  margin-left: 6px;
+  transition: all 0.12s;
+}
+:deep(.rot-step-btn:hover) {
+  background: #fbd38d !important;
+  color: #9c4221 !important;
 }
 </style>

@@ -6,6 +6,7 @@ import { LanguageProvider } from '../../context/LanguageContext';
 
 const mockSetConfigData = vi.fn();
 let mockConfigs = {};
+let mockIsOemAC = false;
 
 vi.mock('../../context/ConfigContext', () => ({
   useConfig: () => ({
@@ -14,6 +15,17 @@ vi.mock('../../context/ConfigContext', () => ({
       fileMap: new Map()
     },
     setConfigData: mockSetConfigData
+  })
+}));
+
+vi.mock('../../context/ThemeContext', () => ({
+  useTheme: () => ({
+    appName: 'S4C-Web',
+    appLogo: '/logos/suto_logo.png',
+    logoHeight: '16px',
+    isOemAC: mockIsOemAC,
+    isOriginal: !mockIsOemAC,
+    oemFolder: mockIsOemAC ? 'oem-ac' : null
   })
 }));
 
@@ -388,4 +400,27 @@ describe('SensorConfigModal', () => {
     const sensorSelect = document.querySelectorAll('.form-select-hidden')[1];
     expect(sensorSelect).toBeDisabled();
   });
+
+  it('displays exact file name without .sutoch for sensor templates in active folder', () => {
+    mockIsOemAC = false;
+    render(
+      <LanguageProvider>
+        <SensorConfigModal
+          isOpen={true}
+          onClose={vi.fn()}
+          initialData={null}
+          isSuto={true}
+          selectedSensor="SUTO-S400.sutoch"
+        />
+      </LanguageProvider>
+    );
+
+    const sensorSelect = document.querySelectorAll('.form-select-hidden')[1];
+    expect(sensorSelect).toBeInTheDocument();
+    const options = Array.from(sensorSelect.options).map(opt => opt.value);
+    expect(options).toContain('SUTO-S400');
+    const optionTexts = Array.from(sensorSelect.options).map(opt => opt.textContent.trim());
+    expect(optionTexts).toContain('SUTO-S400');
+  });
 });
+

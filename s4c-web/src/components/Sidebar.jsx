@@ -139,11 +139,11 @@ const Sidebar = () => {
   const currentPath = location.pathname;
   const { activeConfigId } = useConfig();
   const { t } = useLanguage();
-  const { appName, appLogo, logoHeight, isOemAC } = useTheme();
+  const { appName, appLogo, logoHeight, isOriginal } = useTheme();
   const hasConfig = !!activeConfigId;
 
   // Helper for child menu item text
-  const getChildLabel = (child) => (child.to === '/sensor/add-suto' && isOemAC) ? t('Preset Sensor') : t(child.label);
+  const getChildLabel = (child) => (child.to === '/sensor/add-suto' && !isOriginal) ? t('Preset Sensor') : t(child.label);
 
 
   // Track if sidebar is collapsed

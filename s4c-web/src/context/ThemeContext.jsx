@@ -9,6 +9,9 @@ export const ThemeProvider = ({ children }) => {
   const favicon = import.meta.env.VITE_APP_FAVICON || '/favicon.ico';
 
   const isOemAC = import.meta.env.VITE_IS_OEM_AC === 'true' || import.meta.env.MODE === 'atlascopco' || (import.meta.env.VITE_APP_LOGO && import.meta.env.VITE_APP_LOGO.includes('atlascopco'));
+  const oemFolder = import.meta.env.VITE_OEM_FOLDER || (isOemAC ? 'oem-ac' : null);
+  const isOem = Boolean(isOemAC || oemFolder || import.meta.env.VITE_IS_OEM === 'true');
+  const isOriginal = !isOem;
 
   window.__vite_env__ = import.meta.env;
 
@@ -39,7 +42,7 @@ export const ThemeProvider = ({ children }) => {
   }, [appName, favicon]);
 
   return (
-    <ThemeContext.Provider value={{ appName, appLogo, logoHeight, isOemAC }}>
+    <ThemeContext.Provider value={{ appName, appLogo, logoHeight, isOemAC, isOem, isOriginal, oemFolder }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -49,7 +52,10 @@ const defaultTheme = {
   appName: 'S4C-Web',
   appLogo: '/logos/suto_logo.png',
   logoHeight: '16px',
-  isOemAC: false
+  isOemAC: false,
+  isOem: false,
+  isOriginal: true,
+  oemFolder: null
 };
 
 export const useTheme = () => useContext(ThemeContext) || defaultTheme;

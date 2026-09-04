@@ -30,7 +30,8 @@ vi.mock('../../context/ThemeContext', () => ({
     appName: 'S4C-Web',
     appLogo: '/logos/suto_logo.png',
     logoHeight: '16px',
-    isOemAC: mockIsOemAC
+    isOemAC: mockIsOemAC,
+    isOriginal: !mockIsOemAC
   })
 }));
 

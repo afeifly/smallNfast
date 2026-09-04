@@ -14,7 +14,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
   const [functionCode, setFunctionCode] = useState('');
   const [errorValue, setErrorValue] = useState('');
   const { t } = useLanguage();
-  const { isOemAC } = useTheme();
+  const { isOriginal } = useTheme();
 
   useEffect(() => {
     if (channelData) {
@@ -65,7 +65,7 @@ const EditChannelModal = ({ isOpen, onClose, channelData, onSave, isSuto }) => {
         <header className="edit-channel-header">
           <div className="edit-channel-title">
             {isSuto 
-              ? (isOemAC ? t('Edit Preset channel') : t('Edit SUTO channel'))
+              ? (isOriginal ? t('Edit SUTO channel') : t('Edit Preset channel'))
               : t('Edit channel')
             }
           </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../context/ThemeContext';
 import EditChannelModal from './EditChannelModal';
 import CustomDialog from '../../components/CustomDialog';
 import iconBtnEdit from '../../assets/images/icon_btn_edit.png';
@@ -9,8 +10,46 @@ import iconBtnClose from '../../assets/images/icon_btn_close.png';
 import { isChannelUsedInLogger, isChannelUsedInAlarm, isChannelUsedInLayout, remarshalAll } from '../../util/remarshalUtils';
 import './SensorConfigModal.css';
 
-// Dynamically import all .sutoch files from the sensordata directory as raw text
-const sensorFiles = import.meta.glob('../../sensordata/*.sutoch', { query: '?raw', import: 'default', eager: true });
+// Dynamically import all .sutoch files from all subdirectories under sensordata as raw text
+const allSensorFiles = import.meta.glob('../../sensordata/*/*.sutoch', { query: '?raw', import: 'default', eager: true });
+
+const getSensorFilesMap = (isOriginal, oemFolder = 'oem-ac') => {
+  const map = {};
+
+  if (isOriginal) {
+    // Load exclusively from original folder
+    Object.keys(allSensorFiles).forEach(path => {
+      if (path.includes('/sensordata/original/')) {
+        const fileName = path.split('/').pop().split('?')[0];
+        const sensorName = fileName.replace('.sutoch', '');
+        map[sensorName] = { path, content: allSensorFiles[path] };
+      }
+    });
+  } else if (oemFolder) {
+    // Load exclusively from OEM subfolder (e.g. oem-ac)
+    const folderPattern = `/sensordata/${oemFolder}/`;
+    Object.keys(allSensorFiles).forEach(path => {
+      if (path.includes(folderPattern) && !path.endsWith('.gitkeep')) {
+        const fileName = path.split('/').pop().split('?')[0];
+        const sensorName = fileName.replace('.sutoch', '');
+        map[sensorName] = { path, content: allSensorFiles[path] };
+      }
+    });
+
+    // If no OEM sensor files exist in the OEM folder yet, fall back to original
+    if (Object.keys(map).length === 0) {
+      Object.keys(allSensorFiles).forEach(path => {
+        if (path.includes('/sensordata/original/')) {
+          const fileName = path.split('/').pop().split('?')[0];
+          const sensorName = fileName.replace('.sutoch', '');
+          map[sensorName] = { path, content: allSensorFiles[path] };
+        }
+      });
+    }
+  }
+
+  return map;
+};
 
 const formatResolution = (res) => {
   if (res === undefined || res === null || res === '') return '---';
@@ -45,6 +84,7 @@ const extractBaseModelName = (fileName) => {
 const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true, selectedSensor: propSelectedSensor }) => {
   const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
+  const { isOriginal, oemFolder } = useTheme();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
 
@@ -73,17 +113,15 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true, select
   const closeDialog = () => setDialogState(prev => ({ ...prev, isOpen: false }));
 
   useEffect(() => {
-    // Process sensor names from the globbed files
-    const names = Object.keys(sensorFiles).map(path => {
-      const fileName = path.split('/').pop().split('?')[0];
-      return fileName.replace('.sutoch', '');
-    });
+    // Process sensor names from the globbed files based on OEM mode
+    const sensorMap = getSensorFilesMap(isOriginal, oemFolder);
+    const names = Object.keys(sensorMap);
     setSensorNames(names);
 
     if (initialData) {
       // Edit mode
       const configName = initialData.ConfigFileName ? initialData.ConfigFileName.replace('.sutoch', '') : (initialData.Name || '');
-      handleSensorSelect(configName);
+      handleSensorSelect(configName, sensorMap);
       setDescription(initialData.Description || '');
       setProtocol(initialData.ConnectType || 9);
       setAddress(initialData.Addr !== undefined ? String(initialData.Addr) : '1');
@@ -107,14 +145,14 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true, select
       if (isSuto && names.length > 0) {
         const cleanProp = propSelectedSensor ? propSelectedSensor.replace('.sutoch', '') : '';
         const defaultSensor = (cleanProp && names.includes(cleanProp)) ? cleanProp : names[0];
-        handleSensorSelect(defaultSensor);
+        handleSensorSelect(defaultSensor, sensorMap);
       } else {
         setChannels([]);
       }
     }
-  }, [initialData, isOpen, propSelectedSensor]);
+  }, [initialData, isOpen, propSelectedSensor, isOriginal, oemFolder]);
 
-  const handleSensorSelect = (name) => {
+  const handleSensorSelect = (name, customMap) => {
     setSelectedSensor(name);
     const baseNamePart = extractBaseModelName(name);
 
@@ -128,11 +166,12 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true, select
     const sameBaseCount = otherSensors.filter(s => s.Name && reg.test(s.Name)).length;
     const finalDescription = sameBaseCount === 0 ? baseNamePart : `${baseNamePart}#${sameBaseCount}`;
 
-    // Find the corresponding file content (matching the key which includes ?raw)
-    const path = Object.keys(sensorFiles).find(p => p.includes(`${name}.sutoch`));
-    if (path && sensorFiles[path]) {
+    // Find the corresponding file content
+    const map = customMap || getSensorFilesMap(isOriginal, oemFolder);
+    const fileEntry = map[name];
+    if (fileEntry && fileEntry.content) {
       try {
-        const content = JSON.parse(sensorFiles[path]);
+        const content = JSON.parse(fileEntry.content);
         setSelectedSensorTemplate(content);
         const loadedChannels = (content.cfgchannel || []).map((ch, idx) => ({
           ...ch,
@@ -152,7 +191,7 @@ const SensorConfigModal = ({ isOpen, onClose, initialData, isSuto = true, select
         }
         setDescription(initialData ? (initialData.Description || finalDescription) : finalDescription);
       } catch (err) {
-        console.error('Failed to parse .sutoch file:', path, err);
+        console.error('Failed to parse .sutoch file:', name, err);
         setChannels([]);
       }
     }

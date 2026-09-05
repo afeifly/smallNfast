@@ -1,0 +1,30 @@
+version: '3.3'
+services:
+  licensedb:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: 'easylicense'
+      MYSQL_USER: 'licenseuser'
+      MYSQL_PASSWORD: 'sutouser2019'
+      MYSQL_ROOT_PASSWORD: 'sid@ds.ci@Pd32'
+    volumes:
+      - mysql-config:/etc/mysql
+      - mysql-data:/var/lib/mysql
+      - mysql-log:/var/log/mysql
+  easylicense:
+    build: .
+    image: suto/1zlicense
+    restart: always
+    ports:
+      - 8080:3000
+    environment:
+      - DB_HOST=licensedb
+      - DB_PORT=3306
+    depends_on:
+      - licensedb
+
+volumes:
+  mysql-config:
+  mysql-data:
+  mysql-log:

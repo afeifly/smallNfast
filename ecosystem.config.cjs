@@ -90,6 +90,17 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 9025
       }
+    },
+    {
+      name: '1zlicense',
+      cwd: './1zlicense',
+      script: 'node',
+      args: 'server/index.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 9026,
+        IP: '127.0.0.1'
+      }
     }
   ]
 }

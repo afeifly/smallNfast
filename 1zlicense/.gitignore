@@ -1,0 +1,9 @@
+.DS_Store
+node_modules
+*.swp
+nohup.out
+package-lock.json
+build
+easylicense.db
+easylicense.db-shm
+easylicense.db-wal

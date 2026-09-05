@@ -1,0 +1,16 @@
+{
+    "psw":"c911f82b9e0c32893e5e099b3b8febf6",
+    "initstatus":"68934a3e9455fa72420237eb05902327",
+    "host":"exmm.top",
+    "port":3308,
+    "user":"licenseuser",
+    "password":"sutouser2019"
+}
+{
+    "psw":"c911f82b9e0c32893e5e099b3b8febf6",
+    "initstatus":"68934a3e9455fa72420237eb05902327",
+    "host":"licensedb",
+    "port":3306,
+    "user":"licenseuser",
+    "password":"sutouser2019"
+}

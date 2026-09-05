@@ -1,0 +1,28 @@
+version: '3.3'
+services:
+  licensedb:
+    image: mysql:5.6
+    environment:
+      MYSQL_DATABASE: 'easylicense'
+      MYSQL_USER: 'licenseuser'
+      MYSQL_PASSWORD: 'sutouser2019'
+      MYSQL_ROOT_PASSWORD: 'sid@ds.ci@Pd32'
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql-config:/etc/mysql
+      - mysql-data:/var/lib/mysql
+      - mysql-log:/var/log/mysql
+  easylicense:
+    image: suto/1zlicense
+    ports:
+      - 8080:3000
+    depends_on:
+      - licensedb
+networks:
+  proxynet:
+    name: license_network
+volumes:
+  mysql-config:
+  mysql-data:
+  mysql-log:

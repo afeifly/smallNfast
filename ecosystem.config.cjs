@@ -101,6 +101,18 @@ module.exports = {
         PORT: 9026,
         IP: '127.0.0.1'
       }
+    },
+    {
+      name: 'cpms',
+      cwd: './cpms',
+      script: 'node',
+      args: 'server.js',
+      env: {
+        NODE_ENV: 'production',
+        STATUS: 'production',
+        PROD_PORT: 9027,
+        HOST: '127.0.0.1'
+      }
     }
   ]
 }

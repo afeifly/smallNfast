@@ -1,0 +1,27 @@
+version: '3.3'
+services:
+  cpmsdb:
+    image: mysql:5.7.38
+    environment:
+      MYSQL_DATABASE: 'cpms'
+      MYSQL_USER: 'licenseuser'
+      MYSQL_PASSWORD: 'sutouser2019'
+      MYSQL_ROOT_PASSWORD: 'mypsw'
+    ports:
+      - '20037:3306'
+    volumes:
+      - mysql-config:/etc/mysql
+      - mysql-data:/var/lib/mysql
+      - mysql-log:/var/log/mysql
+  cpms:
+    image: suto/cpms
+    restart: always
+    ports:
+      - 9007:8000
+    depends_on:
+      - cpmsdb
+
+volumes:
+  mysql-config:
+  mysql-data:
+  mysql-log:

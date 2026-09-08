@@ -337,7 +337,7 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   const counterStr = serialPrefix + '^C00';
 
   // ── Helper ─────────────────────────────────────────────────────────────
-  const usesSerial = (el) => /\{\{serial\}\}/.test(el.text || el.data || '');
+  const usesSerial = (el) => /\{\{\s*(serial|sn)(\s*\||\s*\}\})/.test(el.text || el.data || '');
 
   // ── 100-slot XML arrays ────────────────────────────────────────────────
   // SerialFormat: slot 0 = counter def when counter mode; rest = empty <string />
@@ -371,18 +371,18 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
     const angleDir = `Angle${rotDeg}`;
 
     const resolvedText = resolveElementText(el, optionsVal, '', productVal, deviceNameVal, extraObj);
-    // DispData: always the rendered first SN (for GoLabel preview)
-    const dispVal = resolvedText.replace(/\{\{serial\}\}/g, firstSN);
+    // DispData: rendered first SN (for GoLabel preview)
+    const dispVal = resolveElementText(el, optionsVal, firstSN, productVal, deviceNameVal, extraObj);
     const escapedDisp = escapeXml(dispVal);
 
-    // elUsesSerial: element references {{serial}}; in CSV-DB mode always (field ^F00),
+    // elUsesSerial: element references {{serial}} or {{sn}}; in CSV-DB mode always (field ^F00),
     // otherwise only when range > 1 (GoLabel ^C00 counter)
     const elUsesSerial = csvDatabase ? usesSerial(el) : (hasSerialRange && usesSerial(el));
 
     // Data / ItemData: DB field ref ^F00 in CSV mode, ^C00 counter otherwise
     const serialRef = csvDatabase ? '^F00' : counterStr;
     const dataVal = elUsesSerial
-      ? resolvedText.replace(/\{\{serial\}\}/g, serialRef)
+      ? resolvedText.replace(/\{\{\s*(serial|sn)(\s*\|[^}]+)?\s*\}\}/g, serialRef)
       : dispVal;
     const escapedData = escapeXml(dataVal);
 

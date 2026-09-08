@@ -179,29 +179,157 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
   // Replace placeholders. Preserve {{serial}} when no serial value is supplied
   // so downstream compilers can inject their own serial command (^C00 / ^F00).
   const snVal = (serial !== undefined && serial !== '') ? serial : '{{serial}}';
-  let resolved = rawText
-    .replace(/\{\{serial\}\}/g, snVal)
-    .replace(/\{\{sn\}\}/g, snVal)
-    .replace(/\{\{origin\}\}/g, originVal)
-    .replace(/\{\{order\}\}/g, originVal)
-    .replace(/\{\{order_id\}\}/g, orderIdVal)
-    .replace(/\{\{orderId\}\}/g, orderIdVal)
-    .replace(/\{\{categ\}\}/g, categVal)
-    .replace(/\{\{device_name\}\}/g, deviceName || categVal || product || '')
-    .replace(/\{\{product\}\}/g, product || '')
-    .replace(/\{\{product_no\}\}/g, product || '')
-    .replace(/\{\{item_no\}\}/g, product || '')
-    .replace(/\{\{itemNo\}\}/g, product || '')
-    .replace(/\{\{options_text\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''))
-    .replace(/\{\{optionsText\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''))
-    .replace(/\{\{options\}\}/g, Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''));
 
-  for (const [key, value] of Object.entries(extraObj)) {
-    if (value !== undefined && value !== null) {
-      const reg = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-      resolved = resolved.replace(reg, String(value));
+  const varMap = {
+    serial: snVal,
+    sn: snVal,
+    origin: originVal,
+    order: originVal,
+    order_id: orderIdVal,
+    orderid: orderIdVal,
+    delivery_order: orderIdVal,
+    dn: orderIdVal,
+    categ: categVal,
+    device_name: deviceName || categVal || product || '',
+    devicename: deviceName || categVal || product || '',
+    product: product || '',
+    product_no: product || '',
+    productno: product || '',
+    item_no: product || '',
+    itemno: product || '',
+    options_text: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''),
+    optionstext: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''),
+    options: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || '')
+  };
+
+  if (extraObj) {
+    for (const [k, v] of Object.entries(extraObj)) {
+      if (v !== undefined && v !== null) {
+        varMap[k.toLowerCase()] = String(v);
+        varMap[k] = String(v);
+      }
     }
   }
 
+  // Matches: {{ varName }} or {{ varName | filter1:arg | filter2 }}
+  const placeholderRegex = /\{\{\s*([^}|]+?)(?:\s*\|\s*([^}]+))?\s*\}\}/g;
+
+  let resolved = rawText.replace(placeholderRegex, (match, rawKey, filterStr) => {
+    const key = rawKey.trim();
+    const val = varMap[key] !== undefined ? varMap[key] : varMap[key.toLowerCase()];
+    if (val === undefined) {
+      return match;
+    }
+    // If serial placeholder was kept as literal '{{serial}}', preserve placeholder
+    if (val === '{{serial}}') {
+      return match;
+    }
+    if (filterStr) {
+      return applyFilter(val, filterStr.trim());
+    }
+    return val;
+  });
+
   return resolved;
+}
+
+/**
+ * Applies filter pipeline (e.g. "mid:3:2", "last:2", "nospace | mid:3:2") to a string value.
+ * 
+ * Supported filters:
+ * - mid:start:length   -> 1-based substring (Excel MID style, e.g. "2826 8415" | mid:3:2 -> "26")
+ * - substr:start:len   -> alias for mid
+ * - last:N / right:N   -> last N characters (e.g. "2826 8415" | last:2 -> "15")
+ * - first:N / left:N   -> first N characters (e.g. "2826 8415" | first:4 -> "2826")
+ * - slice:start:end    -> 0-based JS slice (e.g. slice:2:4 -> "26", slice:-2 -> "15")
+ * - nospace / strip    -> removes all whitespace
+ * - trim               -> trims whitespace at start & end
+ * - upper / uppercase  -> converts to uppercase
+ * - lower / lowercase  -> converts to lowercase
+ * - pad_left:len:char  -> pads string on left (e.g. pad_left:8:0)
+ * - pad_right:len:char -> pads string on right
+ */
+export function applyFilter(value, filterStr) {
+  if (value === undefined || value === null) return '';
+  let str = String(value);
+  if (!filterStr) return str;
+
+  const filters = filterStr.split('|').map(f => f.trim()).filter(Boolean);
+  for (const f of filters) {
+    const parts = f.split(':').map(p => p.trim());
+    const action = parts[0].toLowerCase();
+    const arg1 = parts[1];
+    const arg2 = parts[2];
+
+    switch (action) {
+      case 'mid':
+      case 'substr': {
+        // 1-based start position (Excel MID style)
+        const start1 = arg1 !== undefined ? parseInt(arg1, 10) : 1;
+        const start0 = Math.max(0, start1 - 1);
+        if (arg2 !== undefined && arg2 !== '') {
+          const len = parseInt(arg2, 10);
+          str = str.substr(start0, len);
+        } else {
+          str = str.substr(start0);
+        }
+        break;
+      }
+      case 'last':
+      case 'right': {
+        const count = arg1 !== undefined ? parseInt(arg1, 10) : 2;
+        str = str.slice(-count);
+        break;
+      }
+      case 'first':
+      case 'left': {
+        const count = arg1 !== undefined ? parseInt(arg1, 10) : 2;
+        str = str.slice(0, count);
+        break;
+      }
+      case 'slice': {
+        const s = arg1 !== undefined ? parseInt(arg1, 10) : 0;
+        const e = arg2 !== undefined && arg2 !== '' ? parseInt(arg2, 10) : undefined;
+        str = str.slice(s, e);
+        break;
+      }
+      case 'nospace':
+      case 'nospaces':
+      case 'strip': {
+        str = str.replace(/\s+/g, '');
+        break;
+      }
+      case 'trim': {
+        str = str.trim();
+        break;
+      }
+      case 'upper':
+      case 'uppercase': {
+        str = str.toUpperCase();
+        break;
+      }
+      case 'lower':
+      case 'lowercase': {
+        str = str.toLowerCase();
+        break;
+      }
+      case 'pad_left':
+      case 'padstart': {
+        const targetLen = parseInt(arg1, 10) || str.length;
+        const padChar = arg2 || '0';
+        str = str.padStart(targetLen, padChar);
+        break;
+      }
+      case 'pad_right':
+      case 'padend': {
+        const targetLen = parseInt(arg1, 10) || str.length;
+        const padChar = arg2 || '0';
+        str = str.padEnd(targetLen, padChar);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return str;
 }

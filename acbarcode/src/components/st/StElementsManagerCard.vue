@@ -619,8 +619,8 @@ const ElementForm = defineComponent({
         if (isNormalMode) {
           // Normal mode: Standard text input
           kids.push(h('div', { class: 'fg' }, [
-            h('label', 'Text  (use {{serial}}, {{product}})'),
-            h('input', { type: 'text', value: el.text || '', onInput: e => el.text = e.target.value, placeholder: 'e.g. {{product}} / {{serial}}' })
+            h('label', 'Text  (supports {{serial}}, {{serial | mid:3:2}}, {{serial | last:2}}, {{product}})'),
+            h('input', { type: 'text', value: el.text || '', onInput: e => el.text = e.target.value, placeholder: 'e.g. {{serial | mid:3:2}} or {{product}}' })
           ]));
         } else if (isOptionMode) {
           // Option Code Mode: Automatic {{options}} in background

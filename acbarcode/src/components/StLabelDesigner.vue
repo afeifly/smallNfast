@@ -187,12 +187,18 @@ function onCopyEnToCn() {
   showStAlert(`Copied EN layout to CN for "${currentLabelName.value}".`, 'Copy EN → CN', 'success');
 }
 
-// ── Per-label JSON export / import ─────────────────────────────────────
+// ── Per-label JSON export / import (current editor elements) ────────────
 function exportSingleTemplateJson() {
   const label = currentLabel.value;
   if (!label) return;
-  const data = JSON.parse(JSON.stringify(label));
-  data.name = currentLabelName.value;
+  const currentElements = activeLang.value === 'CN' ? (label.elements_cn || []) : (label.elements_en || []);
+
+  const data = {
+    name: currentLabelName.value,
+    config: label.config ? JSON.parse(JSON.stringify(label.config)) : { widthMm: 35, heightMm: 22, dpi: 203 },
+    elements: JSON.parse(JSON.stringify(currentElements))
+  };
+
   const jsonStr = JSON.stringify(data, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -216,7 +222,7 @@ function importSingleTemplateJson(event) {
         if (!label) return;
         const ok = await showStConfirm({
           title: 'Import JSON Layout',
-          message: `Importing will OVERWRITE the current layout of "${currentLabelName.value}" (elements EN/CN, size/DPI). Continue?`,
+          message: `Importing will OVERWRITE the current editor elements of "${currentLabelName.value}". Continue?`,
           confirmText: 'Import & Overwrite',
           type: 'warning'
         });
@@ -224,14 +230,20 @@ function importSingleTemplateJson(event) {
           event.target.value = '';
           return;
         }
-        const importedConfig = data.config || { widthMm: 35, heightMm: 22, dpi: 203 };
-        const importedEn = data.elements_en || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN));
-        const importedCn = data.elements_cn || data.elements || JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN));
-        label.config = { ...importedConfig };
-        label.elements_en = JSON.parse(JSON.stringify(importedEn));
-        label.elements_cn = JSON.parse(JSON.stringify(importedCn));
+        if (data.config) {
+          label.config = { ...label.config, ...data.config };
+        }
+        // Extract elements regardless of whether the file used elements, elements_en, or elements_cn
+        const fallbackDefault = activeLang.value === 'CN' ? DEFAULT_ELEMENTS_CN : DEFAULT_ELEMENTS_EN;
+        const importedElements = data.elements || data.elements_en || data.elements_cn || JSON.parse(JSON.stringify(fallbackDefault));
+
+        if (activeLang.value === 'CN') {
+          label.elements_cn = JSON.parse(JSON.stringify(importedElements));
+        } else {
+          label.elements_en = JSON.parse(JSON.stringify(importedElements));
+        }
         scheduleSave();
-        showStAlert(`Layout imported into "${currentLabelName.value}"!`, 'Template Imported', 'success');
+        showStAlert(`Elements imported into current editor for "${currentLabelName.value}"!`, 'Template Imported', 'success');
       } else {
         showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
       }

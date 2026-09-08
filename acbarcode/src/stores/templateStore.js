@@ -16,6 +16,7 @@ export const templates = ref([]);
 export const activeTemplateId = ref('');
 export const activeSubTemplateId = ref('');
 export const templatesLoaded = ref(false);
+export const hasUnsavedDesignerChanges = ref(false);
 
 export const activeTemplate = computed(() =>
   templates.value.find(t => t.id === activeTemplateId.value) || templates.value[0]
@@ -56,6 +57,7 @@ export async function flushTemplateSave() {
   clearTimeout(saveTimer);
   saveTimer = null;
   await saveTemplateNow();
+  hasUnsavedDesignerChanges.value = false;
 }
 
 async function saveTemplateNow() {
@@ -168,7 +170,6 @@ export function copyEnToCn(container = null) {
   const target = container || activeSubTemplate.value || activeTemplate.value;
   if (!target) return;
   target.elements_cn = JSON.parse(JSON.stringify(target.elements_en || []));
-  scheduleSave();
 }
 
 // ── Sub-template CRUD (one level) ───────────────────────────────────────

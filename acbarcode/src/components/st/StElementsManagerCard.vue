@@ -1,9 +1,25 @@
 <template>
   <div class="editor-card">
     <div class="editor-card-header">
-      <div class="header-left">
-        <h3>🎨 Elements</h3>
-        <span class="count-pill">{{ elements.length }}</span>
+      <div class="header-top-row">
+        <div class="header-left">
+          <h3>🎨 Elements</h3>
+          <span class="count-pill">{{ elements.length }}</span>
+          <span v-if="hasUnsavedChanges" class="unsaved-badge" title="Unsaved changes in editor">● Unsaved</span>
+        </div>
+        <div class="header-right">
+          <button 
+            type="button" 
+            class="save-elements-btn" 
+            :class="{ 'has-changes': hasUnsavedChanges }"
+            :disabled="isSaving || !hasUnsavedChanges"
+            @click="emit('save-elements')"
+            :title="hasUnsavedChanges ? 'Save/Update changes to server' : 'All element changes saved'"
+          >
+            <span v-if="isSaving">⏳ Saving...</span>
+            <span v-else>{{ hasUnsavedChanges ? '💾 Save Changes' : '✓ Saved' }}</span>
+          </button>
+        </div>
       </div>
       <div class="add-toolbar">
         <button type="button" class="add-btn" @click="addElement('folder')">+ Folder</button>
@@ -125,8 +141,12 @@ import { showStConfirm } from '../../utils/stDialog.js';
 const props = defineProps({
   elements: { type: Array, required: true },
   canvasConfig: { type: Object, required: true },
-  availableProducts: { type: Array, default: () => [] }
+  availableProducts: { type: Array, default: () => [] },
+  hasUnsavedChanges: { type: Boolean, default: false },
+  isSaving: { type: Boolean, default: false }
 });
+
+const emit = defineEmits(['save-elements']);
 
 /* ── COMPUTED ───────────────────────────────────────────── */
 const folders = computed(() => props.elements.filter(e => e.type === 'folder'));
@@ -969,13 +989,17 @@ const ElementForm = defineComponent({
 
 .editor-card-header {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
   border-bottom: 1px solid #e2e8f0;
   flex-shrink: 0;
+}
+.header-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 .header-left { display: flex; align-items: center; gap: 8px; }
 .header-left h3 { margin: 0; font-size: 1.15rem; font-weight: 600; color: #2d3748; }
@@ -987,11 +1011,56 @@ const ElementForm = defineComponent({
   padding: 1px 7px;
   border-radius: 10px;
 }
+.unsaved-badge {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.2px;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+}
+.save-elements-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 4px 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  border: 1px solid #cbd5e1 !important;
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease;
+  width: auto !important;
+}
+.save-elements-btn.has-changes {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #1d4ed8 !important;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3) !important;
+}
+.save-elements-btn.has-changes:hover:not(:disabled) {
+  background: #1d4ed8 !important;
+  box-shadow: 0 2px 5px rgba(37, 99, 235, 0.4) !important;
+  transform: translateY(-1px);
+}
+.save-elements-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
 .add-toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  flex-shrink: 0;
+  width: 100%;
 }
 .add-btn {
   background: #edf2f7 !important;

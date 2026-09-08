@@ -10,7 +10,7 @@
               type="button"
               class="nav-tab-btn"
               :class="{ active: activeTab === 'maker' }"
-              @click="activeTab = 'maker'"
+              @click="handleTabSwitch('maker')"
             >
               Atlas Copco
             </button>
@@ -18,7 +18,7 @@
               type="button"
               class="nav-tab-btn"
               :class="{ active: activeTab === 'st' }"
-              @click="activeTab = 'st'"
+              @click="handleTabSwitch('st')"
             >
               SUTO-iTEC
             </button>
@@ -47,6 +47,8 @@ import { ref, onMounted } from 'vue';
 import LoginPage from './components/LoginPage.vue';
 import LabelMaker from './components/LabelMaker.vue';
 import StConfirmDialog from './components/st/StConfirmDialog.vue';
+import { hasUnsavedDesignerChanges } from './stores/templateStore.js';
+import { showStConfirm } from './utils/stDialog.js';
 
 const isAuthenticated = ref(false);
 const currentRole = ref('user');
@@ -64,7 +66,32 @@ function onLoginSuccess() {
   currentRole.value = sessionStorage.getItem('acbarcode_role') || 'user';
 }
 
-function handleLogout() {
+async function handleTabSwitch(tab) {
+  if (activeTab.value === tab) return;
+  if (hasUnsavedDesignerChanges.value) {
+    const ok = await showStConfirm({
+      title: 'Unsaved Changes',
+      message: 'You have unsaved changes in the ST Label Designer. Leave without saving?',
+      confirmText: 'Leave without saving',
+      cancelText: 'Stay & Save',
+      type: 'warning'
+    });
+    if (!ok) return;
+  }
+  activeTab.value = tab;
+}
+
+async function handleLogout() {
+  if (hasUnsavedDesignerChanges.value) {
+    const ok = await showStConfirm({
+      title: 'Unsaved Changes',
+      message: 'You have unsaved changes in the ST Label Designer. Are you sure you want to log out?',
+      confirmText: 'Discard & Logout',
+      cancelText: 'Stay & Save',
+      type: 'warning'
+    });
+    if (!ok) return;
+  }
   sessionStorage.removeItem('acbarcode_auth');
   sessionStorage.removeItem('acbarcode_role');
   isAuthenticated.value = false;

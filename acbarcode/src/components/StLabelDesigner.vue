@@ -9,10 +9,10 @@
       :range-count="serialRange.length"
       :active-template="activeTemplate"
       :active-sub-template-id="activeSubTemplateId"
-      @update:active-sub-template-id="setActiveSubTemplate($event)"
+      @update:active-sub-template-id="handleSubTemplateChange($event)"
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
-      @open-templates="$emit('open-templates')"
+      @open-templates="handleOpenTemplates"
     />
 
     <div class="st-editor-layout">
@@ -22,6 +22,9 @@
           :elements="stElements" 
           :canvasConfig="stCanvasConfig" 
           :available-products="allAvailableProducts"
+          :has-unsaved-changes="hasUnsavedChanges"
+          :is-saving="isSaving"
+          @save-elements="saveCurrentElements"
         />
       </div>
 
@@ -58,7 +61,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted, nextTick } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import jsPDF from 'jspdf';
 
 import StHeaderActions from './st/StHeaderActions.vue';
@@ -83,12 +86,13 @@ import {
   activeSubTemplate,
   templatesLoaded,
   loadTemplates,
-  scheduleSave,
+  flushTemplateSave,
+  hasUnsavedDesignerChanges,
   copyEnToCn as storeCopyEnToCn,
   setActiveSubTemplate
 } from '../stores/templateStore.js';
 
-defineEmits(['open-odoo-modal', 'open-templates']);
+const emit = defineEmits(['open-odoo-modal', 'open-templates']);
 
 // ── State ──────────────────────────────────────────────────────────────
 const stSerialNumbersInput = ref('12345678');
@@ -98,6 +102,84 @@ const stProductInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const activeLang = ref('EN'); // 'EN' | 'CN'
+
+const savedSnapshot = ref('');
+const isSaving = ref(false);
+const hasUnsavedChanges = computed({
+  get: () => hasUnsavedDesignerChanges.value,
+  set: (val) => { hasUnsavedDesignerChanges.value = val; }
+});
+
+function takeSnapshot(label) {
+  if (!label) return '';
+  return JSON.stringify({
+    elements_en: label.elements_en || [],
+    elements_cn: label.elements_cn || [],
+    config: label.config || {}
+  });
+}
+
+function revertCurrentLabelToSnapshot() {
+  if (!savedSnapshot.value || !currentLabel.value) return;
+  try {
+    const parsed = JSON.parse(savedSnapshot.value);
+    if (parsed.elements_en) currentLabel.value.elements_en = JSON.parse(JSON.stringify(parsed.elements_en));
+    if (parsed.elements_cn) currentLabel.value.elements_cn = JSON.parse(JSON.stringify(parsed.elements_cn));
+    if (parsed.config) currentLabel.value.config = JSON.parse(JSON.stringify(parsed.config));
+    hasUnsavedChanges.value = false;
+  } catch (err) {
+    console.error('Failed to revert label snapshot:', err);
+  }
+}
+
+async function saveCurrentElements() {
+  if (!currentLabel.value) return;
+  isSaving.value = true;
+  try {
+    await flushTemplateSave();
+    savedSnapshot.value = takeSnapshot(currentLabel.value);
+    hasUnsavedChanges.value = false;
+    showStAlert(`All elements and layout for "${currentLabelName.value}" saved successfully!`, 'Template Saved', 'success');
+  } catch (err) {
+    console.error('Failed to save template elements:', err);
+    showStAlert('Failed to save template: ' + err.message, 'Save Error', 'danger');
+  } finally {
+    isSaving.value = false;
+  }
+}
+
+async function handleSubTemplateChange(newId) {
+  if (newId === (activeSubTemplateId.value || '')) return;
+  if (hasUnsavedChanges.value) {
+    const ok = await showStConfirm({
+      title: 'Unsaved Changes',
+      message: `You have unsaved changes in "${currentLabelName.value}". Discard them and switch?`,
+      confirmText: 'Discard & Switch',
+      cancelText: 'Stay on Current',
+      type: 'warning'
+    });
+    if (!ok) return;
+    revertCurrentLabelToSnapshot();
+  }
+  setActiveSubTemplate(newId);
+  savedSnapshot.value = takeSnapshot(currentLabel.value);
+  hasUnsavedChanges.value = false;
+}
+
+async function handleOpenTemplates() {
+  if (hasUnsavedChanges.value) {
+    const ok = await showStConfirm({
+      title: 'Unsaved Changes',
+      message: `You have unsaved element changes in "${currentLabelName.value}". Leave without saving?`,
+      confirmText: 'Leave without saving',
+      cancelText: 'Stay & Save',
+      type: 'warning'
+    });
+    if (!ok) return;
+    revertCurrentLabelToSnapshot();
+  }
+  emit('open-templates');
+}
 
 // ── Computed ───────────────────────────────────────────────────────────
 const currentLabel = computed(() => activeSubTemplate.value || activeTemplate.value);
@@ -184,7 +266,8 @@ function fetchFromOdooStub() {
 
 function onCopyEnToCn() {
   storeCopyEnToCn(currentLabel.value);
-  showStAlert(`Copied EN layout to CN for "${currentLabelName.value}".`, 'Copy EN → CN', 'success');
+  hasUnsavedChanges.value = true;
+  showStAlert(`Copied EN layout to CN for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Copy EN → CN', 'info');
 }
 
 // ── Per-label JSON export / import (current editor elements) ────────────
@@ -242,8 +325,8 @@ function importSingleTemplateJson(event) {
         } else {
           label.elements_en = JSON.parse(JSON.stringify(importedElements));
         }
-        scheduleSave();
-        showStAlert(`Elements imported into current editor for "${currentLabelName.value}"!`, 'Template Imported', 'success');
+        hasUnsavedChanges.value = true;
+        showStAlert(`Elements imported into current editor for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Template Imported', 'info');
       } else {
         showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
       }
@@ -397,21 +480,56 @@ function updateCanvas() {
 }
 
 watch(
+  () => (currentLabel.value ? takeSnapshot(currentLabel.value) : ''),
+  (newSnap) => {
+    if (!savedSnapshot.value) {
+      savedSnapshot.value = newSnap;
+      hasUnsavedChanges.value = false;
+      return;
+    }
+    hasUnsavedChanges.value = (newSnap !== savedSnapshot.value);
+  }
+);
+
+watch(
+  () => currentLabel.value?.id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      savedSnapshot.value = takeSnapshot(currentLabel.value);
+      hasUnsavedChanges.value = false;
+    }
+  }
+);
+
+watch(
   [activeTemplateId, activeSubTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, stProductInput, currentPreviewIndex, templates],
   async () => {
-    if (templatesLoaded.value) {
-      scheduleSave();
-    }
     await nextTick();
     updateCanvas();
   },
   { deep: true }
 );
 
+function handleBeforeUnload(e) {
+  if (hasUnsavedChanges.value) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('beforeunload', handleBeforeUnload);
   if (!templatesLoaded.value) await loadTemplates();
+  savedSnapshot.value = takeSnapshot(currentLabel.value);
+  hasUnsavedChanges.value = false;
   await nextTick();
   updateCanvas();
+});
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload);
+  hasUnsavedChanges.value = false;
 });
 
 // ── Multi-Label PDF Download ───────────────────────────────────────────

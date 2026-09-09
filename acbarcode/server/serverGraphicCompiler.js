@@ -8,15 +8,24 @@ const PRINTER_DPI = 300;
 
 // Register the bundled Noto Sans webfont so server-side label rendering is
 // identical across OSes (avoids falling back to DejaVu Sans on Ubuntu/Linux).
+// Noto Sans SC adds CJK coverage so Chinese text rasterizes instead of tofu.
 (function registerBundledFonts() {
   const fontsDir = path.join(__dirname, '..', 'public', 'fonts');
-  const regular = path.join(fontsDir, 'NotoSans-Regular.woff2');
-  const bold = path.join(fontsDir, 'NotoSans-Bold.woff2');
-  if (fs.existsSync(regular)) {
-    GlobalFonts.registerFromPath(regular, 'Noto Sans');
-  }
-  if (fs.existsSync(bold)) {
-    GlobalFonts.registerFromPath(bold, 'Noto Sans');
+  const fonts = [
+    ['NotoSans-Regular.woff2', 'Noto Sans', 'normal'],
+    ['NotoSans-Bold.woff2', 'Noto Sans', 'bold'],
+    ['NotoSansSC-Regular.woff2', 'Noto Sans SC', 'normal'],
+    ['NotoSansSC-Bold.woff2', 'Noto Sans SC', 'bold']
+  ];
+  for (const [file, family, style] of fonts) {
+    const p = path.join(fontsDir, file);
+    if (fs.existsSync(p)) {
+      try {
+        GlobalFonts.registerFromPath(p, family, { style });
+      } catch (err) {
+        console.warn(`Failed to register font ${file}:`, err.message);
+      }
+    }
   }
 })();
 

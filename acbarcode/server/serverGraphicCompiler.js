@@ -1,10 +1,24 @@
-const { createCanvas, Image, loadImage } = require('@napi-rs/canvas');
+const { createCanvas, Image, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const QRCode = require('qrcode');
 const JsBarcode = require('jsbarcode');
 const path = require('path');
 const fs = require('fs');
 
 const PRINTER_DPI = 300;
+
+// Register the bundled Noto Sans webfont so server-side label rendering is
+// identical across OSes (avoids falling back to DejaVu Sans on Ubuntu/Linux).
+(function registerBundledFonts() {
+  const fontsDir = path.join(__dirname, '..', 'public', 'fonts');
+  const regular = path.join(fontsDir, 'NotoSans-Regular.woff2');
+  const bold = path.join(fontsDir, 'NotoSans-Bold.woff2');
+  if (fs.existsSync(regular)) {
+    GlobalFonts.registerFromPath(regular, 'Noto Sans');
+  }
+  if (fs.existsSync(bold)) {
+    GlobalFonts.registerFromPath(bold, 'Noto Sans');
+  }
+})();
 
 // In-memory image cache for server
 const serverImageCache = new Map();

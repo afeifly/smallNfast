@@ -640,7 +640,7 @@ async function deleteProduct(itemNumber) {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
-  font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Noto Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   min-height: 100vh;
 }
 

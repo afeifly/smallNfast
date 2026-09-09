@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from tkinter import ttk
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -180,9 +181,10 @@ def enum_printers():
     ]
 
 
-def raw_print(ezpl, document_name):
-    record("PRINT", "OpenPrinter(%s)" % CONFIG["printer_name"])
-    printer = win32print.OpenPrinter(CONFIG["printer_name"])
+def raw_print(ezpl, document_name, printer_name=None):
+    target = printer_name or CONFIG["printer_name"]
+    record("PRINT", "OpenPrinter(%s)" % target)
+    printer = win32print.OpenPrinter(target)
 
     try:
         record("PRINT", "StartDocPrinter(%s)" % document_name)
@@ -341,6 +343,26 @@ class PrintBridgeHandler(BaseHTTPRequestHandler):
                     "ezpl_list must be a non-empty list"
                 )
 
+            requested_printer = data.get("printer")
+            if requested_printer is not None and not isinstance(
+                requested_printer, str
+            ):
+                raise ValueError("printer must be a string")
+
+            if requested_printer:
+                try:
+                    available = enum_printers()
+                except Exception:
+                    available = []
+                if requested_printer not in available:
+                    raise ValueError(
+                        "Requested printer %r is not installed"
+                        % requested_printer
+                    )
+                effective_printer = requested_printer
+            else:
+                effective_printer = CONFIG["printer_name"]
+
             fingerprint = hashlib.sha256(
                 json.dumps(
                     data,
@@ -380,7 +402,7 @@ class PrintBridgeHandler(BaseHTTPRequestHandler):
                         {
                             "ok": True,
                             "printed": 0,
-                            "printer": CONFIG["printer_name"],
+                            "printer": effective_printer,
                             "job_ids": [],
                             "duplicate": True,
                         },
@@ -419,6 +441,7 @@ class PrintBridgeHandler(BaseHTTPRequestHandler):
                 job_id = raw_print(
                     ezpl,
                     "Odoo ST Label %d" % index,
+                    effective_printer,
                 )
                 job_ids.append(job_id)
 
@@ -430,19 +453,19 @@ class PrintBridgeHandler(BaseHTTPRequestHandler):
                 {
                     "ok": True,
                     "printed": len(job_ids),
-                    "printer": CONFIG["printer_name"],
+                    "printer": effective_printer,
                     "job_ids": job_ids,
                 },
             )
             record(
                 "INFO",
                 "Printed %d label(s) on %s"
-                % (len(job_ids), CONFIG["printer_name"]),
+                % (len(job_ids), effective_printer),
             )
             notify(
                 "Print job done",
                 "Printed %d label(s) on %s"
-                % (len(job_ids), CONFIG["printer_name"]),
+                % (len(job_ids), effective_printer),
             )
 
         except Exception as error:
@@ -571,6 +594,35 @@ class StatusWindow:
         )
         self.lbl_counts.pack(anchor=tk.W, pady=6)
 
+        selector = tk.Frame(header)
+        selector.pack(anchor=tk.W, pady=(0, 2))
+
+        tk.Label(
+            selector,
+            text="Print to:",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        self.printer_combo = ttk.Combobox(
+            selector,
+            state="readonly",
+            width=44,
+        )
+        self.printer_combo.pack(side=tk.LEFT)
+
+        tk.Button(
+            selector,
+            text="Set as default",
+            command=self.apply_default_printer,
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        self.lbl_printer_hint = tk.Label(
+            selector,
+            font=("Segoe UI", 8),
+            fg="#888888",
+        )
+        self.lbl_printer_hint.pack(side=tk.LEFT, padx=(8, 0))
+
         tk.Label(
             header,
             text="Log file: %s"
@@ -627,6 +679,13 @@ class StatusWindow:
             PRINTER_FOUND = False
             record("ERROR", "EnumPrinters failed: %s" % error)
 
+        self.printer_list = printers
+        self.printer_combo["values"] = printers
+        if CONFIG["printer_name"] in printers:
+            self.printer_combo.set(CONFIG["printer_name"])
+        elif printers and not self.printer_combo.get():
+            self.printer_combo.set(printers[0])
+
         record(
             "INFO",
             "Printer check: %s %s, %d printer(s) detected"
@@ -639,6 +698,18 @@ class StatusWindow:
 
         self.refresh_status()
 
+    def apply_default_printer(self):
+        global PRINTER_FOUND
+        chosen = self.printer_combo.get()
+        if not chosen:
+            return
+        CONFIG["printer_name"] = chosen
+        save_config()
+        PRINTER_FOUND = True
+        record("INFO", "Default printer set to %s" % chosen)
+        self.refresh_status()
+        notify("Printer changed", "Default printer is now %s" % chosen)
+
     def refresh_status(self):
         self.lbl_service.config(
             text="http://%s:%d" % (CONFIG["host"], CONFIG["port"])
@@ -647,6 +718,9 @@ class StatusWindow:
         self.lbl_found.config(
             text="yes" if PRINTER_FOUND else "no",
             fg="#38761d" if PRINTER_FOUND else "#cc0000",
+        )
+        self.lbl_printer_hint.config(
+            text="%d printer(s) detected" % len(self.printer_list)
         )
         with STATS_LOCK:
             counts = (

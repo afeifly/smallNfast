@@ -103,7 +103,7 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
       const fontSizePx = ptToPx(el.fontSize || 4);
       const fontWeight = el.bold ? 'bold' : 'normal';
       const customFont = el.fontFamily ? `"${el.fontFamily}", ` : '';
-      ctx.font = `${fontWeight} ${fontSizePx}px ${customFont}"Noto Sans", "Noto Sans SC", "Segoe UI", "Arial", "Helvetica", "DejaVu Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+      ctx.font = `${fontWeight} ${fontSizePx}px "Noto Sans", ${customFont}"Noto Sans SC", "Segoe UI", "Arial", "Helvetica", "DejaVu Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';

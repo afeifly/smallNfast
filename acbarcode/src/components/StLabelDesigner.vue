@@ -482,6 +482,25 @@ function updateCanvas() {
   }
 }
 
+// Ensure the bundled label fonts are fully loaded before drawing, so the
+// canvas does not fall back to a different OS font (e.g. DejaVu Sans on
+// Ubuntu) and stays pixel-identical across machines.
+async function ensureLabelFonts() {
+  try {
+    if (document && document.fonts && document.fonts.load) {
+      await Promise.all([
+        document.fonts.load('400 10px "Noto Sans"'),
+        document.fonts.load('700 10px "Noto Sans"'),
+        document.fonts.load('400 10px "Noto Sans SC"')
+      ]);
+    }
+  } catch (err) {
+    console.warn('Font preload failed, using fallback fonts:', err);
+  }
+  await nextTick();
+  updateCanvas();
+}
+
 watch(
   () => (currentLabel.value ? takeSnapshot(currentLabel.value) : ''),
   (newSnap) => {
@@ -526,8 +545,10 @@ onMounted(async () => {
   if (!templatesLoaded.value) await loadTemplates();
   savedSnapshot.value = takeSnapshot(currentLabel.value);
   hasUnsavedChanges.value = false;
-  await nextTick();
-  updateCanvas();
+  await ensureLabelFonts();
+  if (document && document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => updateCanvas()).catch(() => {});
+  }
 });
 
 onUnmounted(() => {

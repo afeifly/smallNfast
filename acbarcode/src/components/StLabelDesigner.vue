@@ -112,11 +112,14 @@ const hasUnsavedChanges = computed({
 
 function takeSnapshot(label) {
   if (!label) return '';
-  return JSON.stringify({
-    elements_en: label.elements_en || [],
-    elements_cn: label.elements_cn || [],
-    config: label.config || {}
-  });
+  return JSON.stringify(
+    {
+      elements_en: label.elements_en || [],
+      elements_cn: label.elements_cn || [],
+      config: label.config || {}
+    },
+    (key, value) => (key === 'expanded' ? undefined : value)
+  );
 }
 
 function revertCurrentLabelToSnapshot() {

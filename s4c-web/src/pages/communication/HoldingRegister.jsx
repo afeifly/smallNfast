@@ -147,10 +147,6 @@ const HoldingRegister = () => {
       ["Protocol:", "[Modbus]"],
       ["Slave address:", `[${slaveConfig.address ?? 3}]`],
       ["Baud rate:", `[${slaveConfig.baudrate ?? 19200}]`],
-      ["Interframe spacing char:", "[7]"],
-      ["Interframe spacing US:", "[2005]"],
-      ["Response delay:", "[3]"],
-      ["Response timeout(s):", `[${slaveConfig.responseTimeout ?? 10}]`],
       ["Return error value:", "[-9999.0]"],
       [""],
       [
@@ -165,6 +161,8 @@ const HoldingRegister = () => {
         "Func code"
       ]
     ];
+
+    const headerRowIndex = aoa.length - 1;
 
     if (allChannels.length === 0) {
       aoa.push(["No channels configured", "", "", "", "", "", "", "", ""]);
@@ -220,16 +218,16 @@ const HoldingRegister = () => {
     // Set Row Heights matching the Go code
     const rowsHeights = [];
     rowsHeights[0] = { hpt: 30 }; // Row 1 (Title)
-    for (let r = 1; r < 12; r++) {
+    for (let r = 1; r < headerRowIndex; r++) {
       rowsHeights[r] = { hpt: 20 }; // Basic communication block rows
     }
-    rowsHeights[12] = { hpt: 25 }; // Header row
+    rowsHeights[headerRowIndex] = { hpt: 25 }; // Header row
     if (allChannels.length === 0) {
-      rowsHeights[13] = { hpt: 30 }; // Empty data row
-      rowsHeights[14] = { hpt: 20 };
-      rowsHeights[15] = { hpt: 20 };
+      rowsHeights[headerRowIndex + 1] = { hpt: 30 }; // Empty data row
+      rowsHeights[headerRowIndex + 2] = { hpt: 20 };
+      rowsHeights[headerRowIndex + 3] = { hpt: 20 };
     } else {
-      for (let r = 13; r < aoa.length; r++) {
+      for (let r = headerRowIndex + 1; r < aoa.length; r++) {
         rowsHeights[r] = { hpt: 20 }; // Data and bottom rows
       }
     }
@@ -240,7 +238,7 @@ const HoldingRegister = () => {
       { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }
     ];
     if (allChannels.length === 0) {
-      merges.push({ s: { r: 13, c: 0 }, e: { r: 13, c: 8 } });
+      merges.push({ s: { r: headerRowIndex + 1, c: 0 }, e: { r: headerRowIndex + 1, c: 8 } });
     }
     merges.push({ s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 8 } });
     ws['!merges'] = merges;
@@ -290,8 +288,8 @@ const HoldingRegister = () => {
 
     // Traverse and apply styles to all cells (including empty grid cells)
     for (let r = 0; r < aoa.length; r++) {
-      const isTableArea = (r === 12 || (r >= 13 && r < aoa.length - 2));
-      const isTopArea = (r >= 0 && r <= 11);
+      const isTableArea = (r === headerRowIndex || (r >= headerRowIndex + 1 && r < aoa.length - 2));
+      const isTopArea = (r >= 0 && r < headerRowIndex);
       
       for (let c = 0; c < 9; c++) {
         const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
@@ -305,13 +303,13 @@ const HoldingRegister = () => {
 
         if (r === 0) {
           ws[cellRef].s = titleStyle;
-        } else if (r >= 1 && r <= 11) {
+        } else if (r >= 1 && r < headerRowIndex) {
           ws[cellRef].s = settingsStyle;
-        } else if (r === 12) {
+        } else if (r === headerRowIndex) {
           ws[cellRef].s = headerStyle;
-        } else if (allChannels.length === 0 && r === 13) {
+        } else if (allChannels.length === 0 && r === headerRowIndex + 1) {
           ws[cellRef].s = emptyStyle;
-        } else if (r >= 13 && r < aoa.length - 2) {
+        } else if (r >= headerRowIndex + 1 && r < aoa.length - 2) {
           ws[cellRef].s = dataStyle;
         } else if (r === aoa.length - 1) {
           ws[cellRef].s = infoStyle;
@@ -353,7 +351,7 @@ const HoldingRegister = () => {
       </header>
 
       <div className="holding-content">
-        {/* Summary Box - RESTORED STYLE */}
+        {/* Summary Box */}
         <div className="holding-summary-box">
           <div className="summary-column">
             <div className="summary-item">
@@ -364,10 +362,6 @@ const HoldingRegister = () => {
               <label>{t('Baud rate')}</label>
               <span>{slaveConfig.baudrate ?? 19200}</span>
             </div>
-            <div className="summary-item">
-              <label>{t('Response delay')}</label>
-              <span>3</span>
-            </div>
           </div>
 
           <div className="summary-column">
@@ -376,12 +370,8 @@ const HoldingRegister = () => {
               <span>Modbus</span>
             </div>
             <div className="summary-item">
-              <label>{t('Interframe spacing char')}</label>
-              <span>7</span>
-            </div>
-            <div className="summary-item">
-              <label>{t('Response timeout(s)')}</label>
-              <span>{slaveConfig.responseTimeout ?? 10}</span>
+              <label>{t('Return error value')}</label>
+              <span>-9999.0</span>
             </div>
           </div>
 
@@ -389,14 +379,6 @@ const HoldingRegister = () => {
             <div className="summary-item">
               <label>{t('Slave address')}</label>
               <span>{slaveConfig.address ?? 3}</span>
-            </div>
-            <div className="summary-item">
-              <label>{t('Interframe spacing us')}</label>
-              <span>2005</span>
-            </div>
-            <div className="summary-item">
-              <label>{t('Return error value')}</label>
-              <span>-9999.0</span>
             </div>
           </div>
         </div>

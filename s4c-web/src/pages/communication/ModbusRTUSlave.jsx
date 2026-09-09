@@ -8,7 +8,6 @@ const ModbusRTUSlave = () => {
   const { t } = useLanguage();
   const [baudRate, setBaudRate] = useState(19200);
   const [parity, setParity] = useState(3);
-  const [timeout, setTimeoutVal] = useState(10);
   const [address, setAddress] = useState(1);
 
   // Dynamically find the config path
@@ -20,7 +19,6 @@ const ModbusRTUSlave = () => {
     if (slaveConfig) {
       setBaudRate(slaveConfig.baudrate ?? 19200);
       setParity(slaveConfig.parityFrameIndex ?? 3);
-      setTimeoutVal(slaveConfig.responseTimeout ?? 10);
       setAddress(slaveConfig.address ?? 1);
     }
   }, [slaveConfig]);
@@ -118,27 +116,6 @@ const ModbusRTUSlave = () => {
                 <option value={1}>8,O,1</option>
                 <option value={2}>8,N,2</option>
               </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="modbus-row">
-          <div className="modbus-field">
-            <label className="modbus-label">{t('Response timeout(s)')} <span className="required">*</span></label>
-            <div className="modbus-input-container">
-              <input 
-                type="number"
-                className="modbus-input"
-                value={timeout}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setTimeoutVal(val);
-                  updateConfig('responseTimeout', val);
-                }}
-                min="1"
-                max="25"
-              />
-              <span className="modbus-range-hint">(1~25)</span>
             </div>
           </div>
         </div>

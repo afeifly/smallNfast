@@ -152,4 +152,25 @@ describe('HoldingRegister', () => {
     expect(cells4[2].textContent).toBe('Analog Chan 1');
     expect(cells4[3].textContent).toBe('6'); // 2 * 3
   });
+
+  it('hides Interframe spacing char, Interframe spacing us, Response delay, and Response timeout(s)', () => {
+    render(
+      <LanguageProvider>
+        <HoldingRegister />
+      </LanguageProvider>
+    );
+
+    // Verify expected summary items are present
+    expect(screen.getByText('Communication')).toBeInTheDocument();
+    expect(screen.getByText('Protocol')).toBeInTheDocument();
+    expect(screen.getByText('Slave address')).toBeInTheDocument();
+    expect(screen.getByText('Baud rate')).toBeInTheDocument();
+    expect(screen.getByText('Return error value')).toBeInTheDocument();
+
+    // Verify hidden items are not present
+    expect(screen.queryByText('Interframe spacing char')).not.toBeInTheDocument();
+    expect(screen.queryByText('Interframe spacing us')).not.toBeInTheDocument();
+    expect(screen.queryByText('Response delay')).not.toBeInTheDocument();
+    expect(screen.queryByText('Response timeout(s)')).not.toBeInTheDocument();
+  });
 });

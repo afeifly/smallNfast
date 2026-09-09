@@ -140,11 +140,72 @@ export async function exportConfigPackage(configs, summary, originalFileMap) {
 
   console.log('[Export] Original fileMap keys:', Array.from(fileMap.keys()));
 
-  // 1. Update/Add all JSON configs back to the fileMap
-  for (const [path, data] of Object.entries(configs)) {
+  // Clone configs to avoid mutating caller's original object
+  const exportConfigs = { ...configs };
+
+  // 1. Upgrade cfgcommunicatport.json to communication config version 1.1.0 (retcp updates)
+  const commPath = Object.keys(exportConfigs).find(p => p.endsWith('cfgcommunicatport.json'));
+  if (commPath && exportConfigs[commPath] && typeof exportConfigs[commPath] === 'object') {
+    const currentComm = exportConfigs[commPath];
+    const currentRetcp = currentComm.retcp || {};
+    exportConfigs[commPath] = {
+      ...currentComm,
+      retcp: {
+        address: currentRetcp.address ?? 3,
+        protocol: currentRetcp.protocol ?? 3,
+        parityFrameIndex: currentRetcp.parityFrameIndex ?? 3,
+        responseTimeout: currentRetcp.responseTimeout ?? 10,
+        responseDelay: currentRetcp.responseDelay ?? 5,
+        interframeSpacingUs: currentRetcp.interframeSpacingUs ?? 2005,
+        interframeSpacingChar: currentRetcp.interframeSpacingChar ?? 7,
+        transmissionMode: currentRetcp.transmissionMode ?? 0,
+        control: currentRetcp.control ?? 40961,
+        errorvalue: currentRetcp.errorvalue ?? 9999,
+        ...currentRetcp,
+        connectTimeout: currentRetcp.connectTimeout ?? 250,
+        port: currentRetcp.port ?? 502,
+        readWriteTimeout: currentRetcp.readWriteTimeout ?? 260
+      }
+    };
+  }
+
+  // Update/Add all JSON configs back to the fileMap
+  for (const [path, data] of Object.entries(exportConfigs)) {
     const jsonString = JSON.stringify(data, null, 2);
     fileMap.set(path, encoder.encode(jsonString));
     console.log(`[Export] Serialized config: ${path} (${jsonString.length} bytes)`);
+  }
+
+  // If cfgcommunicatport was in fileMap but not in configs, upgrade it as well
+  if (!commPath) {
+    for (const [path, content] of fileMap.entries()) {
+      if (path.endsWith('cfgcommunicatport.json')) {
+        try {
+          const decoder = new TextDecoder();
+          const parsed = JSON.parse(decoder.decode(content));
+          const currentRetcp = parsed.retcp || {};
+          parsed.retcp = {
+            address: currentRetcp.address ?? 3,
+            protocol: currentRetcp.protocol ?? 3,
+            parityFrameIndex: currentRetcp.parityFrameIndex ?? 3,
+            responseTimeout: currentRetcp.responseTimeout ?? 10,
+            responseDelay: currentRetcp.responseDelay ?? 5,
+            interframeSpacingUs: currentRetcp.interframeSpacingUs ?? 2005,
+            interframeSpacingChar: currentRetcp.interframeSpacingChar ?? 7,
+            transmissionMode: currentRetcp.transmissionMode ?? 0,
+            control: currentRetcp.control ?? 40961,
+            errorvalue: currentRetcp.errorvalue ?? 9999,
+            ...currentRetcp,
+            connectTimeout: currentRetcp.connectTimeout ?? 250,
+            port: currentRetcp.port ?? 502,
+            readWriteTimeout: currentRetcp.readWriteTimeout ?? 260
+          };
+          fileMap.set(path, encoder.encode(JSON.stringify(parsed, null, 2)));
+        } catch (e) {
+          console.warn('[Export] Failed to parse cfgcommunicatport from fileMap:', e);
+        }
+      }
+    }
   }
 
   // 2. Remove summary.yml temporarily to calculate hash of payload
@@ -156,12 +217,27 @@ export async function exportConfigPackage(configs, summary, originalFileMap) {
   console.log('[Export] Old hash: %s', summary.hash);
   console.log('[Export] New hash: %s', newHash);
 
-  // 4. Update summary with new hash and timestamp
+  // 4. Update summary with new hash, timestamp, and update communication config version to 1.1.0 in fileversions
   const updatedSummary = {
     ...summary,
     hash: newHash,
     'Config-Date': new Date().toISOString()
   };
+
+  if (updatedSummary.fileversions) {
+    const updatedFileversions = { ...updatedSummary.fileversions };
+    let found = false;
+    for (const key of Object.keys(updatedFileversions)) {
+      if (key.endsWith('cfgcommunicatport.json')) {
+        updatedFileversions[key] = '1.1.0';
+        found = true;
+      }
+    }
+    if (!found) {
+      updatedFileversions['/system/cfgcommunicatport.json'] = '1.1.0';
+    }
+    updatedSummary.fileversions = updatedFileversions;
+  }
 
   // 5. Add updated summary.yml
   const summaryContent = generateSummary(updatedSummary);

@@ -133,7 +133,7 @@ const ConfigManager = () => {
           '/config/cfgOptionBoard.json': '1.0.0',
           '/config/cfglogger.json': '1.0.0',
           '/system/backlight.json': '1.0.0',
-          '/system/cfgcommunicatport.json': '1.0.0',
+          '/system/cfgcommunicatport.json': '1.1.0',
           '/system/system_info.json': '1.0.0'
         }
       };
@@ -149,7 +149,21 @@ const ConfigManager = () => {
         'system/cfgcommunicatport.json': {
           rs485m0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10 },
           rs485s0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10, address: 1 },
-          retcp: { protocol: 3 }
+          retcp: {
+            address: 3,
+            protocol: 3,
+            parityFrameIndex: 3,
+            responseTimeout: 10,
+            responseDelay: 5,
+            interframeSpacingUs: 2005,
+            interframeSpacingChar: 7,
+            transmissionMode: 0,
+            control: 40961,
+            errorvalue: 9999,
+            connectTimeout: 250,
+            port: 502,
+            readWriteTimeout: 260
+          }
         },
         'system/system_info.json': {
           language_config: { language: 'en', local_id: 9 },

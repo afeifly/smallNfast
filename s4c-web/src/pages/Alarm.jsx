@@ -22,7 +22,7 @@ import './sensorconfiguration/SUTOSensor.css';
    Relay Mapping Table (relay_id -> relay_address, relay_ch_id)
    ───────────────────────────────────────────────────────────────────────────── */
 const RELAY_MAPPING = {
-  0: { label: 'None', address: 0, chId: 0 },
+  0: { label: 'N/A', address: 0, chId: 0 },
   1: { label: 'Relay 1', address: 1, chId: 2 },
   2: { label: 'Relay 2', address: 1, chId: 1 },
   9: { label: 'Relay X9', address: 2, chId: 4 },
@@ -560,7 +560,7 @@ const Alarm = () => {
                           value={alarm.RelayId}
                           onChange={(e) => updateAlarm(alarm.config_id, 'RelayId', e.target.value)}
                         >
-                          <option value="0">{t('None')}</option>
+                          <option value="0">{t('N/A')}</option>
                           <option value="1">{t('Relay')} 1</option>
                           <option value="2">{t('Relay')} 2</option>
                           <option value="9">{t('Relay')} X9</option>

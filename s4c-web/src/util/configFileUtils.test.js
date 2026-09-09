@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateConfigHash, parseSummary, generateSummary, exportConfigPackage } from './configFileUtils';
+import { calculateConfigHash, parseSummary, generateSummary, exportConfigPackage, unzipConfigFile } from './configFileUtils';
 
 const encoder = new TextEncoder();
 
@@ -145,5 +145,48 @@ describe('exportConfigPackage', () => {
     expect(blob.size).toBeGreaterThan(0);
     // origMap should still have preserved.txt (it was not mutated)
     expect(origMap.has('preserved.txt')).toBe(true);
+  });
+
+  it('updates communication config version to 1.1.0 in summary.yml and adds connectTimeout, port, readWriteTimeout to retcp', async () => {
+    const configs = {
+      'system/cfgcommunicatport.json': {
+        rs485m0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10 },
+        rs485s0: { baudrate: 19200, parityFrameIndex: 3, responseTimeout: 10, address: 1 },
+        retcp: { protocol: 3 }
+      }
+    };
+    const summary = {
+      version: '1.0.0',
+      fileversions: {
+        '/config/Alarm.db': '1.0.0',
+        '/system/cfgcommunicatport.json': '1.0.0'
+      }
+    };
+
+    const blob = await exportConfigPackage(configs, summary);
+    const unzipped = await unzipConfigFile(blob);
+
+    const exportedSummary = parseSummary(unzipped);
+    expect(exportedSummary.fileversions['/system/cfgcommunicatport.json']).toBe('1.1.0');
+
+    const decoder = new TextDecoder();
+    const commConfigContent = decoder.decode(unzipped.get('system/cfgcommunicatport.json'));
+    const commConfig = JSON.parse(commConfigContent);
+
+    expect(commConfig.retcp).toEqual({
+      address: 3,
+      protocol: 3,
+      parityFrameIndex: 3,
+      responseTimeout: 10,
+      responseDelay: 5,
+      interframeSpacingUs: 2005,
+      interframeSpacingChar: 7,
+      transmissionMode: 0,
+      control: 40961,
+      errorvalue: 9999,
+      connectTimeout: 250,
+      port: 502,
+      readWriteTimeout: 260
+    });
   });
 });

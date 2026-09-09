@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useConfig } from '../../context/ConfigContext';
 import { useLanguage } from '../../context/LanguageContext';
 import './ModbusTCP.css';
@@ -15,6 +15,12 @@ const ModbusTCP = () => {
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
   const currentConfig = configData?.configs?.[configPath];
   const tcpConfig = currentConfig?.retcp;
+
+  useEffect(() => {
+    if (tcpConfig?.port !== undefined) {
+      setPort(String(tcpConfig.port));
+    }
+  }, [tcpConfig?.port]);
 
   const updateConfig = (field, value) => {
     if (!configPath || !currentConfig) return;
@@ -116,7 +122,11 @@ const ModbusTCP = () => {
                     type="number"
                     className="modbus-input"
                     value={port}
-                    onChange={(e) => setPort(e.target.value)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setPort(e.target.value);
+                      updateConfig('port', val);
+                    }}
                   />
                 </div>
               </div>

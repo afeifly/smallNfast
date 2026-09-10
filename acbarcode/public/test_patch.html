@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ST Label & Patch API Test Bench</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --purple: #a855f7;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --input-bg: #0f172a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      background: #0369a1;
+      color: #e0f2fe;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .server-config {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .server-config input {
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      width: 240px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--accent);
+    }
+    .step-num {
+      background: var(--accent);
+      color: var(--bg);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+    .fg {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input, textarea, select {
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: var(--accent);
+      color: #0f172a;
+      border: none;
+      padding: 9px 16px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    button:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+    button.btn-purple {
+      background: var(--purple);
+      color: #fff;
+    }
+    button.btn-purple:hover {
+      background: #9333ea;
+    }
+    button.btn-secondary {
+      background: #334155;
+      color: var(--text);
+    }
+    button.btn-secondary:hover {
+      background: #475569;
+    }
+    .quick-pill {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #334155;
+      color: #cbd5e1;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .quick-pill:hover {
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .patches-container {
+      background: #0f172a;
+      border: 1px dashed var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .patch-item {
+      display: grid;
+      grid-template-columns: 140px 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .patch-key-tag {
+      background: #1e3a8a;
+      color: #93c5fd;
+      font-family: monospace;
+      font-size: 0.85rem;
+      padding: 6px 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .preview-box {
+      background: #000;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+      position: relative;
+    }
+    .preview-img {
+      max-width: 100%;
+      height: auto;
+      max-height: 240px;
+      border: 1px solid #475569;
+      background: white;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+    .status-msg {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .raw-output {
+      background: #090d16;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 0.78rem;
+      max-height: 180px;
+      overflow-y: auto;
+      color: #a5f3fc;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tag-item {
+      background: #1e3a8a;
+      color: #bfdbfe;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>🏷️ ST Label & Patch API Test Bench <span class="badge">v1.0</span></h1>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+          Send <code>POST /st_label</code> and <code>POST /st_label_patch</code> to verify EZPL and preview generation.
+        </p>
+      </div>
+      <div class="server-config">
+        <label style="margin: 0;">API Base:</label>
+        <input type="text" id="apiBase" value="http://localhost:5005" placeholder="http://localhost:5005">
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- ── STEP 1: /st_label ────────────────────────── -->
+      <div class="card">
+        <div class="card-title">
+          <span><span class="step-num">1</span> Standard Label (<code>/st_label</code>)</span>
+          <span id="stLabelStatus" style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">Ready</span>
+        </div>
+
+        <div class="fg">
+          <label>Product Item Number</label>
+          <input type="text" id="stProduct" value="S695 4120" placeholder="e.g. S695 4120">
+          <div class="btn-row" style="margin-top: 4px;">
+            <span class="quick-pill" onclick="setProduct('S695 4120')">S695 4120</span>
+            <span class="quick-pill" onclick="setProduct('S695 4035')">S695 4035</span>
+            <span class="quick-pill" onclick="setProduct('S403')">S403</span>
+          </div>
+        </div>
+
+        <div class="fg">
+          <label>Serial Numbers (comma or newline separated)</label>
+          <textarea id="stSerials" rows="2" placeholder="SN001, SN002">SN001</textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="fg">
+            <label>Options</label>
+            <input type="text" id="stOptions" value="Standard">
+          </div>
+          <div class="fg">
+            <label>Language</label>
+            <select id="stLang">
+              <option value="en" selected>English (en)</option>
+              <option value="cn">Chinese (cn)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" onclick="sendStLabel()">
+          <span>🚀 Send POST /st_label</span>
+        </button>
+
+        <!-- Available Patches Detected -->
+        <div class="fg">
+          <label>Available Patches in Template</label>
+          <div id="detectedPatches" class="tag-list">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Send /st_label first to detect available patches</span>
+          </div>
+        </div>
+
+        <!-- Preview for Step 1 -->
+        <div class="fg">
+          <label>Live Preview (/st_label)</label>
+          <div class="preview-box">
+            <img id="stPreviewImg" class="preview-img" style="display: none;" alt="Preview">
+            <span id="stPreviewPlaceholder" class="status-msg">No preview generated yet</span>
+          </div>
+        </div>
+
+        <!-- Raw Response /st_label -->
+        <div class="fg">
+          <label>Response Summary</label>
+          <pre id="stResponseJson" class="raw-output">Response will appear here...</pre>
+        </div>
+      </div>
+
+      <!-- ── STEP 2: /st_label_patch ──────────────────── -->
+      <div class="card">
+        <div class="card-title">
+          <span><span class="step-num" style="background: var(--purple);">2</span> Patch Label (<code>/st_label_patch</code>)</span>
+          <span id="patchStatus" style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">Ready</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="fg">
+            <label>Product</label>
+            <input type="text" id="patchProduct" value="S695 4120">
+          </div>
+          <div class="fg">
+            <label>Target Serial (Single SN)</label>
+            <input type="text" id="patchSerial" value="SN001">
+          </div>
+        </div>
+
+        <!-- Dynamic Patch Fields -->
+        <div class="fg">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label>Patch Key Overrides</label>
+            <button type="button" class="btn-secondary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="addCustomPatchRow()">+ Add Field</button>
+          </div>
+          <div id="patchFieldsList" class="patches-container">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">No patch keys configured. Run Step 1 or add one manually.</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn-purple" onclick="sendStLabelPatch()">
+          <span>🩹 Send POST /st_label_patch</span>
+        </button>
+
+        <!-- Preview for Step 2 -->
+        <div class="fg">
+          <label>Live Patched Preview (/st_label_patch)</label>
+          <div class="preview-box" style="border-color: #581c87;">
+            <img id="patchPreviewImg" class="preview-img" style="display: none;" alt="Patched Preview">
+            <span id="patchPreviewPlaceholder" class="status-msg">Click 'Send POST /st_label_patch' to test</span>
+          </div>
+        </div>
+
+        <!-- Raw Response /st_label_patch -->
+        <div class="fg">
+          <label>Patched Response Summary & EZPL</label>
+          <pre id="patchResponseJson" class="raw-output">Patched response will appear here...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Auto sync product
+    function setProduct(val) {
+      document.getElementById('stProduct').value = val;
+      document.getElementById('patchProduct').value = val;
+    }
+
+    document.getElementById('stProduct').addEventListener('input', e => {
+      document.getElementById('patchProduct').value = e.target.value;
+    });
+
+    function getApiBase() {
+      const val = document.getElementById('apiBase').value.trim().replace(/\/+$/, '');
+      return val || window.location.origin;
+    }
+
+    // ── Send POST /st_label ─────────────────────────────────────────
+    async function sendStLabel() {
+      const statusEl = document.getElementById('stLabelStatus');
+      const responseEl = document.getElementById('stResponseJson');
+      const previewImg = document.getElementById('stPreviewImg');
+      const placeholder = document.getElementById('stPreviewPlaceholder');
+      const detectedPatchesEl = document.getElementById('detectedPatches');
+
+      statusEl.textContent = 'Sending...';
+      responseEl.textContent = 'Request in progress...';
+
+      const rawSerials = document.getElementById('stSerials').value;
+      const serial_numbers = rawSerials
+        .split(/[\n,]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      const payload = {
+        product: document.getElementById('stProduct').value.trim(),
+        serial_numbers: serial_numbers.length > 0 ? serial_numbers : ['SN001'],
+        options: document.getElementById('stOptions').value.trim(),
+        lang: document.getElementById('stLang').value
+      };
+
+      try {
+        const res = await fetch(`${getApiBase()}/st_label`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        statusEl.textContent = `HTTP ${res.status}`;
+
+        responseEl.textContent = JSON.stringify({
+          available_patches: data.available_patches,
+          total_serials: data.total_serials,
+          templates: (data.templates || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            total_labels: t.total_labels,
+            first_item_serial: t.items?.[0]?.serial,
+            has_preview: !!t.items?.[0]?.preview_image,
+            ezpl_length: t.items?.[0]?.ezpl?.length || 0
+          }))
+        }, null, 2);
+
+        // Update preview image
+        const firstItem = data.templates?.[0]?.items?.[0];
+        if (firstItem?.preview_image) {
+          previewImg.src = firstItem.preview_image;
+          previewImg.style.display = 'block';
+          placeholder.style.display = 'none';
+        } else {
+          previewImg.style.display = 'none';
+          placeholder.textContent = 'No preview image returned';
+          placeholder.style.display = 'block';
+        }
+
+        // Set serial for patch step
+        if (serial_numbers.length > 0) {
+          document.getElementById('patchSerial').value = serial_numbers[0];
+        }
+
+        // Render detected available_patches
+        detectedPatchesEl.innerHTML = '';
+        const patches = data.available_patches || [];
+        if (patches.length === 0) {
+          detectedPatchesEl.innerHTML = '<span style="font-size:0.8rem;color:#94a3b8;">No patchable elements found in this template. (Assign 🩹 Patch Name in designer)</span>';
+        } else {
+          patches.forEach(p => {
+            const span = document.createElement('span');
+            span.className = 'tag-item';
+            span.innerHTML = `🩹 <b>${escapeHtml(p.patchName)}</b> ${p.title && p.title !== p.patchName ? '(' + escapeHtml(p.title) + ')' : ''}`;
+            detectedPatchesEl.appendChild(span);
+          });
+        }
+
+        // Auto-populate patch fields for step 2
+        populatePatchForm(patches);
+
+      } catch (err) {
+        statusEl.textContent = 'Error';
+        responseEl.textContent = 'Request failed:\n' + err.message;
+      }
+    }
+
+    // ── Auto populate Step 2 patch fields ───────────────────────────
+    function populatePatchForm(patches) {
+      const container = document.getElementById('patchFieldsList');
+      container.innerHTML = '';
+
+      if (!patches || patches.length === 0) {
+        container.innerHTML = `
+          <div class="patch-item">
+            <input type="text" class="custom-key-input" value="website" placeholder="patch key">
+            <input type="text" class="custom-val-input" value="www.custom-override.com" placeholder="override text value">
+            <button type="button" class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="this.closest('.patch-item').remove()">✕</button>
+          </div>
+        `;
+        return;
+      }
+
+      patches.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'patch-item';
+        div.innerHTML = `
+          <span class="patch-key-tag" data-key="${escapeHtml(p.patchName)}" title="${escapeHtml(p.title || p.patchName)}">🩹 ${escapeHtml(p.patchName)}</span>
+          <input type="text" class="patch-val-input" placeholder="Enter override text for '${escapeHtml(p.patchName)}'" value="Patched ${escapeHtml(p.patchName)}">
+          <button type="button" class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="this.closest('.patch-item').remove()">✕</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function addCustomPatchRow() {
+      const container = document.getElementById('patchFieldsList');
+      if (container.querySelector('span[style]')) {
+        container.innerHTML = '';
+      }
+      const div = document.createElement('div');
+      div.className = 'patch-item';
+      div.innerHTML = `
+        <input type="text" class="custom-key-input" placeholder="e.g. addr">
+        <input type="text" class="custom-val-input" placeholder="override text value">
+        <button type="button" class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="this.closest('.patch-item').remove()">✕</button>
+      `;
+      container.appendChild(div);
+    }
+
+    // ── Send POST /st_label_patch ───────────────────────────────────
+    async function sendStLabelPatch() {
+      const statusEl = document.getElementById('patchStatus');
+      const responseEl = document.getElementById('patchResponseJson');
+      const previewImg = document.getElementById('patchPreviewImg');
+      const placeholder = document.getElementById('patchPreviewPlaceholder');
+
+      statusEl.textContent = 'Sending...';
+      responseEl.textContent = 'Request in progress...';
+
+      // Collect patches
+      const patchesMap = {};
+      const items = document.querySelectorAll('#patchFieldsList .patch-item');
+      items.forEach(item => {
+        const tag = item.querySelector('.patch-key-tag');
+        const customKeyInput = item.querySelector('.custom-key-input');
+        const valInput = item.querySelector('.patch-val-input') || item.querySelector('.custom-val-input');
+
+        const key = tag ? tag.getAttribute('data-key') : (customKeyInput ? customKeyInput.value.trim() : '');
+        const val = valInput ? valInput.value : '';
+
+        if (key) {
+          patchesMap[key] = val;
+        }
+      });
+
+      const payload = {
+        product: document.getElementById('patchProduct').value.trim(),
+        serial: document.getElementById('patchSerial').value.trim(),
+        patches: patchesMap
+      };
+
+      try {
+        const res = await fetch(`${getApiBase()}/st_label_patch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        statusEl.textContent = `HTTP ${res.status}`;
+
+        const firstItem = data.templates?.[0]?.items?.[0];
+        responseEl.textContent = JSON.stringify({
+          applied_patches: patchesMap,
+          available_patches: data.available_patches,
+          serial: firstItem?.serial,
+          has_preview: !!firstItem?.preview_image,
+          ezpl_snippet: firstItem?.ezpl ? firstItem.ezpl.slice(0, 300) + '...' : null
+        }, null, 2);
+
+        if (firstItem?.preview_image) {
+          previewImg.src = firstItem.preview_image;
+          previewImg.style.display = 'block';
+          placeholder.style.display = 'none';
+        } else {
+          previewImg.style.display = 'none';
+          placeholder.textContent = data.error || 'No preview returned';
+          placeholder.style.display = 'block';
+        }
+      } catch (err) {
+        statusEl.textContent = 'Error';
+        responseEl.textContent = 'Patch request failed:\n' + err.message;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+
+    // Auto load on start
+    window.addEventListener('DOMContentLoaded', () => {
+      // populate initial row
+      populatePatchForm([{ patchName: 'website', title: 'Official Website' }]);
+    });
+  </script>
+</body>
+</html>

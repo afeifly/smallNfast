@@ -1209,14 +1209,94 @@ async function handleStLabelDelivery(req, res) {
   }
 }
 
+// ── Web API: POST /st_label_patch ──────────────────────────────────────────
+/**
+ * POST /st_label_patch and POST /api/st_label_patch
+ *
+ * Allows an operator (e.g., from the Odoo UI) to override one or more
+ * patchable text elements on a label and receive the updated EZPL and
+ * preview image for a SINGLE serial number.
+ *
+ * Request body (JSON):
+ *   {
+ *     serial:   string              – single serial number (required)
+ *     product:  string              – product/item-number (required, used to match template)
+ *     patches:  { [patchName]: string }  – map of patch names to new text values (required)
+ *     options?: string | string[]   – optional option codes
+ *     lang?:    "en" | "cn"         – label language (default "en")
+ *     preview?: boolean             – include preview_image in items (default true)
+ *   }
+ *
+ * Response (JSON) – same shape as /st_label but always a single serial:
+ *   {
+ *     product, lang, options, device_name, serial,
+ *     available_patches: [{ patchName, title }, ...],
+ *     templates: [{ id, name, type, config, items: [{ serial, preview_image, ezpl_base64, ezpl }] }]
+ *   }
+ */
+async function handleStLabelPatch(req, res) {
+  if (req.method === 'POST') {
+    templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
+  }
+  try {
+    const { validatePatchPayload } = require('./labelPatch');
+    const validation = validatePatchPayload(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const body = req.body;
+    const serial = String(body.serial).trim();
+    const product = String(body.product).trim();
+    const patches = body.patches;                 // { [patchName]: newValue }
+    const options = body.options;
+    const lang = body.lang || req.query.lang || req.query.language || 'en';
+    const preview = body.preview !== false && body.preview !== 'false' && body.preview !== 0 && body.preview !== '0';
+
+    const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
+
+    const optionsArr = Array.isArray(options)
+      ? options
+      : (typeof options === 'string' && options.trim() ? options.split(',').map(s => s.trim()) : []);
+
+    // Reuse the same generation pipeline with the patch map injected.
+    const ezplJson = await generateStEzplJson(
+      product,
+      [serial],         // single serial only
+      optionsArr,
+      null,             // no raw templateXml
+      normalizedLang,
+      null,             // auto-match template
+      '',               // origin
+      '',               // order_id
+      preview,
+      patches           // ← patch overrides
+    );
+
+    return res.status(200).json({
+      ...ezplJson,
+      serial  // echo back the serial for convenience
+    });
+  } catch (err) {
+    console.error('Error handling /st_label_patch:', err);
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message });
+  }
+}
+
 app.post('/st_label', handleStLabel);
 app.post('/api/st_label', handleStLabel);
 app.post('/st_label_delivery', handleStLabelDelivery);
 app.post('/api/st_label_delivery', handleStLabelDelivery);
+app.post('/st_label_patch', handleStLabelPatch);
+app.post('/api/st_label_patch', handleStLabelPatch);
 
-// Serve frontend build in production
+
+// Serve frontend build in production & public assets
 const clientDist = path.join(__dirname, '..', 'dist');
+const publicDir = path.join(__dirname, '..', 'public');
 app.use(express.static(clientDist));
+app.use(express.static(publicDir));
 
 app.get('*', (req, res, next) => {
   // If it looks like an API call, don't serve index.html

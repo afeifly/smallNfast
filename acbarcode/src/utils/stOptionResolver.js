@@ -104,7 +104,7 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
   let rawText = el.text || el.data || '';
 
   // 2. Product Type Mapping Mode
-  if (el.textType === 'product' || el.useProductMapping || el.isProductMode) {
+  if (!el.isPatched && (el.textType === 'product' || el.useProductMapping || el.isProductMode)) {
     const targetProd = String(product || '').trim().toUpperCase();
     let matchedRule = null;
     if (Array.isArray(el.productMappings)) {
@@ -136,7 +136,7 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     }
   }
   // 3. Option Code Mapping Mode (supports exact codes and wildcards like A13X2)
-  else if (el.textType === 'option' || el.useOptionMapping || el.isOptionMode) {
+  else if (!el.isPatched && (el.textType === 'option' || el.useOptionMapping || el.isOptionMode)) {
     const codesList = Array.isArray(activeOptions) 
       ? activeOptions.map(c => String(c).trim().toUpperCase())
       : parseOptionCodes(activeOptions);

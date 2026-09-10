@@ -3,6 +3,7 @@
  */
 
 const templateStore = require('./templateStore');
+const { extractAvailablePatches, applyPatchesToElements } = require('./labelPatch');
 
 /**
  * Returns elements array for the requested language ('cn' or 'en'), with fallback.
@@ -154,7 +155,13 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
   return { files, csvContent };
 }
 
-async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true) {
+/**
+ * @param {Object|null} patches  Optional patch map { [patchName]: newTextValue }.
+ *                               When supplied, any element in the template that has
+ *                               a matching `patchName` will have its text replaced
+ *                               with the supplied value before EZPL/preview generation.
+ */
+async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true, patches = null) {
   const { compileEZPL } = await import('../src/utils/stEzplCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -226,12 +233,32 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
     ? options.join(', ')
     : 'Standard';
 
+  // Collect all patchable elements from every def (main + subs) for the response.
+  // Deduplication is by patchName across all defs.
+  const patchSeen = new Set();
+  const availablePatches = [];
+  for (const def of defs) {
+    for (const p of extractAvailablePatches(def.elements)) {
+      if (!patchSeen.has(p.patchName)) {
+        patchSeen.add(p.patchName);
+        availablePatches.push(p);
+      }
+    }
+  }
+
+  // Apply patch overrides to element copies (original defs are not mutated).
+  const hasPatch = patches && typeof patches === 'object' && Object.keys(patches).length > 0;
+
   const { generateGraphicEZPLForSerials } = require('./serverGraphicCompiler');
 
   const templatesResult = [];
   for (const def of defs) {
+    const effectiveElements = hasPatch
+      ? applyPatchesToElements(def.elements, patches)
+      : def.elements;
+
     const graphicResult = await generateGraphicEZPLForSerials(
-      def.elements,
+      effectiveElements,
       def.config,
       serials,
       {
@@ -264,6 +291,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
     origin: origin || '',
     order_id: order_id || '',
     total_serials: serials.length,
+    available_patches: availablePatches,
     templates: templatesResult
   };
 }

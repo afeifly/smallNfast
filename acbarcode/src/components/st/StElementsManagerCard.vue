@@ -570,7 +570,9 @@ const ElementForm = defineComponent({
         const isOptionMode = !isProductMode && !!(el.textType === 'option' || el.useOptionMapping || el.isOptionMode);
         const isNormalMode = !isProductMode && !isOptionMode;
 
-        // Content Type Mode Bar: Normal Text | Option Code | Product Type
+        const hasPatch = !!(el.patchName && el.patchName.trim());
+
+        // Content Type Mode Bar: Normal Text | Option Code | Product Type | 🩹 Patch
         kids.push(h('div', { class: 'text-mode-bar' }, [
           h('span', { class: 'text-mode-label' }, 'Text Type:'),
           h('div', { class: 'mode-btn-group' }, [
@@ -613,8 +615,59 @@ const ElementForm = defineComponent({
                 }
               }
             }, '📦 Product Type')
+          ]),
+          // Compact patch toggle at the end of Text Type line
+          h('div', { class: 'patch-toggle-wrapper' }, [
+            h('button', {
+              type: 'button',
+              class: ['patch-toggle-btn', hasPatch ? 'has-patch' : '', el._showPatchEdit ? 'editing' : ''],
+              title: hasPatch ? `Patch: "${el.patchName.trim()}" (click to toggle edit)` : 'Set OP Patch override (click to configure)',
+              onClick: () => {
+                el._showPatchEdit = !el._showPatchEdit;
+              }
+            }, [
+              '🩹 ',
+              hasPatch ? h('span', { class: 'patch-name-badge' }, el.patchName.trim()) : 'Patch'
+            ])
           ])
         ]));
+
+        // Compact inline editor (only visible when toggled)
+        if (el._showPatchEdit) {
+          kids.push(h('div', { class: 'patch-inline-popover' }, [
+            h('span', { class: 'patch-popover-tag' }, '🩹 Patch:'),
+            h('input', {
+              type: 'text',
+              class: 'patch-popover-input patch-name-field',
+              value: el.patchName || '',
+              onInput: e => el.patchName = e.target.value.trim(),
+              placeholder: 'Key (e.g. addr)'
+            }),
+            h('input', {
+              type: 'text',
+              class: 'patch-popover-input patch-title-field',
+              value: el.patchTitle || '',
+              onInput: e => el.patchTitle = e.target.value,
+              placeholder: 'Title (optional)'
+            }),
+            hasPatch ? h('button', {
+              type: 'button',
+              class: 'patch-popover-btn clear-btn',
+              title: 'Clear patch override',
+              onClick: () => {
+                el.patchName = '';
+                el.patchTitle = '';
+                el._showPatchEdit = false;
+              }
+            }, 'Clear') : null,
+            h('button', {
+              type: 'button',
+              class: 'patch-popover-btn done-btn',
+              title: 'Done editing patch',
+              onClick: () => el._showPatchEdit = false
+            }, 'Done')
+          ]));
+        }
 
         if (isNormalMode) {
           // Normal mode: Standard text input
@@ -786,6 +839,7 @@ const ElementForm = defineComponent({
             ])
           ]));
         }
+
 
         // Shared position & font properties
         kids.push(h('div', { class: 'fg-row' }, [
@@ -1635,5 +1689,105 @@ const ElementForm = defineComponent({
 :deep(.rot-step-btn:hover) {
   background: #fbd38d !important;
   color: #9c4221 !important;
+}
+
+/* ── Patch Toggle & Inline Editor at End of Text Type Bar ────── */
+:deep(.patch-toggle-wrapper) {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+:deep(.patch-toggle-btn) {
+  background: #f0f4f8 !important;
+  color: #4a5568 !important;
+  border: 1px solid #cbd5e0 !important;
+  border-radius: 5px !important;
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.15s ease;
+}
+:deep(.patch-toggle-btn:hover) {
+  background: #e2e8f0 !important;
+  color: #2d3748 !important;
+}
+:deep(.patch-toggle-btn.has-patch) {
+  background: #ebf8ff !important;
+  border-color: #90cdf4 !important;
+  color: #2b6cb0 !important;
+  font-weight: 600 !important;
+}
+:deep(.patch-toggle-btn.editing) {
+  box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.35) !important;
+}
+:deep(.patch-name-badge) {
+  background: #3182ce;
+  color: white;
+  border-radius: 3px;
+  padding: 0 5px;
+  font-family: monospace;
+  font-size: 10px;
+}
+:deep(.patch-inline-popover) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 4px 0 6px;
+  background: #ebf8ff;
+  border: 1px solid #bee3f8;
+  border-radius: 6px;
+}
+:deep(.patch-popover-tag) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2b6cb0;
+  white-space: nowrap;
+}
+:deep(.patch-popover-input) {
+  height: 24px;
+  padding: 2px 6px;
+  font-size: 11px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  background: white;
+}
+:deep(.patch-name-field) {
+  width: 110px;
+  font-family: monospace;
+}
+:deep(.patch-title-field) {
+  flex: 1;
+}
+:deep(.patch-popover-btn) {
+  height: 24px;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  border: none !important;
+  width: auto !important;
+  box-shadow: none !important;
+}
+:deep(.patch-popover-btn.clear-btn) {
+  background: #fed7d7 !important;
+  color: #c53030 !important;
+}
+:deep(.patch-popover-btn.clear-btn:hover) {
+  background: #feb2b2 !important;
+}
+:deep(.patch-popover-btn.done-btn) {
+  background: #3182ce !important;
+  color: white !important;
+}
+:deep(.patch-popover-btn.done-btn:hover) {
+  background: #2b6cb0 !important;
 }
 </style>

@@ -1063,7 +1063,7 @@ async function handleStLabel(req, res) {
     templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
   }
   try {
-    let product, serial_numbers, options, template_xml, lang, origin, order_id;
+    let product, serial_numbers, options, template_xml, lang, origin, order_id, done_date;
 
     if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
       // Raw XML POST body
@@ -1074,6 +1074,7 @@ async function handleStLabel(req, res) {
       lang = req.query.lang || req.query.language || 'en';
       origin = req.query.origin || req.query.order || '';
       order_id = req.query.order_id || req.query.orderId || req.query.delivery_order || req.query.dn || '';
+      done_date = req.query.done_date || req.query.doneDate || req.query.date || '';
     } else {
       // JSON body payload
       const body = req.body || {};
@@ -1084,6 +1085,7 @@ async function handleStLabel(req, res) {
       lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
       origin = body.origin || body.order || req.query.origin || '';
       order_id = body.order_id || body.orderId || body.delivery_order || body.dn || req.query.order_id || req.query.orderId || '';
+      done_date = body.done_date || body.doneDate || body.date || req.query.done_date || req.query.doneDate || req.query.date || '';
     }
 
     const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
@@ -1112,11 +1114,11 @@ async function handleStLabel(req, res) {
     }
 
     if (!isZipRequested) {
-      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id, preview);
+      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id, preview, null, done_date);
       return res.status(200).json(ezplJson);
     }
 
-    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id);
+    const { files, csvContent } = await generateStEzpxXml(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id, done_date);
 
     // Package the label .ezpx file(s) (main + one per sub-template), the shared
     // data.csv and the Windows helper .bat into one ZIP.
@@ -1150,24 +1152,27 @@ async function handleStLabelDelivery(req, res) {
     templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
   }
   try {
-    let origin, order_id, products, lang, template_xml;
+    let origin, order_id, products, lang, template_xml, done_date;
 
     if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
       template_xml = req.body;
       origin = req.query.origin || req.query.order || '';
       order_id = req.query.order_id || req.query.orderId || req.query.delivery_order || req.query.dn || '';
       lang = req.query.lang || req.query.language || 'en';
+      done_date = req.query.done_date || req.query.doneDate || req.query.date || '';
       products = [{
         categ: req.query.categ || req.query.device_name || '',
         product: req.query.product || 'Delivery',
         serial_numbers: req.query.serial_numbers ? req.query.serial_numbers.split(',') : ['12345678'],
-        options_text: req.query.options || ''
+        options_text: req.query.options || '',
+        done_date
       }];
     } else {
       const body = req.body || {};
       origin = body.origin || body.order || req.query.origin || '';
       order_id = body.order_id || body.orderId || body.delivery_order || body.dn || req.query.order_id || req.query.orderId || '';
       lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
+      done_date = body.done_date || body.doneDate || body.date || req.query.done_date || req.query.doneDate || req.query.date || '';
       template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
 
       if (Array.isArray(body.products) && body.products.length > 0) {
@@ -1178,7 +1183,8 @@ async function handleStLabelDelivery(req, res) {
           categ: body.categ || body.category || body.device_name || body.deviceName || '',
           product: body.product || body.item_number || body.item_no || 'Delivery',
           serial_numbers: body.serial_numbers || body.serials || ['12345678'],
-          options_text: body.options_text || body.optionsText || body.options || ''
+          options_text: body.options_text || body.optionsText || body.options || '',
+          done_date: body.done_date || body.doneDate || body.date || done_date
         }];
       }
     }
@@ -1198,7 +1204,8 @@ async function handleStLabelDelivery(req, res) {
       products,
       lang: normalizedLang,
       templateXml: template_xml,
-      preview
+      preview,
+      done_date
     });
 
     return res.status(200).json(ezplJson);
@@ -1251,6 +1258,7 @@ async function handleStLabelPatch(req, res) {
     const patches = body.patches;                 // { [patchName]: newValue }
     const options = body.options;
     const lang = body.lang || req.query.lang || req.query.language || 'en';
+    const done_date = body.done_date || body.doneDate || body.date || req.query.done_date || req.query.doneDate || req.query.date || '';
     const preview = body.preview !== false && body.preview !== 'false' && body.preview !== 0 && body.preview !== '0';
 
     const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
@@ -1270,7 +1278,8 @@ async function handleStLabelPatch(req, res) {
       '',               // origin
       '',               // order_id
       preview,
-      patches           // ← patch overrides
+      patches,          // ← patch overrides
+      done_date         // ← done_date
     );
 
     return res.status(200).json({

@@ -136,6 +136,7 @@
 <script setup>
 import { computed, h, defineComponent } from 'vue';
 import { showStConfirm } from '../../utils/stDialog.js';
+import { formatDate } from '../../utils/stOptionResolver.js';
 
 /* ── PROPS ──────────────────────────────────────────────── */
 const props = defineProps({
@@ -161,6 +162,9 @@ function folderChildCount(fid) {
 
 function shortHint(el) {
   if (el.type === 'text') {
+    if (el.textType === 'date' || el.isDateMode) {
+      return `📅 ${el.dateFormat || 'YYYY-MM'}`;
+    }
     if (el.textType === 'product' || el.useProductMapping || el.isProductMode) {
       const count = (el.productMappings || []).length;
       return `📦 ${count} product rule${count === 1 ? '' : 's'}`;
@@ -568,11 +572,12 @@ const ElementForm = defineComponent({
       if (el.type === 'text') {
         const isProductMode = !!(el.textType === 'product' || el.useProductMapping || el.isProductMode);
         const isOptionMode = !isProductMode && !!(el.textType === 'option' || el.useOptionMapping || el.isOptionMode);
-        const isNormalMode = !isProductMode && !isOptionMode;
+        const isDateMode = !isProductMode && !isOptionMode && !!(el.textType === 'date' || el.isDateMode);
+        const isNormalMode = !isProductMode && !isOptionMode && !isDateMode;
 
         const hasPatch = !!(el.patchName && el.patchName.trim());
 
-        // Content Type Mode Bar: Normal Text | Option Code | Product Type | 🩹 Patch
+        // Content Type Mode Bar: Normal Text | Option Code | Product Type | Date | 🩹 Patch
         kids.push(h('div', { class: 'text-mode-bar' }, [
           h('span', { class: 'text-mode-label' }, 'Text Type:'),
           h('div', { class: 'mode-btn-group' }, [
@@ -585,8 +590,9 @@ const ElementForm = defineComponent({
                 el.isOptionMode = false;
                 el.useProductMapping = false;
                 el.isProductMode = false;
+                el.isDateMode = false;
               }
-            }, '📝 Normal Text'),
+            }, 'Normal Text'),
             h('button', {
               type: 'button',
               class: ['mode-btn', isOptionMode ? 'active' : ''],
@@ -596,11 +602,12 @@ const ElementForm = defineComponent({
                 el.isOptionMode = true;
                 el.useProductMapping = false;
                 el.isProductMode = false;
+                el.isDateMode = false;
                 if (!Array.isArray(el.optionMappings)) {
                   el.optionMappings = [];
                 }
               }
-            }, '🔀 Option Code'),
+            }, 'Option Code'),
             h('button', {
               type: 'button',
               class: ['mode-btn', isProductMode ? 'active' : ''],
@@ -610,11 +617,27 @@ const ElementForm = defineComponent({
                 el.isProductMode = true;
                 el.useOptionMapping = false;
                 el.isOptionMode = false;
+                el.isDateMode = false;
                 if (!Array.isArray(el.productMappings)) {
                   el.productMappings = [];
                 }
               }
-            }, '📦 Product Type')
+            }, 'Product Type'),
+            h('button', {
+              type: 'button',
+              class: ['mode-btn', isDateMode ? 'active' : ''],
+              onClick: () => {
+                el.textType = 'date';
+                el.isDateMode = true;
+                el.useOptionMapping = false;
+                el.isOptionMode = false;
+                el.useProductMapping = false;
+                el.isProductMode = false;
+                if (!el.dateFormat) {
+                  el.dateFormat = 'YYYY-MM';
+                }
+              }
+            }, 'Date')
           ]),
           // Compact patch toggle at the end of Text Type line
           h('div', { class: 'patch-toggle-wrapper' }, [
@@ -631,6 +654,7 @@ const ElementForm = defineComponent({
             ])
           ])
         ]));
+
 
         // Compact inline editor (only visible when toggled)
         if (el._showPatchEdit) {
@@ -672,8 +696,38 @@ const ElementForm = defineComponent({
         if (isNormalMode) {
           // Normal mode: Standard text input
           kids.push(h('div', { class: 'fg' }, [
-            h('label', 'Text  (supports {{serial}}, {{serial | mid:3:2}}, {{serial | last:2}}, {{product}})'),
+            h('label', 'Text  (supports {{serial}}, {{serial | mid:3:2}}, {{serial | last:2}}, {{product}}, {{done_date | date:YYYY-MM}})'),
             h('input', { type: 'text', value: el.text || '', onInput: e => el.text = e.target.value, placeholder: 'e.g. {{serial | mid:3:2}} or {{product}}' })
+          ]));
+        } else if (isDateMode) {
+          // Date mode: format string (e.g. YYYY-MM, YYYY年MM月)
+          if (!el.dateFormat) {
+            el.dateFormat = 'YYYY-MM';
+          }
+          const sampleDate = '2026-07-07 03:59:23';
+          const sampleFormatted = formatDate(sampleDate, el.dateFormat || 'YYYY-MM');
+          kids.push(h('div', { class: 'date-format-panel' }, [
+            h('div', { class: 'date-panel-header' }, [
+              h('label', 'Date Format Pattern'),
+              h('span', { class: 'date-sample-preview' }, `Output: "${sampleFormatted}"`)
+            ]),
+            h('div', { class: 'date-input-row' }, [
+              h('input', {
+                type: 'text',
+                class: 'date-format-input',
+                value: el.dateFormat || 'YYYY-MM',
+                onInput: e => el.dateFormat = e.target.value,
+                placeholder: 'e.g. YYYY-MM or YYYY年MM月'
+              }),
+              h('div', { class: 'date-preset-pills' }, [
+                ...['YYYY-MM', 'YYYY年MM月', 'YYYY-MM-DD', 'YYYY.MM', 'YY-MM', 'YYYY/MM/DD'].map(fmt =>
+                  h('span', {
+                    class: ['date-preset-pill', (el.dateFormat === fmt) ? 'active' : ''],
+                    onClick: () => el.dateFormat = fmt
+                  }, fmt)
+                )
+              ])
+            ])
           ]));
         } else if (isOptionMode) {
           // Option Code Mode: Automatic {{options}} in background
@@ -1789,5 +1843,74 @@ const ElementForm = defineComponent({
 }
 :deep(.patch-popover-btn.done-btn:hover) {
   background: #2b6cb0 !important;
+}
+
+/* ── Date Format Panel ───────────────────────────────── */
+:deep(.date-format-panel) {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 4px 0 8px;
+}
+:deep(.date-panel-header) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+:deep(.date-panel-header label) {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5568;
+}
+:deep(.date-sample-preview) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2b6cb0;
+  background: #ebf8ff;
+  border: 1px solid #bee3f8;
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+:deep(.date-input-row) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:deep(.date-format-input) {
+  height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: monospace;
+  border: 1px solid #cbd5e0;
+  border-radius: 5px;
+  background: white;
+}
+:deep(.date-preset-pills) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+:deep(.date-preset-pill) {
+  background: #edf2f7;
+  color: #4a5568;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+  border: 1px solid transparent;
+}
+:deep(.date-preset-pill:hover) {
+  background: #e2e8f0;
+  color: #2d3748;
+}
+:deep(.date-preset-pill.active) {
+  background: #3182ce;
+  color: white;
+  font-weight: 600;
 }
 </style>

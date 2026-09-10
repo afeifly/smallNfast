@@ -128,7 +128,13 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     ? options.join(', ')
     : 'Standard';
 
-  const extra = { origin: origin || '', order_id: order_id || '' };
+  const extra = {
+    origin: origin || '',
+    order_id: order_id || '',
+    done_date: done_date || '',
+    doneDate: done_date || '',
+    date: done_date || ''
+  };
 
   // CSV-database mode: the EZPX references data.csv (one label per row) instead of the
   // ^C00 serial counter, matching the frontend export workflow. Each label definition
@@ -161,7 +167,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
  *                               a matching `patchName` will have its text replaced
  *                               with the supplied value before EZPL/preview generation.
  */
-async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true, patches = null) {
+async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true, patches = null, done_date = '') {
   const { compileEZPL } = await import('../src/utils/stEzplCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -267,6 +273,9 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
         deviceName: matchedDeviceName,
         origin: origin || '',
         order_id: order_id || '',
+        done_date: done_date || '',
+        doneDate: done_date || '',
+        date: done_date || '',
         preview: preview !== false
       }
     );
@@ -290,6 +299,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
     device_name: matchedDeviceName,
     origin: origin || '',
     order_id: order_id || '',
+    done_date: done_date || '',
     total_serials: serials.length,
     available_patches: availablePatches,
     templates: templatesResult
@@ -299,7 +309,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
 /**
  * Generates multi-product EZPL JSON for delivery orders with top-level origin and product array.
  */
-async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = '', products = [], lang = 'en', templateXml = null, preview = true }) {
+async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = '', products = [], lang = 'en', templateXml = null, preview = true, done_date = '' }) {
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
 
@@ -361,6 +371,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
     const categ = String(p.categ || p.category || p.device_name || p.deviceName || '').trim();
     const product = String(p.product || p.item_number || p.item_no || '').trim();
     const optionsText = p.options_text || p.optionsText || p.options || '';
+    const itemDoneDate = p.done_date || p.doneDate || p.date || done_date || '';
     
     let rawSerials = p.serial_numbers || p.serials;
     if (!rawSerials || !Array.isArray(rawSerials) || rawSerials.length === 0) {
@@ -374,7 +385,10 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
         categ,
         product,
         serial: String(sn).trim(),
-        options_text: optionsText
+        options_text: optionsText,
+        done_date: itemDoneDate,
+        doneDate: itemDoneDate,
+        date: itemDoneDate
       });
     }
   }
@@ -386,7 +400,10 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
       categ: '',
       product: 'Delivery',
       serial: '12345678',
-      options_text: ''
+      options_text: '',
+      done_date: done_date || '',
+      doneDate: done_date || '',
+      date: done_date || ''
     });
   }
 
@@ -398,7 +415,14 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
       def.elements,
       def.config,
       flatItems,
-      { origin: String(origin || '').trim(), order_id: String(order_id || '').trim(), preview: preview !== false }
+      {
+        origin: String(origin || '').trim(),
+        order_id: String(order_id || '').trim(),
+        done_date: done_date || '',
+        doneDate: done_date || '',
+        date: done_date || '',
+        preview: preview !== false
+      }
     );
 
     templatesResult.push({
@@ -417,6 +441,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
     origin: String(origin || '').trim(),
     order_id: String(order_id || '').trim(),
     lang: normalizedLang,
+    done_date: done_date || '',
     total_products: products.length,
     total_labels: flatItems.length,
     templates: templatesResult

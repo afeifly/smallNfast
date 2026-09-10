@@ -317,6 +317,11 @@
           </div>
         </div>
 
+        <div class="fg">
+          <label>Done Date (e.g. 2026-07-07 03:59:23)</label>
+          <input type="text" id="stDoneDate" value="2026-07-07 03:59:23" placeholder="YYYY-MM-DD HH:mm:ss">
+        </div>
+
         <button type="button" onclick="sendStLabel()">
           <span>🚀 Send POST /st_label</span>
         </button>
@@ -363,6 +368,25 @@
           </div>
         </div>
 
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="fg">
+            <label>Options</label>
+            <input type="text" id="patchOptions" value="Standard">
+          </div>
+          <div class="fg">
+            <label>Language</label>
+            <select id="patchLang">
+              <option value="en">English (en)</option>
+              <option value="cn" selected>Chinese (cn/zh)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="fg">
+          <label>Done Date (e.g. 2026-07-07 03:59:23)</label>
+          <input type="text" id="patchDoneDate" value="2026-07-07 03:59:23" placeholder="YYYY-MM-DD HH:mm:ss">
+        </div>
+
         <!-- Dynamic Patch Fields -->
         <div class="fg">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -407,6 +431,18 @@
       document.getElementById('patchProduct').value = e.target.value;
     });
 
+    document.getElementById('stOptions').addEventListener('input', e => {
+      document.getElementById('patchOptions').value = e.target.value;
+    });
+
+    document.getElementById('stLang').addEventListener('change', e => {
+      document.getElementById('patchLang').value = e.target.value;
+    });
+
+    document.getElementById('stDoneDate').addEventListener('input', e => {
+      document.getElementById('patchDoneDate').value = e.target.value;
+    });
+
     function getApiBase() {
       const val = document.getElementById('apiBase').value.trim().replace(/\/+$/, '');
       return val || window.location.origin;
@@ -433,7 +469,8 @@
         product: document.getElementById('stProduct').value.trim(),
         serial_numbers: serial_numbers.length > 0 ? serial_numbers : ['SN001'],
         options: document.getElementById('stOptions').value.trim(),
-        lang: document.getElementById('stLang').value
+        lang: document.getElementById('stLang').value,
+        done_date: document.getElementById('stDoneDate').value.trim()
       };
 
       try {
@@ -447,6 +484,7 @@
         statusEl.textContent = `HTTP ${res.status}`;
 
         responseEl.textContent = JSON.stringify({
+          lang: data.lang,
           available_patches: data.available_patches,
           total_serials: data.total_serials,
           templates: (data.templates || []).map(t => ({
@@ -471,10 +509,15 @@
           placeholder.style.display = 'block';
         }
 
-        // Set serial for patch step
+        // Set serial, lang, options, doneDate for patch step
         if (serial_numbers.length > 0) {
           document.getElementById('patchSerial').value = serial_numbers[0];
         }
+        if (data.lang) {
+          document.getElementById('patchLang').value = data.lang;
+        }
+        document.getElementById('patchOptions').value = payload.options;
+        document.getElementById('patchDoneDate').value = payload.done_date;
 
         // Render detected available_patches
         detectedPatchesEl.innerHTML = '';
@@ -571,6 +614,9 @@
       const payload = {
         product: document.getElementById('patchProduct').value.trim(),
         serial: document.getElementById('patchSerial').value.trim(),
+        options: document.getElementById('patchOptions').value.trim(),
+        lang: document.getElementById('patchLang').value,
+        done_date: document.getElementById('patchDoneDate').value.trim(),
         patches: patchesMap
       };
 

@@ -493,11 +493,19 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
       ? (item.order_id || item.orderId || item.delivery_order || item.dn)
       : globalOrderId;
 
+    const globalDoneDate = ctx.done_date || ctx.doneDate || ctx.date || '';
+    const itemDoneDate = (isObj && (item.done_date !== undefined || item.doneDate !== undefined || item.date !== undefined))
+      ? (item.done_date || item.doneDate || item.date)
+      : globalDoneDate;
+
     const extra = {
       origin: itemOrigin,
       categ: itemDevice,
       order: itemOrigin,
       order_id: itemOrderId,
+      done_date: itemDoneDate,
+      doneDate: itemDoneDate,
+      date: itemDoneDate,
       ...(isObj ? item : {})
     };
 

@@ -54,6 +54,72 @@ export function matchesOptionRule(rulePattern, inputCode) {
 }
 
 /**
+ * Formats a date string (e.g. "2026-07-07 03:59:23", "2026-07-07T03:59:23Z", timestamp, Date)
+ * into a custom format string (e.g. "YYYY-MM", "YYYY年MM月", "YYYY-MM-DD", "YYYY.MM", "YY-MM", etc.).
+ */
+export function formatDate(dateInput, pattern = 'YYYY-MM') {
+  if (!dateInput) return '';
+
+  let d;
+  if (dateInput instanceof Date) {
+    d = dateInput;
+  } else if (typeof dateInput === 'number') {
+    d = new Date(dateInput);
+  } else if (typeof dateInput === 'string') {
+    const s = dateInput.trim();
+    if (!s) return '';
+    // Handle "YYYY-MM-DD HH:mm:ss" or "YYYY-MM-DD"
+    const isoLike = s.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/, '$1T$2');
+    d = new Date(isoLike);
+    // If invalid Date, attempt manual regex parse for "YYYY-MM-DD ..." or "YYYY/MM/DD ..."
+    if (isNaN(d.getTime())) {
+      const match = s.match(/^(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1;
+        const day = match[3] ? parseInt(match[3], 10) : 1;
+        const hour = match[4] ? parseInt(match[4], 10) : 0;
+        const min = match[5] ? parseInt(match[5], 10) : 0;
+        const sec = match[6] ? parseInt(match[6], 10) : 0;
+        d = new Date(year, month, day, hour, min, sec);
+      }
+    }
+  }
+
+  if (!d || isNaN(d.getTime())) {
+    return typeof dateInput === 'string' ? dateInput : '';
+  }
+
+  const YYYY = String(d.getFullYear());
+  const YY = YYYY.slice(-2);
+  const M = String(d.getMonth() + 1);
+  const MM = M.padStart(2, '0');
+  const D = String(d.getDate());
+  const DD = D.padStart(2, '0');
+  const H = String(d.getHours());
+  const HH = H.padStart(2, '0');
+  const m = String(d.getMinutes());
+  const mm = m.padStart(2, '0');
+  const S = String(d.getSeconds());
+  const ss = S.padStart(2, '0');
+
+  const fmt = pattern || 'YYYY-MM';
+
+  return fmt
+    .replace(/YYYY/g, YYYY)
+    .replace(/YY/g, YY)
+    .replace(/MM/g, MM)
+    .replace(/\bM\b/g, M)
+    .replace(/DD/g, DD)
+    .replace(/\bD\b/g, D)
+    .replace(/HH/g, HH)
+    .replace(/\bH\b/g, H)
+    .replace(/mm/g, mm)
+    .replace(/ss/g, ss);
+}
+
+
+/**
  * Resolves text or QR content for an element, taking into account option code translation
  * rules or SUTO Protocol QR code generation if enabled.
  * 
@@ -175,10 +241,18 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
       rawText = '';
     }
   }
+  // 4. Date Mode (e.g. YYYY-MM, YYYY年MM月 from done_date payload)
+  else if (!el.isPatched && (el.textType === 'date' || el.isDateMode)) {
+    const dateVal = extraObj.done_date || extraObj.doneDate || extraObj.date || el.done_date || el.testDate || '';
+    const pattern = el.dateFormat || el.text || 'YYYY-MM';
+    rawText = dateVal ? formatDate(dateVal, pattern) : formatDate(new Date(), pattern);
+  }
 
   // Replace placeholders. Preserve {{serial}} when no serial value is supplied
   // so downstream compilers can inject their own serial command (^C00 / ^F00).
   const snVal = (serial !== undefined && serial !== '') ? serial : '{{serial}}';
+
+  const rawDoneDate = extraObj.done_date || extraObj.doneDate || extraObj.date || '';
 
   const varMap = {
     serial: snVal,
@@ -197,6 +271,9 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     productno: product || '',
     item_no: product || '',
     itemno: product || '',
+    done_date: rawDoneDate,
+    donedate: rawDoneDate,
+    date: rawDoneDate,
     options_text: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''),
     optionstext: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''),
     options: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || '')
@@ -325,6 +402,13 @@ export function applyFilter(value, filterStr) {
         const targetLen = parseInt(arg1, 10) || str.length;
         const padChar = arg2 || '0';
         str = str.padEnd(targetLen, padChar);
+        break;
+      }
+      case 'date':
+      case 'format_date':
+      case 'format': {
+        const pattern = arg1 || 'YYYY-MM';
+        str = formatDate(str, pattern);
         break;
       }
       default:

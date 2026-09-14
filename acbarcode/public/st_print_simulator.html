@@ -60,7 +60,7 @@
 <p class="text-muted small mt-3 mb-0">
     Standalone "Print ST" simulator. On load it POSTs the same payload as
     <code>curl -X POST {api-base}/st_label</code>, then shows the
-    <strong>ST Label Response</strong> dialog (widget) exactly as Odoo would.
+    <strong>Modify</strong> dialog (widget) exactly as Odoo would.
     If the label server is unreachable, it falls back to embedded sample data.
 </p>
 </div>
@@ -70,33 +70,59 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">ST Label Response</h5>
+                <h5 class="modal-title">Modify</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="row g-3 mb-3">
-                    <div class="col-md-4"><label class="form-label">Product</label><input class="form-control" id="w-product" readonly/></div>
-                    <div class="col-md-4"><label class="form-label">Options</label><input class="form-control" id="w-options" readonly/></div>
-                    <div class="col-md-4"><label class="form-label">Device</label><input class="form-control" id="w-device" readonly/></div>
-                    <div class="col-md-4"><label class="form-label">Total serials</label><input class="form-control" id="w-total" readonly/></div>
-                    <div class="col-md-8 d-flex align-items-end gap-2">
-                        <div class="flex-grow-1">
-                            <label class="form-label">Print service URL</label>
-                            <input id="w-service-url" class="form-control" placeholder="http://192.168.x.x:8799/print" value="http://100.100.1.11:8799/print"/>
+                <div id="w-main-view">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4"><label class="form-label">Product</label><input class="form-control" id="w-product" readonly/></div>
+                        <div class="col-md-4"><label class="form-label">Options</label><input class="form-control" id="w-options" readonly/></div>
+                        <div class="col-md-4"><label class="form-label">Device</label><input class="form-control" id="w-device" readonly/></div>
+                        <div class="col-md-4"><label class="form-label">Total serials</label><input class="form-control" id="w-total" readonly/></div>
+                        <div class="col-md-8 d-flex align-items-end gap-2">
+                            <div class="flex-grow-1">
+                                <label class="form-label">Print service URL</label>
+                                <input id="w-service-url" class="form-control" placeholder="http://192.168.x.x:8799/print" value="http://100.100.1.11:8799/print"/>
+                            </div>
+                            <button class="btn btn-secondary" id="w-check-service">Check service</button>
                         </div>
-                        <button class="btn btn-secondary" id="w-check-service">Check service</button>
                     </div>
+                    <hr/>
+                    <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
+                        <span class="text-muted"><span id="w-summary"></span></span>
+                        <button class="btn btn-primary" id="w-print-all" disabled>Print all labels</button>
+                    </div>
+                    <div id="w-templates"></div>
+                    <div id="w-status"></div>
                 </div>
-                <hr/>
-                <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
-                    <span class="text-muted"><span id="w-summary"></span></span>
-                    <button class="btn btn-primary" id="w-print-all" disabled>Print all labels</button>
+
+                <!-- Partial modification view (content swap, no stacked modal) -->
+                <div id="w-patch-view" class="d-none">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Product</label>
+                            <input id="p-product" class="form-control" readonly/>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Serial</label>
+                            <input id="p-serial" class="form-control" readonly/>
+                        </div>
+                    </div>
+                    <label class="form-label">Patch overrides <span class="text-muted small">(leave empty to keep unchanged)</span></label>
+                    <div id="p-fields"></div>
+                    <div class="progress mt-3" id="p-progress" style="display:none">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%">Applying patch...</div>
+                    </div>
+                    <div id="p-status" class="mt-2"></div>
                 </div>
-                <div id="w-templates"></div>
-                <div id="w-status"></div>
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+            <div class="modal-footer" id="w-footer" style="display:none;">
+                <button class="btn btn-secondary" id="p-cancel">Cancel</button>
+                <button class="btn btn-primary" id="p-confirm">
+                    <span class="spinner-border spinner-border-sm me-2" id="p-spinner" style="display:none" role="status" aria-hidden="true"></span>
+                    <span id="p-confirm-text">Confirm</span>
+                </button>
             </div>
         </div>
     </div>
@@ -151,6 +177,10 @@ const SAMPLE_RESPONSE = {
 const stDialog = new bootstrap.Modal(document.getElementById("stLabelDialog"));
 const previewDialog = new bootstrap.Modal(document.getElementById("previewDialog"));
 const statusEl = document.getElementById("w-status");
+
+// Latest /st_label response kept so per-label patches can be applied in place
+// and the previews / EZPL re-rendered without refetching every label.
+let currentState = null;
 
 function setStatus(msg, isError) {
     statusEl.innerHTML = msg
@@ -247,8 +277,9 @@ function renderTemplates(data) {
 
         const table = document.createElement("table");
         table.className = "table table-sm table-striped mb-1";
-        table.innerHTML = "<thead><tr><th>Serial</th><th class=\"w-25\">Preview</th><th class=\"w-10\"></th></tr></thead>";
+        table.innerHTML = "<thead><tr><th>Serial</th><th>Partial modification</th><th class=\"w-25\">Preview</th><th class=\"w-10\"></th></tr></thead>";
         const tbody = document.createElement("tbody");
+        const patches = (currentState && currentState.available_patches) || [];
         for (const item of items) {
             const tr = document.createElement("tr");
 
@@ -256,6 +287,22 @@ function renderTemplates(data) {
             tdSerial.className = "align-top";
             tdSerial.textContent = item.serial || "";
             tr.appendChild(tdSerial);
+
+            const tdPatch = document.createElement("td");
+            tdPatch.className = "align-top";
+            if (patches.length) {
+                tdPatch.appendChild(makeButton(
+                    "Modify",
+                    "btn btn-outline-secondary btn-sm",
+                    () => openPatchDialog(item, patches),
+                ));
+            } else {
+                const span = document.createElement("span");
+                span.className = "text-muted small";
+                span.textContent = "(no patchable fields)";
+                tdPatch.appendChild(span);
+            }
+            tr.appendChild(tdPatch);
 
             const tdPrev = document.createElement("td");
             tdPrev.className = "align-top";
@@ -306,6 +353,15 @@ function renderTemplates(data) {
 function showDialog(data) {
     const cfg = templateConfig(data.templates && data.templates[0]);
     const serials = data.serial_numbers || [];
+    currentState = {
+        product: data.product || "",
+        options: data.options || "",
+        lang: data.lang || "cn",
+        done_date: data.done_date || "",
+        available_patches: data.available_patches || [],
+        serial_numbers: serials,
+        templates: data.templates || []
+    };
     document.getElementById("w-product").value = data.product || "";
     document.getElementById("w-options").value = Array.isArray(data.options) ? data.options.join(", ") : data.options || "";
     document.getElementById("w-device").value = data.device_name || "";
@@ -313,6 +369,7 @@ function showDialog(data) {
     document.getElementById("w-summary").textContent =
         `${data.product || ""} · ${data.device_name || ""} · ${data.total_serials ?? serials.length ?? 0} serials`;
     setStatus("");
+    showMainView();
     renderTemplates(data);
     stDialog.show();
 }
@@ -401,6 +458,136 @@ document.getElementById("w-check-service").addEventListener("click", async () =>
     } catch (e) {
         setStatus(`Cannot reach the print service at ${url}. Error: ${e.message}`, true);
     }
+});
+
+// ===== Partial modification (per-label patch) =====
+function showMainView() {
+    document.getElementById("w-main-view").classList.remove("d-none");
+    document.getElementById("w-patch-view").classList.add("d-none");
+    document.getElementById("w-footer").style.display = "none";
+}
+
+function showPatchView() {
+    document.getElementById("w-main-view").classList.add("d-none");
+    document.getElementById("w-patch-view").classList.remove("d-none");
+    document.getElementById("w-footer").style.display = "flex";
+}
+
+function setPatchStatus(msg, isError) {
+    const el = document.getElementById("p-status");
+    el.innerHTML = msg
+        ? `<div class="alert ${isError ? "alert-danger" : "alert-success"} py-2 mb-0" role="alert">${msg}</div>`
+        : "";
+}
+
+function setPatchBusy(busy) {
+    document.getElementById("p-confirm").disabled = busy;
+    document.getElementById("p-cancel").disabled = busy;
+    document.getElementById("p-progress").style.display = busy ? "block" : "none";
+    document.getElementById("p-spinner").style.display = busy ? "inline-block" : "none";
+    document.getElementById("p-confirm-text").textContent = busy ? "Applying..." : "Confirm";
+}
+
+function openPatchDialog(item, patches) {
+    document.getElementById("p-product").value = currentState.product || "";
+    document.getElementById("p-serial").value = item.serial || "";
+    const box = document.getElementById("p-fields");
+    box.innerHTML = "";
+    for (const p of patches) {
+        const row = document.createElement("div");
+        row.className = "input-group input-group-sm mb-2";
+        const label = document.createElement("span");
+        label.className = "input-group-text";
+        label.style.width = "40%";
+        label.textContent = p.patchName + (p.title && p.title !== p.patchName ? ` (${p.title})` : "");
+        label.title = p.patchName;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "form-control";
+        input.dataset.patchName = p.patchName;
+        input.placeholder = `Override "${p.patchName}" — leave empty to keep`;
+        row.appendChild(label);
+        row.appendChild(input);
+        box.appendChild(row);
+    }
+    setPatchStatus("");
+    setPatchBusy(false);
+    showPatchView();
+}
+
+function backToLabels() {
+    showMainView();
+}
+
+async function applyPatch() {
+    const serial = document.getElementById("p-serial").value;
+    const patches = {};
+    for (const input of document.querySelectorAll("#p-fields input[data-patch-name]")) {
+        const val = input.value.trim();
+        if (val) patches[input.dataset.patchName] = val;
+    }
+    if (!Object.keys(patches).length) {
+        setPatchStatus("Enter at least one override value, or click Cancel.", true);
+        return;
+    }
+
+    setPatchBusy(true);
+    setPatchStatus(`Applying patch to ${serial} ...`);
+    try {
+        const resp = await fetch(getApiBase() + "/st_label_patch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                product: currentState.product,
+                serial,
+                options: currentState.options,
+                lang: currentState.lang,
+                done_date: currentState.done_date || "",
+                patches,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            setPatchStatus(`Patch failed: ${data.error || "HTTP " + resp.status}`, true);
+            return;
+        }
+
+        // Apply the patched item(s) into the current state and rebuild EZPL so
+        // the row preview, Print and "Print all labels" all use the new data.
+        for (const rtpl of data.templates || []) {
+            const tpl = currentState.templates.find(t => t.id === rtpl.id);
+            if (!tpl) continue;
+            for (const ritem of rtpl.items || []) {
+                const idx = tpl.items.findIndex(it => String(it.serial) === String(ritem.serial));
+                const upd = {
+                    ...(idx >= 0 ? tpl.items[idx] : ritem),
+                    preview_image: ritem.preview_image,
+                    ezpl: ritem.ezpl,
+                    ezpl_base64: ritem.ezpl_base64,
+                };
+                if (idx >= 0) tpl.items[idx] = upd; else tpl.items.push(upd);
+            }
+            tpl.all_ezpl = tpl.items.map(i => i.ezpl || "").join("");
+            try { tpl.all_ezpl_base64 = btoa(tpl.all_ezpl); } catch (e) { /* non-latin1 safe fallback */ }
+        }
+
+        renderTemplates(currentState);
+        setPatchStatus(`Patch applied. Preview & EZPL updated for ${serial}.`);
+        setPatchBusy(false);
+        setTimeout(() => {
+            backToLabels();
+            setStatus(`Patch applied for ${serial}. Preview & EZPL updated.`);
+        }, 800);
+    } catch (e) {
+        setPatchStatus(`Patch failed: ${e.message}`, true);
+        setPatchBusy(false);
+    }
+}
+
+document.getElementById("p-confirm").addEventListener("click", applyPatch);
+document.getElementById("p-cancel").addEventListener("click", () => {
+    setStatus("");
+    backToLabels();
 });
 
 initDemo();

@@ -66,10 +66,15 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
       const fontSizePx = ptToPx(el.fontSize || 4);
       const fontWeight = el.bold ? 'bold' : 'normal';
       const customFont = el.fontFamily ? `"${el.fontFamily}", ` : '';
-      ctx.font = `${fontWeight} ${fontSizePx}px "Noto Sans", ${customFont}"Noto Sans SC", "Segoe UI", "Arial", "Helvetica", "DejaVu Sans", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      // CJK font first so every glyph (CJK and Latin) shares one set of vertical
+      // metrics. The em box of that first font is then aligned to yMm, so all
+      // text elements with the same yMm share one baseline reference and land on
+      // the same line (matches the server preview rendering).
+      ctx.font = `${fontWeight} ${fontSizePx}px "Noto Sans SC", ${customFont}"Noto Sans", "Segoe UI", "Arial", "Helvetica", "DejaVu Sans", "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.fillStyle = '#000000';
-      ctx.textBaseline = 'top';
+      ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
+      const emAscent = ctx.measureText('M').emHeightAscent || ctx.measureText('M').fontBoundingBoxAscent || 0;
 
       const endX = el.endXMm !== undefined ? el.endXMm : el.x1Mm; // Support both endXMm and x1Mm
       if (endX && endX > el.xMm) {
@@ -127,15 +132,17 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
         const xPx = mmToPx(el.xMm);
         const startYPx = mmToPx(el.yMm);
         for (let i = 0; i < trimmedLines.length; i++) {
-          ctx.fillText(trimmedLines[i], xPx, startYPx + i * lineHeightPx);
+          // Align each line's em box top to the line's mm coordinate.
+          ctx.fillText(trimmedLines[i], xPx, startYPx + i * lineHeightPx + emAscent);
         }
       } else {
         const maxFitW = Math.max(10, mmToPx((config.widthMm || 35) - (el.xMm || 0) - 0.4));
-        const measuredW = ctx.measureText(textVal).width;
-        if (measuredW > maxFitW) {
-          ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm), maxFitW);
+        const measured = ctx.measureText(textVal);
+        const baseYPx = mmToPx(el.yMm) + emAscent;
+        if (measured.width > maxFitW) {
+          ctx.fillText(textVal, mmToPx(el.xMm), baseYPx, maxFitW);
         } else {
-          ctx.fillText(textVal, mmToPx(el.xMm), mmToPx(el.yMm));
+          ctx.fillText(textVal, mmToPx(el.xMm), baseYPx);
         }
       }
     } else if (el.type === 'hline' || el.type === 'vline') {

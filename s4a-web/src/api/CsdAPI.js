@@ -42,6 +42,32 @@ const CHANNEL_HEADERS_START = PROTOCOL_HEADER_START + PROTOCOL_HEADER_LEN;  // 3
 
 const MAX_DISPLAY_SAMPLES = 3000;
 
+// Device types (mirrors NProtocolHeader) used for channel-name assembly
+const DEVICE_TYPE = {
+  DS350_P2: 0x1060,
+  DS350_P4: 0x1061,
+  DS350_P6: 0x1062,
+  S330: 0x1064,
+  S331: 0x1065,
+  S551_P4: 0x1066,
+  S551_P6: 0x1067,
+  S551_P4_IHI: 0x109A,
+  S551_P6_IHI: 0x109B,
+  MODBUS_POWERMETER: 0x3510,
+  MODBUS_PULSE_ANALOGUE: 0x3530,
+  MODBUS_ANALOG_INPUT: 0x3500,
+  MODBUS_S331: 0x3331,
+  MODBUS_S330: 0x3329,
+};
+
+// Protocol / channel header field offsets (see CSLib NProtocolHeader / NChannelHeader)
+const PROTOCOL_DEVICE_ID = 8;
+const PROTOCOL_DEVICE_TYPE = 3060;
+const CH_NEW_DEVICE_ID = 868;
+const CH_SUB_DEVICE_ID = 872;
+const CH_SENSOR_ID = 876;
+const CH_SLAVE_ADDRESS = 885;
+
 // IndexedDB database name / store for file handles
 const IDB_NAME = 'CsdFilesDB';
 const IDB_STORE = 'fileHandles';
@@ -60,6 +86,9 @@ let _numChannels = 0;
 let _dataStart = 0;      // byte offset where records begin
 let _recordLen = 0;      // bytes per record
 let _deviceName = 'CSD Device';
+let _deviceId = 0;
+let _deviceType = 0;
+let _fileVersion = 0;
 let _sampleIntervalSec = 1;
 let _fileBuffer = null;   // Fully loaded file ArrayBuffer for zero-copy sync memory reads
 
@@ -184,6 +213,112 @@ function _decodeStr(dv, byteOffset, maxLen) {
 // ── Core parser ───────────────────────────────────────────────────────────────
 
 /**
+ * Terminal prefix for a sensor (IGEF branch). Mirrors CommonValue.getViewChannelFullName.
+ */
+function _terminalForSensor(sensorID, deviceType) {
+  const isS330 = deviceType === DEVICE_TYPE.S330 || deviceType === DEVICE_TYPE.S331;
+  if (sensorID > 100) {
+    const s = sensorID - 100;
+    if (s > 14) return 'V:';
+    switch (s) {
+      case 1: return '1:';
+      case 2: return '2:';
+      case 3: return '3:';
+      case 4: return '4:';
+      case 5: return '5:';
+      case 6: return '6:';
+      default: return '';
+    }
+  }
+  if (sensorID > 14) return 'V:';
+  switch (sensorID) {
+    case 1: return isS330 ? 'A:' : 'I:';
+    case 2: return isS330 ? 'B:' : 'G:';
+    case 3: return 'E:';
+    case 4: return 'F:';
+    default: return '';
+  }
+}
+
+/**
+ * Full channel display name, e.g. "8609_3:1000 A Sensor/1000 A Sensor (A)".
+ * Ported from CommonValue.getViewChannelFullName (reference CANalyzer build),
+ * with the device-id prefix limited to its last 4 digits.
+ */
+function _buildFullChannelName(pheader, ch) {
+  const desc = ch.description;
+  if (desc == null) return '';
+  const unit = ch.unit || '';
+
+  if (ch.newDeviceID <= 0) {
+    return `${desc.trim()} (${unit})`;
+  }
+
+  const idString = String(pheader.deviceId || '');
+  const idTail = idString.length > 4 ? idString.slice(-4) : idString;
+  const prefix = idTail ? `${idTail}_` : '';
+
+  if (ch.subDeviceID === 0) {
+    const tmp = _terminalForSensor(ch.sensorID, pheader.deviceType);
+    return `${prefix}${tmp}${ch.sensorDescription}/${desc} (${unit})`;
+  }
+
+  let modbusTerminal;
+  if (pheader.deviceType === DEVICE_TYPE.DS350_P2
+    || pheader.deviceType === DEVICE_TYPE.DS350_P4
+    || pheader.deviceType === DEVICE_TYPE.DS350_P6) {
+    modbusTerminal = '7/8';
+  } else if (pheader.deviceType === DEVICE_TYPE.S330
+    || pheader.deviceType === DEVICE_TYPE.S331
+    || pheader.deviceType === DEVICE_TYPE.S551_P4
+    || pheader.deviceType === DEVICE_TYPE.S551_P6
+    || pheader.deviceType === DEVICE_TYPE.S551_P4_IHI
+    || pheader.deviceType === DEVICE_TYPE.S551_P6_IHI) {
+    modbusTerminal = 'M';
+  } else {
+    modbusTerminal = 'D';
+  }
+
+  if (ch.subDeviceID > 32768) {
+    let tmp = '';
+    if (ch.sensorID > 100) {
+      switch (ch.sensorID - 100) {
+        case 1: tmp = '1:'; break;
+        case 2: tmp = '2:'; break;
+        case 3: tmp = '3:'; break;
+        case 4: tmp = '4:'; break;
+        case 5: tmp = '5:'; break;
+        case 6: tmp = '6:'; break;
+        default: break;
+      }
+    } else {
+      let modbusDeviceID = ch.subDeviceID;
+      if (modbusDeviceID > 32768) modbusDeviceID -= 32768;
+      modbusDeviceID -= ch.slaveAddress;
+      if (modbusDeviceID === DEVICE_TYPE.MODBUS_POWERMETER) {
+        return `${prefix}${modbusTerminal}:.../${ch.sensorDescription}/${desc} (${unit})`;
+      }
+      if (modbusDeviceID === DEVICE_TYPE.MODBUS_ANALOG_INPUT
+        || modbusDeviceID === DEVICE_TYPE.MODBUS_PULSE_ANALOGUE) {
+        return `${prefix}${modbusTerminal}:${ch.subDeviceDescription}/${ch.sensorDescription}/${desc} (${unit})`;
+      }
+      const isModbusS33x = modbusDeviceID === DEVICE_TYPE.MODBUS_S330 || modbusDeviceID === DEVICE_TYPE.MODBUS_S331;
+      switch (ch.sensorID) {
+        case 1: tmp = isModbusS33x ? 'A' : 'I'; break;
+        case 2: tmp = isModbusS33x ? 'B' : 'G'; break;
+        case 3: tmp = 'E'; break;
+        case 4: tmp = 'F'; break;
+        default:
+          return `${prefix}${modbusTerminal}:${ch.subDeviceDescription}(${tmp})/${ch.sensorDescription}/${desc} (${unit})`;
+      }
+    }
+    return `${prefix}${modbusTerminal}:${ch.subDeviceDescription}(${tmp})/${ch.sensorDescription}/${desc} (${unit})`;
+  }
+
+  return `${prefix}${modbusTerminal}:.../${ch.sensorDescription}/${desc} (${unit})`;
+}
+
+/**
  * Parse file / protocol / channel headers from `file` (File object or
  * anything with a `.slice(start,end)` → Blob interface).
  * Populates module-level state; does NOT read sample data.
@@ -193,6 +328,7 @@ async function _parseHeaders(file) {
   try {
     const fh = await _readSlice(file, 0, FILE_HEADER_LEN);
     const version = fh.getInt32(0, false);
+    _fileVersion = version;
     const identifier = _decodeStr(fh, 4, 10);
     console.log(`[CsdAPI] File Info Header parsed - Version: ${version}, Identifier: "${identifier}"`);
     
@@ -207,6 +343,8 @@ async function _parseHeaders(file) {
   const ph = await _readSlice(file, PROTOCOL_HEADER_START, PROTOCOL_HEADER_LEN);
 
   _deviceName = _decodeStr(ph, 506, 32) || 'CSD Device';
+  _deviceId = ph.getInt32(PROTOCOL_DEVICE_ID, false) || 0;
+  _deviceType = ph.getInt16(PROTOCOL_DEVICE_TYPE, false) || 0;
 
   let rawChannels = ph.getInt32(3016, false);
   let rawSamples = ph.getInt32(3020, false);
@@ -264,7 +402,6 @@ async function _parseHeaders(file) {
 
     // pref = int64 at byte 0
     const pref = Number(ch.getBigInt64(0, false));
-    const sensorId = ch.getInt32(CHANNEL_HEADER_LEN - 918 + 752 + 28, false); // fieldPos 752+28
 
     // Channel description: int16 length + up to 128 bytes at offset 8
     const descLen = ch.getInt16(8, false);
@@ -276,6 +413,7 @@ async function _parseHeaders(file) {
 
     // Device desc: at 138+2+128 = 268 
     const devLen = ch.getInt16(268, false);
+    const devDesc = _decodeStr(ch, 270, Math.min(devLen, 19));
     // Sensor desc: at 268+2+19 = 289
     const senLen = ch.getInt16(289, false);
     const senDesc = _decodeStr(ch, 291, Math.min(senLen, 17)) || desc;
@@ -293,18 +431,41 @@ async function _parseHeaders(file) {
     const minVal = ch.getFloat64(statsBase + 4, false);
     const maxVal = ch.getFloat64(statsBase + 12, false);
 
-    const sensorIdVal = ch.getInt32(statsBase + 28, false);
     const resolution = ch.getInt32(statsBase, false);
+
+    const newDeviceID = ch.getInt32(CH_NEW_DEVICE_ID, false);
+    const subDeviceID = ch.getInt32(CH_SUB_DEVICE_ID, false);
+    const sensorID = ch.getInt32(CH_SENSOR_ID, false);
+    const slaveAddress = _fileVersion > 4 ? ch.getInt8(CH_SLAVE_ADDRESS) : 0;
+
+    const fullName = _buildFullChannelName(
+      { deviceId: _deviceId, deviceType: _deviceType },
+      {
+        description: desc,
+        unit: unitText,
+        newDeviceID,
+        subDeviceID,
+        sensorID,
+        slaveAddress,
+        sensorDescription: senDesc,
+        subDeviceDescription: subDesc,
+      }
+    );
 
     _channels.push({
       channel_id: i,
       location_id: 1,
-      sensor_id: sensorIdVal || i,
+      sensor_id: sensorID || i,
       pref,
+      new_device_id: newDeviceID,
+      sub_device_id: subDeviceID,
+      slave_address: slaveAddress,
+      device_description: devDesc,
       logic_channel_description: desc,
       physical_channel_description: desc,
       sensor_description: senDesc,
       unit_in_ascii: unitText,
+      full_channel_name: fullName,
       _min: isFinite(minVal) ? minVal : 0,
       _max: isFinite(maxVal) ? maxVal : 0,
       resolution: isFinite(resolution) ? resolution : 0,
@@ -872,6 +1033,7 @@ const CsdAPI = {
         sensor_description: ch.sensor_description,
         unit_in_ascii: ch.unit_in_ascii,
         resolution: ch.resolution,
+        full_channel_name: ch.full_channel_name,
       }))
     }), 50);
   },

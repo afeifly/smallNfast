@@ -46,9 +46,9 @@ class ChannelItem extends Component {
               '&.Mui-checked': { color: '#00ac86' }
             }}
           />
-          <span className="CL-channel-item-name">{ data.name }</span>
+          <span className="CL-channel-item-name">{ data.fullName || data.name }</span>
         </div>
-        {data.unit && (
+        {!data.fullName && data.unit && (
           <span className="CL-channel-item-unit">{ data.unit }</span>
         )}
       </label>

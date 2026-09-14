@@ -242,10 +242,10 @@ const TableView = () => {
                             }}
                           />
                           <span className="channel-item-name">
-                            {ch.logic_channel_description || `Channel ${ch.channel_id}`}
+                            {ch.full_channel_name || ch.logic_channel_description || `Channel ${ch.channel_id}`}
                           </span>
                         </div>
-                        {ch.unit_in_ascii && (
+                        {!ch.full_channel_name && ch.unit_in_ascii && (
                           <span className="channel-item-unit">{ch.unit_in_ascii}</span>
                         )}
                       </label>
@@ -372,8 +372,8 @@ const TableView = () => {
                     .filter(c => selectedChannelIds.includes(c.channel_id))
                     .map(c => (
                       <th key={c.channel_id}>
-                        {c.logic_channel_description || `Channel ${c.channel_id}`}
-                        {c.unit_in_ascii ? ` (${c.unit_in_ascii})` : ''}
+                        {c.full_channel_name || c.logic_channel_description || `Channel ${c.channel_id}`}
+                        {!c.full_channel_name && c.unit_in_ascii ? ` (${c.unit_in_ascii})` : ''}
                       </th>
                     ))}
                 </tr>

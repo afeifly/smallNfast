@@ -279,6 +279,7 @@ class ChannelList extends Component {
         y: 0,
         baseWidth: 40,
         name: channelObj.logic_channel_description,
+        fullName: channelObj.full_channel_name,
         unit: channelObj.unit_in_ascii,
         sensorDescription: channelObj.sensor_description,
         scale: null,

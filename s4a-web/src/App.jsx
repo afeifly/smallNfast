@@ -440,12 +440,14 @@ function App() {
             <button
               className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
               onClick={() => setActiveTab('report')}
+              style={{ display: 'none' }}
             >
               Consumption Report
             </button>
             <button
               className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
               onClick={() => setActiveTab('analyze')}
+              style={{ display: 'none' }}
             >
               Compressor Analyze <span className="beta-tag">Beta</span>
             </button>

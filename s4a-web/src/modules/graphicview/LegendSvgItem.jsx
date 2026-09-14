@@ -32,7 +32,7 @@ class LegendSvgItem extends Component {
       <g transform="translate(15, 15)" className="legend-item"  onClick={ () => this.onClick() } >
         <rect  y='-2' rx="3" ry="3" width="24" height="5" style={{ fill:color }} />
         <circle  cx="12.5" cy="0.5" r="4" stroke={ color } strokeWidth="2.1" fill="white"/>
-        <text x="28" y="1" dominantBaseline="central" fill={ fontColor }   fontSize="12" className="legend-item-text">{ data.sensorDescription + ' - ' + data.name }</text>	
+        <text x="28" y="1" dominantBaseline="central" fill={ fontColor }   fontSize="12" className="legend-item-text">{ data.fullName || (data.sensorDescription + ' - ' + data.name) }</text>	
       </g>
     );
   }

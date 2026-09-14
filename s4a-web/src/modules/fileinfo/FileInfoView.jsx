@@ -121,7 +121,7 @@ function FileInfoView() {
                   {fileInfo.channels && fileInfo.channels.map((ch, idx) => (
                     <tr key={idx}>
                       <td className="col-index">#{idx + 1}</td>
-                      <td className="col-desc">{ch.logic_channel_description || `Channel ${ch.channel_id}`}</td>
+                      <td className="col-desc">{ch.full_channel_name || ch.logic_channel_description || `Channel ${ch.channel_id}`}</td>
                       <td className="col-sensor">{ch.sensor_description || '-'}</td>
                       <td className="col-unit">
                         <span className="unit-badge-tag">{ch.unit_in_ascii || '-'}</span>

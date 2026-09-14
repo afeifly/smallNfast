@@ -351,30 +351,36 @@ async function _parseHeaders(file) {
   const sampleRateRaw = ph.getInt32(3024, false);
 
   const fileSize = file.size || 0;
+
+  // Channel count — bounded by how many 918-byte headers fit after the protocol header
   if (fileSize > 0) {
-    const maxPossibleChannels = Math.floor(fileSize / CHANNEL_HEADER_LEN);
+    const maxPossibleChannels = Math.max(1, Math.floor((fileSize - CHANNEL_HEADERS_START) / CHANNEL_HEADER_LEN));
     if (rawChannels <= 0 || rawChannels > maxPossibleChannels) {
-      console.warn(`[CsdAPI] Parsed invalid channel count (${rawChannels}). Defaulting to 9.`);
+      console.warn(`[CsdAPI] Invalid channel count (${rawChannels}). Defaulting to 9.`);
       rawChannels = 9;
     }
-  } else {
-    if (rawChannels <= 0) {
-      rawChannels = 9;
-    }
+  } else if (rawChannels <= 0) {
+    rawChannels = 9;
   }
   _numChannels = rawChannels;
 
-  if (fileSize > 0) {
-    const recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
-    const maxPossibleSamples = Math.floor(fileSize / recordLen);
-    if (rawSamples < 0 || rawSamples > maxPossibleSamples) {
-      console.warn(`[CsdAPI] Parsed invalid sample count (${rawSamples}). Defaulting to 0.`);
-      rawSamples = 0;
+  // Data record geometry (needed to derive the real sample count)
+  _dataStart = CHANNEL_HEADERS_START + _numChannels * CHANNEL_HEADER_LEN;
+  _recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
+
+  // Sample count — repair it from the file size when the header is missing/inconsistent.
+  // Some CSD files carry a wrong (0 or stale) sample count; derive the truth from the bytes.
+  let computedSamples = 0;
+  if (fileSize > _dataStart && _recordLen > 0) {
+    computedSamples = Math.floor((fileSize - _dataStart) / _recordLen);
+  }
+  if (fileSize > 0 && _recordLen > 0) {
+    if (rawSamples <= 0 || Math.abs(rawSamples - computedSamples) > 1) {
+      console.warn(`[CsdAPI] Header sample count (${rawSamples}) inconsistent with file size; using ${computedSamples}.`);
+      rawSamples = computedSamples;
     }
-  } else {
-    if (rawSamples < 0) {
-      rawSamples = 0;
-    }
+  } else if (rawSamples < 0) {
+    rawSamples = 0;
   }
   _numSamples = rawSamples;
 
@@ -385,14 +391,20 @@ async function _parseHeaders(file) {
   if (Math.abs(rawStart) > MAX_TS) rawStart = 0;
   if (Math.abs(rawStop) > MAX_TS) rawStop = 0;
 
-  _startTimeMs = rawStart;
   _sampleIntervalSec = sampleRateRaw > 0 ? sampleRateRaw : 1;
   _sampleRate = 1 / _sampleIntervalSec;
 
-  if (_startTimeMs <= 0) _startTimeMs = Date.now() - 3600000;
-  
-  // Calculate stop time based on start time, sample count, and exact interval
-  _stopTimeMs = _startTimeMs + _numSamples * _sampleIntervalSec * 1000;
+  _startTimeMs = rawStart > 0 ? rawStart : Date.now() - 3600000;
+
+  // Stop time — trust the header only when it is valid and consistent with the (repaired)
+  // sample count; otherwise derive it from start + samples × interval.
+  const computedStop = _startTimeMs + _numSamples * _sampleIntervalSec * 1000;
+  if (rawStop > 0 && rawStop >= _startTimeMs
+    && Math.abs(rawStop - computedStop) <= _sampleIntervalSec * 1000 * 2) {
+    _stopTimeMs = rawStop;
+  } else {
+    _stopTimeMs = computedStop;
+  }
 
   // ── Channel headers (918 bytes each) ──
   _channels = [];
@@ -471,10 +483,6 @@ async function _parseHeaders(file) {
       resolution: isFinite(resolution) ? resolution : 0,
     });
   }
-
-  // ── Data record geometry ──
-  _dataStart = CHANNEL_HEADERS_START + _numChannels * CHANNEL_HEADER_LEN;
-  _recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
 
   console.log(`[CsdAPI] Parsed ${_numChannels} channels, ${_numSamples} samples @ ${_sampleRate.toFixed(3)} Hz`);
   console.log(`[CsdAPI] Time range: ${new Date(_startTimeMs).toISOString()} → ${new Date(_stopTimeMs).toISOString()}`);

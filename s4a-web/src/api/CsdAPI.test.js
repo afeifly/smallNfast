@@ -148,6 +148,7 @@ describe('CsdAPI Parser', () => {
     expect(dataResult[0].measurementData[0][4]).toBe(14.0);
   });
 
+
   it('correctly exports data to CSV and Excel', async () => {
     const createdBlobs = [];
     const downloadedFiles = [];
@@ -603,4 +604,141 @@ No.,Date Time,CH1 - mV,CH2 - mV
     document.body.appendChild = originalAppend;
     document.body.removeChild = originalRemove;
   });
+
+  it('repairs a bad header sample count and stop time from the file size', async () => {
+    const FILE_HEADER_LEN     = 34;
+    const PROTOCOL_HEADER_LEN = 3552;
+    const CHANNEL_HEADER_LEN  = 918;
+    const RECORD_ID_LEN       = 4;
+    const CHANNEL_VALUE_LEN   = 8;
+
+    const numChannels = 2;
+    const numSamples = 5;
+
+    const protocolHeaderStart = FILE_HEADER_LEN;
+    const channelHeadersStart = protocolHeaderStart + PROTOCOL_HEADER_LEN;
+    const dataStart = channelHeadersStart + numChannels * CHANNEL_HEADER_LEN;
+    const recordLen = RECORD_ID_LEN + numChannels * CHANNEL_VALUE_LEN;
+    const totalSize = dataStart + numSamples * recordLen;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const encoder = new TextEncoder();
+
+    view.setInt32(0, 5, false);
+    const idBytes = encoder.encode('SUTO CSD');
+    for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+    const startTimeMs = 1716380000000;
+    view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+    view.setInt32(protocolHeaderStart + 3020, 0, false);            // BAD: header says 0 samples
+    view.setInt32(protocolHeaderStart + 3024, 1, false);
+    view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
+    view.setBigInt64(protocolHeaderStart + 3040, BigInt(0), false);  // BAD: header stop time = 0
+
+    for (let c = 0; c < numChannels; c++) {
+      const chStart = channelHeadersStart + c * CHANNEL_HEADER_LEN;
+      view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+      const descName = `Ch_${c}`;
+      view.setInt16(chStart + 8, descName.length, false);
+      const descBytes = encoder.encode(descName);
+      for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+      const statsBase = 848;
+      view.setInt32(chStart + statsBase, 2, false);
+      view.setFloat64(chStart + statsBase + 4, 1.5 * c, false);
+      view.setFloat64(chStart + statsBase + 12, 100.0 * (c + 1), false);
+      view.setInt32(chStart + statsBase + 28, 5000 + c, false);
+    }
+
+    for (let s = 0; s < numSamples; s++) {
+      const recStart = dataStart + s * recordLen;
+      view.setInt32(recStart, s, false);
+      view.setFloat64(recStart + 4, 10.0 + s, false);
+      view.setFloat64(recStart + 12, 20.0 + s, false);
+    }
+
+    const mockFile = {
+      name: 'bad.csd',
+      size: totalSize,
+      slice(start, end) {
+        return { arrayBuffer: async () => buffer.slice(start, end) };
+      }
+    };
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    const success = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(success).toBe(true);
+
+    expect(CsdAPI.getNumOfSamples()).toBe(numSamples); // repaired from file size
+    const range = CsdAPI.getFileTimeRange();
+    expect(range.start).toBe(startTimeMs);
+    expect(range.stop).toBe(startTimeMs + numSamples * 1000); // stop derived from repaired samples
+  });
+
+  it('clamps an overstated header sample count and garbage stop time', async () => {
+    const numChannels = 2;
+    const numSamples = 5;
+    const protocolHeaderStart = 34;
+    const channelHeadersStart = 3586;
+    const recordLen = 4 + numChannels * 8;
+    const dataStart = channelHeadersStart + numChannels * 918;
+    const totalSize = dataStart + numSamples * recordLen;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const encoder = new TextEncoder();
+
+    view.setInt32(0, 5, false);
+    const idBytes = encoder.encode('SUTO CSD');
+    for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+    const startTimeMs = 1716380000000;
+    view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+    view.setInt32(protocolHeaderStart + 3020, 999999, false);          // BAD: far more than the file holds
+    view.setInt32(protocolHeaderStart + 3024, 1, false);
+    view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
+    view.setBigInt64(protocolHeaderStart + 3040, BigInt(8640000000000001), false); // BAD: out of range
+
+    for (let c = 0; c < numChannels; c++) {
+      const chStart = channelHeadersStart + c * 918;
+      view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+      const descName = `Ch_${c}`;
+      view.setInt16(chStart + 8, descName.length, false);
+      const descBytes = encoder.encode(descName);
+      for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+      view.setInt32(chStart + 848, 2, false);
+      view.setFloat64(chStart + 852, 1.5 * c, false);
+      view.setFloat64(chStart + 860, 100.0 * (c + 1), false);
+      view.setInt32(chStart + 876, 5000 + c, false);
+    }
+
+    for (let s = 0; s < numSamples; s++) {
+      const recStart = dataStart + s * recordLen;
+      view.setInt32(recStart, s, false);
+      view.setFloat64(recStart + 4, 10.0 + s, false);
+      view.setFloat64(recStart + 12, 20.0 + s, false);
+    }
+
+    const mockFile = {
+      name: 'overstated.csd',
+      size: totalSize,
+      slice(start, end) { return { arrayBuffer: async () => buffer.slice(start, end) }; }
+    };
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    await CsdAPI.loadFileFromHandle(mockHandle);
+
+    expect(CsdAPI.getNumOfSamples()).toBe(numSamples); // clamped to what the file actually holds
+    const range = CsdAPI.getFileTimeRange();
+    expect(range.stop).toBe(startTimeMs + numSamples * 1000); // garbage stop → derived from samples
+  });
+
 });

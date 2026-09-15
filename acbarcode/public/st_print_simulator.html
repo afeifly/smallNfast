@@ -1,633 +1,694 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>ST Label Print - Standalone Demo</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
-<style>
-    .suto-st-label-preview {
-        max-width: 140px;
-        max-height: 140px;
-        object-fit: contain;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        background: #fff;
-        padding: 2px;
-        cursor: zoom-in;
-    }
-    .suto-st-label-response { font-size: .875rem; }
-    .suto-st-label-response table { font-size: .875rem; }
-</style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ST Label Print - Standalone Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        .suto-st-label-preview {
+            max-width: 140px;
+            max-height: 140px;
+            object-fit: contain;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: #fff;
+            padding: 2px;
+            cursor: zoom-in;
+        }
+
+        .suto-st-label-response {
+            font-size: .875rem;
+        }
+
+        .suto-st-label-response table {
+            font-size: .875rem;
+        }
+    </style>
 </head>
+
 <body class="bg-light">
-<div class="container py-5" style="max-width: 720px;">
-    <div class="card">
-        <div class="card-header bg-white">
-            <h5 class="mb-0">Product</h5>
-        </div>
-        <div class="card-body">
-            <form id="product-form" onsubmit="event.preventDefault(); printST();">
-                <div class="row g-3">
-                    <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label mb-0" for="api-base">API base (label server)</label>
-                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="reset-api-base" title="Reset to current website URL">Reset to website URL</button>
-                        </div>
-                        <input id="api-base" class="form-control" placeholder="Current website URL"/>
-                        <div class="form-text">Defaults to this website's URL (<code id="api-base-default-label"></code>). You can also enter <code>http://localhost:5005</code> or another server IP for testing.</div>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Product</label>
-                        <input id="product" class="form-control" value="S695 4120"/>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Serial numbers (comma separated)</label>
-                        <input id="serials" class="form-control" value="2726 8785, 2726 8786"/>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Options</label>
-                        <input id="options" class="form-control" value="A1003, A1010, A1323, A1409, A1410, A1420, A1426"/>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Language (lang)</label>
-                        <input id="lang" class="form-control" value="zh"/>
-                    </div>
-                    <div class="col-12 text-end">
-                        <button type="submit" class="btn btn-primary" id="print-st-btn">Print ST</button>
-                    </div>
-                    <div id="form-error" class="col-12"></div>
-                </div>
-            </form>
-        </div>
-    </div>
-<p class="text-muted small mt-3 mb-0">
-    Standalone "Print ST" simulator. On load it POSTs the same payload as
-    <code>curl -X POST {api-base}/st_label</code>, then shows the
-    <strong>Modify</strong> dialog (widget) exactly as Odoo would.
-    If the label server is unreachable, it falls back to embedded sample data.
-</p>
-</div>
-
-<!-- ===== ST Label Response dialog (mirrors views/st_label_response_wizard.xml + widget) ===== -->
-<div class="modal fade" id="stLabelDialog" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Modify</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="container py-5" style="max-width: 720px;">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Product</h5>
             </div>
-            <div class="modal-body">
-                <div id="w-main-view">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4"><label class="form-label">Product</label><input class="form-control" id="w-product" readonly/></div>
-                        <div class="col-md-4"><label class="form-label">Options</label><input class="form-control" id="w-options" readonly/></div>
-                        <div class="col-md-4"><label class="form-label">Device</label><input class="form-control" id="w-device" readonly/></div>
-                        <div class="col-md-4"><label class="form-label">Total serials</label><input class="form-control" id="w-total" readonly/></div>
-                        <div class="col-md-8 d-flex align-items-end gap-2">
-                            <div class="flex-grow-1">
-                                <label class="form-label">Print service URL</label>
-                                <input id="w-service-url" class="form-control" placeholder="http://192.168.x.x:8799/print" value="http://100.100.1.11:8799/print"/>
+            <div class="card-body">
+                <form id="product-form" onsubmit="event.preventDefault(); printST();">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label mb-0" for="api-base">API base (label server)</label>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none"
+                                    id="reset-api-base" title="Reset to current website URL">Reset to website
+                                    URL</button>
                             </div>
-                            <button class="btn btn-secondary" id="w-check-service">Check service</button>
+                            <input id="api-base" class="form-control" placeholder="Current website URL" />
+                            <div class="form-text">Defaults to this website's URL (<code
+                                    id="api-base-default-label"></code>). You can also enter
+                                <code>http://localhost:5005</code> or another server IP for testing.</div>
                         </div>
-                    </div>
-                    <hr/>
-                    <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
-                        <span class="text-muted"><span id="w-summary"></span></span>
-                        <button class="btn btn-primary" id="w-print-all" disabled>Print all labels</button>
-                    </div>
-                    <div id="w-templates"></div>
-                    <div id="w-status"></div>
-                </div>
-
-                <!-- Partial modification view (content swap, no stacked modal) -->
-                <div id="w-patch-view" class="d-none">
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
+                        <div class="col-12">
                             <label class="form-label">Product</label>
-                            <input id="p-product" class="form-control" readonly/>
+                            <input id="product" class="form-control" value="S695 4120" />
                         </div>
-                        <div class="col-6">
-                            <label class="form-label">Serial</label>
-                            <input id="p-serial" class="form-control" readonly/>
+                        <div class="col-12">
+                            <label class="form-label">Serial numbers (comma separated)</label>
+                            <input id="serials" class="form-control" value="2726 8785, 2726 8786" />
                         </div>
+                        <div class="col-12">
+                            <label class="form-label">Options</label>
+                            <input id="options" class="form-control"
+                                value="A1003, A1010, A1323, A1409, A1410, A1420, A1426" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Language (lang)</label>
+                            <input id="lang" class="form-control" value="zh" />
+                        </div>
+                        <div class="col-12 text-end">
+                            <button type="submit" class="btn btn-primary" id="print-st-btn">Print ST</button>
+                        </div>
+                        <div id="form-error" class="col-12"></div>
                     </div>
-                    <label class="form-label">Patch overrides <span class="text-muted small">(leave empty to keep unchanged)</span></label>
-                    <div id="p-fields"></div>
-                    <div class="progress mt-3" id="p-progress" style="display:none">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%">Applying patch...</div>
+                </form>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0">
+            Standalone "Print ST" simulator. On load it POSTs the same payload as
+            <code>curl -X POST {api-base}/st_label</code>, then shows the
+            <strong>Modify</strong> dialog (widget) exactly as Odoo would.
+            If the label server is unreachable, it falls back to embedded sample data.
+        </p>
+    </div>
+
+    <!-- ===== ST Label Response dialog (mirrors views/st_label_response_wizard.xml + widget) ===== -->
+    <div class="modal fade" id="stLabelDialog" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Modify</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="w-main-view">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4"><label class="form-label">Product</label><input class="form-control"
+                                    id="w-product" readonly /></div>
+                            <div class="col-md-4"><label class="form-label">Options</label><input class="form-control"
+                                    id="w-options" readonly /></div>
+                            <div class="col-md-4"><label class="form-label">Device</label><input class="form-control"
+                                    id="w-device" readonly /></div>
+                            <div class="col-md-4"><label class="form-label">Total serials</label><input
+                                    class="form-control" id="w-total" readonly /></div>
+                            <div class="col-md-8 d-flex align-items-end gap-2">
+                                <div class="flex-grow-1">
+                                    <label class="form-label">Print service URL</label>
+                                    <input id="w-service-url" class="form-control"
+                                        placeholder="http://127.0.0.1:8799/print"
+                                        value="http://127.0.0.1:8799/print" />
+                                </div>
+                                <button class="btn btn-secondary" id="w-check-service">Check service</button>
+                            </div>
+                        </div>
+                        <hr />
+                        <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
+                            <span class="text-muted"><span id="w-summary"></span></span>
+                            <button class="btn btn-primary" id="w-print-all" disabled>Print all labels</button>
+                        </div>
+                        <div id="w-templates"></div>
+                        <div id="w-status"></div>
                     </div>
-                    <div id="p-status" class="mt-2"></div>
+
+                    <!-- Partial modification view (content swap, no stacked modal) -->
+                    <div id="w-patch-view" class="d-none">
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Product</label>
+                                <input id="p-product" class="form-control" readonly />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Serial</label>
+                                <input id="p-serial" class="form-control" readonly />
+                            </div>
+                        </div>
+                        <label class="form-label">Patch overrides <span class="text-muted small">(leave empty to keep
+                                unchanged)</span></label>
+                        <div id="p-fields"></div>
+                        <div class="progress mt-3" id="p-progress" style="display:none">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%">
+                                Applying patch...</div>
+                        </div>
+                        <div id="p-status" class="mt-2"></div>
+                    </div>
+                </div>
+                <div class="modal-footer" id="w-footer" style="display:none;">
+                    <button class="btn btn-secondary" id="p-cancel">Cancel</button>
+                    <button class="btn btn-primary" id="p-confirm">
+                        <span class="spinner-border spinner-border-sm me-2" id="p-spinner" style="display:none"
+                            role="status" aria-hidden="true"></span>
+                        <span id="p-confirm-text">Confirm</span>
+                    </button>
                 </div>
             </div>
-            <div class="modal-footer" id="w-footer" style="display:none;">
-                <button class="btn btn-secondary" id="p-cancel">Cancel</button>
-                <button class="btn btn-primary" id="p-confirm">
-                    <span class="spinner-border spinner-border-sm me-2" id="p-spinner" style="display:none" role="status" aria-hidden="true"></span>
-                    <span id="p-confirm-text">Confirm</span>
-                </button>
+        </div>
+    </div>
+
+    <!-- ===== Preview dialog ===== -->
+    <div class="modal fade" id="previewDialog" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Label Preview</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center p-3">
+                    <img id="preview-img" class="img-fluid" alt="preview" />
+                    <p id="preview-serial" class="mt-2 mb-0 text-muted"></p>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- ===== Preview dialog ===== -->
-<div class="modal fade" id="previewDialog" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Label Preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center p-3">
-                <img id="preview-img" class="img-fluid" alt="preview"/>
-                <p id="preview-serial" class="mt-2 mb-0 text-muted"></p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-// ===== Config: API base of the label server (defaults to website URL, editable for testing) =====
-function getDefaultApiBase() {
-    if (typeof window !== "undefined" && window.location && window.location.origin && window.location.origin !== "null" && !window.location.protocol.startsWith("file")) {
-        return window.location.origin;
-    }
-    return "http://localhost:5005";
-}
-
-const DEFAULT_API_BASE = getDefaultApiBase();
-
-function getApiBase() {
-    const el = document.getElementById("api-base");
-    const val = el ? el.value.trim() : "";
-    return (val || DEFAULT_API_BASE).replace(/\/+$/, "");
-}
-
-function initApiBase() {
-    const defaultBase = getDefaultApiBase();
-    const input = document.getElementById("api-base");
-    const label = document.getElementById("api-base-default-label");
-    if (label) {
-        label.textContent = defaultBase;
-    }
-    if (input) {
-        input.placeholder = defaultBase;
-        if (!input.value) {
-            input.value = defaultBase;
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // ===== Config: API base of the label server (defaults to website URL, editable for testing) =====
+        function getDefaultApiBase() {
+            if (typeof window !== "undefined" && window.location && window.location.origin && window.location.origin !== "null" && !window.location.protocol.startsWith("file")) {
+                return window.location.origin;
+            }
+            return "http://localhost:5005";
         }
-    }
-    const resetBtn = document.getElementById("reset-api-base");
-    if (resetBtn) {
-        resetBtn.addEventListener("click", (e) => {
-            e.preventDefault();
+
+        const DEFAULT_API_BASE = getDefaultApiBase();
+
+        function getApiBase() {
+            const el = document.getElementById("api-base");
+            const val = el ? el.value.trim() : "";
+            return (val || DEFAULT_API_BASE).replace(/\/+$/, "");
+        }
+
+        function initApiBase() {
+            const defaultBase = getDefaultApiBase();
+            const input = document.getElementById("api-base");
+            const label = document.getElementById("api-base-default-label");
+            if (label) {
+                label.textContent = defaultBase;
+            }
             if (input) {
-                input.value = defaultBase;
+                input.placeholder = defaultBase;
+                if (!input.value) {
+                    input.value = defaultBase;
+                }
             }
-        });
-    }
-}
-
-// Fallback data = real st_label response from the server
-const SAMPLE_RESPONSE = {
-    "product": "S695 4120",
-    "lang": "zh",
-    "done_date": "2026-07-07 03:59:23",
-    "serial_numbers": [
-        "2726 8785",
-        "2726 8786"
-    ],
-    "options": [
-        "A1003",
-        "A1010",
-        "A1323",
-        "A1409",
-        "A1410",
-        "A1420",
-        "A1426"
-    ],
-    "format": "json"
-};
-
-const stDialog = new bootstrap.Modal(document.getElementById("stLabelDialog"));
-const previewDialog = new bootstrap.Modal(document.getElementById("previewDialog"));
-const statusEl = document.getElementById("w-status");
-
-// Latest /st_label response kept so per-label patches can be applied in place
-// and the previews / EZPL re-rendered without refetching every label.
-let currentState = null;
-
-function setStatus(msg, isError) {
-    statusEl.innerHTML = msg
-        ? `<div class="alert mt-2 ${isError ? "alert-danger" : "alert-success"}" role="alert">${msg}</div>`
-        : "";
-}
-
-function templateConfig(tpl) {
-    return (tpl && tpl.config) || SAMPLE_RESPONSE.config || {};
-}
-
-function showPreview(item) {
-    if (!item.preview_image) return;
-    document.getElementById("preview-img").src = item.preview_image;
-    document.getElementById("preview-serial").textContent = item.serial || "";
-    previewDialog.show();
-}
-
-async function sendViaBridge(commands) {
-    const url = (document.getElementById("w-service-url").value || "").trim();
-    if (!url) {
-        setStatus("Set the Print service URL above, then Check service.", true);
-        return;
-    }
-    setStatus("");
-    try {
-        const resp = await fetch(getApiBase() + "/suto_st_label/print", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, ezpl_list: commands }),
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            setStatus(`Sent ${commands.length} label(s) to printer (${url}).`);
-        } else {
-            setStatus(`Print failed: ${data.error || "unknown error"}`, true);
+            const resetBtn = document.getElementById("reset-api-base");
+            if (resetBtn) {
+                resetBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    if (input) {
+                        input.value = defaultBase;
+                    }
+                });
+            }
         }
-    } catch (e) {
-        setStatus(`Print failed: ${e.message}`, true);
-    }
-}
 
-function renderTemplates(data) {
-    const box = document.getElementById("w-templates");
-    box.innerHTML = "";
-    const templates = data.templates || [];
-    document.getElementById("w-print-all").disabled = !templates.length;
-    if (!templates.length) {
-        box.innerHTML = '<div class="alert alert-warning">No templates in response.</div>';
-        return;
-    }
+        // Fallback data = real st_label response from the server
+        const SAMPLE_RESPONSE = {
+            "product": "S695 4120",
+            "lang": "zh",
+            "done_date": "2026-07-07 03:59:23",
+            "serial_numbers": [
+                "2726 8785",
+                "2726 8786"
+            ],
+            "options": [
+                "A1003",
+                "A1010",
+                "A1323",
+                "A1409",
+                "A1410",
+                "A1420",
+                "A1426"
+            ],
+            "format": "json"
+        };
 
-    function makeButton(label, cls, onClick) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = cls;
-        b.textContent = label;
-        b.addEventListener("click", onClick);
-        return b;
-    }
+        const stDialog = new bootstrap.Modal(document.getElementById("stLabelDialog"));
+        const previewDialog = new bootstrap.Modal(document.getElementById("previewDialog"));
+        const statusEl = document.getElementById("w-status");
 
-    for (const tpl of templates) {
-        const cfg = templateConfig(tpl);
-        const items = tpl.items || [];
+        // Latest /st_label response kept so per-label patches can be applied in place
+        // and the previews / EZPL re-rendered without refetching every label.
+        let currentState = null;
 
-        const div = document.createElement("div");
-        div.className = "suto-st-label-template border rounded mb-3 p-2";
+        function setStatus(msg, isError) {
+            statusEl.innerHTML = msg
+                ? `<div class="alert mt-2 ${isError ? "alert-danger" : "alert-success"}" role="alert">${msg}</div>`
+                : "";
+        }
 
-        const head = document.createElement("div");
-        head.className = "d-flex align-items-center mb-2";
+        function templateConfig(tpl) {
+            return (tpl && tpl.config) || SAMPLE_RESPONSE.config || {};
+        }
 
-        const h = document.createElement("h6");
-        h.className = "mb-0 me-2";
-        h.textContent = tpl.name || "";
-        head.appendChild(h);
+        function showPreview(item) {
+            if (!item.preview_image) return;
+            document.getElementById("preview-img").src = item.preview_image;
+            document.getElementById("preview-serial").textContent = item.serial || "";
+            previewDialog.show();
+        }
 
-        const badge = document.createElement("span");
-        badge.className = "badge text-bg-secondary me-auto";
-        badge.textContent = tpl.type || "";
-        head.appendChild(badge);
+        async function sendViaBridge(commands) {
+            let url = (document.getElementById("w-service-url").value || "").trim();
+            if (!url) {
+                setStatus("Set the Print service URL above, then Check service.", true);
+                return;
+            }
+            if (!/\/print\/?$/.test(url)) {
+                url = url.replace(/\/+$/, "") + "/print";
+            }
+            if (!commands || !commands.length) {
+                setStatus("No EZPL commands to print.", true);
+                return;
+            }
+            setStatus(`Sending ${commands.length} label(s) to printer bridge (${url})...`);
+            try {
+                const resp = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ezpl_list: commands }),
+                });
+                const text = await resp.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch {
+                    data = null;
+                }
 
-        const meta = document.createElement("span");
-        meta.className = "text-muted me-2";
-        meta.textContent =
-            `${cfg.widthMm}×${cfg.heightMm}mm @ ${cfg.dpi}dpi · ${tpl.total_labels} labels`;
-        head.appendChild(meta);
+                if (!resp.ok) {
+                    setStatus(`Print failed: ${(data && data.error) || "HTTP " + resp.status + " " + text.slice(0, 200)}`, true);
+                    return;
+                }
 
-        head.appendChild(makeButton(
-            "Print template",
-            "btn btn-outline-primary btn-sm",
-            () => sendViaBridge(items.map(i => i.ezpl)),
-        ));
-        div.appendChild(head);
+                if (data && data.ok) {
+                    setStatus(`Sent ${commands.length} label(s) to printer (${url}).`);
+                } else {
+                    setStatus(`Print failed: ${(data && data.error) || "unknown error"}`, true);
+                }
+            } catch (e) {
+                setStatus(`Print failed: ${e.message}`, true);
+            }
+        }
 
-        const table = document.createElement("table");
-        table.className = "table table-sm table-striped mb-1";
-        table.innerHTML = "<thead><tr><th>Serial</th><th>Partial modification</th><th class=\"w-25\">Preview</th><th class=\"w-10\"></th></tr></thead>";
-        const tbody = document.createElement("tbody");
-        const patches = (currentState && currentState.available_patches) || [];
-        for (const item of items) {
-            const tr = document.createElement("tr");
+        function renderTemplates(data) {
+            const box = document.getElementById("w-templates");
+            box.innerHTML = "";
+            const templates = data.templates || [];
+            document.getElementById("w-print-all").disabled = !templates.length;
+            if (!templates.length) {
+                box.innerHTML = '<div class="alert alert-warning">No templates in response.</div>';
+                return;
+            }
 
-            const tdSerial = document.createElement("td");
-            tdSerial.className = "align-top";
-            tdSerial.textContent = item.serial || "";
-            tr.appendChild(tdSerial);
+            function makeButton(label, cls, onClick) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = cls;
+                b.textContent = label;
+                b.addEventListener("click", onClick);
+                return b;
+            }
 
-            const tdPatch = document.createElement("td");
-            tdPatch.className = "align-top";
-            if (patches.length) {
-                tdPatch.appendChild(makeButton(
-                    "Modify",
-                    "btn btn-outline-secondary btn-sm",
-                    () => openPatchDialog(item, patches),
+            for (const tpl of templates) {
+                const cfg = templateConfig(tpl);
+                const items = tpl.items || [];
+
+                const div = document.createElement("div");
+                div.className = "suto-st-label-template border rounded mb-3 p-2";
+
+                const head = document.createElement("div");
+                head.className = "d-flex align-items-center mb-2";
+
+                const h = document.createElement("h6");
+                h.className = "mb-0 me-2";
+                h.textContent = tpl.name || "";
+                head.appendChild(h);
+
+                const badge = document.createElement("span");
+                badge.className = "badge text-bg-secondary me-auto";
+                badge.textContent = tpl.type || "";
+                head.appendChild(badge);
+
+                const meta = document.createElement("span");
+                meta.className = "text-muted me-2";
+                meta.textContent =
+                    `${cfg.widthMm}×${cfg.heightMm}mm @ ${cfg.dpi}dpi · ${tpl.total_labels} labels`;
+                head.appendChild(meta);
+
+                head.appendChild(makeButton(
+                    "Print template",
+                    "btn btn-outline-primary btn-sm",
+                    () => sendViaBridge(items.map(i => i.ezpl)),
                 ));
-            } else {
-                const span = document.createElement("span");
-                span.className = "text-muted small";
-                span.textContent = "(no patchable fields)";
-                tdPatch.appendChild(span);
+                div.appendChild(head);
+
+                const table = document.createElement("table");
+                table.className = "table table-sm table-striped mb-1";
+                table.innerHTML = "<thead><tr><th>Serial</th><th>Partial modification</th><th class=\"w-25\">Preview</th><th class=\"w-10\"></th></tr></thead>";
+                const tbody = document.createElement("tbody");
+                const patches = (currentState && currentState.available_patches) || [];
+                for (const item of items) {
+                    const tr = document.createElement("tr");
+
+                    const tdSerial = document.createElement("td");
+                    tdSerial.className = "align-top";
+                    tdSerial.textContent = item.serial || "";
+                    tr.appendChild(tdSerial);
+
+                    const tdPatch = document.createElement("td");
+                    tdPatch.className = "align-top";
+                    if (patches.length) {
+                        tdPatch.appendChild(makeButton(
+                            "Modify",
+                            "btn btn-outline-secondary btn-sm",
+                            () => openPatchDialog(item, patches),
+                        ));
+                    } else {
+                        const span = document.createElement("span");
+                        span.className = "text-muted small";
+                        span.textContent = "(no patchable fields)";
+                        tdPatch.appendChild(span);
+                    }
+                    tr.appendChild(tdPatch);
+
+                    const tdPrev = document.createElement("td");
+                    tdPrev.className = "align-top";
+                    if (item.preview_image) {
+                        const a = document.createElement("a");
+                        a.href = "#";
+                        a.className = "d-inline-block";
+                        a.addEventListener("click", (ev) => { ev.preventDefault(); showPreview(item); });
+                        const img = document.createElement("img");
+                        img.src = item.preview_image;
+                        img.alt = "Preview " + (item.serial || "");
+                        img.className = "suto-st-label-preview";
+                        a.appendChild(img);
+                        tdPrev.appendChild(a);
+                    } else {
+                        const span = document.createElement("span");
+                        span.className = "text-muted small";
+                        span.textContent = "(no preview)";
+                        tdPrev.appendChild(span);
+                    }
+                    tr.appendChild(tdPrev);
+
+                    const tdBtn = document.createElement("td");
+                    tdBtn.className = "align-top text-end";
+                    tdBtn.appendChild(makeButton("Print", "btn btn-primary btn-sm", () => sendViaBridge([item.ezpl])));
+                    tr.appendChild(tdBtn);
+
+                    tbody.appendChild(tr);
+                }
+                table.appendChild(tbody);
+                div.appendChild(table);
+
+                const details = document.createElement("details");
+                const summary = document.createElement("summary");
+                summary.className = "text-muted";
+                summary.textContent = "Show EZPL commands";
+                details.appendChild(summary);
+                const pre = document.createElement("pre");
+                pre.className = "mb-0 bg-light p-2 mt-2";
+                pre.textContent = tpl.all_ezpl || "";
+                details.appendChild(pre);
+                div.appendChild(details);
+
+                box.appendChild(div);
             }
-            tr.appendChild(tdPatch);
+        }
 
-            const tdPrev = document.createElement("td");
-            tdPrev.className = "align-top";
-            if (item.preview_image) {
-                const a = document.createElement("a");
-                a.href = "#";
-                a.className = "d-inline-block";
-                a.addEventListener("click", (ev) => { ev.preventDefault(); showPreview(item); });
-                const img = document.createElement("img");
-                img.src = item.preview_image;
-                img.alt = "Preview " + (item.serial || "");
-                img.className = "suto-st-label-preview";
-                a.appendChild(img);
-                tdPrev.appendChild(a);
-            } else {
-                const span = document.createElement("span");
-                span.className = "text-muted small";
-                span.textContent = "(no preview)";
-                tdPrev.appendChild(span);
+        function showDialog(data) {
+            const cfg = templateConfig(data.templates && data.templates[0]);
+            const serials = data.serial_numbers || [];
+            currentState = {
+                product: data.product || "",
+                options: data.options || "",
+                lang: data.lang || "cn",
+                done_date: data.done_date || "",
+                available_patches: data.available_patches || [],
+                serial_numbers: serials,
+                templates: data.templates || []
+            };
+            document.getElementById("w-product").value = data.product || "";
+            document.getElementById("w-options").value = Array.isArray(data.options) ? data.options.join(", ") : data.options || "";
+            document.getElementById("w-device").value = data.device_name || "";
+            document.getElementById("w-total").value = data.total_serials ?? serials.length ?? 0;
+            document.getElementById("w-summary").textContent =
+                `${data.product || ""} · ${data.device_name || ""} · ${data.total_serials ?? serials.length ?? 0} serials`;
+            setStatus("");
+            showMainView();
+            renderTemplates(data);
+            stDialog.show();
+        }
+
+        async function printST() {
+            const payload = buildPayload();
+            await fetchAndShow(payload);
+        }
+
+        async function initDemo() {
+            const payload = buildPayload();
+            const errEl = document.getElementById("form-error");
+            errEl.innerHTML = "";
+            try {
+                const data = await postToServer(payload);
+                document.getElementById("product").value = data.product || payload.product;
+                document.getElementById("serials").value = (data.serial_numbers || []).join(", ") || document.getElementById("serials").value;
+                if (data.options && data.options.length) {
+                    document.getElementById("options").value = data.options.join(", ");
+                }
+                document.getElementById("lang").value = data.lang || payload.lang;
+                showDialog(data);
+            } catch (e) {
+                console.warn("st_label unreachable on init, using sample data:", e.message);
+                errEl.innerHTML =
+                    `<div class="alert alert-warning">st_label unreachable (${e.message}). Showing embedded sample response so you can view the dialog.</div>`;
+                showDialog(SAMPLE_RESPONSE);
             }
-            tr.appendChild(tdPrev);
-
-            const tdBtn = document.createElement("td");
-            tdBtn.className = "align-top text-end";
-            tdBtn.appendChild(makeButton("Print", "btn btn-primary btn-sm", () => sendViaBridge([item.ezpl])));
-            tr.appendChild(tdBtn);
-
-            tbody.appendChild(tr);
         }
-        table.appendChild(tbody);
-        div.appendChild(table);
 
-        const details = document.createElement("details");
-        const summary = document.createElement("summary");
-        summary.className = "text-muted";
-        summary.textContent = "Show EZPL commands";
-        details.appendChild(summary);
-        const pre = document.createElement("pre");
-        pre.className = "mb-0 bg-light p-2 mt-2";
-        pre.textContent = tpl.all_ezpl || "";
-        details.appendChild(pre);
-        div.appendChild(details);
-
-        box.appendChild(div);
-    }
-}
-
-function showDialog(data) {
-    const cfg = templateConfig(data.templates && data.templates[0]);
-    const serials = data.serial_numbers || [];
-    currentState = {
-        product: data.product || "",
-        options: data.options || "",
-        lang: data.lang || "cn",
-        done_date: data.done_date || "",
-        available_patches: data.available_patches || [],
-        serial_numbers: serials,
-        templates: data.templates || []
-    };
-    document.getElementById("w-product").value = data.product || "";
-    document.getElementById("w-options").value = Array.isArray(data.options) ? data.options.join(", ") : data.options || "";
-    document.getElementById("w-device").value = data.device_name || "";
-    document.getElementById("w-total").value = data.total_serials ?? serials.length ?? 0;
-    document.getElementById("w-summary").textContent =
-        `${data.product || ""} · ${data.device_name || ""} · ${data.total_serials ?? serials.length ?? 0} serials`;
-    setStatus("");
-    showMainView();
-    renderTemplates(data);
-    stDialog.show();
-}
-
-async function printST() {
-    const payload = buildPayload();
-    await fetchAndShow(payload);
-}
-
-async function initDemo() {
-    const payload = buildPayload();
-    const errEl = document.getElementById("form-error");
-    errEl.innerHTML = "";
-    try {
-        const data = await postToServer(payload);
-        document.getElementById("product").value = data.product || payload.product;
-        document.getElementById("serials").value = (data.serial_numbers || []).join(", ") || document.getElementById("serials").value;
-        if (data.options && data.options.length) {
-            document.getElementById("options").value = data.options.join(", ");
+        function buildPayload() {
+            return {
+                "product": document.getElementById("product").value,
+                "serial_numbers": document.getElementById("serials").value.split(",").map(s => s.trim()).filter(Boolean),
+                "options": document.getElementById("options").value.split(",").map(s => s.trim()).filter(Boolean),
+                "lang": document.getElementById("lang").value || "cn",
+                "format": "json",
+            };
         }
-        document.getElementById("lang").value = data.lang || payload.lang;
-        showDialog(data);
-    } catch (e) {
-        console.warn("st_label unreachable on init, using sample data:", e.message);
-        errEl.innerHTML =
-            `<div class="alert alert-warning">st_label unreachable (${e.message}). Showing embedded sample response so you can view the dialog.</div>`;
-        showDialog(SAMPLE_RESPONSE);
-    }
-}
 
-function buildPayload() {
-    return {
-        "product": document.getElementById("product").value,
-        "serial_numbers": document.getElementById("serials").value.split(",").map(s => s.trim()).filter(Boolean),
-        "options": document.getElementById("options").value.split(",").map(s => s.trim()).filter(Boolean),
-        "lang": document.getElementById("lang").value || "cn",
-        "format": "json",
-    };
-}
-
-async function postToServer(payload) {
-    const resp = await fetch(getApiBase() + "/st_label", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-    });
-    if (!resp.ok) {
-        throw new Error(`Label server returned HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
-    }
-    return await resp.json();
-}
-
-async function fetchAndShow(payload) {
-    const btn = document.getElementById("print-st-btn");
-    const errEl = document.getElementById("form-error");
-    btn.disabled = true;
-    btn.textContent = "Requesting labels...";
-    errEl.innerHTML = "";
-    try {
-        const data = await postToServer(payload);
-        showDialog(data);
-    } catch (e) {
-        console.warn("Label server unreachable, using sample data:", e.message);
-        errEl.innerHTML =
-            `<div class="alert alert-warning">Label server unreachable (${e.message}). Showing embedded sample response so you can view the dialog.</div>`;
-        showDialog(SAMPLE_RESPONSE);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "Print ST";
-    }
-}
-
-document.getElementById("w-check-service").addEventListener("click", async () => {
-    const url = (document.getElementById("w-service-url").value || "").trim().replace(/\/+$/, "");
-    if (!url) { setStatus("Set the Print service URL first, e.g. http://192.168.x.x:8799", true); return; }
-    setStatus("Checking service...");
-    try {
-        const resp = await fetch(url + "/health", { method: "GET" });
-        const data = await resp.json();
-        if (resp.ok) {
-            const printers = (data.printers || []).map(p => "- " + p).join("\n") || "(none)";
-            setStatus(`Print service is running.\nDefault printer: ${data.default_printer || "?"}\nAvailable printers:\n${printers}`);
-        } else {
-            setStatus(`Health check returned HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`, true);
+        async function postToServer(payload) {
+            const resp = await fetch(getApiBase() + "/st_label", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                throw new Error(`Label server returned HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+            }
+            return await resp.json();
         }
-    } catch (e) {
-        setStatus(`Cannot reach the print service at ${url}. Error: ${e.message}`, true);
-    }
-});
 
-// ===== Partial modification (per-label patch) =====
-function showMainView() {
-    document.getElementById("w-main-view").classList.remove("d-none");
-    document.getElementById("w-patch-view").classList.add("d-none");
-    document.getElementById("w-footer").style.display = "none";
-}
+        async function fetchAndShow(payload) {
+            const btn = document.getElementById("print-st-btn");
+            const errEl = document.getElementById("form-error");
+            btn.disabled = true;
+            btn.textContent = "Requesting labels...";
+            errEl.innerHTML = "";
+            try {
+                const data = await postToServer(payload);
+                showDialog(data);
+            } catch (e) {
+                console.warn("Label server unreachable, using sample data:", e.message);
+                errEl.innerHTML =
+                    `<div class="alert alert-warning">Label server unreachable (${e.message}). Showing embedded sample response so you can view the dialog.</div>`;
+                showDialog(SAMPLE_RESPONSE);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Print ST";
+            }
+        }
 
-function showPatchView() {
-    document.getElementById("w-main-view").classList.add("d-none");
-    document.getElementById("w-patch-view").classList.remove("d-none");
-    document.getElementById("w-footer").style.display = "flex";
-}
-
-function setPatchStatus(msg, isError) {
-    const el = document.getElementById("p-status");
-    el.innerHTML = msg
-        ? `<div class="alert ${isError ? "alert-danger" : "alert-success"} py-2 mb-0" role="alert">${msg}</div>`
-        : "";
-}
-
-function setPatchBusy(busy) {
-    document.getElementById("p-confirm").disabled = busy;
-    document.getElementById("p-cancel").disabled = busy;
-    document.getElementById("p-progress").style.display = busy ? "block" : "none";
-    document.getElementById("p-spinner").style.display = busy ? "inline-block" : "none";
-    document.getElementById("p-confirm-text").textContent = busy ? "Applying..." : "Confirm";
-}
-
-function openPatchDialog(item, patches) {
-    document.getElementById("p-product").value = currentState.product || "";
-    document.getElementById("p-serial").value = item.serial || "";
-    const box = document.getElementById("p-fields");
-    box.innerHTML = "";
-    for (const p of patches) {
-        const row = document.createElement("div");
-        row.className = "input-group input-group-sm mb-2";
-        const label = document.createElement("span");
-        label.className = "input-group-text";
-        label.style.width = "40%";
-        label.textContent = p.patchName + (p.title && p.title !== p.patchName ? ` (${p.title})` : "");
-        label.title = p.patchName;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "form-control";
-        input.dataset.patchName = p.patchName;
-        input.placeholder = `Override "${p.patchName}" — leave empty to keep`;
-        row.appendChild(label);
-        row.appendChild(input);
-        box.appendChild(row);
-    }
-    setPatchStatus("");
-    setPatchBusy(false);
-    showPatchView();
-}
-
-function backToLabels() {
-    showMainView();
-}
-
-async function applyPatch() {
-    const serial = document.getElementById("p-serial").value;
-    const patches = {};
-    for (const input of document.querySelectorAll("#p-fields input[data-patch-name]")) {
-        const val = input.value.trim();
-        if (val) patches[input.dataset.patchName] = val;
-    }
-    if (!Object.keys(patches).length) {
-        setPatchStatus("Enter at least one override value, or click Cancel.", true);
-        return;
-    }
-
-    setPatchBusy(true);
-    setPatchStatus(`Applying patch to ${serial} ...`);
-    try {
-        const resp = await fetch(getApiBase() + "/st_label_patch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                product: currentState.product,
-                serial,
-                options: currentState.options,
-                lang: currentState.lang,
-                done_date: currentState.done_date || "",
-                patches,
-            }),
+        document.getElementById("w-check-service").addEventListener("click", async () => {
+            const rawUrl = (document.getElementById("w-service-url").value || "").trim();
+            if (!rawUrl) { setStatus("Set the Print service URL first, e.g. http://127.0.0.1:8799/print", true); return; }
+            const base = rawUrl.replace(/\/print\/?$/, "").replace(/\/+$/, "");
+            setStatus("Checking service...");
+            try {
+                const resp = await fetch(base + "/health", { method: "GET" });
+                const text = await resp.text();
+                let data;
+                try { data = JSON.parse(text); } catch { data = null; }
+                if (resp.ok && data) {
+                    const printers = (data.printers || []).map(p => "- " + p).join("\n") || "(none)";
+                    setStatus(`Print service is running.\nDefault printer: ${data.default_printer || "?"}\nAvailable printers:\n${printers}`);
+                } else {
+                    setStatus(`Health check returned HTTP ${resp.status}: ${text.slice(0, 300)}`, true);
+                }
+            } catch (e) {
+                setStatus(`Cannot reach the print service at ${base}. Error: ${e.message}`, true);
+            }
         });
-        const data = await resp.json();
-        if (!resp.ok || data.error) {
-            setPatchStatus(`Patch failed: ${data.error || "HTTP " + resp.status}`, true);
-            return;
-        }
 
-        // Apply the patched item(s) into the current state and rebuild EZPL so
-        // the row preview, Print and "Print all labels" all use the new data.
-        for (const rtpl of data.templates || []) {
-            const tpl = currentState.templates.find(t => t.id === rtpl.id);
-            if (!tpl) continue;
-            for (const ritem of rtpl.items || []) {
-                const idx = tpl.items.findIndex(it => String(it.serial) === String(ritem.serial));
-                const upd = {
-                    ...(idx >= 0 ? tpl.items[idx] : ritem),
-                    preview_image: ritem.preview_image,
-                    ezpl: ritem.ezpl,
-                    ezpl_base64: ritem.ezpl_base64,
-                };
-                if (idx >= 0) tpl.items[idx] = upd; else tpl.items.push(upd);
+        document.getElementById("w-print-all").addEventListener("click", () => {
+            if (!currentState || !currentState.templates) return;
+            const allEzpl = [];
+            for (const tpl of currentState.templates) {
+                for (const item of (tpl.items || [])) {
+                    if (item.ezpl) allEzpl.push(item.ezpl);
+                }
             }
-            tpl.all_ezpl = tpl.items.map(i => i.ezpl || "").join("");
-            try { tpl.all_ezpl_base64 = btoa(tpl.all_ezpl); } catch (e) { /* non-latin1 safe fallback */ }
+            if (allEzpl.length) {
+                sendViaBridge(allEzpl);
+            } else {
+                setStatus("No EZPL commands found to print.", true);
+            }
+        });
+
+        // ===== Partial modification (per-label patch) =====
+        function showMainView() {
+            document.getElementById("w-main-view").classList.remove("d-none");
+            document.getElementById("w-patch-view").classList.add("d-none");
+            document.getElementById("w-footer").style.display = "none";
         }
 
-        renderTemplates(currentState);
-        setPatchStatus(`Patch applied. Preview & EZPL updated for ${serial}.`);
-        setPatchBusy(false);
-        setTimeout(() => {
+        function showPatchView() {
+            document.getElementById("w-main-view").classList.add("d-none");
+            document.getElementById("w-patch-view").classList.remove("d-none");
+            document.getElementById("w-footer").style.display = "flex";
+        }
+
+        function setPatchStatus(msg, isError) {
+            const el = document.getElementById("p-status");
+            el.innerHTML = msg
+                ? `<div class="alert ${isError ? "alert-danger" : "alert-success"} py-2 mb-0" role="alert">${msg}</div>`
+                : "";
+        }
+
+        function setPatchBusy(busy) {
+            document.getElementById("p-confirm").disabled = busy;
+            document.getElementById("p-cancel").disabled = busy;
+            document.getElementById("p-progress").style.display = busy ? "block" : "none";
+            document.getElementById("p-spinner").style.display = busy ? "inline-block" : "none";
+            document.getElementById("p-confirm-text").textContent = busy ? "Applying..." : "Confirm";
+        }
+
+        function openPatchDialog(item, patches) {
+            document.getElementById("p-product").value = currentState.product || "";
+            document.getElementById("p-serial").value = item.serial || "";
+            const box = document.getElementById("p-fields");
+            box.innerHTML = "";
+            for (const p of patches) {
+                const row = document.createElement("div");
+                row.className = "input-group input-group-sm mb-2";
+                const label = document.createElement("span");
+                label.className = "input-group-text";
+                label.style.width = "40%";
+                label.textContent = p.patchName + (p.title && p.title !== p.patchName ? ` (${p.title})` : "");
+                label.title = p.patchName;
+                const input = document.createElement("input");
+                input.type = "text";
+                input.className = "form-control";
+                input.dataset.patchName = p.patchName;
+                input.placeholder = `Override "${p.patchName}" — leave empty to keep`;
+                row.appendChild(label);
+                row.appendChild(input);
+                box.appendChild(row);
+            }
+            setPatchStatus("");
+            setPatchBusy(false);
+            showPatchView();
+        }
+
+        function backToLabels() {
+            showMainView();
+        }
+
+        async function applyPatch() {
+            const serial = document.getElementById("p-serial").value;
+            const patches = {};
+            for (const input of document.querySelectorAll("#p-fields input[data-patch-name]")) {
+                const val = input.value.trim();
+                if (val) patches[input.dataset.patchName] = val;
+            }
+            if (!Object.keys(patches).length) {
+                setPatchStatus("Enter at least one override value, or click Cancel.", true);
+                return;
+            }
+
+            setPatchBusy(true);
+            setPatchStatus(`Applying patch to ${serial} ...`);
+            try {
+                const resp = await fetch(getApiBase() + "/st_label_patch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        product: currentState.product,
+                        serial,
+                        options: currentState.options,
+                        lang: currentState.lang,
+                        done_date: currentState.done_date || "",
+                        patches,
+                    }),
+                });
+                const data = await resp.json();
+                if (!resp.ok || data.error) {
+                    setPatchStatus(`Patch failed: ${data.error || "HTTP " + resp.status}`, true);
+                    return;
+                }
+
+                // Apply the patched item(s) into the current state and rebuild EZPL so
+                // the row preview, Print and "Print all labels" all use the new data.
+                for (const rtpl of data.templates || []) {
+                    const tpl = currentState.templates.find(t => t.id === rtpl.id);
+                    if (!tpl) continue;
+                    for (const ritem of rtpl.items || []) {
+                        const idx = tpl.items.findIndex(it => String(it.serial) === String(ritem.serial));
+                        const upd = {
+                            ...(idx >= 0 ? tpl.items[idx] : ritem),
+                            preview_image: ritem.preview_image,
+                            ezpl: ritem.ezpl,
+                            ezpl_base64: ritem.ezpl_base64,
+                        };
+                        if (idx >= 0) tpl.items[idx] = upd; else tpl.items.push(upd);
+                    }
+                    tpl.all_ezpl = tpl.items.map(i => i.ezpl || "").join("");
+                    try { tpl.all_ezpl_base64 = btoa(tpl.all_ezpl); } catch (e) { /* non-latin1 safe fallback */ }
+                }
+
+                renderTemplates(currentState);
+                setPatchStatus(`Patch applied. Preview & EZPL updated for ${serial}.`);
+                setPatchBusy(false);
+                setTimeout(() => {
+                    backToLabels();
+                    setStatus(`Patch applied for ${serial}. Preview & EZPL updated.`);
+                }, 800);
+            } catch (e) {
+                setPatchStatus(`Patch failed: ${e.message}`, true);
+                setPatchBusy(false);
+            }
+        }
+
+        document.getElementById("p-confirm").addEventListener("click", applyPatch);
+        document.getElementById("p-cancel").addEventListener("click", () => {
+            setStatus("");
             backToLabels();
-            setStatus(`Patch applied for ${serial}. Preview & EZPL updated.`);
-        }, 800);
-    } catch (e) {
-        setPatchStatus(`Patch failed: ${e.message}`, true);
-        setPatchBusy(false);
-    }
-}
+        });
 
-document.getElementById("p-confirm").addEventListener("click", applyPatch);
-document.getElementById("p-cancel").addEventListener("click", () => {
-    setStatus("");
-    backToLabels();
-});
-
-initApiBase();
-initDemo();
-</script>
+        initApiBase();
+        initDemo();
+    </script>
 </body>
+
 </html>

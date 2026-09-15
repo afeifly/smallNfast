@@ -35,7 +35,7 @@ function initStAssets() {
       stLogoBase64 = `data:image/jpeg;base64,${buf.toString('base64')}`;
       let i = 0;
       while (i < buf.length) {
-        if (buf[i] === 0xFF && (buf[i+1] === 0xC0 || buf[i+1] === 0xC2)) {
+        if (buf[i] === 0xFF && (buf[i + 1] === 0xC0 || buf[i + 1] === 0xC2)) {
           const height = buf.readUInt16BE(i + 5);
           const width = buf.readUInt16BE(i + 7);
           if (width > 0) stLogoAspect = height / width;
@@ -648,8 +648,8 @@ const handleStLabelRequest = (req, res) => {
   serials = serials.map(s => String(s).trim()).filter(Boolean);
 
   if (serials.length === 0) {
-    return res.status(400).json({ 
-      error: 'Serial number is required. Usage: GET /api/st-label?sn=12345678 or POST /api/st-label with { "serials": ["12345678"] }' 
+    return res.status(400).json({
+      error: 'Serial number is required. Usage: GET /api/st-label?sn=12345678 or POST /api/st-label with { "serials": ["12345678"] }'
     });
   }
 
@@ -737,7 +737,7 @@ function xmlRpcToJs(xml) {
   }
 
   let pos = 0;
-  
+
   function skipWhitespace() {
     while (pos < xml.length && /\s/.test(xml[pos])) pos++;
   }

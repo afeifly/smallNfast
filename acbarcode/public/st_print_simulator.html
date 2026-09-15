@@ -258,6 +258,16 @@
             previewDialog.show();
         }
 
+        function resolvePrintUrl(url) {
+            if (!url) return "";
+            let clean = url.trim();
+            // Automatically route localhost/127.0.0.1:8799 through Vite's /print_bridge proxy to eliminate CORS
+            if (/^https?:\/\/(127\.0\.0\.1|localhost):8799(\/.*)?$/i.test(clean)) {
+                clean = clean.replace(/^https?:\/\/(127\.0\.0\.1|localhost):8799/i, "/print_bridge");
+            }
+            return clean;
+        }
+
         async function sendViaBridge(commands) {
             let url = (document.getElementById("w-service-url").value || "").trim();
             if (!url) {
@@ -271,9 +281,10 @@
                 setStatus("No EZPL commands to print.", true);
                 return;
             }
+            const fetchUrl = resolvePrintUrl(url);
             setStatus(`Sending ${commands.length} label(s) to printer bridge (${url})...`);
             try {
-                const resp = await fetch(url, {
+                const resp = await fetch(fetchUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ ezpl_list: commands }),
@@ -524,9 +535,10 @@
             const rawUrl = (document.getElementById("w-service-url").value || "").trim();
             if (!rawUrl) { setStatus("Set the Print service URL first, e.g. http://127.0.0.1:8799/print", true); return; }
             const base = rawUrl.replace(/\/print\/?$/, "").replace(/\/+$/, "");
+            const healthUrl = resolvePrintUrl(base) + "/health";
             setStatus("Checking service...");
             try {
-                const resp = await fetch(base + "/health", { method: "GET" });
+                const resp = await fetch(healthUrl, { method: "GET" });
                 const text = await resp.text();
                 let data;
                 try { data = JSON.parse(text); } catch { data = null; }

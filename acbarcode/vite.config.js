@@ -8,6 +8,14 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:5005',
         changeOrigin: true,
+      },
+      '/st_label': {
+        target: 'http://localhost:5005',
+        changeOrigin: true,
+      },
+      '/suto_st_label': {
+        target: 'http://localhost:5005',
+        changeOrigin: true,
       }
     }
   }

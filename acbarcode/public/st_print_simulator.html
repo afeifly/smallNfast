@@ -30,8 +30,12 @@
             <form id="product-form" onsubmit="event.preventDefault(); printST();">
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label">API base (label server)</label>
-                        <input id="api-base" class="form-control" value="http://localhost:5005" placeholder="http://localhost:5005"/>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0" for="api-base">API base (label server)</label>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" id="reset-api-base" title="Reset to current website URL">Reset to website URL</button>
+                        </div>
+                        <input id="api-base" class="form-control" placeholder="Current website URL"/>
+                        <div class="form-text">Defaults to this website's URL (<code id="api-base-default-label"></code>). You can also enter <code>http://localhost:5005</code> or another server IP for testing.</div>
                     </div>
                     <div class="col-12">
                         <label class="form-label">Product</label>
@@ -145,12 +149,44 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// ===== Config: API base of the label server (edit the input in the page to switch) =====
-const DEFAULT_API_BASE = "http://localhost:5005"; // e.g. https://acbarcode.suto-portal.com
-// =======================================================================================
+// ===== Config: API base of the label server (defaults to website URL, editable for testing) =====
+function getDefaultApiBase() {
+    if (typeof window !== "undefined" && window.location && window.location.origin && window.location.origin !== "null" && !window.location.protocol.startsWith("file")) {
+        return window.location.origin;
+    }
+    return "http://localhost:5005";
+}
+
+const DEFAULT_API_BASE = getDefaultApiBase();
 
 function getApiBase() {
-    return (document.getElementById("api-base").value || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+    const el = document.getElementById("api-base");
+    const val = el ? el.value.trim() : "";
+    return (val || DEFAULT_API_BASE).replace(/\/+$/, "");
+}
+
+function initApiBase() {
+    const defaultBase = getDefaultApiBase();
+    const input = document.getElementById("api-base");
+    const label = document.getElementById("api-base-default-label");
+    if (label) {
+        label.textContent = defaultBase;
+    }
+    if (input) {
+        input.placeholder = defaultBase;
+        if (!input.value) {
+            input.value = defaultBase;
+        }
+    }
+    const resetBtn = document.getElementById("reset-api-base");
+    if (resetBtn) {
+        resetBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (input) {
+                input.value = defaultBase;
+            }
+        });
+    }
 }
 
 // Fallback data = real st_label response from the server
@@ -207,7 +243,7 @@ async function sendViaBridge(commands) {
     }
     setStatus("");
     try {
-        const resp = await fetch("/suto_st_label/print", {
+        const resp = await fetch(getApiBase() + "/suto_st_label/print", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url, ezpl_list: commands }),
@@ -590,6 +626,7 @@ document.getElementById("p-cancel").addEventListener("click", () => {
     backToLabels();
 });
 
+initApiBase();
 initDemo();
 </script>
 </body>

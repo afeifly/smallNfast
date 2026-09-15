@@ -18,7 +18,9 @@
           >
             <div class="tpl-item-header">
               <div class="tpl-item-name">{{ t.name }}</div>
-              <span v-if="isSpecialTemplate(t)" class="special-tag" title="Delivery Template (Protected)">Special</span>
+              <span v-if="isDeliveryTemplate(t)" class="special-tag" title="Delivery Template (Protected)">Special</span>
+              <span v-else-if="isInternalTemplate(t)" class="special-tag internal" title="Internal Template (Protected)">Special</span>
+              <span v-else-if="isSpecialTemplate(t)" class="special-tag" title="Special Template (Protected)">Special</span>
             </div>
             <div class="tpl-item-items">{{ (t.itemNumbers || []).join(', ') || '—' }}</div>
             <div class="tpl-item-meta">
@@ -38,7 +40,9 @@
             <div class="card-head">
               <div class="card-title-group">
                 <span class="card-title">Main Template</span>
-                <span v-if="isSpecialTemplate(activeTemplate)" class="special-pill-badge" title="System default delivery template">⭐ Special / Delivery</span>
+                <span v-if="isDeliveryTemplate(activeTemplate)" class="special-pill-badge" title="System default delivery template">⭐ Special / Delivery</span>
+                <span v-else-if="isInternalTemplate(activeTemplate)" class="special-pill-badge internal" title="System default internal template">⭐ Special / Internal</span>
+                <span v-else-if="isSpecialTemplate(activeTemplate)" class="special-pill-badge" title="Special protected template">⭐ Special</span>
               </div>
               <div class="card-actions">
                 <button type="button" class="mini-btn" @click="createTemplate">＋ New</button>
@@ -47,7 +51,7 @@
                   type="button" 
                   class="mini-btn danger" 
                   :disabled="isSpecialTemplate(activeTemplate) || templates.length <= 1" 
-                  :title="isSpecialTemplate(activeTemplate) ? 'Delivery Template cannot be deleted' : 'Delete template'"
+                  :title="isSpecialTemplate(activeTemplate) ? 'Special templates cannot be deleted' : 'Delete template'"
                   @click="onDelete"
                 >
                   🗑️ Delete
@@ -223,7 +227,7 @@ import {
   removeSubTemplate,
   setActiveTemplate
 } from '../../stores/templateStore.js';
-import { isSpecialTemplate, sortTemplatesWithDeliveryFirst } from '../../utils/stTemplateManager.js';
+import { isSpecialTemplate, isDeliveryTemplate, isInternalTemplate, sortTemplatesWithDeliveryFirst } from '../../utils/stTemplateManager.js';
 import { parseEzpxXmlToTemplate } from '../../utils/stEzpxParser.js';
 import { showStAlert, showStConfirm } from '../../utils/stDialog.js';
 
@@ -287,7 +291,7 @@ function setSubConfig(subId, key, val) {
 
 async function onDelete() {
   if (!activeTemplate.value || isSpecialTemplate(activeTemplate.value)) {
-    showStAlert('The Delivery Template is a system default template and cannot be deleted.', 'Cannot Delete', 'warning');
+    showStAlert('Special templates are protected system templates and cannot be deleted.', 'Cannot Delete', 'warning');
     return;
   }
   if (templates.value.length <= 1) return;
@@ -490,6 +494,12 @@ onMounted(async () => {
   line-height: 1.2;
 }
 
+.special-tag.internal {
+  color: #047857;
+  background: #d1fae5;
+  border-color: #a7f3d0;
+}
+
 .tpl-item-items { font-size: 0.78rem; color: #718096; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tpl-item-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 0.75rem; color: #a0aec0; }
 .sub-badge { background: #553c9a; color: #fff; border-radius: 10px; padding: 1px 8px; font-size: 0.7rem; font-weight: 600; }
@@ -544,6 +554,12 @@ onMounted(async () => {
   border: 1px solid #c4b5fd;
   border-radius: 12px;
   padding: 1px 8px;
+}
+
+.special-pill-badge.internal {
+  color: #065f46;
+  background: #d1fae5;
+  border-color: #a7f3d0;
 }
 
 .card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

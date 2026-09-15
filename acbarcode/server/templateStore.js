@@ -54,15 +54,39 @@ if (!cols.includes('isSpecial')) {
   db.exec("ALTER TABLE templates ADD COLUMN isSpecial INTEGER NOT NULL DEFAULT 0");
 }
 
-function isSpecialTemplate(tpl) {
+function isDeliveryTemplate(tpl) {
   if (!tpl) return false;
   return Boolean(
-    tpl.isSpecial ||
     tpl.id === 'tpl_delivery' ||
     tpl.id === 'tpl_std_flow' ||
     tpl.name === 'Delivery Template' ||
     tpl.name === 'Deliver label'
   );
+}
+
+function isInternalTemplate(tpl) {
+  if (!tpl) return false;
+  return Boolean(
+    tpl.id === 'tpl_internal' ||
+    tpl.name === 'Internal Template'
+  );
+}
+
+function isSpecialTemplate(tpl) {
+  if (!tpl) return false;
+  return Boolean(
+    tpl.isSpecial ||
+    isDeliveryTemplate(tpl) ||
+    isInternalTemplate(tpl)
+  );
+}
+
+function getSpecialTemplateType(tpl) {
+  if (!tpl) return null;
+  if (isDeliveryTemplate(tpl)) return 'delivery';
+  if (isInternalTemplate(tpl)) return 'internal';
+  if (tpl.isSpecial) return 'special';
+  return null;
 }
 
 function rowToTemplate(row) {
@@ -105,7 +129,7 @@ function normalizeSubTemplate(sub) {
 function normalizeTemplate(tpl) {
   const special = isSpecialTemplate(tpl);
   let name = String(tpl.name || 'New Template');
-  if (special && (name === 'Standard Flow Sensor' || name === 'Deliver label')) {
+  if (isDeliveryTemplate(tpl) && (name === 'Standard Flow Sensor' || name === 'Deliver label')) {
     name = 'Delivery Template';
   }
   return {
@@ -124,16 +148,22 @@ function normalizeTemplate(tpl) {
 
 function sortDeliveryFirst(list) {
   if (!Array.isArray(list)) return [];
-  const special = [];
+  const delivery = [];
+  const internal = [];
+  const otherSpecial = [];
   const regular = [];
   for (const t of list) {
-    if (isSpecialTemplate(t)) {
-      special.push({ ...t, isSpecial: 1 });
+    if (isDeliveryTemplate(t)) {
+      delivery.push({ ...t, isSpecial: 1 });
+    } else if (isInternalTemplate(t)) {
+      internal.push({ ...t, isSpecial: 1 });
+    } else if (isSpecialTemplate(t)) {
+      otherSpecial.push({ ...t, isSpecial: 1 });
     } else {
       regular.push({ ...t, isSpecial: 0 });
     }
   }
-  return [...special, ...regular];
+  return [...delivery, ...internal, ...otherSpecial, ...regular];
 }
 
 function getAllTemplates() {
@@ -273,7 +303,7 @@ function removeSubTemplate(templateId, subId) {
 
 async function ensureDeliveryTemplate() {
   const rows = db.prepare('SELECT * FROM templates').all();
-  const deliveryRow = rows.find(r => isSpecialTemplate(r));
+  const deliveryRow = rows.find(r => isDeliveryTemplate(r));
 
   if (deliveryRow) {
     // Update existing row if needed to ensure name is 'Delivery Template' and isSpecial is 1
@@ -287,12 +317,36 @@ async function ensureDeliveryTemplate() {
     try {
       const { createInitialDefaultTemplates } = await import('../src/utils/stTemplateManager.js');
       const defaults = createInitialDefaultTemplates();
-      const deliveryTpl = defaults.find(t => isSpecialTemplate(t)) || defaults[0];
+      const deliveryTpl = defaults.find(t => isDeliveryTemplate(t)) || defaults[0];
       if (deliveryTpl) {
         insertTemplate(deliveryTpl);
       }
     } catch (e) {
       console.error('Failed to import default delivery template:', e);
+    }
+  }
+}
+
+async function ensureInternalTemplate() {
+  const rows = db.prepare('SELECT * FROM templates').all();
+  const internalRow = rows.find(r => isInternalTemplate(r));
+
+  if (internalRow) {
+    db.prepare(`
+      UPDATE templates 
+      SET isSpecial = 1
+      WHERE id = ?
+    `).run(internalRow.id);
+  } else {
+    try {
+      const { createInitialDefaultTemplates } = await import('../src/utils/stTemplateManager.js');
+      const defaults = createInitialDefaultTemplates();
+      const internalTpl = defaults.find(t => isInternalTemplate(t));
+      if (internalTpl) {
+        insertTemplate(internalTpl);
+      }
+    } catch (e) {
+      console.error('Failed to import default internal template:', e);
     }
   }
 }
@@ -306,11 +360,17 @@ async function seedIfEmpty() {
     }
   }
   await ensureDeliveryTemplate();
+  await ensureInternalTemplate();
 }
 
 function getDeliveryTemplate() {
   const all = getAllTemplates();
-  return all.find(t => isSpecialTemplate(t)) || all[0] || null;
+  return all.find(t => isDeliveryTemplate(t)) || all.find(t => isSpecialTemplate(t)) || all[0] || null;
+}
+
+function getInternalTemplate() {
+  const all = getAllTemplates();
+  return all.find(t => isInternalTemplate(t)) || null;
 }
 
 function logRequest(endpoint, method, headers, query, body) {
@@ -358,9 +418,13 @@ function getRequestHistory() {
 
 module.exports = {
   isSpecialTemplate,
+  isDeliveryTemplate,
+  isInternalTemplate,
+  getSpecialTemplateType,
   getAllTemplates,
   getTemplateById,
   getDeliveryTemplate,
+  getInternalTemplate,
   insertTemplate,
   updateTemplate,
   replaceAll,
@@ -370,6 +434,7 @@ module.exports = {
   updateSubTemplate,
   removeSubTemplate,
   ensureDeliveryTemplate,
+  ensureInternalTemplate,
   seedIfEmpty,
   logRequest,
   getRequestHistory

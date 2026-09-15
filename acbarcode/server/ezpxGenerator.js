@@ -309,21 +309,40 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
 /**
  * Generates multi-product EZPL JSON for delivery orders with top-level origin and product array.
  */
-async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = '', products = [], lang = 'en', templateXml = null, preview = true, done_date = '' }) {
+async function generateStDeliveryMultiProductEzplJson(params = {}) {
+  return generateStSpecialMultiProductEzplJson({ ...params, templateType: 'delivery' });
+}
+
+async function generateStInternalMultiProductEzplJson(params = {}) {
+  return generateStSpecialMultiProductEzplJson({ ...params, templateType: 'internal' });
+}
+
+async function generateStSpecialMultiProductEzplJson({
+  origin = '',
+  order_id = '',
+  products = [],
+  lang = 'en',
+  templateXml = null,
+  preview = true,
+  done_date = '',
+  templateType = 'delivery'
+} = {}) {
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
+  const isInternal = templateType === 'internal';
+  const defaultTemplateName = isInternal ? 'Internal Template' : 'Delivery Template';
 
   const defs = [];
 
   // 1. If templateXml was provided
   if (templateXml && typeof templateXml === 'string' && templateXml.trim()) {
     try {
-      const parsed = parseEzpxXmlToTemplate(templateXml.trim(), 'Posted Delivery Template');
+      const parsed = parseEzpxXmlToTemplate(templateXml.trim(), `Posted ${defaultTemplateName}`);
       const parsedElements = getTemplateElements(parsed, normalizedLang);
       if (parsed && parsedElements.length > 0) {
         defs.push({
           id: 'main',
-          name: parsed.name || 'Delivery Template',
+          name: parsed.name || defaultTemplateName,
           type: 'main',
           elements: parsedElements,
           config: parsed.config || { widthMm: 35, heightMm: 22, dpi: 300 }
@@ -334,19 +353,19 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
     }
   }
 
-  // 2. Otherwise load the stored special Delivery Template
+  // 2. Otherwise load the stored special template (Delivery or Internal)
   if (defs.length === 0) {
-    const deliveryTemplate = templateStore.getDeliveryTemplate();
-    if (deliveryTemplate) {
-      const mainElements = getTemplateElements(deliveryTemplate, normalizedLang);
+    const specialTemplate = isInternal ? templateStore.getInternalTemplate() : templateStore.getDeliveryTemplate();
+    if (specialTemplate) {
+      const mainElements = getTemplateElements(specialTemplate, normalizedLang);
       defs.push({
         id: 'main',
-        name: deliveryTemplate.name || 'Delivery Template',
+        name: specialTemplate.name || defaultTemplateName,
         type: 'main',
         elements: JSON.parse(JSON.stringify(mainElements)),
-        config: deliveryTemplate.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+        config: specialTemplate.config || { widthMm: 35, heightMm: 22, dpi: 300 }
       });
-      (deliveryTemplate.subTemplates || []).forEach((sub, i) => {
+      (specialTemplate.subTemplates || []).forEach((sub, i) => {
         const subElements = getTemplateElements(sub, normalizedLang);
         defs.push({
           id: `sub_${sub.id || i + 1}`,
@@ -360,7 +379,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
   }
 
   if (defs.length === 0) {
-    const err = new Error('Delivery template not found in system.');
+    const err = new Error(`${defaultTemplateName} not found in system.`);
     err.status = 404;
     throw err;
   }
@@ -398,7 +417,7 @@ async function generateStDeliveryMultiProductEzplJson({ origin = '', order_id = 
       origin: String(origin || '').trim(),
       order_id: String(order_id || '').trim(),
       categ: '',
-      product: 'Delivery',
+      product: isInternal ? 'Internal' : 'Delivery',
       serial: '12345678',
       options_text: '',
       done_date: done_date || '',
@@ -452,6 +471,8 @@ module.exports = {
   generateStEzpxXml,
   generateStEzplJson,
   generateStDeliveryMultiProductEzplJson,
+  generateStInternalMultiProductEzplJson,
+  generateStSpecialMultiProductEzplJson,
   getTemplateElements
 };
 

@@ -4,7 +4,9 @@ Generates printable labels as either a downloadable GoLabel ZIP package or struc
 * **Standard Label**: `POST https://acbarcode.suto-portal.com/st_label` (or `/api/st_label`)
   * Matches template automatically by product Item Number.
 * **Delivery Label**: `POST https://acbarcode.suto-portal.com/st_label_delivery` (or `/api/st_label_delivery`)
-  * Directly uses the special **Delivery Template**, regardless of product Item Number.
+  * Directly uses the special **Delivery Template** (`⭐ Special / Delivery`), regardless of product Item Number.
+* **Internal Label**: `POST https://acbarcode.suto-portal.com/st_label_internal` (or `/api/st_label_internal`)
+  * Directly uses the special **Internal Template** (`⭐ Special / Internal`), regardless of product Item Number.
 
 ---
 
@@ -177,6 +179,35 @@ curl -X POST https://acbarcode.suto-portal.com/st_label_delivery \
 
 ---
 
-## 4. ZIP / GoLabel Batch Mode (Optional)
+## 4. Internal Template API (`POST /st_label_internal`)
+
+Designed for **Internal Production / Manufacturing / Testing Orders**. Always uses the special **Internal Template** (`⭐ Special / Internal`) regardless of product code. Supports the same multi-product and single-product batch payloads as `/st_label_delivery`.
+
+### Request Example (Internal Production Batch)
+```bash
+curl -X POST https://acbarcode.suto-portal.com/st_label_internal \
+  -H "Content-Type: application/json" \
+  -d '{
+    "origin": "MO-2609-0012",
+    "lang": "cn",
+    "products": [
+      {
+        "categ": "S401",
+        "product": "S695 4100",
+        "serial_numbers": [
+          "3025 0001",
+          "3025 0002"
+        ],
+        "options_text": "1-1.6,A1007"
+      }
+    ]
+  }'
+```
+
+Returns the same standard JSON response structure with `templates[].items` containing `preview_image`, `ezpl_base64`, and `ezpl` for direct printing.
+
+---
+
+## 5. ZIP / GoLabel Batch Mode (Optional)
 
 When `format: "zip"` is explicitly provided, the standard endpoint returns `label_all.zip` containing `.ezpx` template files, `data.csv`, and `0_start.bat` for GoLabel on Windows.

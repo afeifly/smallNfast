@@ -595,7 +595,7 @@ app.delete('/api/templates/:id', adminAuth, (req, res) => {
   try {
     const tpl = templateStore.getTemplateById(req.params.id);
     if (tpl && templateStore.isSpecialTemplate(tpl)) {
-      return res.status(400).json({ error: 'The Delivery Template cannot be deleted' });
+      return res.status(400).json({ error: 'Special templates (Delivery / Internal) cannot be deleted' });
     }
     if (templateStore.count() <= 1) {
       return res.status(400).json({ error: 'Cannot delete the last template' });
@@ -1052,7 +1052,7 @@ app.post('/api/odoo/test-search', async (req, res) => {
 });
 
 // ── Web API: POST /st_label ─────────────────────────────────────────────
-const { generateStEzpxXml, generateStEzplJson, generateStDeliveryMultiProductEzplJson } = require('./ezpxGenerator');
+const { generateStEzpxXml, generateStEzplJson, generateStDeliveryMultiProductEzplJson, generateStInternalMultiProductEzplJson } = require('./ezpxGenerator');
 
 /**
  * POST /st_label and POST /api/st_label
@@ -1216,6 +1216,81 @@ async function handleStLabelDelivery(req, res) {
   }
 }
 
+/**
+ * POST /st_label_internal and POST /api/st_label_internal
+ * Generates internal labels specifically using the special Internal Template,
+ * supporting multi-product payload structure with top-level origin.
+ * Defaults to JSON wrapping EZPL streams.
+ */
+async function handleStLabelInternal(req, res) {
+  if (req.method === 'POST') {
+    templateStore.logRequest(req.path, req.method, req.headers, req.query, req.body);
+  }
+  try {
+    let origin, order_id, products, lang, template_xml, done_date;
+
+    if (typeof req.body === 'string' && req.body.trim().startsWith('<')) {
+      template_xml = req.body;
+      origin = req.query.origin || req.query.order || '';
+      order_id = req.query.order_id || req.query.orderId || req.query.internal_order || req.query.mo || '';
+      lang = req.query.lang || req.query.language || 'en';
+      done_date = req.query.done_date || req.query.doneDate || req.query.date || '';
+      products = [{
+        categ: req.query.categ || req.query.device_name || '',
+        product: req.query.product || 'Internal',
+        serial_numbers: req.query.serial_numbers ? req.query.serial_numbers.split(',') : ['12345678'],
+        options_text: req.query.options || '',
+        done_date
+      }];
+    } else {
+      const body = req.body || {};
+      origin = body.origin || body.order || req.query.origin || '';
+      order_id = body.order_id || body.orderId || body.internal_order || body.mo || req.query.order_id || req.query.orderId || '';
+      lang = body.lang || body.language || req.query.lang || req.query.language || 'en';
+      done_date = body.done_date || body.doneDate || body.date || req.query.done_date || req.query.doneDate || req.query.date || '';
+      template_xml = body.template_xml || body.ezpx_xml || body.template_content || body.template;
+
+      if (Array.isArray(body.products) && body.products.length > 0) {
+        products = body.products;
+      } else {
+        // Fallback for single product payload
+        products = [{
+          categ: body.categ || body.category || body.device_name || body.deviceName || '',
+          product: body.product || body.item_number || body.item_no || 'Internal',
+          serial_numbers: body.serial_numbers || body.serials || ['12345678'],
+          options_text: body.options_text || body.optionsText || body.options || '',
+          done_date: body.done_date || body.doneDate || body.date || done_date
+        }];
+      }
+    }
+
+    const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
+
+    let preview = true;
+    if (req.query.preview !== undefined) {
+      preview = req.query.preview !== 'false' && req.query.preview !== '0';
+    } else if (typeof req.body === 'object' && req.body && req.body.preview !== undefined) {
+      preview = req.body.preview !== false && req.body.preview !== 'false' && req.body.preview !== 0 && req.body.preview !== '0';
+    }
+
+    const ezplJson = await generateStInternalMultiProductEzplJson({
+      origin,
+      order_id,
+      products,
+      lang: normalizedLang,
+      templateXml: template_xml,
+      preview,
+      done_date
+    });
+
+    return res.status(200).json(ezplJson);
+  } catch (err) {
+    console.error('Error handling /st_label_internal:', err);
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message });
+  }
+}
+
 // ── Web API: POST /st_label_patch ──────────────────────────────────────────
 /**
  * POST /st_label_patch and POST /api/st_label_patch
@@ -1297,6 +1372,8 @@ app.post('/st_label', handleStLabel);
 app.post('/api/st_label', handleStLabel);
 app.post('/st_label_delivery', handleStLabelDelivery);
 app.post('/api/st_label_delivery', handleStLabelDelivery);
+app.post('/st_label_internal', handleStLabelInternal);
+app.post('/api/st_label_internal', handleStLabelInternal);
 app.post('/st_label_patch', handleStLabelPatch);
 app.post('/api/st_label_patch', handleStLabelPatch);
 

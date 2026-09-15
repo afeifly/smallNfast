@@ -4,10 +4,9 @@ export const DEFAULT_CONFIG = defaultTemplateStandard.config || { widthMm: 35, h
 export const DEFAULT_ELEMENTS_EN = defaultTemplateStandard.elements_en || [];
 export const DEFAULT_ELEMENTS_CN = defaultTemplateStandard.elements_cn || [];
 
-export function isSpecialTemplate(t) {
+export function isDeliveryTemplate(t) {
   if (!t) return false;
   return Boolean(
-    t.isSpecial ||
     t.id === 'tpl_delivery' ||
     t.id === 'tpl_std_flow' ||
     t.name === 'Delivery Template' ||
@@ -15,18 +14,49 @@ export function isSpecialTemplate(t) {
   );
 }
 
+export function isInternalTemplate(t) {
+  if (!t) return false;
+  return Boolean(
+    t.id === 'tpl_internal' ||
+    t.name === 'Internal Template'
+  );
+}
+
+export function isSpecialTemplate(t) {
+  if (!t) return false;
+  return Boolean(
+    t.isSpecial ||
+    isDeliveryTemplate(t) ||
+    isInternalTemplate(t)
+  );
+}
+
+export function getSpecialTemplateType(t) {
+  if (!t) return null;
+  if (isDeliveryTemplate(t)) return 'delivery';
+  if (isInternalTemplate(t)) return 'internal';
+  if (t.isSpecial) return 'special';
+  return null;
+}
+
 export function sortTemplatesWithDeliveryFirst(templatesList) {
   if (!Array.isArray(templatesList)) return [];
-  const special = [];
+  const delivery = [];
+  const internal = [];
+  const otherSpecial = [];
   const regular = [];
   for (const t of templatesList) {
-    if (isSpecialTemplate(t)) {
-      special.push({ ...t, isSpecial: true });
+    if (isDeliveryTemplate(t)) {
+      delivery.push({ ...t, isSpecial: true });
+    } else if (isInternalTemplate(t)) {
+      internal.push({ ...t, isSpecial: true });
+    } else if (isSpecialTemplate(t)) {
+      otherSpecial.push({ ...t, isSpecial: true });
     } else {
       regular.push(t);
     }
   }
-  return [...special, ...regular];
+  return [...delivery, ...internal, ...otherSpecial, ...regular];
 }
 
 export function createInitialDefaultTemplates() {
@@ -42,6 +72,18 @@ export function createInitialDefaultTemplates() {
       elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
       elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
       subTemplates: JSON.parse(JSON.stringify(defaultTemplateStandard.subTemplates || []))
+    },
+    {
+      id: 'tpl_internal',
+      name: 'Internal Template',
+      isSpecial: true,
+      itemNumbers: [],
+      deviceName: '',
+      note: 'Default SUTO-iTEC Internal label template (35×22mm @300 DPI). Always pinned and protected.',
+      config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
+      elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
+      elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
+      subTemplates: []
     },
     {
       id: 'tpl_high_temp',

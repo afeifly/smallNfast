@@ -215,6 +215,7 @@ import StLabelDesigner from './StLabelDesigner.vue';
 import StTemplateManagerPage from './st/StTemplateManagerPage.vue';
 import OdooServerModal from './OdooServerModal.vue';
 import { setActiveTemplate } from '../stores/templateStore.js';
+import { getAdminPassword } from '../utils/auth.js';
 
 // AC Label State Management
 const products = ref([]);
@@ -570,7 +571,7 @@ async function submitProduct() {
   }
   
   isSubmittingProduct.value = true;
-  const adminPassword = sessionStorage.getItem('acbarcode_role') === 'admin' ? 'SUTOadmin1234' : '';
+  const adminPassword = getAdminPassword();
   
   try {
     const url = modalMode.value === 'add' 
@@ -608,7 +609,7 @@ async function deleteProduct(itemNumber) {
     return;
   }
   
-  const adminPassword = sessionStorage.getItem('acbarcode_role') === 'admin' ? 'SUTOadmin1234' : '';
+  const adminPassword = getAdminPassword();
   
   try {
     const res = await fetch(`/api/products/${encodeURIComponent(itemNumber)}`, {

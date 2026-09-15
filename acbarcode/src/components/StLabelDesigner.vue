@@ -9,10 +9,12 @@
       :range-count="serialRange.length"
       :active-template="activeTemplate"
       :active-sub-template-id="activeSubTemplateId"
+      :is-locked="isCurrentTemplateLocked"
       @update:active-sub-template-id="handleSubTemplateChange($event)"
       @fetch-odoo="fetchFromOdooStub"
       @open-odoo-modal="$emit('open-odoo-modal')"
       @open-templates="handleOpenTemplates"
+      @unlock-requested="openUnlockModal"
     />
 
     <div class="st-editor-layout">
@@ -24,7 +26,9 @@
           :available-products="allAvailableProducts"
           :has-unsaved-changes="hasUnsavedChanges"
           :is-saving="isSaving"
+          :is-locked="isCurrentTemplateLocked"
           @save-elements="saveCurrentElements"
+          @unlock-requested="openUnlockModal"
         />
       </div>
 
@@ -36,6 +40,7 @@
           :template-note="currentLabelNote"
           :item-numbers="itemNumbersString"
           :active-lang="activeLang"
+          :is-locked="isCurrentTemplateLocked"
           @update:active-lang="activeLang = $event"
           @copy-from-en="onCopyEnToCn"
         />
@@ -45,6 +50,7 @@
           :range-count="serialRange.length"
           :current-idx="currentPreviewIndex"
           :current-s-n="currentPreviewSN"
+          :is-locked="isCurrentTemplateLocked"
           @prev-page="prevPreviewPage"
           @next-page="nextPreviewPage"
           @export-ezpx="exportEZPX"
@@ -56,7 +62,39 @@
       </div>
     </div>
 
-    <!-- Custom Modal Dialogs -->
+    <!-- Unlock Template Password Modal -->
+    <transition name="modal-fade">
+      <div v-if="isUnlockModalOpen" class="st-modal-overlay" @click.self="closeUnlockModal">
+        <div class="st-modal-container unlock-modal">
+          <div class="st-modal-header">
+            <h3>🔒 Unlock Template</h3>
+            <button type="button" class="close-modal-btn" @click="closeUnlockModal">✕</button>
+          </div>
+          <div class="st-modal-body">
+            <p class="unlock-desc">
+              Enter the admin password to unlock and edit <strong>{{ activeTemplate?.name }}</strong>:
+            </p>
+            <form @submit.prevent="submitUnlock">
+              <input
+                ref="unlockInputRef"
+                type="password"
+                v-model="unlockPasswordInput"
+                class="unlock-password-input"
+                placeholder="Enter admin password"
+                autocomplete="current-password"
+              />
+              <div v-if="unlockError" class="unlock-error-msg">
+                {{ unlockError }}
+              </div>
+              <div class="unlock-modal-actions">
+                <button type="button" class="mini-btn modal-cancel-btn" @click="closeUnlockModal">Cancel</button>
+                <button type="submit" class="primary-btn unlock-btn">Unlock</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -89,8 +127,11 @@ import {
   flushTemplateSave,
   hasUnsavedDesignerChanges,
   copyEnToCn as storeCopyEnToCn,
-  setActiveSubTemplate
+  setActiveSubTemplate,
+  isCurrentTemplateLocked,
+  unlockTemplate
 } from '../stores/templateStore.js';
+import { verifyAdminPassword } from '../utils/auth.js';
 
 const emit = defineEmits(['open-odoo-modal', 'open-templates']);
 
@@ -102,6 +143,41 @@ const stProductInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const activeLang = ref('EN'); // 'EN' | 'CN'
+
+// ── Lock & Unlock State ────────────────────────────────────────────────
+const isUnlockModalOpen = ref(false);
+const unlockPasswordInput = ref('');
+const unlockError = ref('');
+const unlockInputRef = ref(null);
+
+function openUnlockModal() {
+  unlockPasswordInput.value = '';
+  unlockError.value = '';
+  isUnlockModalOpen.value = true;
+  nextTick(() => {
+    if (unlockInputRef.value) {
+      unlockInputRef.value.focus();
+    }
+  });
+}
+
+function closeUnlockModal() {
+  isUnlockModalOpen.value = false;
+  unlockPasswordInput.value = '';
+  unlockError.value = '';
+}
+
+function submitUnlock() {
+  if (!verifyAdminPassword(unlockPasswordInput.value)) {
+    unlockError.value = 'Incorrect admin password. Please try again.';
+    return;
+  }
+  if (activeTemplate.value) {
+    unlockTemplate(activeTemplate.value.id);
+  }
+  closeUnlockModal();
+  showStAlert(`Template "${activeTemplate.value?.name}" unlocked. You can now edit elements.`, 'Template Unlocked', 'success');
+}
 
 const savedSnapshot = ref('');
 const isSaving = ref(false);
@@ -136,6 +212,10 @@ function revertCurrentLabelToSnapshot() {
 }
 
 async function saveCurrentElements() {
+  if (isCurrentTemplateLocked.value) {
+    showStAlert('Template is locked (read-only mode). Please unlock first to save changes.', 'Template Locked', 'warning');
+    return;
+  }
   if (!currentLabel.value) return;
   isSaving.value = true;
   try {
@@ -268,6 +348,10 @@ function fetchFromOdooStub() {
 }
 
 function onCopyEnToCn() {
+  if (isCurrentTemplateLocked.value) {
+    showStAlert('Template is locked (read-only mode). Please unlock first.', 'Template Locked', 'warning');
+    return;
+  }
   storeCopyEnToCn(currentLabel.value);
   hasUnsavedChanges.value = true;
   showStAlert(`Copied EN layout to CN for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Copy EN → CN', 'info');
@@ -297,6 +381,11 @@ function exportSingleTemplateJson() {
 }
 
 function importSingleTemplateJson(event) {
+  if (isCurrentTemplateLocked.value) {
+    showStAlert('Template is locked (read-only mode). Please unlock first.', 'Template Locked', 'warning');
+    if (event?.target) event.target.value = '';
+    return;
+  }
   const file = event.target.files?.[0];
   if (!file) return;
   const reader = new FileReader();
@@ -812,5 +901,150 @@ async function downloadStPDF() {
 .st-editor-panel > * {
   flex: 1;
   min-height: 0;
+}
+
+/* ── Modal Overlay & Unlock Modal Dialog ── */
+.st-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.st-modal-container.unlock-modal {
+  background: #1e293b;
+  color: #f8fafc;
+  width: 90%;
+  max-width: 440px;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.st-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.st-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.close-modal-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.25rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.close-modal-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.st-modal-body {
+  padding: 1.5rem;
+}
+
+.unlock-desc {
+  margin: 0 0 16px 0;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.unlock-password-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.unlock-password-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.unlock-error-msg {
+  color: #f87171;
+  font-size: 0.82rem;
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.unlock-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-cancel-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+}
+
+.modal-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.unlock-btn {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  padding: 8px 18px !important;
+  border-radius: 6px !important;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+}
+
+.unlock-btn:hover {
+  background: #2563eb !important;
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
 }
 </style>

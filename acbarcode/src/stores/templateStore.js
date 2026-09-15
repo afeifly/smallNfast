@@ -27,6 +27,30 @@ export const activeSubTemplate = computed(() => {
   return (activeTemplate.value.subTemplates || []).find(s => s.id === activeSubTemplateId.value) || null;
 });
 
+// ── Template Lock State ────────────────────────────────────────────────
+export const unlockedTemplateIds = ref(new Set());
+
+export function isTemplateLocked(templateId) {
+  if (!templateId) return true;
+  return !unlockedTemplateIds.value.has(templateId);
+}
+
+export function unlockTemplate(templateId) {
+  if (templateId) {
+    unlockedTemplateIds.value.add(templateId);
+  }
+}
+
+export function lockTemplate(templateId) {
+  if (templateId) {
+    unlockedTemplateIds.value.delete(templateId);
+  }
+}
+
+export const isCurrentTemplateLocked = computed(() => {
+  return isTemplateLocked(activeTemplateId.value);
+});
+
 // ── Load / save ─────────────────────────────────────────────────────────
 
 export async function loadTemplates() {
@@ -112,6 +136,7 @@ export function createTemplate() {
   templates.value = sortTemplatesWithDeliveryFirst(templates.value);
   activeSubTemplateId.value = '';
   activeTemplateId.value = newTpl.id;
+  unlockTemplate(newTpl.id);
   scheduleSave();
   return newTpl;
 }
@@ -128,6 +153,7 @@ export function duplicateTemplate() {
   templates.value = sortTemplatesWithDeliveryFirst(templates.value);
   activeSubTemplateId.value = '';
   activeTemplateId.value = clone.id;
+  unlockTemplate(clone.id);
   scheduleSave();
   return clone;
 }

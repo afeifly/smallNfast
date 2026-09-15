@@ -8,8 +8,9 @@
           v-if="activeLang === 'CN'"
           type="button"
           class="copy-en-btn"
+          :disabled="isLocked"
           @click="onCopyFromEn"
-          title="Copy element layout from EN version to CN version"
+          :title="isLocked ? 'Template is locked (read-only)' : 'Copy element layout from EN version to CN version'"
         >
           📋 Copy from EN
         </button>
@@ -58,7 +59,8 @@ defineProps({
   templateName: { type: String, default: '' },
   itemNumbers: { type: String, default: '' },
   templateNote: { type: String, default: '' },
-  activeLang: { type: String, default: 'EN' }
+  activeLang: { type: String, default: 'EN' },
+  isLocked: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(['update:activeLang', 'copy-from-en']);

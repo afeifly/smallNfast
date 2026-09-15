@@ -2,6 +2,7 @@
   <div class="tpl-page">
     <div class="tpl-page-header">
       <h2>Template Manager</h2>
+      <button type="button" class="header-new-btn" @click="handleCreateTemplate">＋ New</button>
     </div>
 
     <div class="tpl-layout">
@@ -45,13 +46,22 @@
                 <span v-else-if="isSpecialTemplate(activeTemplate)" class="special-pill-badge" title="Special protected template">⭐ Special</span>
               </div>
               <div class="card-actions">
-                <button type="button" class="mini-btn" @click="createTemplate">＋ New</button>
-                <button type="button" class="mini-btn" @click="duplicateTemplate">📋 Duplicate</button>
+                <button
+                  type="button"
+                  class="mini-btn lock-btn"
+                  :class="{ 'is-locked': isCurrentTemplateLocked, 'is-unlocked': !isCurrentTemplateLocked }"
+                  @click="toggleLock"
+                  :title="isCurrentTemplateLocked ? 'Template is locked. Click to unlock with admin password.' : 'Template is unlocked. Click to lock.'"
+                >
+                  <span v-if="isCurrentTemplateLocked">🔒 Locked</span>
+                  <span v-else>🔓 Unlocked</span>
+                </button>
+                <button type="button" class="mini-btn" @click="handleDuplicateTemplate">📋 Duplicate</button>
                 <button 
                   type="button" 
                   class="mini-btn danger" 
-                  :disabled="isSpecialTemplate(activeTemplate) || templates.length <= 1" 
-                  :title="isSpecialTemplate(activeTemplate) ? 'Special templates cannot be deleted' : 'Delete template'"
+                  :disabled="isSpecialTemplate(activeTemplate) || isCurrentTemplateLocked || templates.length <= 1" 
+                  :title="isSpecialTemplate(activeTemplate) ? 'Special templates cannot be deleted' : isCurrentTemplateLocked ? 'Unlock template to delete' : 'Delete template'"
                   @click="onDelete"
                 >
                   🗑️ Delete
@@ -59,15 +69,20 @@
               </div>
             </div>
             <div class="card-body">
+              <div v-if="isCurrentTemplateLocked" class="locked-banner">
+                <span class="locked-banner-icon">🔒</span>
+                <span>Template is protected (read-only). Click <strong>🔒 Locked</strong> above to unlock with the admin password.</span>
+              </div>
+
               <!-- Line 1: Template Name + Item Numbers / SKUs -->
               <div class="field-grid-2">
                 <div class="field-col">
                   <label>Template Name</label>
-                  <input type="text" :value="activeTemplate.name" @input="activeTemplate.name = $event.target.value; scheduleSave()" placeholder="e.g. Standard" />
+                  <input type="text" :disabled="isCurrentTemplateLocked" :value="activeTemplate.name" @input="activeTemplate.name = $event.target.value; scheduleSave()" placeholder="e.g. Standard" />
                 </div>
                 <div class="field-col">
                   <label>Item Numbers / SKUs <span class="hint-inline">(comma-separated)</span></label>
-                  <input type="text" :value="rawItemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
+                  <input type="text" :disabled="isCurrentTemplateLocked" :value="rawItemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
                 </div>
               </div>
 
@@ -75,16 +90,16 @@
               <div class="field-grid-2">
                 <div class="field-col">
                   <label>Device Name <span class="hint-inline">(for SUTO QR code)</span></label>
-                  <input type="text" :value="activeTemplate.deviceName || ''" @input="activeTemplate.deviceName = $event.target.value; scheduleSave()" placeholder="e.g. S4C-APP or WTU" />
+                  <input type="text" :disabled="isCurrentTemplateLocked" :value="activeTemplate.deviceName || ''" @input="activeTemplate.deviceName = $event.target.value; scheduleSave()" placeholder="e.g. S4C-APP or WTU" />
                 </div>
                 <div class="field-col">
                   <label>Label Size &amp; DPI</label>
                   <div class="dims-inputs">
-                    <input type="number" step="0.1" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
+                    <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
                     <span class="dim-sep">×</span>
-                    <input type="number" step="0.1" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
+                    <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
                     <span class="dim-unit">mm</span>
-                    <select :value="activeTemplate.config?.dpi" @change="setConfig('dpi', +$event.target.value)">
+                    <select :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.dpi" @change="setConfig('dpi', +$event.target.value)">
                       <option :value="203">203 DPI</option>
                       <option :value="300">300 DPI</option>
                       <option :value="600">600 DPI</option>
@@ -98,6 +113,7 @@
                 <label>Note <span class="hint-inline">(purpose / usage hint, visible in designer)</span></label>
                 <textarea
                   rows="2"
+                  :disabled="isCurrentTemplateLocked"
                   :value="activeTemplate.note || ''"
                   @input="activeTemplate.note = $event.target.value; scheduleSave()"
                   placeholder="e.g. Standard flow sensor label, used for S695 4035 / S403. Created by admin."
@@ -111,38 +127,44 @@
           <div class="card">
             <div class="card-head">
               <span class="card-title">Sub-Templates ({{ subCount(activeTemplate) }})</span>
-              <button type="button" class="mini-btn" @click="addSubTemplate">＋ Add Sub-Template</button>
+              <button type="button" class="mini-btn" :disabled="isCurrentTemplateLocked" @click="addSubTemplate">＋ Add Sub-Template</button>
             </div>
             <div class="card-body tight">
               <div v-if="subCount(activeTemplate) === 0" class="tpl-empty small">No sub-templates configured.</div>
               <div v-for="sub in activeTemplate.subTemplates" :key="sub.id" class="sub-row-compact">
                 <div class="sub-fields">
-                  <input type="text" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name-compact" placeholder="Sub-template name" />
-                  <input type="text" :value="sub.note || ''" @input="sub.note = $event.target.value; scheduleSave()" class="sub-note-compact" placeholder="Note (what this sub-template is for)" />
+                  <input type="text" :disabled="isCurrentTemplateLocked" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name-compact" placeholder="Sub-template name" />
+                  <input type="text" :disabled="isCurrentTemplateLocked" :value="sub.note || ''" @input="sub.note = $event.target.value; scheduleSave()" class="sub-note-compact" placeholder="Note (what this sub-template is for)" />
                 </div>
                 <div class="sub-dims-compact">
-                  <input type="number" step="0.1" :value="sub.config?.widthMm" @input="setSubConfig(sub.id, 'widthMm', $event.target.value)" />
+                  <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="sub.config?.widthMm" @input="setSubConfig(sub.id, 'widthMm', $event.target.value)" />
                   <span class="dim-sep">×</span>
-                  <input type="number" step="0.1" :value="sub.config?.heightMm" @input="setSubConfig(sub.id, 'heightMm', $event.target.value)" />
+                  <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="sub.config?.heightMm" @input="setSubConfig(sub.id, 'heightMm', $event.target.value)" />
                   <span class="dim-unit">mm</span>
-                  <select :value="sub.config?.dpi" @change="setSubConfig(sub.id, 'dpi', +$event.target.value)">
+                  <select :disabled="isCurrentTemplateLocked" :value="sub.config?.dpi" @change="setSubConfig(sub.id, 'dpi', +$event.target.value)">
                     <option :value="203">203</option>
                     <option :value="300">300</option>
                     <option :value="600">600</option>
                   </select>
                   <span class="dim-unit">dpi</span>
                 </div>
-                <button type="button" class="mini-btn danger" @click="removeSubTemplate(sub.id)" title="Remove sub-template">✕</button>
+                <button type="button" class="mini-btn danger" :disabled="isCurrentTemplateLocked" @click="removeSubTemplate(sub.id)" title="Remove sub-template">✕</button>
               </div>
             </div>
           </div>
 
           <!-- Actions -->
           <div class="open-row">
-            <button type="button" class="primary-btn" @click="$emit('open-in-designer', activeTemplate.id)">
-              Open in Designer →
+            <button
+              type="button"
+              class="primary-btn"
+              :class="{ 'read-only-open': isCurrentTemplateLocked }"
+              @click="handleOpenInDesigner"
+              :title="isCurrentTemplateLocked ? 'Open live preview in read-only mode' : 'Open in designer to edit'"
+            >
+              {{ isCurrentTemplateLocked ? '👁️ Open in Designer (Read-Only) →' : 'Open in Designer →' }}
             </button>
-            <button type="button" class="ghost-btn" @click="onPasteEzpx">📋 Paste EZPX Text</button>
+            <button type="button" class="ghost-btn" :disabled="isCurrentTemplateLocked" @click="onPasteEzpx">📋 Paste EZPX Text</button>
             <button type="button" class="ghost-btn" @click="openRequestHistory">📜 Request History</button>
           </div>
         </template>
@@ -208,11 +230,45 @@
         </div>
       </div>
     </transition>
+
+    <!-- Unlock Template Password Modal -->
+    <transition name="modal-fade">
+      <div v-if="isUnlockModalOpen" class="st-modal-overlay" @click.self="closeUnlockModal">
+        <div class="st-modal-container unlock-modal">
+          <div class="st-modal-header">
+            <h3>🔒 Unlock Template</h3>
+            <button type="button" class="close-modal-btn" @click="closeUnlockModal">✕</button>
+          </div>
+          <div class="st-modal-body">
+            <p class="unlock-desc">
+              Enter the admin password to unlock and edit <strong>{{ activeTemplate?.name }}</strong>:
+            </p>
+            <form @submit.prevent="submitUnlock">
+              <input
+                ref="unlockInputRef"
+                type="password"
+                v-model="unlockPasswordInput"
+                class="unlock-password-input"
+                placeholder="Enter admin password"
+                autocomplete="current-password"
+              />
+              <div v-if="unlockError" class="unlock-error-msg">
+                {{ unlockError }}
+              </div>
+              <div class="unlock-modal-actions">
+                <button type="button" class="mini-btn" @click="closeUnlockModal">Cancel</button>
+                <button type="submit" class="primary-btn unlock-btn">Unlock</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import {
   templates,
   activeTemplateId,
@@ -225,13 +281,77 @@ import {
   deleteTemplate,
   addSubTemplate,
   removeSubTemplate,
-  setActiveTemplate
+  setActiveTemplate,
+  isCurrentTemplateLocked,
+  unlockTemplate,
+  lockTemplate
 } from '../../stores/templateStore.js';
-import { isSpecialTemplate, isDeliveryTemplate, isInternalTemplate, sortTemplatesWithDeliveryFirst } from '../../utils/stTemplateManager.js';
+import { isSpecialTemplate, isDeliveryTemplate, isInternalTemplate, sortTemplatesWithDeliveryFirst, verifyAdminPassword } from '../../utils/stTemplateManager.js';
 import { parseEzpxXmlToTemplate } from '../../utils/stEzpxParser.js';
 import { showStAlert, showStConfirm } from '../../utils/stDialog.js';
 
-defineEmits(['open-in-designer']);
+const emit = defineEmits(['open-in-designer']);
+
+// ── Template Lock State ─────────────────────────────────────────────
+const isUnlockModalOpen = ref(false);
+const unlockPasswordInput = ref('');
+const unlockError = ref('');
+const unlockInputRef = ref(null);
+let pendingUnlockAction = null;
+
+function openUnlockModal(onSuccess = null) {
+  pendingUnlockAction = onSuccess;
+  unlockPasswordInput.value = '';
+  unlockError.value = '';
+  isUnlockModalOpen.value = true;
+  nextTick(() => {
+    unlockInputRef.value?.focus();
+  });
+}
+
+function closeUnlockModal() {
+  isUnlockModalOpen.value = false;
+  unlockPasswordInput.value = '';
+  unlockError.value = '';
+  pendingUnlockAction = null;
+}
+
+function submitUnlock() {
+  if (!verifyAdminPassword(unlockPasswordInput.value)) {
+    unlockError.value = 'Incorrect admin password. Please try again.';
+    return;
+  }
+  if (activeTemplate.value) {
+    unlockTemplate(activeTemplate.value.id);
+  }
+  const action = pendingUnlockAction;
+  closeUnlockModal();
+  if (typeof action === 'function') {
+    action();
+  }
+}
+
+function toggleLock() {
+  if (!activeTemplate.value) return;
+  if (isCurrentTemplateLocked.value) {
+    openUnlockModal();
+  } else {
+    // Re-lock
+    lockTemplate(activeTemplate.value.id);
+  }
+}
+
+function handleCreateTemplate() {
+  createTemplate();
+}
+
+function handleDuplicateTemplate() {
+  duplicateTemplate();
+}
+
+function handleOpenInDesigner() {
+  emit('open-in-designer', activeTemplate.value.id);
+}
 
 const searchQuery = ref('');
 
@@ -292,6 +412,10 @@ function setSubConfig(subId, key, val) {
 async function onDelete() {
   if (!activeTemplate.value || isSpecialTemplate(activeTemplate.value)) {
     showStAlert('Special templates are protected system templates and cannot be deleted.', 'Cannot Delete', 'warning');
+    return;
+  }
+  if (isCurrentTemplateLocked.value) {
+    showStAlert('Please unlock the template before deleting it.', 'Template Locked', 'warning');
     return;
   }
   if (templates.value.length <= 1) return;
@@ -396,6 +520,9 @@ onMounted(async () => {
 }
 
 .tpl-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 14px;
 }
 
@@ -406,6 +533,33 @@ onMounted(async () => {
   font-weight: 700;
   letter-spacing: 0.01em;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.header-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #3182ce;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
+}
+
+.header-new-btn:hover {
+  background: #2b6cb0;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.header-new-btn:active {
+  transform: translateY(0);
+  background: #2c5282;
 }
 
 .tpl-layout {
@@ -942,6 +1096,120 @@ onMounted(async () => {
   font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
   font-size: 0.82rem;
   color: #38bdf8;
+}
+
+/* ── Lock Button & Locked Banner ── */
+.lock-btn {
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.lock-btn.is-locked {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+.lock-btn.is-locked:hover {
+  background: #fde68a;
+}
+
+.lock-btn.is-unlocked {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.lock-btn.is-unlocked:hover {
+  background: #a7f3d0;
+}
+
+.locked-banner {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.locked-banner-icon {
+  font-size: 1rem;
+}
+
+/* Disabled input state when template is locked */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background-color: #f8fafc !important;
+  color: #64748b !important;
+  cursor: not-allowed !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ── Unlock Password Modal ── */
+.st-modal-container.unlock-modal {
+  background: #1e293b;
+  color: #f8fafc;
+  width: 90%;
+  max-width: 440px;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.unlock-desc {
+  margin: 0 0 16px 0;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.unlock-password-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.unlock-password-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.unlock-error-msg {
+  color: #f87171;
+  font-size: 0.82rem;
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.unlock-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.unlock-btn {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  padding: 8px 18px !important;
+  border-radius: 6px !important;
+}
+.unlock-btn:hover {
+  background: #2563eb !important;
 }
 
 /* Modal fade animations */

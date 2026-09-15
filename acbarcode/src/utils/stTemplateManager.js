@@ -99,12 +99,16 @@ export function createInitialDefaultTemplates() {
   ];
 }
 
+import { ADMIN_PASSWORD, verifyAdminPassword, getAdminPassword } from './auth.js';
+export { ADMIN_PASSWORD, verifyAdminPassword };
+
 // ── Server API (templates are stored server-side in SQLite) ─────────────
 
 export function getAdminHeaders() {
   const headers = { 'Content-Type': 'application/json' };
-  if (sessionStorage.getItem('acbarcode_role') === 'admin') {
-    headers['X-Admin-Password'] = 'SUTOadmin1234';
+  const pass = getAdminPassword();
+  if (pass) {
+    headers['X-Admin-Password'] = pass;
   }
   return headers;
 }

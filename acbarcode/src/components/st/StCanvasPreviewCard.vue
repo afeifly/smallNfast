@@ -60,9 +60,13 @@
       </div>
 
       <!-- ── 2. Import JSON Button ──────────────────────────────── -->
-      <label class="action-btn import-json-btn" title="Load template design from JSON file into current editor">
+      <label 
+        class="action-btn import-json-btn" 
+        :class="{ disabled: isLocked }"
+        :title="isLocked ? 'Template is locked (read-only)' : 'Load template design from JSON file into current editor'"
+      >
         📥 Import JSON
-        <input type="file" accept=".json" style="display:none;" @change="$emit('import-template-json', $event)" />
+        <input v-if="!isLocked" type="file" accept=".json" style="display:none;" @change="$emit('import-template-json', $event)" />
       </label>
 
       <!-- ── 3. Download PDF Button (Standalone) ─────────────────── -->
@@ -92,6 +96,10 @@ defineProps({
   currentSN: {
     type: String,
     default: ''
+  },
+  isLocked: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -263,6 +271,14 @@ defineExpose({
   gap: 0.45rem;
   transition: all 0.2s ease;
   white-space: nowrap;
+}
+
+.action-btn.disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .export-trigger-btn {

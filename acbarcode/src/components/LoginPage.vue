@@ -47,11 +47,11 @@ import { ref, onMounted } from 'vue';
 const emit = defineEmits(['login-success']);
 
 const password = ref('');
+import { ADMIN_PASSWORD, USER_PASSWORD as userPassword } from '../utils/auth.js';
+
 const errorMessage = ref('');
 const isLoading = ref(false);
 const passwordInput = ref(null);
-const userPassword = 'SUTOuser1234';
-const ADMIN_PASSWORD = 'SUTOadmin1234';
 
 onMounted(() => {
   // Focus the password input

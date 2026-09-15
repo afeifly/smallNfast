@@ -5,10 +5,21 @@
         <div class="header-left">
           <h3>🎨 Elements</h3>
           <span class="count-pill">{{ elements.length }}</span>
-          <span v-if="hasUnsavedChanges" class="unsaved-badge" title="Unsaved changes in editor">● Unsaved</span>
+          <span v-if="isLocked" class="locked-badge" title="Template is locked (read-only mode)">🔒 Read-Only</span>
+          <span v-else-if="hasUnsavedChanges" class="unsaved-badge" title="Unsaved changes in editor">● Unsaved</span>
         </div>
         <div class="header-right">
+          <button
+            v-if="isLocked"
+            type="button"
+            class="designer-unlock-btn"
+            @click="emit('unlock-requested')"
+            title="Template is locked. Click to enter admin password and unlock for editing."
+          >
+            🔓 Unlock to Edit
+          </button>
           <button 
+            v-else
             type="button" 
             class="save-elements-btn" 
             :class="{ 'has-changes': hasUnsavedChanges }"
@@ -21,7 +32,11 @@
           </button>
         </div>
       </div>
-      <div class="add-toolbar">
+      <div v-if="isLocked" class="locked-banner">
+        <span>🔒 Template is locked (Read-Only). You can preview and export.</span>
+        <button type="button" class="banner-unlock-link" @click="emit('unlock-requested')">Unlock to Edit →</button>
+      </div>
+      <div v-else class="add-toolbar">
         <button type="button" class="add-btn" @click="addElement('folder')">+ Folder</button>
         <button type="button" class="add-btn" @click="addElement('text')">+ Text</button>
         <button type="button" class="add-btn" @click="addElement('table')">+ Table</button>
@@ -32,7 +47,7 @@
       </div>
     </div>
 
-    <div class="layer-tree custom-scrollbar">
+    <div class="layer-tree custom-scrollbar" :class="{ 'is-locked-tree': isLocked }">
 
       <!-- ── FOLDERS ────────────────────────────────────────────── -->
       <div v-for="folder in folders" :key="folder.id" class="folder-block">
@@ -44,15 +59,19 @@
             class="folder-name"
             type="text"
             v-model="folder.name"
+            :readonly="isLocked"
+            :disabled="isLocked"
             @click.stop
             @mousedown.stop
             @keydown.stop
             placeholder="Folder name"
           />
-          <button class="row-btn move-btn" :disabled="isFirstInGroup(folder)" @click.stop="moveElement(folder, -1)" title="Move Folder Up">▲</button>
-          <button class="row-btn move-btn" :disabled="isLastInGroup(folder)" @click.stop="moveElement(folder, 1)" title="Move Folder Down">▼</button>
+          <template v-if="!isLocked">
+            <button class="row-btn move-btn" :disabled="isFirstInGroup(folder)" @click.stop="moveElement(folder, -1)" title="Move Folder Up">▲</button>
+            <button class="row-btn move-btn" :disabled="isLastInGroup(folder)" @click.stop="moveElement(folder, 1)" title="Move Folder Down">▼</button>
+          </template>
           <span class="child-count">{{ folderChildCount(folder.id) }}</span>
-          <button class="row-btn danger" @click.stop="deleteFolder(folder)" title="Remove folder">✕</button>
+          <button v-if="!isLocked" class="row-btn danger" @click.stop="deleteFolder(folder)" title="Remove folder">✕</button>
         </div>
 
         <!-- folder children -->
@@ -68,11 +87,13 @@
               <span class="el-label">{{ child.name || child.type }}</span>
               <span v-if="child.rotation" class="rot-pill">{{ child.rotation }}°</span>
               <span class="el-hint">{{ shortHint(child) }}</span>
-              <button class="row-btn move-btn" :disabled="isFirstInGroup(child)" @click.stop="moveElement(child, -1)" title="Move Up">▲</button>
-              <button class="row-btn move-btn" :disabled="isLastInGroup(child)" @click.stop="moveElement(child, 1)" title="Move Down">▼</button>
-              <button class="row-btn rotate-btn" @click.stop="rotateElement(child)" :title="'Rotate 90° (Current: ' + (child.rotation || 0) + '°)'">🔄</button>
-              <button class="row-btn duplicate-btn" @click.stop="duplicateElement(child)" title="Duplicate Element (X,Y +1mm)">📋</button>
-              <button class="row-btn danger" @click.stop="deleteById(child.id)" title="Delete">✕</button>
+              <template v-if="!isLocked">
+                <button class="row-btn move-btn" :disabled="isFirstInGroup(child)" @click.stop="moveElement(child, -1)" title="Move Up">▲</button>
+                <button class="row-btn move-btn" :disabled="isLastInGroup(child)" @click.stop="moveElement(child, 1)" title="Move Down">▼</button>
+                <button class="row-btn rotate-btn" @click.stop="rotateElement(child)" :title="'Rotate 90° (Current: ' + (child.rotation || 0) + '°)'">🔄</button>
+                <button class="row-btn duplicate-btn" @click.stop="duplicateElement(child)" title="Duplicate Element (X,Y +1mm)">📋</button>
+                <button class="row-btn danger" @click.stop="deleteById(child.id)" title="Delete">✕</button>
+              </template>
             </div>
             <div v-show="child.expanded" class="el-detail">
               <ElementForm 
@@ -101,11 +122,13 @@
           <span class="el-label">{{ el.name || el.type }}</span>
           <span v-if="el.rotation" class="rot-pill">{{ el.rotation }}°</span>
           <span class="el-hint">{{ shortHint(el) }}</span>
-          <button class="row-btn move-btn" :disabled="isFirstInGroup(el)" @click.stop="moveElement(el, -1)" title="Move Up">▲</button>
-          <button class="row-btn move-btn" :disabled="isLastInGroup(el)" @click.stop="moveElement(el, 1)" title="Move Down">▼</button>
-          <button class="row-btn rotate-btn" @click.stop="rotateElement(el)" :title="'Rotate 90° (Current: ' + (el.rotation || 0) + '°)'">🔄</button>
-          <button class="row-btn duplicate-btn" @click.stop="duplicateElement(el)" title="Duplicate Element (X,Y +1mm)">📋</button>
-          <button class="row-btn danger" @click.stop="deleteById(el.id)" title="Delete">✕</button>
+          <template v-if="!isLocked">
+            <button class="row-btn move-btn" :disabled="isFirstInGroup(el)" @click.stop="moveElement(el, -1)" title="Move Up">▲</button>
+            <button class="row-btn move-btn" :disabled="isLastInGroup(el)" @click.stop="moveElement(el, 1)" title="Move Down">▼</button>
+            <button class="row-btn rotate-btn" @click.stop="rotateElement(el)" :title="'Rotate 90° (Current: ' + (el.rotation || 0) + '°)'">🔄</button>
+            <button class="row-btn duplicate-btn" @click.stop="duplicateElement(el)" title="Duplicate Element (X,Y +1mm)">📋</button>
+            <button class="row-btn danger" @click.stop="deleteById(el.id)" title="Delete">✕</button>
+          </template>
         </div>
         <div v-show="el.expanded" class="el-detail">
           <ElementForm 
@@ -121,7 +144,7 @@
 
     </div>
 
-    <div class="add-toolbar bottom-toolbar">
+    <div v-if="!isLocked" class="add-toolbar bottom-toolbar">
       <button type="button" class="add-btn" @click="addElement('folder')">+ Folder</button>
       <button type="button" class="add-btn" @click="addElement('text')">+ Text</button>
       <button type="button" class="add-btn" @click="addElement('table')">+ Table</button>
@@ -144,10 +167,11 @@ const props = defineProps({
   canvasConfig: { type: Object, required: true },
   availableProducts: { type: Array, default: () => [] },
   hasUnsavedChanges: { type: Boolean, default: false },
-  isSaving: { type: Boolean, default: false }
+  isSaving: { type: Boolean, default: false },
+  isLocked: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['save-elements']);
+const emit = defineEmits(['save-elements', 'unlock-requested']);
 
 /* ── COMPUTED ───────────────────────────────────────────── */
 const folders = computed(() => props.elements.filter(e => e.type === 'folder'));
@@ -202,7 +226,7 @@ function isLastInGroup(el) {
 }
 
 function moveElement(targetEl, dir) {
-  if (!targetEl) return;
+  if (!targetEl || props.isLocked) return;
 
   if (targetEl.type === 'folder') {
     const folderList = folders.value;
@@ -253,6 +277,7 @@ function moveElement(targetEl, dir) {
 function generateId() { return 'el_' + Math.random().toString(36).substr(2, 9); }
 
 function addElement(type) {
+  if (props.isLocked) return;
   const el = { id: generateId(), type, name: '', folderId: null, expanded: true };
   if (type === 'folder') { el.name = `Folder ${folders.value.length + 1}`; el.expanded = true; }
   else if (type === 'text') { el.name = 'New Text'; el.text = ''; el.xMm = 1; el.yMm = 5; el.endXMm = props.canvasConfig.widthMm || 35; el.fontSize = 5; el.bold = false; }
@@ -284,7 +309,7 @@ function addElement(type) {
 }
 
 function duplicateElement(targetEl) {
-  if (!targetEl) return;
+  if (!targetEl || props.isLocked) return;
   const clone = JSON.parse(JSON.stringify(targetEl));
   clone.id = generateId();
   clone.name = (clone.name || clone.type || 'Element') + ' (Copy)';
@@ -305,11 +330,12 @@ function duplicateElement(targetEl) {
 }
 
 function rotateElement(el) {
-  if (!el) return;
+  if (!el || props.isLocked) return;
   el.rotation = ((parseInt(el.rotation, 10) || 0) + 90) % 360;
 }
 
 async function deleteById(id, confirmDelete = true) {
+  if (props.isLocked) return;
   const i = props.elements.findIndex(e => e.id === id);
   if (i !== -1) {
     if (confirmDelete) {
@@ -328,7 +354,7 @@ async function deleteById(id, confirmDelete = true) {
 }
 
 function unpackTable(tableEl) {
-  if (!tableEl) return;
+  if (!tableEl || props.isLocked) return;
   const idx = props.elements.findIndex(e => e.id === tableEl.id);
   if (idx === -1) return;
 
@@ -482,6 +508,7 @@ function unpackTable(tableEl) {
 }
 
 async function deleteFolder(folder) {
+  if (!folder || props.isLocked) return;
   const folderName = folder.name || 'this folder';
   const confirmed = await showStConfirm({
     title: 'Delete Folder',
@@ -496,6 +523,7 @@ async function deleteFolder(folder) {
 }
 
 function onImageUpload(el, event) {
+  if (props.isLocked) return;
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -1128,6 +1156,77 @@ const ElementForm = defineComponent({
   padding: 1px 7px;
   border-radius: 10px;
   letter-spacing: 0.2px;
+}
+.locked-badge {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.2px;
+}
+.designer-unlock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 4px 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  border: 1px solid #f59e0b !important;
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.2) !important;
+  transition: all 0.2s ease;
+  width: auto !important;
+}
+.designer-unlock-btn:hover {
+  background: #fde68a !important;
+  color: #78350f !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(245, 158, 11, 0.3) !important;
+}
+.locked-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+  font-weight: 500;
+}
+.banner-unlock-link {
+  background: none;
+  border: none;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.banner-unlock-link:hover {
+  color: #78350f;
+}
+.is-locked-tree .el-detail {
+  position: relative;
+}
+.is-locked-tree .el-detail input,
+.is-locked-tree .el-detail select,
+.is-locked-tree .el-detail textarea,
+.is-locked-tree .el-detail button {
+  pointer-events: none !important;
+  opacity: 0.65;
+  cursor: not-allowed !important;
 }
 .header-right {
   display: flex;

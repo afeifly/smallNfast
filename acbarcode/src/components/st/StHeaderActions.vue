@@ -68,6 +68,16 @@
           <span class="pill-text">{{ activeTemplate.name }}</span>
         </span>
 
+        <button
+          v-if="isLocked"
+          type="button"
+          class="header-unlock-badge"
+          @click="$emit('unlock-requested')"
+          title="Template is locked (read-only mode). Click to unlock with admin password."
+        >
+          🔒 Read-Only (Unlock)
+        </button>
+
         <div class="subtemplate-select-group">
           <label for="subtemplate-select" class="sub-label">Label:</label>
           <select 
@@ -135,6 +145,10 @@ defineProps({
   availableProducts: {
     type: Array,
     default: () => []
+  },
+  isLocked: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -146,7 +160,8 @@ defineEmits([
   'update:activeSubTemplateId',
   'fetch-odoo',
   'open-odoo-modal',
-  'open-templates'
+  'open-templates',
+  'unlock-requested'
 ]);
 </script>
 
@@ -259,6 +274,29 @@ defineEmits([
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.header-unlock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.header-unlock-badge:hover {
+  background: #fde68a;
+  color: #78350f;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .subtemplate-select-group {

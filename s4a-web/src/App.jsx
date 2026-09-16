@@ -29,6 +29,8 @@ import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
 
 const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
+const featureReport = import.meta.env.VITE_ENABLE_CONSUMPTION_REPORT === 'true';
+const featureCompressor = import.meta.env.VITE_ENABLE_COMPRESSOR_ANALYZE === 'true';
 
 const renderNotiIcon = (type) => {
   switch (type) {
@@ -437,20 +439,22 @@ function App() {
             >
               Table View
             </button>
-            <button
-              className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
-              onClick={() => setActiveTab('report')}
-              style={{ display: 'none' }}
-            >
-              Consumption Report
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
-              onClick={() => setActiveTab('analyze')}
-              style={{ display: 'none' }}
-            >
-              Compressor Analyze <span className="beta-tag">Beta</span>
-            </button>
+            {featureReport && (
+              <button
+                className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
+                onClick={() => setActiveTab('report')}
+              >
+                Consumption Report
+              </button>
+            )}
+            {featureCompressor && (
+              <button
+                className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
+                onClick={() => setActiveTab('analyze')}
+              >
+                Compressor Analyze <span className="beta-tag">Beta</span>
+              </button>
+            )}
           </div>
         )}
 

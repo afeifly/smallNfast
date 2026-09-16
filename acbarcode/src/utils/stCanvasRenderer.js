@@ -42,6 +42,14 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
   const W = mmToPx(config.widthMm || 35);
   const H = mmToPx(config.heightMm || 22);
 
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch (e) {
+      // ignore
+    }
+  }
+
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');

@@ -893,6 +893,25 @@ function goToMainApp() {
   window.location.href = url.toString();
 }
 
+// ── Font Preload Pipeline ──────────────────────────────────────────────
+async function ensureLabelFonts() {
+  try {
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.load) {
+      await Promise.all([
+        document.fonts.load('400 12px "Noto Sans"').catch(() => {}),
+        document.fonts.load('700 12px "Noto Sans"').catch(() => {}),
+        document.fonts.load('400 12px "Noto Sans SC"').catch(() => {}),
+        document.fonts.load('700 12px "Noto Sans SC"').catch(() => {})
+      ]);
+      if (document.fonts.ready) {
+        await document.fonts.ready;
+      }
+    }
+  } catch (err) {
+    console.warn('Font preload failed:', err);
+  }
+}
+
 // ── Canvas Rendering Pipeline ──────────────────────────────────────────
 async function redrawCanvas() {
   await nextTick();
@@ -966,7 +985,17 @@ onMounted(async () => {
     }
   });
 
+  // Preload fonts before first canvas render so canvas never falls back to OS default fonts
+  await ensureLabelFonts();
   await redrawCanvas();
+
+  // If any remaining web font finishes loading asynchronously, redraw canvas automatically
+  if (typeof document !== 'undefined' && document.fonts) {
+    document.fonts.ready?.then(() => redrawCanvas()).catch(() => {});
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', () => redrawCanvas());
+    }
+  }
 });
 </script>
 

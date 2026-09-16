@@ -69,6 +69,15 @@ async function getCachedServerImage(src) {
  */
 async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '', extra = {}) {
   const { resolveElementText } = await import('../src/utils/stOptionResolver.js');
+  const { isElementEnabled } = await import('../src/utils/stConditionEvaluator.js');
+
+  const conditionContext = {
+    product: product || 'S695 4035 (Air)',
+    options: optionsText,
+    serial,
+    deviceName,
+    ...(extra || {})
+  };
 
   const dpi = config.dpi || PRINTER_DPI;
   const mmToPx = (mm) => Math.round((mm / 25.4) * dpi);
@@ -86,6 +95,7 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
 
   for (const el of elements) {
     if (el.type === 'folder') continue;
+    if (!isElementEnabled(el, conditionContext, elements)) continue;
 
     const rot = (parseInt(el.rotation, 10) || 0) % 360;
     const hasRot = rot !== 0;

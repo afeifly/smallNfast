@@ -69,9 +69,15 @@
         <input v-if="!isLocked" type="file" accept=".json" style="display:none;" @change="$emit('import-template-json', $event)" />
       </label>
 
-      <!-- ── 3. Download PDF Button (Standalone) ─────────────────── -->
-      <button type="button" class="action-btn pdf-btn" @click="$emit('download-pdf', $event)">
-        📄 Download PDF {{ rangeCount > 1 ? `(${rangeCount})` : '' }}
+      <!-- ── 3. All Possible Configurations Button (Standalone) ────── -->
+      <button 
+        v-if="!isSpecial" 
+        type="button" 
+        class="action-btn all-possible-btn" 
+        @click="$emit('open-all-possible')"
+        title="Open interactive 'All Possible' scenario viewer in a new tab (shareable without password)"
+      >
+        🌐 All Possible
       </button>
     </div>
   </div>
@@ -100,13 +106,17 @@ defineProps({
   isLocked: {
     type: Boolean,
     default: false
+  },
+  isSpecial: {
+    type: Boolean,
+    default: false
   }
 });
 
 const emit = defineEmits([
   'export-ezpx',
   'export-ezpl',
-  'download-pdf',
+  'open-all-possible',
   'export-template-json',
   'import-template-json',
   'prev-page',
@@ -313,16 +323,22 @@ defineExpose({
   transform: translateY(-1px);
 }
 
-.pdf-btn {
+.all-possible-btn {
   flex: 1.15;
-  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%) !important;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
   color: white !important;
-  box-shadow: 0 2px 8px rgba(229, 62, 62, 0.3);
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 
-.pdf-btn:hover {
-  background: linear-gradient(135deg, #c53030 0%, #9b2c2c 100%) !important;
+.all-possible-btn:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
 }
 
 /* ── Dropdown Menu ────────────────────────────────────────── */

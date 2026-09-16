@@ -24,6 +24,8 @@
           :elements="stElements" 
           :canvasConfig="stCanvasConfig" 
           :available-products="allAvailableProducts"
+          :active-product="activeProd"
+          :active-options="stOptionsInput"
           :has-unsaved-changes="hasUnsavedChanges"
           :is-saving="isSaving"
           :is-locked="isCurrentTemplateLocked"
@@ -51,11 +53,12 @@
           :current-idx="currentPreviewIndex"
           :current-s-n="currentPreviewSN"
           :is-locked="isCurrentTemplateLocked"
+          :is-special="isCurrentTemplateSpecial"
           @prev-page="prevPreviewPage"
           @next-page="nextPreviewPage"
           @export-ezpx="exportEZPX"
           @export-ezpl="exportGraphicEZPL"
-          @download-pdf="onDownloadPdf"
+          @open-all-possible="onOpenAllPossible"
           @export-template-json="exportSingleTemplateJson"
           @import-template-json="importSingleTemplateJson"
         />
@@ -115,7 +118,7 @@ import JSZip from 'jszip';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
 import { generateSerialRange } from '../utils/stSerialRange.js';
 import { resolveElementText } from '../utils/stOptionResolver.js';
-import { matchTemplateByItemNo, DEFAULT_ELEMENTS_EN, DEFAULT_ELEMENTS_CN } from '../utils/stTemplateManager.js';
+import { matchTemplateByItemNo, DEFAULT_ELEMENTS_EN, DEFAULT_ELEMENTS_CN, isSpecialTemplate } from '../utils/stTemplateManager.js';
 import {
   templates,
   activeTemplateId,
@@ -143,6 +146,10 @@ const stProductInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const activeLang = ref('EN'); // 'EN' | 'CN'
+
+const isCurrentTemplateSpecial = computed(() => {
+  return isSpecialTemplate(activeTemplate.value);
+});
 
 // ── Lock & Unlock State ────────────────────────────────────────────────
 const isUnlockModalOpen = ref(false);
@@ -644,6 +651,19 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload);
   hasUnsavedChanges.value = false;
 });
+
+// ── Interactive All Possible Configurations View ─────────────────────
+function onOpenAllPossible() {
+  const tplId = activeTemplateId.value;
+  const prod = activeProd.value;
+  const opt = stOptionsInput.value;
+  const sn = currentPreviewSN.value;
+  let url = `${window.location.origin}${window.location.pathname}?page=all-possible&id=${encodeURIComponent(tplId || '')}`;
+  if (prod) url += `&item=${encodeURIComponent(prod)}`;
+  if (opt) url += `&options=${encodeURIComponent(opt)}`;
+  if (sn) url += `&sn=${encodeURIComponent(sn)}`;
+  window.open(url, '_blank');
+}
 
 // ── Multi-Label PDF Download ───────────────────────────────────────────
 function onDownloadPdf(e) {

@@ -70,8 +70,57 @@
             <button class="row-btn move-btn" :disabled="isFirstInGroup(folder)" @click.stop="moveElement(folder, -1)" title="Move Folder Up">▲</button>
             <button class="row-btn move-btn" :disabled="isLastInGroup(folder)" @click.stop="moveElement(folder, 1)" title="Move Folder Down">▼</button>
           </template>
+          <button
+            type="button"
+            class="folder-cond-toggle-btn"
+            :class="{
+              'has-cond': !!(folder.enableCondition && folder.enableCondition.trim()),
+              matched: isConditionTrue(folder.enableCondition),
+              editing: folder._showConditionEdit
+            }"
+            @click.stop="folder._showConditionEdit = !folder._showConditionEdit"
+            :title="folder.enableCondition ? `Folder Condition: ${folder.enableCondition}` : 'Set folder visibility condition'"
+          >
+            ⚡ <span v-if="folder.enableCondition && folder.enableCondition.trim()" class="cond-name-badge">
+              {{ folder.enableCondition.length > 14 ? folder.enableCondition.slice(0, 12) + '…' : folder.enableCondition }}
+            </span>
+            <span v-else>Cond</span>
+          </button>
           <span class="child-count">{{ folderChildCount(folder.id) }}</span>
           <button v-if="!isLocked" class="row-btn danger" @click.stop="deleteFolder(folder)" title="Remove folder">✕</button>
+        </div>
+
+        <!-- folder condition row (only visible when toggled) -->
+        <div v-if="folder._showConditionEdit" class="folder-cond-row">
+          <span class="folder-cond-tag">⚡ Folder Condition:</span>
+          <input
+            type="text"
+            v-model="folder.enableCondition"
+            :readonly="isLocked"
+            :disabled="isLocked"
+            placeholder="e.g. {{Product Type}} in 'S695 4120', 'S695 4121'"
+            class="folder-cond-input"
+          />
+          <span
+            v-if="folder.enableCondition && folder.enableCondition.trim()"
+            class="cond-status-tag"
+            :class="{ matched: isConditionTrue(folder.enableCondition) }"
+          >
+            {{ isConditionTrue(folder.enableCondition) ? '✓ Active' : '✕ Hidden' }}
+          </span>
+          <button
+            v-if="folder.enableCondition"
+            type="button"
+            class="folder-cond-clear-btn"
+            @click="folder.enableCondition = ''; folder._showConditionEdit = false"
+            title="Clear condition"
+          >Clear</button>
+          <button
+            type="button"
+            class="folder-cond-done-btn"
+            @click="folder._showConditionEdit = false"
+            title="Done"
+          >Done</button>
         </div>
 
         <!-- folder children -->
@@ -81,11 +130,23 @@
             :key="child.id"
             class="el-row-wrap"
           >
-            <div class="el-row" :class="'accent-' + child.type" @click="child.expanded = !child.expanded">
+            <div 
+              class="el-row" 
+              :class="['accent-' + child.type, { 'el-hidden-by-cond': !isElementVisible(child) }]" 
+              @click="child.expanded = !child.expanded"
+            >
               <span class="chevron sm">{{ child.expanded ? '▾' : '▸' }}</span>
               <span class="el-type-dot" :class="child.type"></span>
               <span class="el-label">{{ child.name || child.type }}</span>
               <span v-if="child.rotation" class="rot-pill">{{ child.rotation }}°</span>
+              <span 
+                v-if="child.enableCondition" 
+                class="cond-pill" 
+                :class="{ matched: isElementVisible(child) }" 
+                :title="'Condition: ' + child.enableCondition + (isElementVisible(child) ? ' (Matched/Visible)' : ' (Unmatched/Hidden)')"
+              >
+                ⚡ {{ isElementVisible(child) ? 'Cond' : 'Hidden' }}
+              </span>
               <span class="el-hint">{{ shortHint(child) }}</span>
               <template v-if="!isLocked">
                 <button class="row-btn move-btn" :disabled="isFirstInGroup(child)" @click.stop="moveElement(child, -1)" title="Move Up">▲</button>
@@ -103,6 +164,8 @@
                 @unpack-table="unpackTable" 
                 :canvasConfig="canvasConfig" 
                 :availableProducts="availableProducts"
+                :activeProduct="activeProduct"
+                :activeOptions="activeOptions"
               />
             </div>
           </div>
@@ -116,11 +179,23 @@
         :key="el.id"
         class="el-row-wrap root-level"
       >
-        <div class="el-row" :class="'accent-' + el.type" @click="el.expanded = !el.expanded">
+        <div 
+          class="el-row" 
+          :class="['accent-' + el.type, { 'el-hidden-by-cond': !isElementVisible(el) }]" 
+          @click="el.expanded = !el.expanded"
+        >
           <span class="chevron sm">{{ el.expanded ? '▾' : '▸' }}</span>
           <span class="el-type-dot" :class="el.type"></span>
           <span class="el-label">{{ el.name || el.type }}</span>
           <span v-if="el.rotation" class="rot-pill">{{ el.rotation }}°</span>
+          <span 
+            v-if="el.enableCondition" 
+            class="cond-pill" 
+            :class="{ matched: isElementVisible(el) }" 
+            :title="'Condition: ' + el.enableCondition + (isElementVisible(el) ? ' (Matched/Visible)' : ' (Unmatched/Hidden)')"
+          >
+            ⚡ {{ isElementVisible(el) ? 'Cond' : 'Hidden' }}
+          </span>
           <span class="el-hint">{{ shortHint(el) }}</span>
           <template v-if="!isLocked">
             <button class="row-btn move-btn" :disabled="isFirstInGroup(el)" @click.stop="moveElement(el, -1)" title="Move Up">▲</button>
@@ -138,6 +213,8 @@
             @unpack-table="unpackTable" 
             :canvasConfig="canvasConfig" 
             :availableProducts="availableProducts"
+            :activeProduct="activeProduct"
+            :activeOptions="activeOptions"
           />
         </div>
       </div>
@@ -160,18 +237,29 @@
 import { computed, h, defineComponent } from 'vue';
 import { showStConfirm } from '../../utils/stDialog.js';
 import { formatDate } from '../../utils/stOptionResolver.js';
+import { evaluateCondition, isElementEnabled } from '../../utils/stConditionEvaluator.js';
 
 /* ── PROPS ──────────────────────────────────────────────── */
 const props = defineProps({
   elements: { type: Array, required: true },
   canvasConfig: { type: Object, required: true },
   availableProducts: { type: Array, default: () => [] },
+  activeProduct: { type: String, default: '' },
+  activeOptions: { type: [String, Array], default: '' },
   hasUnsavedChanges: { type: Boolean, default: false },
   isSaving: { type: Boolean, default: false },
   isLocked: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(['save-elements', 'unlock-requested']);
+
+function isElementVisible(el) {
+  return isElementEnabled(el, { product: props.activeProduct, options: props.activeOptions }, props.elements);
+}
+
+function isConditionTrue(cond) {
+  return evaluateCondition(cond, { product: props.activeProduct, options: props.activeOptions });
+}
 
 /* ── COMPUTED ───────────────────────────────────────────── */
 const folders = computed(() => props.elements.filter(e => e.type === 'folder'));
@@ -538,7 +626,9 @@ const ElementForm = defineComponent({
     el: Object,
     folders: Array,
     canvasConfig: Object,
-    availableProducts: { type: Array, default: () => [] }
+    availableProducts: { type: Array, default: () => [] },
+    activeProduct: { type: String, default: '' },
+    activeOptions: { type: [String, Array], default: '' }
   },
   emits: ['image-upload', 'unpack-table'],
   setup(props, { emit }) {
@@ -576,8 +666,16 @@ const ElementForm = defineComponent({
           : null
       ]));
 
-      // Rotation control row (0°, 90°, 180°, 270°)
+      // Rotation control row (0°, 90°, 180°, 270°) + Condition Toggle (like Patch)
       const currentRot = (parseInt(el.rotation, 10) || 0) % 360;
+      const hasCond = !!(el.enableCondition && el.enableCondition.trim());
+      const condContext = {
+        product: props.activeProduct,
+        options: props.activeOptions
+      };
+      const isCondMatched = hasCond ? evaluateCondition(el.enableCondition, condContext) : true;
+      const currentProdDisplay = props.activeProduct || 'default';
+
       kids.push(h('div', { class: 'rot-control-row' }, [
         h('span', { class: 'rot-label' }, 'Rotation:'),
         h('div', { class: 'rot-btn-group' }, [
@@ -594,8 +692,89 @@ const ElementForm = defineComponent({
             title: 'Rotate 90° clockwise',
             onClick: () => el.rotation = (currentRot + 90) % 360
           }, '🔄 +90°')
+        ]),
+        // Compact condition toggle at the right side of Rotation row (like Patch)
+        h('div', { class: 'cond-toggle-wrapper' }, [
+          h('button', {
+            type: 'button',
+            class: ['cond-toggle-btn', hasCond ? (isCondMatched ? 'has-cond matched' : 'has-cond unmatched') : '', el._showConditionEdit ? 'editing' : ''],
+            title: hasCond 
+              ? `Condition: "${el.enableCondition}" (${isCondMatched ? 'Visible' : 'Hidden'} for ${currentProdDisplay}). Click to edit.`
+              : 'Set element enable/display condition (click to configure)',
+            onClick: () => {
+              el._showConditionEdit = !el._showConditionEdit;
+            }
+          }, [
+            '⚡ ',
+            hasCond 
+              ? h('span', { class: 'cond-name-badge' }, (el.enableCondition.length > 20 ? el.enableCondition.slice(0, 18) + '…' : el.enableCondition.trim()))
+              : 'Condition'
+          ])
         ])
       ]));
+
+      // Compact inline editor (only visible when toggled, exactly like Patch!)
+      if (el._showConditionEdit) {
+        kids.push(h('div', { class: 'cond-inline-popover' }, [
+          h('div', { class: 'cond-popover-main-row' }, [
+            h('span', { class: 'cond-popover-tag' }, '⚡ Cond:'),
+            h('input', {
+              type: 'text',
+              class: 'cond-popover-input',
+              value: el.enableCondition || '',
+              onInput: e => el.enableCondition = e.target.value,
+              placeholder: "e.g. {{Product Type}} in 'S695 4120', 'S695 4121'  or  {{options}} contains 'A1410'"
+            }),
+            hasCond ? h('span', {
+              class: ['cond-popover-status', isCondMatched ? 'matched' : 'unmatched']
+            }, isCondMatched ? `✓ "${currentProdDisplay}"` : `✕ "${currentProdDisplay}"`) : null,
+            hasCond ? h('button', {
+              type: 'button',
+              class: 'cond-popover-btn clear-btn',
+              title: 'Clear condition (always visible)',
+              onClick: () => {
+                el.enableCondition = '';
+                el._showConditionEdit = false;
+              }
+            }, 'Clear') : null,
+            h('button', {
+              type: 'button',
+              class: 'cond-popover-btn done-btn',
+              title: 'Done editing condition',
+              onClick: () => el._showConditionEdit = false
+            }, 'Done')
+          ]),
+          h('div', { class: 'cond-popover-presets-row' }, [
+            h('span', { class: 'presets-label' }, 'Presets:'),
+            h('button', {
+              type: 'button',
+              class: 'preset-btn',
+              title: 'Only show when product type equals active product',
+              onClick: () => {
+                const p = props.activeProduct || 'S695 4120';
+                el.enableCondition = `{{Product Type}} == '${p}'`;
+              }
+            }, `+ Prod == '${props.activeProduct || 'S695 4120'}'`),
+            h('button', {
+              type: 'button',
+              class: 'preset-btn',
+              title: 'Show when product type is in a list of types',
+              onClick: () => {
+                const p = props.activeProduct || 'S695 4120';
+                el.enableCondition = `{{Product Type}} in '${p}', 'S695 4121'`;
+              }
+            }, `+ Prod in ('${props.activeProduct || 'S695 4120'}', ...)`),
+            h('button', {
+              type: 'button',
+              class: 'preset-btn',
+              title: 'Only show when options contains code',
+              onClick: () => {
+                el.enableCondition = `{{options}} contains 'A1410'`;
+              }
+            }, `+ Option contains 'A1410'`)
+          ])
+        ]));
+      }
 
       if (el.type === 'text') {
         const isProductMode = !!(el.textType === 'product' || el.useProductMapping || el.isProductMode);
@@ -1101,6 +1280,8 @@ const ElementForm = defineComponent({
           h('div', { class: 'fg' }, [h('label', 'Size'), h('input', { type: 'number', value: el.mul, onInput: e => el.mul = +e.target.value, min: 1, max: 20 })])
         ]));
       }
+
+
 
       return h('div', { class: 'el-form' }, kids);
     };
@@ -2011,5 +2192,293 @@ const ElementForm = defineComponent({
   background: #3182ce;
   color: white;
   font-weight: 600;
+}
+
+/* ── Element Condition Indicator in Layer Tree ───────────── */
+.cond-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  letter-spacing: 0.2px;
+}
+.cond-pill.matched {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+.el-row.el-hidden-by-cond {
+  opacity: 0.6;
+  background: #f8fafc;
+}
+
+/* ── Folder Condition Row ─────────────────────────────────── */
+.folder-cond-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #fffbeb;
+  border-bottom: 1px dashed #fcd34d;
+  font-size: 11px;
+}
+.folder-cond-tag {
+  font-weight: 700;
+  color: #b45309;
+  white-space: nowrap;
+}
+.folder-cond-input {
+  flex: 1;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-family: monospace !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 4px !important;
+}
+.folder-cond-toggle-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 4px;
+  transition: all 0.12s ease;
+}
+.folder-cond-toggle-btn:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+.folder-cond-toggle-btn.has-cond {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+  font-weight: 600;
+}
+.folder-cond-toggle-btn.has-cond.matched {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+.folder-cond-toggle-btn.has-cond:not(.matched) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.folder-cond-toggle-btn.editing {
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+}
+.folder-cond-clear-btn,
+.folder-cond-done-btn {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  font-weight: 600;
+}
+.folder-cond-clear-btn {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.folder-cond-clear-btn:hover {
+  background: #fecaca;
+}
+.folder-cond-done-btn {
+  background: #d97706;
+  color: white;
+}
+.folder-cond-done-btn:hover {
+  background: #b45309;
+}
+.cond-status-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.cond-status-tag.matched {
+  background: #ecfdf5;
+  color: #047857;
+}
+.cond-status-tag:not(.matched) {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+/* ── Element Condition Toggle & Inline Editor in Rotation Bar ── */
+:deep(.cond-toggle-wrapper) {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+:deep(.cond-toggle-btn) {
+  background: #f0f4f8 !important;
+  color: #4a5568 !important;
+  border: 1px solid #cbd5e0 !important;
+  border-radius: 5px !important;
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: none !important;
+  width: auto !important;
+  transition: all 0.15s ease;
+}
+:deep(.cond-toggle-btn:hover) {
+  background: #e2e8f0 !important;
+  color: #2d3748 !important;
+}
+:deep(.cond-toggle-btn.has-cond) {
+  background: #fffbeb !important;
+  border-color: #fcd34d !important;
+  color: #b45309 !important;
+  font-weight: 600 !important;
+}
+:deep(.cond-toggle-btn.has-cond.matched) {
+  background: #ecfdf5 !important;
+  border-color: #6ee7b7 !important;
+  color: #047857 !important;
+}
+:deep(.cond-toggle-btn.has-cond.unmatched) {
+  background: #fef2f2 !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+}
+:deep(.cond-toggle-btn.editing) {
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35) !important;
+}
+:deep(.cond-name-badge) {
+  background: #d97706;
+  color: white;
+  border-radius: 3px;
+  padding: 0 5px;
+  font-family: monospace;
+  font-size: 10px;
+}
+:deep(.cond-toggle-btn.has-cond.matched .cond-name-badge) {
+  background: #059669;
+}
+:deep(.cond-toggle-btn.has-cond.unmatched .cond-name-badge) {
+  background: #dc2626;
+}
+
+:deep(.cond-inline-popover) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px;
+  margin: 4px 0 8px;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.08);
+  border-radius: 6px;
+}
+:deep(.cond-popover-main-row) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+:deep(.cond-popover-tag) {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b45309;
+  white-space: nowrap;
+}
+:deep(.cond-popover-input) {
+  flex: 1;
+  height: 25px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace !important;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  background: white;
+}
+:deep(.cond-popover-input:focus) {
+  border-color: #f59e0b !important;
+  outline: none;
+}
+:deep(.cond-popover-status) {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+:deep(.cond-popover-status.matched) {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+:deep(.cond-popover-status.unmatched) {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+:deep(.cond-popover-btn) {
+  height: 25px;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  border: none !important;
+  width: auto !important;
+  box-shadow: none !important;
+}
+:deep(.cond-popover-btn.clear-btn) {
+  background: #fed7d7 !important;
+  color: #c53030 !important;
+}
+:deep(.cond-popover-btn.clear-btn:hover) {
+  background: #feb2b2 !important;
+}
+:deep(.cond-popover-btn.done-btn) {
+  background: #d97706 !important;
+  color: white !important;
+}
+:deep(.cond-popover-btn.done-btn:hover) {
+  background: #b45309 !important;
+}
+
+:deep(.cond-popover-presets-row) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 10px;
+}
+:deep(.presets-label) {
+  color: #92400e;
+  font-weight: 600;
+}
+:deep(.preset-btn) {
+  background: #ffffff !important;
+  border: 1px solid #fcd34d !important;
+  border-radius: 4px !important;
+  color: #b45309 !important;
+  font-size: 10px !important;
+  font-family: monospace !important;
+  padding: 2px 6px !important;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  width: auto !important;
+}
+:deep(.preset-btn:hover) {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
 }
 </style>

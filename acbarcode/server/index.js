@@ -533,6 +533,17 @@ app.get('/api/templates', (req, res) => {
   }
 });
 
+app.get('/api/templates/:id', (req, res) => {
+  try {
+    const t = templateStore.getTemplate(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Template not found' });
+    res.json(t);
+  } catch (err) {
+    console.error('Error getting template:', err);
+    res.status(500).json({ error: err.message || 'Failed to get template' });
+  }
+});
+
 app.put('/api/templates', adminAuth, (req, res) => {
   try {
     const list = req.body;

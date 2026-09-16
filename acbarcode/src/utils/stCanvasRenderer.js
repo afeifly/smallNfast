@@ -1,6 +1,7 @@
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import { resolveElementText } from './stOptionResolver.js';
+import { isElementEnabled } from './stConditionEvaluator.js';
 
 const imageCache = new Map();
 const PRINTER_DPI = 203;
@@ -24,7 +25,17 @@ export function getCachedImage(src) {
 
 export async function renderStCanvasDynamic(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '', extra = {}) {
   if (!canvas) return;
-  const dpi = config.dpi || PRINTER_DPI || 203;
+
+  const effectiveProduct = product || 'S695 4035 (Air)';
+  const conditionContext = {
+    product: effectiveProduct,
+    options: optionsText,
+    serial,
+    deviceName,
+    ...(extra || {})
+  };
+
+  const dpi = config.dpi || PRINTER_DPI;
   const mmToPx = (mm) => Math.round((mm / 25.4) * dpi);
   const ptToPx = (pt) => Math.round((pt / 72) * dpi);
 
@@ -40,6 +51,7 @@ export async function renderStCanvasDynamic(canvas, elements = [], config = {}, 
 
   for (const el of elements) {
     if (el.type === 'folder') continue;
+    if (!isElementEnabled(el, conditionContext, elements)) continue;
 
     const rot = (parseInt(el.rotation, 10) || 0) % 360;
     const hasRot = rot !== 0;

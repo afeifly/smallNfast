@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import JsBarcode from 'jsbarcode';
 import { resolveElementText } from './stOptionResolver.js';
+import { isElementEnabled } from './stConditionEvaluator.js';
 
 export function escapeXml(str) {
   return String(str || '')
@@ -363,9 +364,18 @@ export async function compileEZPXRange(elements = [], config = {}, serialRange =
   const optionsVal = (options && typeof options === 'object' && options.optionsText) ? options.optionsText : '';
   const deviceNameVal = (options && typeof options === 'object' && options.deviceName) ? options.deviceName : '';
 
+  const conditionContext = {
+    product: productVal,
+    options: optionsVal,
+    serial: firstSN,
+    deviceName: deviceNameVal,
+    ...(extraObj || {})
+  };
+
   for (let index = 0; index < elements.length; index++) {
     const el = elements[index];
     if (el.type === 'folder') continue;
+    if (!isElementEnabled(el, conditionContext, elements)) continue;
 
     const rotDeg = ((parseInt(el.rotation, 10) || 0) % 360 + 360) % 360;
     const angleDir = `Angle${rotDeg}`;

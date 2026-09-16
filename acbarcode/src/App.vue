@@ -1,5 +1,6 @@
 <template>
-  <LoginPage v-if="!isAuthenticated" @login-success="onLoginSuccess" />
+  <StAllPossibleView v-if="isAllPossibleView" />
+  <LoginPage v-else-if="!isAuthenticated" @login-success="onLoginSuccess" />
   <template v-else>
     <header class="app-header">
       <div class="header-inner">
@@ -47,14 +48,23 @@ import { ref, onMounted } from 'vue';
 import LoginPage from './components/LoginPage.vue';
 import LabelMaker from './components/LabelMaker.vue';
 import StConfirmDialog from './components/st/StConfirmDialog.vue';
+import StAllPossibleView from './components/st/StAllPossibleView.vue';
 import { hasUnsavedDesignerChanges } from './stores/templateStore.js';
 import { showStConfirm } from './utils/stDialog.js';
+
+// Synchronous check so public shareable link renders instantly without login flash
+const urlParams = new URLSearchParams(window.location.search);
+const isAllPossibleView = ref(
+  urlParams.get('page') === 'all-possible' ||
+  (typeof window !== 'undefined' && window.location.hash.includes('page=all-possible'))
+);
 
 const isAuthenticated = ref(false);
 const currentRole = ref('user');
 const activeTab = ref('maker');
 
 onMounted(() => {
+  if (isAllPossibleView.value) return;
   if (sessionStorage.getItem('acbarcode_auth') === 'true') {
     isAuthenticated.value = true;
     currentRole.value = sessionStorage.getItem('acbarcode_role') || 'user';

@@ -2,7 +2,8 @@
   <div class="st-designer-container">
     <StHeaderActions 
       v-model="stSerialNumbersInput" 
-      v-model:endValue="stEndSerialNumberInput"
+      v-model:customVarsValue="stCustomVarsInput"
+      :detected-option-vars="detectedOptionVars"
       v-model:optionsValue="stOptionsInput"
       v-model:productValue="stProductInput"
       :available-products="allAvailableProducts"
@@ -26,6 +27,7 @@
           :available-products="allAvailableProducts"
           :active-product="activeProd"
           :active-options="stOptionsInput"
+          :custom-vars="parsedCustomVars"
           :has-unsaved-changes="hasUnsavedChanges"
           :is-saving="isSaving"
           :is-locked="isCurrentTemplateLocked"
@@ -141,11 +143,73 @@ const emit = defineEmits(['open-odoo-modal', 'open-templates']);
 // ── State ──────────────────────────────────────────────────────────────
 const stSerialNumbersInput = ref('12345678');
 const stEndSerialNumberInput = ref('');
+const stCustomVarsInput = ref('');
 const stOptionsInput = ref('');
 const stProductInput = ref('');
 const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const activeLang = ref('EN'); // 'EN' | 'CN'
+
+// Parsed key-value map from CSTM input (e.g. "option_a=High, option_b=16bar")
+const parsedCustomVars = computed(() => {
+  const map = {};
+  const str = stCustomVarsInput.value;
+  if (!str || typeof str !== 'string') return map;
+  const parts = str.split(/[,;\n]+/);
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eqIdx = trimmed.indexOf('=') !== -1 ? trimmed.indexOf('=') : trimmed.indexOf(':');
+    if (eqIdx !== -1) {
+      const k = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim();
+      if (k) {
+        map[k] = val;
+        map[k.toLowerCase()] = val;
+      }
+    } else {
+      map[trimmed] = '1';
+      map[trimmed.toLowerCase()] = '1';
+    }
+  }
+  return map;
+});
+
+// Auto-detect any dynamic variables (especially option_xxx / opition_xxx) in elements and conditions
+const detectedOptionVars = computed(() => {
+  const vars = new Set();
+  const builtinNames = new Set([
+    'serial', 'sn', 'product', 'product_no', 'productno', 'item_no', 'itemno',
+    'producttype', 'product type', 'options', 'option', 'options_text', 'optionstext',
+    'done_date', 'donedate', 'date', 'devicename', 'device_name', 'categ', 'origin', 'order'
+  ]);
+
+  (stElements.value || []).forEach(el => {
+    const raw = el.text || el.rawText || el.data || '';
+    if (typeof raw === 'string') {
+      const matches = raw.matchAll(/\{\{\s*([^}|]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
+      for (const m of matches) {
+        const name = m[1].trim();
+        const lower = name.toLowerCase().replace(/[\s_-]+/g, '');
+        if (!builtinNames.has(lower)) {
+          vars.add(name);
+        }
+      }
+    }
+    if (typeof el.enableCondition === 'string') {
+      const matches = el.enableCondition.matchAll(/\{\{\s*([^}|!=<>'"\s]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
+      for (const m of matches) {
+        const name = m[1].trim();
+        const lower = name.toLowerCase().replace(/[\s_-]+/g, '');
+        if (!builtinNames.has(lower)) {
+          vars.add(name);
+        }
+      }
+    }
+  });
+
+  return Array.from(vars);
+});
 
 const isCurrentTemplateSpecial = computed(() => {
   return isSpecialTemplate(activeTemplate.value);
@@ -302,7 +366,7 @@ const allAvailableProducts = computed(() => {
 });
 
 const activeProd = computed(() => {
-  return stProductInput.value || activeTemplate.value?.itemNumbers?.[0] || 'S695 4035 (Air)';
+  return stProductInput.value || activeTemplate.value?.itemNumbers?.[0] || 'S695 4120';
 });
 
 watch(
@@ -313,7 +377,7 @@ watch(
         stProductInput.value = items[0];
       }
     } else if (!stProductInput.value) {
-      stProductInput.value = 'S695 4035 (Air)';
+      stProductInput.value = 'S695 4120';
     }
   },
   { immediate: true }
@@ -574,7 +638,7 @@ function updateCanvas() {
   if (canvas) {
     const currentProduct = activeProd.value;
     const devName = activeTemplate.value?.deviceName || '';
-    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, currentProduct, stOptionsInput.value, devName);
+    renderStCanvasDynamic(canvas, stElements.value, stCanvasConfig.value, currentPreviewSN.value, currentProduct, stOptionsInput.value, devName, parsedCustomVars.value);
   }
 }
 
@@ -620,7 +684,7 @@ watch(
 );
 
 watch(
-  [activeTemplateId, activeSubTemplateId, activeLang, stSerialNumbersInput, stEndSerialNumberInput, stOptionsInput, stProductInput, currentPreviewIndex, templates],
+  [activeTemplateId, activeSubTemplateId, activeLang, stSerialNumbersInput, stCustomVarsInput, stOptionsInput, stProductInput, currentPreviewIndex, templates],
   async () => {
     await nextTick();
     updateCanvas();
@@ -864,7 +928,7 @@ async function downloadStPDF() {
 
     for (let i = 0; i < range.length; i++) {
       const sn = range[i];
-      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, currentProduct, stOptionsInput.value, devName);
+      await renderStCanvasDynamic(offscreenCanvas, stElements.value, stCanvasConfig.value, sn, currentProduct, stOptionsInput.value, devName, parsedCustomVars.value);
       const dataUrl = offscreenCanvas.toDataURL('image/png');
       if (i > 0) {
         pdf.addPage([w, h], orientation);

@@ -1124,8 +1124,19 @@ async function handleStLabel(req, res) {
       preview = req.body.preview !== false && req.body.preview !== 'false' && req.body.preview !== 0 && req.body.preview !== '0';
     }
 
+    const standardKeys = new Set(['product', 'serial_numbers', 'serials', 'options', 'template_xml', 'lang', 'language', 'origin', 'order', 'order_id', 'orderId', 'preview', 'patches', 'done_date', 'date', 'format', 'type', 'response_type']);
+    const extraOptionParams = {};
+    if (typeof req.body === 'object' && req.body) {
+      for (const [k, v] of Object.entries(req.body)) {
+        if (!standardKeys.has(k) && v !== undefined && v !== null) {
+          extraOptionParams[k] = v;
+          extraOptionParams[k.toLowerCase()] = v;
+        }
+      }
+    }
+
     if (!isZipRequested) {
-      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id, preview, null, done_date);
+      const ezplJson = await generateStEzplJson(product, serial_numbers, options || [], template_xml, normalizedLang, null, origin, order_id, preview, null, done_date, extraOptionParams);
       return res.status(200).json(ezplJson);
     }
 
@@ -1209,6 +1220,17 @@ async function handleStLabelDelivery(req, res) {
       preview = req.body.preview !== false && req.body.preview !== 'false' && req.body.preview !== 0 && req.body.preview !== '0';
     }
 
+    const deliveryStandardKeys = new Set(['origin', 'order', 'order_id', 'orderId', 'delivery_order', 'dn', 'lang', 'language', 'done_date', 'date', 'template_xml', 'template', 'products', 'preview']);
+    const extraOptionParams = {};
+    if (typeof req.body === 'object' && req.body) {
+      for (const [k, v] of Object.entries(req.body)) {
+        if (!deliveryStandardKeys.has(k) && v !== undefined && v !== null) {
+          extraOptionParams[k] = v;
+          extraOptionParams[k.toLowerCase()] = v;
+        }
+      }
+    }
+
     const ezplJson = await generateStDeliveryMultiProductEzplJson({
       origin,
       order_id,
@@ -1216,7 +1238,8 @@ async function handleStLabelDelivery(req, res) {
       lang: normalizedLang,
       templateXml: template_xml,
       preview,
-      done_date
+      done_date,
+      ...extraOptionParams
     });
 
     return res.status(200).json(ezplJson);

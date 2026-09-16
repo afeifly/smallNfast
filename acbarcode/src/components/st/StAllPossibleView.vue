@@ -683,10 +683,22 @@ const detectedVariables = computed(() => {
   ]);
 
   currentElements.value.forEach(el => {
-    const raw = el.text || el.rawText || '';
+    const raw = el.text || el.rawText || el.data || '';
     if (typeof raw === 'string') {
       const matches = raw.matchAll(/\{\{\s*([^}|]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
       for (const m of matches) {
+        const varName = m[1].trim();
+        const cleanLower = varName.toLowerCase().replace(/[\s_-]+/g, '');
+        if (!builtinNames.has(cleanLower) && !builtinNames.has(varName.toLowerCase())) {
+          vars.add(varName);
+        }
+      }
+    }
+
+    // Also scan enableCondition for referenced custom variables like {{option_xxx}}
+    if (typeof el.enableCondition === 'string' && el.enableCondition.trim()) {
+      const condMatches = el.enableCondition.matchAll(/\{\{\s*([^}|!=<>'"\s]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
+      for (const m of condMatches) {
         const varName = m[1].trim();
         const cleanLower = varName.toLowerCase().replace(/[\s_-]+/g, '');
         if (!builtinNames.has(cleanLower) && !builtinNames.has(varName.toLowerCase())) {
@@ -722,10 +734,13 @@ const conditionalElements = computed(() => {
       let satisfyHint = null;
       const cond = el.enableCondition;
       const prodMatch = cond.match(/(?:Product Type|product|itemno)\s*(?:==|in)\s*['"]([^'"]+)['"]/i);
+      const optVarMatch = cond.match(/(?:\{\{\s*)?(op[ti]+on_[a-zA-Z0-9_-]+)(?:\s*\}\})?\s*(?:==|in|contains|has)\s*['"]([^'"]+)['"]/i);
       const optMatch = cond.match(/options?\s*(?:contains|has|==|in)\s*['"]([^'"]+)['"]/i);
 
       if (prodMatch) {
         satisfyHint = { type: 'item', value: prodMatch[1], text: `Set ITEM = "${prodMatch[1]}"` };
+      } else if (optVarMatch) {
+        satisfyHint = { type: 'customVar', varName: optVarMatch[1], value: optVarMatch[2], text: `Set {{${optVarMatch[1]}}} = "${optVarMatch[2]}"` };
       } else if (optMatch) {
         satisfyHint = { type: 'option', value: optMatch[1], text: `Add Option "${optMatch[1]}"` };
       }
@@ -803,6 +818,9 @@ function fulfillCondition(item) {
   if (hint.type === 'item') {
     selectedItem.value = hint.value;
     showToast(`Switched ITEM to ${hint.value}`);
+  } else if (hint.type === 'customVar' && hint.varName) {
+    customVars[hint.varName] = hint.value;
+    showToast(`Set {{${hint.varName}}} = "${hint.value}"`);
   } else if (hint.type === 'option') {
     if (!hasOptionCode(hint.value)) {
       const codes = [...activeOptionCodesList.value, hint.value];

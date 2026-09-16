@@ -167,7 +167,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
  *                               a matching `patchName` will have its text replaced
  *                               with the supplied value before EZPL/preview generation.
  */
-async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true, patches = null, done_date = '') {
+async function generateStEzplJson(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', preview = true, patches = null, done_date = '', extra = {}) {
   const { compileEZPL } = await import('../src/utils/stEzplCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -276,7 +276,8 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
         done_date: done_date || '',
         doneDate: done_date || '',
         date: done_date || '',
-        preview: preview !== false
+        preview: preview !== false,
+        ...(extra || {})
       }
     );
 
@@ -384,13 +385,35 @@ async function generateStSpecialMultiProductEzplJson({
     throw err;
   }
 
+  // Extract any top-level custom variables from extraParams
+  const globalReservedKeys = new Set(['origin', 'order', 'order_id', 'orderId', 'delivery_order', 'dn', 'lang', 'language', 'preview', 'format', 'template_xml', 'template', 'products']);
+  const globalOptions = {};
+  for (const [k, v] of Object.entries(extraParams || {})) {
+    if (!globalReservedKeys.has(k) && v !== undefined && v !== null) {
+      globalOptions[k] = String(v);
+      globalOptions[k.toLowerCase()] = String(v);
+    }
+  }
+
   // Flatten all serials across products
+  const productReservedKeys = new Set(['categ', 'category', 'device_name', 'deviceName', 'product', 'item_number', 'item_no', 'serial_numbers', 'serials', 'options_text', 'optionsText', 'options', 'done_date', 'doneDate', 'date']);
   const flatItems = [];
   for (const p of products) {
     const categ = String(p.categ || p.category || p.device_name || p.deviceName || '').trim();
     const product = String(p.product || p.item_number || p.item_no || '').trim();
     const optionsText = p.options_text || p.optionsText || p.options || '';
     const itemDoneDate = p.done_date || p.doneDate || p.date || done_date || '';
+
+    // Capture any custom parameters (including option_xxx, optioxx, or any custom key) from product item
+    const itemCustomOptions = { ...globalOptions };
+    if (p && typeof p === 'object') {
+      for (const [k, v] of Object.entries(p)) {
+        if (!productReservedKeys.has(k) && v !== undefined && v !== null) {
+          itemCustomOptions[k] = String(v);
+          itemCustomOptions[k.toLowerCase()] = String(v);
+        }
+      }
+    }
     
     let rawSerials = p.serial_numbers || p.serials;
     if (!rawSerials || !Array.isArray(rawSerials) || rawSerials.length === 0) {
@@ -399,6 +422,7 @@ async function generateStSpecialMultiProductEzplJson({
 
     for (const sn of rawSerials) {
       flatItems.push({
+        ...itemCustomOptions,
         origin: String(origin || '').trim(),
         order_id: String(order_id || '').trim(),
         categ,

@@ -246,6 +246,7 @@ const props = defineProps({
   availableProducts: { type: Array, default: () => [] },
   activeProduct: { type: String, default: '' },
   activeOptions: { type: [String, Array], default: '' },
+  customVars: { type: Object, default: () => ({}) },
   hasUnsavedChanges: { type: Boolean, default: false },
   isSaving: { type: Boolean, default: false },
   isLocked: { type: Boolean, default: false }
@@ -254,11 +255,11 @@ const props = defineProps({
 const emit = defineEmits(['save-elements', 'unlock-requested']);
 
 function isElementVisible(el) {
-  return isElementEnabled(el, { product: props.activeProduct, options: props.activeOptions }, props.elements);
+  return isElementEnabled(el, { product: props.activeProduct, options: props.activeOptions, ...(props.customVars || {}) }, props.elements);
 }
 
 function isConditionTrue(cond) {
-  return evaluateCondition(cond, { product: props.activeProduct, options: props.activeOptions });
+  return evaluateCondition(cond, { product: props.activeProduct, options: props.activeOptions, ...(props.customVars || {}) });
 }
 
 /* ── COMPUTED ───────────────────────────────────────────── */
@@ -671,7 +672,8 @@ const ElementForm = defineComponent({
       const hasCond = !!(el.enableCondition && el.enableCondition.trim());
       const condContext = {
         product: props.activeProduct,
-        options: props.activeOptions
+        options: props.activeOptions,
+        ...(props.customVars || {})
       };
       const isCondMatched = hasCond ? evaluateCondition(el.enableCondition, condContext) : true;
       const currentProdDisplay = props.activeProduct || 'default';

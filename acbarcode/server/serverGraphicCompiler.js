@@ -523,6 +523,7 @@ async function generateGraphicEZPLForSerials(elements, config, serials, ctx = {}
       done_date: itemDoneDate,
       doneDate: itemDoneDate,
       date: itemDoneDate,
+      ...(ctx || {}),
       ...(isObj ? item : {})
     };
 

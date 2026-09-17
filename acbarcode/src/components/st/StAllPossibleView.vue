@@ -169,7 +169,10 @@
           <div v-if="availableOptionGroups.length > 0" class="option-groups-container">
             <div v-for="group in availableOptionGroups" :key="group.name" class="option-group-card">
               <div class="group-header">
-                <span class="group-name">{{ group.name }}</span>
+                <div class="group-title-wrap">
+                  <span class="group-name">{{ group.name }}</span>
+                  <span v-if="group.isMidVar" class="group-midvar-tag">Mid-Var</span>
+                </div>
                 <span v-if="group.selectedCode" class="group-active-code">{{ group.selectedCode }}</span>
               </div>
               <div class="group-chips">
@@ -178,6 +181,7 @@
                   class="option-chip fallback-chip"
                   :class="{ active: !group.selectedCode }"
                   @click="clearGroupOption(group)"
+                  :title="group.defaultValue ? `No option (Fallback: ${group.defaultValue})` : 'None'"
                 >
                   None
                 </button>
@@ -197,7 +201,7 @@
             </div>
           </div>
           <div v-else class="empty-group-hint">
-            No option mapping elements defined in this template. You can type option codes above.
+            No option mapping elements or option mid-variables defined in this template. You can type option codes above.
           </div>
         </div>
 
@@ -635,6 +639,26 @@ const allItemNumbers = computed(() => {
     }
   });
 
+  // 4. Mid-Variables matching against product (source === 'prod' or 'product')
+  (tpl.midVariables || []).forEach(mv => {
+    if (!mv || !mv.name) return;
+    const source = String(mv.source || 'prod').toLowerCase().trim();
+    if (source === 'prod' || source === 'product') {
+      const rules = Array.isArray(mv.rules) ? mv.rules : [];
+      rules.forEach(rule => {
+        if (!rule || rule.match === undefined) return;
+        const patternStr = String(rule.match).trim();
+        if (!patternStr) return;
+        const parts = patternStr.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
+        parts.forEach(p => {
+          if (p && !p.includes('*') && !p.includes('?')) {
+            items.add(p);
+          }
+        });
+      });
+    }
+  });
+
   return Array.from(items);
 });
 
@@ -645,13 +669,19 @@ const activeOptionCodesList = computed(() => {
 
 function hasOptionCode(code) {
   const normalized = String(code).trim().toUpperCase();
-  return activeOptionCodesList.value.includes(normalized);
+  if (activeOptionCodesList.value.includes(normalized)) return true;
+  // If pattern is a wildcard like A14*, check if any active code matches it
+  if (normalized.includes('*') || normalized.includes('?') || normalized.includes('X')) {
+    return activeOptionCodesList.value.some(activeCode => matchesOptionRule(normalized, activeCode));
+  }
+  return false;
 }
 
 const availableOptionGroups = computed(() => {
   const groups = [];
   const seenCodes = new Set();
 
+  // 1. Elements with Option Mapping
   currentElements.value.forEach(el => {
     if ((el.useOptionMapping || el.isOptionMode) && Array.isArray(el.optionMappings) && el.optionMappings.length > 0) {
       const groupName = el.name || 'Option Group';
@@ -680,7 +710,7 @@ const availableOptionGroups = computed(() => {
     }
   });
 
-  // Extract standalone condition codes like {{options}} contains 'A1410'
+  // 2. Standalone condition codes like {{options}} contains 'A1410'
   currentElements.value.forEach(el => {
     if (el.enableCondition && el.enableCondition.toLowerCase().includes('option')) {
       const matches = el.enableCondition.match(/'([^']+)'|"([^"]+)"/g);
@@ -701,6 +731,50 @@ const availableOptionGroups = computed(() => {
             options: extraCodes
           });
         }
+      }
+    }
+  });
+
+  // 3. Mid-Variables matching against Options (source === 'opt' or 'options')
+  const midVars = activeTemplate.value?.midVariables || [];
+  midVars.forEach(mv => {
+    if (!mv || !mv.name) return;
+    const source = String(mv.source || 'prod').toLowerCase().trim();
+    if (source === 'opt' || source === 'options') {
+      const cleanName = String(mv.name).replace(/^\{+|\}+$/g, '').trim();
+      const validOptions = [];
+      const seenInGroup = new Set();
+
+      const rules = Array.isArray(mv.rules) ? mv.rules : [];
+      rules.forEach(rule => {
+        if (!rule || rule.match === undefined) return;
+        const patternStr = String(rule.match).trim();
+        if (!patternStr) return;
+
+        // Split multiple option codes (e.g. "A1410, A1411" or "A1410; A1411")
+        const parts = patternStr.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
+        parts.forEach(part => {
+          const code = part.toUpperCase();
+          if (code && !seenInGroup.has(code)) {
+            seenInGroup.add(code);
+            validOptions.push({
+              code,
+              text: rule.value !== undefined ? String(rule.value) : ''
+            });
+          }
+        });
+      });
+
+      if (validOptions.length > 0) {
+        const activeCode = validOptions.find(opt => hasOptionCode(opt.code))?.code || '';
+        groups.push({
+          name: `{{${cleanName}}}`,
+          midVarName: cleanName,
+          isMidVar: true,
+          selectedCode: activeCode,
+          options: validOptions,
+          defaultValue: mv.defaultValue !== undefined ? String(mv.defaultValue) : ''
+        });
       }
     }
   });
@@ -1589,11 +1663,29 @@ onMounted(async () => {
   margin-bottom: 6px;
 }
 
+.group-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .group-name {
   font-size: 10px;
   font-weight: 700;
   color: #475569;
   text-transform: uppercase;
+}
+
+.group-midvar-tag {
+  font-size: 9px;
+  font-weight: 600;
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
+  text-transform: none;
 }
 
 .group-active-code {
@@ -1651,6 +1743,10 @@ onMounted(async () => {
 .chip-text {
   font-size: 9px;
   opacity: 0.85;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-group-hint {

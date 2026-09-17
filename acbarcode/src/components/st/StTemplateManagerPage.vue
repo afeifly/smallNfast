@@ -86,24 +86,15 @@
                 </div>
               </div>
 
-              <!-- Line 2: Device Name + Label Size & DPI -->
-              <div class="field-grid-2">
-                <div class="field-col">
-                  <label>Device Name <span class="hint-inline">(for SUTO QR code)</span></label>
-                  <input type="text" :disabled="isCurrentTemplateLocked" :value="activeTemplate.deviceName || ''" @input="activeTemplate.deviceName = $event.target.value; scheduleSave()" placeholder="e.g. S4C-APP or WTU" />
-                </div>
-                <div class="field-col">
-                  <label>Label Size &amp; DPI</label>
+              <!-- Line 2: Label Size -->
+              <div class="field-row">
+                <div class="field-col" style="max-width: 260px;">
+                  <label>Label Size <span class="hint-inline">(Width × Height mm)</span></label>
                   <div class="dims-inputs">
                     <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
                     <span class="dim-sep">×</span>
                     <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
                     <span class="dim-unit">mm</span>
-                    <select :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.dpi" @change="setConfig('dpi', +$event.target.value)">
-                      <option :value="203">203 DPI</option>
-                      <option :value="300">300 DPI</option>
-                      <option :value="600">600 DPI</option>
-                    </select>
                   </div>
                 </div>
               </div>
@@ -141,12 +132,6 @@
                   <span class="dim-sep">×</span>
                   <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="sub.config?.heightMm" @input="setSubConfig(sub.id, 'heightMm', $event.target.value)" />
                   <span class="dim-unit">mm</span>
-                  <select :disabled="isCurrentTemplateLocked" :value="sub.config?.dpi" @change="setSubConfig(sub.id, 'dpi', +$event.target.value)">
-                    <option :value="203">203</option>
-                    <option :value="300">300</option>
-                    <option :value="600">600</option>
-                  </select>
-                  <span class="dim-unit">dpi</span>
                 </div>
                 <button type="button" class="mini-btn danger" :disabled="isCurrentTemplateLocked" @click="removeSubTemplate(sub.id)" title="Remove sub-template">✕</button>
               </div>

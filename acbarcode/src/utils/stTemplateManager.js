@@ -71,7 +71,8 @@ export function createInitialDefaultTemplates() {
       config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
       elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
       elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
-      subTemplates: JSON.parse(JSON.stringify(defaultTemplateStandard.subTemplates || []))
+      subTemplates: JSON.parse(JSON.stringify(defaultTemplateStandard.subTemplates || [])),
+      midVariables: []
     },
     {
       id: 'tpl_internal',
@@ -83,7 +84,8 @@ export function createInitialDefaultTemplates() {
       config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
       elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
       elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
-      subTemplates: []
+      subTemplates: [],
+      midVariables: []
     },
     {
       id: 'tpl_high_temp',
@@ -94,7 +96,8 @@ export function createInitialDefaultTemplates() {
       config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
       elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
       elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
-      subTemplates: []
+      subTemplates: [],
+      midVariables: []
     }
   ];
 }

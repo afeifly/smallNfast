@@ -41,7 +41,20 @@
       <!-- Line 2: Items + DPI -->
       <span class="info-label">ITEMS</span>
       <span class="info-value" :title="itemNumbers || '—'">{{ itemNumbers || '—' }}</span>
-      <span class="info-metric">{{ config.dpi }} <small>DPI</small></span>
+      <div class="dpi-control">
+        <span class="dpi-lang-tag">{{ activeLang }}</span>
+        <select
+          class="dpi-select"
+          :disabled="isLocked"
+          :value="activeDpi"
+          @change="$emit('update:dpi', { lang: activeLang, dpi: Number($event.target.value) })"
+          title="Print resolution (DPI) for this language version"
+        >
+          <option :value="203">203 DPI</option>
+          <option :value="300">300 DPI</option>
+          <option :value="600">600 DPI</option>
+        </select>
+      </div>
 
       <!-- Note row (purpose / usage hint) -->
       <span v-if="templateNote" class="info-label">NOTE</span>
@@ -52,9 +65,10 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { showStConfirm } from '../../utils/stDialog.js';
 
-defineProps({
+const props = defineProps({
   config: { type: Object, required: true },
   templateName: { type: String, default: '' },
   itemNumbers: { type: String, default: '' },
@@ -63,7 +77,14 @@ defineProps({
   isLocked: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['update:activeLang', 'copy-from-en']);
+const emit = defineEmits(['update:activeLang', 'copy-from-en', 'update:dpi']);
+
+const activeDpi = computed(() => {
+  if (props.activeLang === 'CN') {
+    return props.config?.dpi_cn || props.config?.dpi || 300;
+  }
+  return props.config?.dpi_en || props.config?.dpi || 300;
+});
 
 async function onCopyFromEn() {
   const confirmed = await showStConfirm({
@@ -219,5 +240,56 @@ async function onCopyFromEn() {
   font-size: 0.7rem;
   font-weight: 500;
   color: #a0aec0;
+}
+
+/* ── DPI Control ──────────────────────────────── */
+.dpi-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.dpi-lang-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #718096;
+  background: #edf2f7;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.dpi-select {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #2d3748;
+  background: #f7fafc;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  width: auto !important;
+  box-shadow: none !important;
+}
+
+.dpi-select:hover:not(:disabled) {
+  border-color: #3182ce;
+  background: #fff;
+}
+
+.dpi-select:focus:not(:disabled) {
+  border-color: #3182ce;
+  box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2) !important;
+}
+
+.dpi-select:disabled {
+  background: #f0f4f8;
+  color: #a0aec0;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
 }
 </style>

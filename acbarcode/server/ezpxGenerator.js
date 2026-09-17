@@ -35,7 +35,18 @@ function getTemplateElements(tpl, lang = 'en') {
   return [];
 }
 
-async function generateStEzpxXml(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '') {
+function getTemplateConfig(tpl, lang = 'en') {
+  const base = (tpl && tpl.config && typeof tpl.config === 'object')
+    ? tpl.config
+    : { widthMm: 35, heightMm: 22, dpi: 300 };
+  const isCn = typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'));
+  const effectiveDpi = isCn
+    ? (base.dpi_cn || base.dpi || 300)
+    : (base.dpi_en || base.dpi || 300);
+  return { ...base, dpi: effectiveDpi };
+}
+
+async function generateStEzpxXml(product, serialNumbers = [], options = [], templateXml = null, lang = 'en', targetTemplate = null, origin = '', order_id = '', done_date = '') {
   const { compileEZPXRange, buildSerialCsv } = await import('../src/utils/stEzpxCompiler.js');
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const { matchTemplateByItemNo } = await import('../src/utils/stTemplateManager.js');
@@ -94,7 +105,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       defs.push({
         filename: mainFilename,
         elements: JSON.parse(JSON.stringify(mainElements)),
-        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+        config: getTemplateConfig(matched, lang),
         midVariables: matched.midVariables || []
       });
       (matched.subTemplates || []).forEach((sub, i) => {
@@ -108,7 +119,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
         defs.push({
           filename: fname,
           elements: JSON.parse(JSON.stringify(subElements)),
-          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+          config: getTemplateConfig(sub, lang),
           midVariables: matched.midVariables || []
         });
       });
@@ -216,7 +227,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
         name: matched.name,
         type: 'main',
         elements: JSON.parse(JSON.stringify(mainElements)),
-        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 300 },
+        config: getTemplateConfig(matched, lang),
         midVariables: matched.midVariables || []
       });
       (matched.subTemplates || []).forEach((sub, i) => {
@@ -226,7 +237,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
           name: sub.name,
           type: 'sub',
           elements: JSON.parse(JSON.stringify(subElements)),
-          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 300 },
+          config: getTemplateConfig(sub, lang),
           midVariables: matched.midVariables || []
         });
       });
@@ -369,7 +380,8 @@ async function generateStSpecialMultiProductEzplJson({
         name: specialTemplate.name || defaultTemplateName,
         type: 'main',
         elements: JSON.parse(JSON.stringify(mainElements)),
-        config: specialTemplate.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+        config: getTemplateConfig(specialTemplate, normalizedLang),
+        midVariables: specialTemplate.midVariables || []
       });
       (specialTemplate.subTemplates || []).forEach((sub, i) => {
         const subElements = getTemplateElements(sub, normalizedLang);
@@ -378,7 +390,8 @@ async function generateStSpecialMultiProductEzplJson({
           name: sub.name,
           type: 'sub',
           elements: JSON.parse(JSON.stringify(subElements)),
-          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+          config: getTemplateConfig(sub, normalizedLang),
+          midVariables: specialTemplate.midVariables || []
         });
       });
     }
@@ -469,7 +482,8 @@ async function generateStSpecialMultiProductEzplJson({
         done_date: done_date || '',
         doneDate: done_date || '',
         date: done_date || '',
-        preview: preview !== false
+        preview: preview !== false,
+        midVariables: def.midVariables || []
       }
     );
 

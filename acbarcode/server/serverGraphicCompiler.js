@@ -68,14 +68,33 @@ async function getCachedServerImage(src) {
  * Server-side canvas renderer using @napi-rs/canvas
  */
 async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '3726 0001', product = '', optionsText = '', deviceName = '', extra = {}) {
-  const { resolveElementText } = await import('../src/utils/stOptionResolver.js');
+  const { resolveElementText, evaluateMidVariables } = await import('../src/utils/stOptionResolver.js');
   const { isElementEnabled } = await import('../src/utils/stConditionEvaluator.js');
+
+  const midVars = extra.midVariables || [];
+  const evaluatedMidVars = (Array.isArray(midVars) && midVars.length > 0)
+    ? evaluateMidVariables(midVars, {
+        prod: product,
+        product,
+        item_no: product,
+        opt: optionsText,
+        options: optionsText,
+        serial,
+        ...(extra || {})
+      })
+    : {};
 
   const conditionContext = {
     product: product || 'S695 4035 (Air)',
     options: optionsText,
     serial,
     deviceName,
+    ...evaluatedMidVars,
+    ...(extra || {})
+  };
+
+  const effectiveExtra = {
+    ...evaluatedMidVars,
     ...(extra || {})
   };
 
@@ -116,7 +135,7 @@ async function renderNodeCanvas(canvas, elements = [], config = {}, serial = '37
       ctx.translate(-px, -py);
     }
 
-    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName, extra);
+    const textVal = resolveElementText(el, optionsText, serial, product || 'S695 4035 (Air)', deviceName, effectiveExtra);
 
     if (el.type === 'text') {
       const fontSizePx = ptToPx(el.fontSize || 4);

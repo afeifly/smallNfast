@@ -236,6 +236,37 @@
           </div>
         </div>
 
+        <!-- 2.5 Template Mid-Variables (Auto-Assigned from Product / Option rules) -->
+        <div v-if="evaluatedMidVarsList.length > 0" class="control-section">
+          <div class="section-title-row">
+            <span class="sec-icon">🔀</span>
+            <span class="sec-title">Template Mid-Variables</span>
+            <span class="sec-counter">({{ evaluatedMidVarsList.length }} Active)</span>
+          </div>
+          <p class="sec-desc">Automatically assigned from active product or option codes:</p>
+
+          <div class="custom-vars-grid">
+            <div v-for="mv in evaluatedMidVarsList" :key="mv.name" class="var-field-card midvar-card">
+              <div class="var-card-header">
+                <label class="var-name">
+                  <code>&#123;&#123;{{ mv.name }}&#125;&#125;</code>
+                </label>
+                <span 
+                  class="midvar-badge" 
+                  :class="mv.matchedRule ? 'badge-matched' : 'badge-default'"
+                  :title="mv.matchedRule ? `Rule pattern matched: ${mv.matchedPattern}` : `Using template default value`"
+                >
+                  {{ mv.matchedRule ? `Rule: ${mv.matchedPattern}` : 'Default' }}
+                </span>
+              </div>
+              <div class="midvar-value-row">
+                <span class="midvar-value-val" :title="`Assigned value: ${mv.value}`">{{ mv.value || '(empty)' }}</span>
+                <span class="midvar-source-tag">{{ mv.source === 'opt' || mv.source === 'options' ? 'From Options' : 'From Product' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 3. Dynamic Variables Section -->
         <div v-if="detectedVariables.length > 0" class="control-section">
           <div class="section-title-row">
@@ -449,7 +480,7 @@
 import { ref, computed, reactive, watch, onMounted, nextTick } from 'vue';
 import { renderStCanvasDynamic } from '../../utils/stCanvasRenderer.js';
 import { isElementEnabled } from '../../utils/stConditionEvaluator.js';
-import { parseOptionCodes } from '../../utils/stOptionResolver.js';
+import { parseOptionCodes, evaluateMidVariables, matchesOptionRule } from '../../utils/stOptionResolver.js';
 import {
   fetchTemplatesFromServer,
   isSpecialTemplate,
@@ -546,7 +577,11 @@ const activeTemplate = computed(() => {
 });
 
 const config = computed(() => {
-  return activeTemplate.value?.config || DEFAULT_CONFIG;
+  const base = activeTemplate.value?.config || DEFAULT_CONFIG;
+  const effectiveDpi = activeLang.value === 'CN'
+    ? (base.dpi_cn || base.dpi || 300)
+    : (base.dpi_en || base.dpi || 300);
+  return { ...base, dpi: effectiveDpi };
 });
 
 const currentElements = computed(() => {
@@ -673,6 +708,75 @@ const availableOptionGroups = computed(() => {
   return groups;
 });
 
+// ── Mid-Variables Evaluation ──────────────────────────────────────────
+const templateMidVars = computed(() => {
+  return activeTemplate.value?.midVariables || [];
+});
+
+const evaluatedMidVars = computed(() => {
+  const midVars = templateMidVars.value;
+  if (!Array.isArray(midVars) || midVars.length === 0) return {};
+  return evaluateMidVariables(midVars, {
+    prod: selectedItem.value,
+    product: selectedItem.value,
+    item_no: selectedItem.value,
+    opt: activeOptionsInput.value,
+    options: activeOptionsInput.value,
+    sn: activeSN.value,
+    done_date: activeDoneDate.value
+  });
+});
+
+const evaluatedMidVarsList = computed(() => {
+  const midVars = templateMidVars.value;
+  if (!Array.isArray(midVars) || midVars.length === 0) return [];
+  const prodVal = String(selectedItem.value || '').trim();
+  const optVal = activeOptionsInput.value || '';
+  const optList = parseOptionCodes(optVal);
+
+  return midVars.map(mv => {
+    if (!mv || !mv.name) return null;
+    const cleanName = String(mv.name).replace(/^\{+|\}+$/g, '').trim();
+    const source = (mv.source || 'prod').toLowerCase();
+    const rules = Array.isArray(mv.rules) ? mv.rules : [];
+    let matchedRule = null;
+    let matchedVal = null;
+
+    for (const rule of rules) {
+      if (!rule || rule.match === undefined) continue;
+      const pattern = String(rule.match).trim();
+      if (!pattern) continue;
+
+      if (source === 'opt' || source === 'options') {
+        if (optList.some(code => matchesOptionRule(pattern, code))) {
+          matchedRule = rule;
+          matchedVal = rule.value !== undefined ? String(rule.value) : '';
+          break;
+        }
+      } else {
+        if (matchesOptionRule(pattern, prodVal)) {
+          matchedRule = rule;
+          matchedVal = rule.value !== undefined ? String(rule.value) : '';
+          break;
+        }
+      }
+    }
+
+    const value = (matchedVal !== null)
+      ? matchedVal
+      : (mv.defaultValue !== undefined ? String(mv.defaultValue) : '');
+
+    return {
+      name: cleanName,
+      source,
+      value,
+      matchedRule: Boolean(matchedRule),
+      matchedPattern: matchedRule ? matchedRule.match : null,
+      defaultValue: mv.defaultValue || ''
+    };
+  }).filter(Boolean);
+});
+
 // ── Detected Mustache Variables ─────────────────────────────────────────
 const detectedVariables = computed(() => {
   const vars = new Set();
@@ -681,6 +785,15 @@ const detectedVariables = computed(() => {
     'producttype', 'product type', 'options', 'option', 'options_text', 'optionstext',
     'done_date', 'donedate', 'date', 'devicename', 'device_name', 'categ', 'origin', 'order'
   ]);
+
+  // Exclude defined Mid-Variables as they have dedicated automatic rule evaluation
+  (activeTemplate.value?.midVariables || []).forEach(mv => {
+    if (mv && mv.name) {
+      const cleanLower = String(mv.name).toLowerCase().replace(/[\s_{}-]+/g, '');
+      builtinNames.add(cleanLower);
+      builtinNames.add(String(mv.name).toLowerCase().trim());
+    }
+  });
 
   currentElements.value.forEach(el => {
     const raw = el.text || el.rawText || el.data || '';
@@ -719,6 +832,7 @@ const conditionEvaluationContext = computed(() => {
     serial: activeSN.value,
     done_date: activeDoneDate.value,
     deviceName: activeTemplate.value?.deviceName || '',
+    ...evaluatedMidVars.value,
     ...customVars
   };
 });
@@ -945,6 +1059,8 @@ async function redrawCanvas() {
 
   const extra = {
     done_date: activeDoneDate.value,
+    midVariables: activeTemplate.value.midVariables || [],
+    ...evaluatedMidVars.value,
     ...customVars
   };
 
@@ -1646,6 +1762,79 @@ onMounted(async () => {
   border-color: #0284c7;
   background: #ffffff;
   outline: none;
+}
+
+/* Mid-Variables Cards */
+.midvar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #6366f1;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.var-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.midvar-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-matched {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-default {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.midvar-value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.midvar-value-val {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e293b;
+  font-family: monospace;
+  background: #ffffff;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.midvar-source-tag {
+  font-size: 9px;
+  font-weight: 600;
+  color: #6366f1;
+  background: #e0e7ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 /* Conditions Inspector */

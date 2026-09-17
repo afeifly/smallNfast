@@ -46,6 +46,7 @@
           :active-lang="activeLang"
           :is-locked="isCurrentTemplateLocked"
           @update:active-lang="activeLang = $event"
+          @update:dpi="handleDpiChange"
           @copy-from-en="onCopyEnToCn"
         />
         <StCanvasPreviewCard 
@@ -378,7 +379,13 @@ const currentLabelName = computed(() => {
 
 const currentLabelNote = computed(() => currentLabel.value?.note || '');
 
-const stCanvasConfig = computed(() => currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 300 });
+const stCanvasConfig = computed(() => {
+  const base = currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 300 };
+  const effectiveDpi = activeLang.value === 'CN'
+    ? (base.dpi_cn || base.dpi || 300)
+    : (base.dpi_en || base.dpi || 300);
+  return { ...base, dpi: effectiveDpi };
+});
 
 const stElements = computed(() => {
   if (!currentLabel.value) return [];
@@ -456,6 +463,26 @@ function onCopyEnToCn() {
   storeCopyEnToCn(currentLabel.value);
   hasUnsavedChanges.value = true;
   showStAlert(`Copied EN layout to CN for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Copy EN → CN', 'info');
+}
+
+function handleDpiChange({ lang, dpi }) {
+  if (isCurrentTemplateLocked.value) {
+    showStAlert('Template is locked (read-only mode). Please unlock first.', 'Template Locked', 'warning');
+    return;
+  }
+  if (!currentLabel.value) return;
+  if (!currentLabel.value.config) {
+    currentLabel.value.config = { widthMm: 35, heightMm: 22, dpi: 300 };
+  }
+  if (lang === 'CN') {
+    currentLabel.value.config.dpi_cn = dpi;
+  } else {
+    currentLabel.value.config.dpi_en = dpi;
+  }
+  currentLabel.value.config.dpi = dpi;
+  hasUnsavedChanges.value = true;
+  scheduleSave();
+  updateCanvas();
 }
 
 // ── Per-label JSON export / import (current editor elements & mid-variables) ────
@@ -625,11 +652,19 @@ function buildLabelDefs() {
   const mainFilename = `${mainBase}_main_label.ezpx.tmp`;
   usedFilenames.add(mainFilename);
 
+  const langConfig = (tmpl) => {
+    const base = tmpl.config || { widthMm: 35, heightMm: 22, dpi: 300 };
+    const effectiveDpi = activeLang.value === 'CN'
+      ? (base.dpi_cn || base.dpi || 300)
+      : (base.dpi_en || base.dpi || 300);
+    return { ...base, dpi: effectiveDpi };
+  };
+
   const defs = [{
     filename: mainFilename,
     name: main.name,
     elements: langElements(main),
-    config: main.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+    config: langConfig(main),
     midVariables: main.midVariables || []
   }];
 
@@ -644,7 +679,7 @@ function buildLabelDefs() {
       filename: fname,
       name: sub.name,
       elements: langElements(sub),
-      config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+      config: langConfig(sub),
       midVariables: main.midVariables || []
     });
   });
@@ -906,7 +941,7 @@ async function downloadOptionsScenarioPDF() {
     return;
   }
 
-  const config = currentLabel.value?.config || { widthMm: 35, heightMm: 22, dpi: 203 };
+  const config = stCanvasConfig.value;
   const firstSN = serialRange.value[0] || '12345678';
   const currentProduct = activeProd.value;
   const devName = activeTemplate.value?.deviceName || '';

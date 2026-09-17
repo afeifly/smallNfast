@@ -559,7 +559,8 @@ app.put('/api/templates', adminAuth, (req, res) => {
       config: (t && t.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
       elements_en: (t && Array.isArray(t.elements_en)) ? t.elements_en : [],
       elements_cn: (t && Array.isArray(t.elements_cn)) ? t.elements_cn : [],
-      subTemplates: (t && Array.isArray(t.subTemplates)) ? t.subTemplates : []
+      subTemplates: (t && Array.isArray(t.subTemplates)) ? t.subTemplates : [],
+      midVariables: (t && Array.isArray(t.midVariables)) ? t.midVariables : []
     }));
     const saved = templateStore.replaceAll(prepared);
     res.json({ message: `${saved.length} template(s) imported`, templates: saved });
@@ -580,7 +581,8 @@ app.post('/api/templates', adminAuth, (req, res) => {
       config: (req.body && req.body.config) || { widthMm: 35, heightMm: 22, dpi: 203 },
       elements_en: (req.body && Array.isArray(req.body.elements_en)) ? req.body.elements_en : [],
       elements_cn: (req.body && Array.isArray(req.body.elements_cn)) ? req.body.elements_cn : [],
-      subTemplates: (req.body && Array.isArray(req.body.subTemplates)) ? req.body.subTemplates : []
+      subTemplates: (req.body && Array.isArray(req.body.subTemplates)) ? req.body.subTemplates : [],
+      midVariables: (req.body && Array.isArray(req.body.midVariables)) ? req.body.midVariables : []
     };
     res.status(201).json(templateStore.insertTemplate(t));
   } catch (err) {

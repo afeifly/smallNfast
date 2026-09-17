@@ -236,7 +236,7 @@
 <script setup>
 import { computed, h, defineComponent } from 'vue';
 import { showStConfirm } from '../../utils/stDialog.js';
-import { formatDate } from '../../utils/stOptionResolver.js';
+import { formatDate, resolveElementText } from '../../utils/stOptionResolver.js';
 import { evaluateCondition, isElementEnabled } from '../../utils/stConditionEvaluator.js';
 
 /* ── PROPS ──────────────────────────────────────────────── */
@@ -1271,6 +1271,10 @@ const ElementForm = defineComponent({
             h('div', { class: 'suto-preview-banner' }, [
               h('div', { class: 'banner-title' }, 'Protocol Format Spec:'),
               h('code', { class: 'banner-code' }, `/${el.sutoPrefix || 'sensor'}/${el.sutoProductType || '{{device_name}}'}/{serial}/{md5_hash}`),
+              h('div', { class: 'banner-eval-preview' }, [
+                h('span', { class: 'banner-eval-label' }, 'Sample Evaluated QR Output:'),
+                h('code', { class: 'banner-eval-code' }, resolveElementText(el, props.activeOptions, '12345678', props.activeProduct, '', props.customVars))
+              ]),
               h('div', { class: 'banner-note' }, 'MD5 Salt: "this_is_sensor_salt"')
             ])
           ]));
@@ -1872,6 +1876,29 @@ const ElementForm = defineComponent({
 :deep(.banner-note) {
   font-size: 10px;
   color: #38a169;
+}
+:deep(.banner-eval-preview) {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #c6f6d5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+:deep(.banner-eval-label) {
+  font-size: 10px;
+  font-weight: 700;
+  color: #2b6cb0;
+}
+:deep(.banner-eval-code) {
+  font-family: monospace;
+  font-size: 11px;
+  color: #2c5282;
+  word-break: break-all;
+  background: #ebf8ff;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid #bee3f8;
 }
 
 :deep(.order-action-group) {

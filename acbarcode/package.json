@@ -1,7 +1,7 @@
 {
-  "name": "barcode-label-maker",
+  "name": "label-maker",
   "version": "1.0.0",
-  "description": "Vue 3 barcode label generator",
+  "description": "Vue 3 label maker",
   "main": "index.js",
   "scripts": {
     "dev": "node server/index.js & vite",

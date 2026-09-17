@@ -22,11 +22,24 @@ export function parseOptionCodes(optionsStr = '') {
  */
 export function matchesOptionRule(rulePattern, inputCode) {
   if (!rulePattern || !inputCode) return false;
-  const patterns = String(rulePattern).split(/[,;\s]+/).map(p => p.trim().toUpperCase()).filter(Boolean);
   const input = String(inputCode).trim().toUpperCase();
+
+  // Split on commas, semicolons, or newlines first (preserves spaces inside product codes like "S695 4120")
+  let patterns = String(rulePattern).split(/[,;\n]+/).map(p => p.trim().toUpperCase()).filter(Boolean);
+
+  // If no comma/semicolon was used, and pattern has spaces but input doesn't match directly, try space split
+  if (patterns.length === 1 && patterns[0] !== input && !input.startsWith(patterns[0])) {
+    const spaceParts = patterns[0].split(/\s+/).filter(Boolean);
+    if (spaceParts.length > 1 && !spaceParts.some(p => input.includes(p))) {
+      patterns = spaceParts;
+    }
+  }
 
   return patterns.some(pattern => {
     if (pattern === input) return true;
+
+    // Also support prefix/substring match for products (e.g. input "S695 4035 (Air)" matches rule "S695 4035")
+    if (pattern && input.startsWith(pattern)) return true;
 
     // Positional wildcard using 'X' or '?'
     if (pattern.length === input.length && (pattern.includes('X') || pattern.includes('?'))) {
@@ -54,6 +67,69 @@ export function matchesOptionRule(rulePattern, inputCode) {
 }
 
 /**
+ * Evaluates template-level Mid-Variables (Product-to-Value or Option-to-Value rules).
+ * Example midVar:
+ * {
+ *   name: 'sensorName',
+ *   source: 'prod', // 'prod' | 'opt'
+ *   defaultValue: 'S401',
+ *   rules: [
+ *     { match: 'S695 4120, S695 4121', value: 'S421' },
+ *     { match: 'S695 4035*', value: 'S403' }
+ *   ]
+ * }
+ */
+export function evaluateMidVariables(midVariables = [], ctx = {}) {
+  const result = {};
+  if (!Array.isArray(midVariables) || midVariables.length === 0) return result;
+
+  const prodVal = String(ctx.prod || ctx.product || ctx.item_no || '').trim();
+  const optVal = ctx.opt || ctx.options || ctx.options_text || '';
+  const optList = Array.isArray(optVal)
+    ? optVal.map(c => String(c).trim().toUpperCase())
+    : parseOptionCodes(optVal);
+
+  for (const midVar of midVariables) {
+    if (!midVar || !midVar.name) continue;
+    const cleanName = String(midVar.name).replace(/^\{+|\}+$/g, '').trim();
+    if (!cleanName) continue;
+
+    const source = (midVar.source || 'prod').toLowerCase();
+    let matchedVal = null;
+
+    const rules = Array.isArray(midVar.rules) ? midVar.rules : [];
+    for (const rule of rules) {
+      if (!rule || rule.match === undefined) continue;
+      const pattern = String(rule.match).trim();
+      if (!pattern) continue;
+
+      if (source === 'opt' || source === 'options') {
+        if (optList.some(code => matchesOptionRule(pattern, code))) {
+          matchedVal = rule.value !== undefined ? String(rule.value) : '';
+          break;
+        }
+      } else {
+        if (matchesOptionRule(pattern, prodVal)) {
+          matchedVal = rule.value !== undefined ? String(rule.value) : '';
+          break;
+        }
+      }
+    }
+
+    const finalVal = (matchedVal !== null)
+      ? matchedVal
+      : (midVar.defaultValue !== undefined ? String(midVar.defaultValue) : '');
+
+    result[cleanName] = finalVal;
+    result[cleanName.toLowerCase()] = finalVal;
+    result[`{{${cleanName}}}`] = finalVal;
+    result[`{{${cleanName.toLowerCase()}}}`] = finalVal;
+  }
+
+  return result;
+}
+
+/**
  * Formats a date string (e.g. "2026-07-07 03:59:23", "2026-07-07T03:59:23Z", timestamp, Date)
  * into a custom format string (e.g. "YYYY-MM", "YYYY年MM月", "YYYY-MM-DD", "YYYY.MM", "YY-MM", etc.).
  */
@@ -66,42 +142,29 @@ export function formatDate(dateInput, pattern = 'YYYY-MM') {
   } else if (typeof dateInput === 'number') {
     d = new Date(dateInput);
   } else if (typeof dateInput === 'string') {
-    const s = dateInput.trim();
-    if (!s) return '';
-    // Handle "YYYY-MM-DD HH:mm:ss" or "YYYY-MM-DD"
-    const isoLike = s.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/, '$1T$2');
-    d = new Date(isoLike);
-    // If invalid Date, attempt manual regex parse for "YYYY-MM-DD ..." or "YYYY/MM/DD ..."
-    if (isNaN(d.getTime())) {
-      const match = s.match(/^(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-      if (match) {
-        const year = parseInt(match[1], 10);
-        const month = parseInt(match[2], 10) - 1;
-        const day = match[3] ? parseInt(match[3], 10) : 1;
-        const hour = match[4] ? parseInt(match[4], 10) : 0;
-        const min = match[5] ? parseInt(match[5], 10) : 0;
-        const sec = match[6] ? parseInt(match[6], 10) : 0;
-        d = new Date(year, month, day, hour, min, sec);
+    const trimmed = dateInput.trim();
+    if (/^\d+$/.test(trimmed)) {
+      d = new Date(parseInt(trimmed, 10));
+    } else {
+      d = new Date(trimmed.replace(' ', 'T'));
+      if (isNaN(d.getTime())) {
+        d = new Date(trimmed);
       }
     }
+  } else {
+    d = new Date();
   }
 
-  if (!d || isNaN(d.getTime())) {
-    return typeof dateInput === 'string' ? dateInput : '';
+  if (isNaN(d.getTime())) {
+    d = new Date();
   }
 
   const YYYY = String(d.getFullYear());
   const YY = YYYY.slice(-2);
-  const M = String(d.getMonth() + 1);
-  const MM = M.padStart(2, '0');
-  const D = String(d.getDate());
-  const DD = D.padStart(2, '0');
-  const H = String(d.getHours());
-  const HH = H.padStart(2, '0');
-  const m = String(d.getMinutes());
-  const mm = m.padStart(2, '0');
-  const S = String(d.getSeconds());
-  const ss = S.padStart(2, '0');
+  const M = d.getMonth() + 1;
+  const MM = String(M).padStart(2, '0');
+  const D = d.getDate();
+  const DD = String(D).padStart(2, '0');
 
   const fmt = pattern || 'YYYY-MM';
 
@@ -109,13 +172,9 @@ export function formatDate(dateInput, pattern = 'YYYY-MM') {
     .replace(/YYYY/g, YYYY)
     .replace(/YY/g, YY)
     .replace(/MM/g, MM)
-    .replace(/\bM\b/g, M)
     .replace(/DD/g, DD)
-    .replace(/\bD\b/g, D)
-    .replace(/HH/g, HH)
-    .replace(/\bH\b/g, H)
-    .replace(/mm/g, mm)
-    .replace(/ss/g, ss);
+    .replace(/(?<!M)M(?!M)/g, String(M))
+    .replace(/(?<!D)D(?!D)/g, String(D));
 }
 
 
@@ -130,48 +189,172 @@ export function formatDate(dateInput, pattern = 'YYYY-MM') {
  * @returns {string} Evaluated text or QR value
  */
 export function resolveElementText(el, activeOptions = [], serial = '', product = '', deviceName = '', extra = {}) {
-  const extraObj = (extra && typeof extra === 'object') ? extra : {};
+  let opts = activeOptions;
+  let sn = serial;
+  let prod = product;
+  let devName = deviceName;
+  let extraObj = (extra && typeof extra === 'object') ? { ...extra } : {};
+
+  if (activeOptions && typeof activeOptions === 'object' && !Array.isArray(activeOptions)) {
+    opts = activeOptions.options || activeOptions.opt || [];
+    sn = activeOptions.serial || activeOptions.sn || serial;
+    prod = activeOptions.product || activeOptions.prod || product;
+    devName = activeOptions.deviceName || activeOptions.device_name || deviceName;
+    extraObj = { ...activeOptions, ...extraObj };
+  }
+
   const originVal = extraObj.origin || extraObj.order || '';
   const orderIdVal = extraObj.order_id || extraObj.orderId || extraObj.delivery_order || extraObj.dn || '';
-  const categVal = extraObj.categ || deviceName || '';
+  const categVal = extraObj.categ || devName || '';
+  const rawDoneDate = extraObj.done_date || extraObj.doneDate || extraObj.date || '';
 
-  // 1. SUTO Protocol QR Code Mode
+  // Replace placeholders. Preserve {{serial}} when no serial value is supplied
+  // so downstream compilers can inject their own serial command (^C00 / ^F00).
+  const snVal = (sn !== undefined && sn !== '') ? sn : '{{serial}}';
+
+  const varMap = {
+    serial: snVal,
+    sn: snVal,
+    origin: originVal,
+    order: originVal,
+    order_id: orderIdVal,
+    orderid: orderIdVal,
+    delivery_order: orderIdVal,
+    dn: orderIdVal,
+    categ: categVal,
+    device_name: devName || categVal || prod || '',
+    devicename: devName || categVal || prod || '',
+    product: prod || '',
+    prod: prod || '',
+    product_no: prod || '',
+    productno: prod || '',
+    item_no: prod || '',
+    itemno: prod || '',
+    done_date: rawDoneDate,
+    donedate: rawDoneDate,
+    date: rawDoneDate,
+    options_text: Array.isArray(opts) ? opts.join(', ') : (opts || ''),
+    optionstext: Array.isArray(opts) ? opts.join(', ') : (opts || ''),
+    options: Array.isArray(opts) ? opts.join(', ') : (opts || ''),
+    opt: Array.isArray(opts) ? opts.join(', ') : (opts || '')
+  };
+
+  if (extraObj) {
+    const midVars = extraObj.midVariables || extraObj.mid_variables || extraObj.template?.midVariables || extraObj.activeTemplate?.midVariables;
+    if (Array.isArray(midVars) && midVars.length > 0) {
+      const evaluated = evaluateMidVariables(midVars, {
+        prod,
+        product: prod,
+        opt: opts,
+        options: opts,
+        serial: snVal,
+        ...extraObj
+      });
+      for (const [k, v] of Object.entries(evaluated)) {
+        const cleanK = k.replace(/^\{+|\}+$/g, '').trim();
+        varMap[cleanK.toLowerCase()] = String(v);
+        varMap[cleanK] = String(v);
+        varMap[k.toLowerCase()] = String(v);
+        varMap[k] = String(v);
+      }
+    }
+
+    const customVars = extraObj.customVariables || extraObj.customVars;
+    if (customVars && typeof customVars === 'object') {
+      for (const [k, v] of Object.entries(customVars)) {
+        if (v !== undefined && v !== null) {
+          const cleanK = k.replace(/^\{+|\}+$/g, '').trim();
+          varMap[cleanK.toLowerCase()] = String(v);
+          varMap[cleanK] = String(v);
+          varMap[k.toLowerCase()] = String(v);
+          varMap[k] = String(v);
+        }
+      }
+    }
+
+    for (const [k, v] of Object.entries(extraObj)) {
+      if (v !== undefined && v !== null && typeof v !== 'object') {
+        const cleanK = k.replace(/^\{+|\}+$/g, '').trim();
+        varMap[cleanK.toLowerCase()] = String(v);
+        varMap[cleanK] = String(v);
+        varMap[k.toLowerCase()] = String(v);
+        varMap[k] = String(v);
+      }
+    }
+  }
+
+  const replacePlaceholders = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    const trimmed = text.trim();
+    const cleanTrimmed = trimmed.replace(/^\{+|\}+$/g, '').trim();
+
+    // If entire text itself is a variable name without {{}} (e.g. user typed "sensorName")
+    if (!text.includes('{{')) {
+      if (varMap[trimmed] !== undefined && varMap[trimmed] !== '') {
+        return varMap[trimmed];
+      }
+      if (varMap[trimmed.toLowerCase()] !== undefined && varMap[trimmed.toLowerCase()] !== '') {
+        return varMap[trimmed.toLowerCase()];
+      }
+      if (varMap[cleanTrimmed] !== undefined && varMap[cleanTrimmed] !== '') {
+        return varMap[cleanTrimmed];
+      }
+      if (varMap[cleanTrimmed.toLowerCase()] !== undefined && varMap[cleanTrimmed.toLowerCase()] !== '') {
+        return varMap[cleanTrimmed.toLowerCase()];
+      }
+      return text;
+    }
+
+    const placeholderRegex = /\{\{\s*([^}|]+?)(?:\s*\|\s*([^}]+))?\s*\}\}/g;
+    return text.replace(placeholderRegex, (match, rawKey, filterStr) => {
+      const key = rawKey.trim();
+      const cleanKey = key.replace(/^\{+|\}+$/g, '').trim();
+      let val = varMap[key] !== undefined ? varMap[key] : varMap[key.toLowerCase()];
+      if (val === undefined) {
+        val = varMap[cleanKey] !== undefined ? varMap[cleanKey] : varMap[cleanKey.toLowerCase()];
+      }
+      if (val === undefined) {
+        return match;
+      }
+      // If serial placeholder was kept as literal '{{serial}}', preserve placeholder
+      if (val === '{{serial}}') {
+        return match;
+      }
+      if (filterStr) {
+        return applyFilter(val, filterStr.trim());
+      }
+      return val;
+    });
+  };
+
+  // 1. SUTO Protocol QR Code Mode (supports {{sensorName}}, {{device_name}}, etc.)
   if (el.type === 'qrcode' && (el.qrMode === 'suto_protocol' || el.isSutoProtocol)) {
-    let pType = el.sutoProductType || '{{device_name}}';
-    const effectiveDevice = categVal || deviceName || product || 'S4C-APP';
-    pType = pType
-      .replace(/\{\{device_name\}\}/g, effectiveDevice)
-      .replace(/\{\{categ\}\}/g, effectiveDevice)
-      .replace(/\{\{origin\}\}/g, originVal)
-      .replace(/\{\{order\}\}/g, originVal)
-      .replace(/\{\{order_id\}\}/g, orderIdVal)
-      .replace(/\{\{orderId\}\}/g, orderIdVal)
-      .replace(/\{\{product\}\}/g, product || effectiveDevice || 'S4C-APP')
-      .replace(/\{\{product_no\}\}/g, product || effectiveDevice || 'S4C-APP')
-      .replace(/\{\{item_no\}\}/g, product || effectiveDevice || 'S4C-APP')
-      .replace(/\{\{itemNo\}\}/g, product || effectiveDevice || 'S4C-APP')
-      .trim();
-
+    let pType = el.sutoProductType !== undefined && el.sutoProductType !== '' ? el.sutoProductType : '{{device_name}}';
+    pType = replacePlaceholders(pType).trim();
+    if (varMap[pType] !== undefined && varMap[pType] !== '') {
+      pType = varMap[pType];
+    } else if (varMap[pType.toLowerCase()] !== undefined && varMap[pType.toLowerCase()] !== '') {
+      pType = varMap[pType.toLowerCase()];
+    }
     if (!pType || pType === '{{device_name}}' || pType === '{{product}}') {
-      pType = effectiveDevice || (product ? product.split(' ')[0] : 'S4C-APP');
+      pType = categVal || devName || (prod ? prod.split(' ')[0] : 'S4C-APP');
     }
-    const sn = (serial !== undefined && serial !== '') ? serial : '12345678';
+    const currentSn = (snVal !== undefined && snVal !== '' && snVal !== '{{serial}}') ? snVal : '12345678';
     let prefix = el.sutoPrefix || 'sensor';
-    if (originVal || orderIdVal) {
-      prefix = prefix
-        .replace(/\{\{origin\}\}/g, originVal)
-        .replace(/\{\{order\}\}/g, originVal)
-        .replace(/\{\{order_id\}\}/g, orderIdVal)
-        .replace(/\{\{orderId\}\}/g, orderIdVal);
+    prefix = replacePlaceholders(prefix).trim();
+    if (varMap[prefix] !== undefined && varMap[prefix] !== '') {
+      prefix = varMap[prefix];
+    } else if (varMap[prefix.toLowerCase()] !== undefined && varMap[prefix.toLowerCase()] !== '') {
+      prefix = varMap[prefix.toLowerCase()];
     }
-    return generateSensorQr(pType, sn, prefix);
+    return generateSensorQr(pType, currentSn, prefix);
   }
 
   let rawText = el.text || el.data || '';
 
   // 2. Product Type Mapping Mode
   if (!el.isPatched && (el.textType === 'product' || el.useProductMapping || el.isProductMode)) {
-    const targetProd = String(product || '').trim().toUpperCase();
+    const targetProd = String(prod || '').trim().toUpperCase();
     let matchedRule = null;
     if (Array.isArray(el.productMappings)) {
       // Pass 1: exact match
@@ -203,9 +386,9 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
   }
   // 3. Option Code Mapping Mode (supports exact codes and wildcards like A13X2)
   else if (!el.isPatched && (el.textType === 'option' || el.useOptionMapping || el.isOptionMode)) {
-    const codesList = Array.isArray(activeOptions) 
-      ? activeOptions.map(c => String(c).trim().toUpperCase())
-      : parseOptionCodes(activeOptions);
+    const codesList = Array.isArray(opts) 
+      ? opts.map(c => String(c).trim().toUpperCase())
+      : parseOptionCodes(opts);
 
     let matchedRule = null;
     if (Array.isArray(el.optionMappings)) {
@@ -248,66 +431,7 @@ export function resolveElementText(el, activeOptions = [], serial = '', product 
     rawText = dateVal ? formatDate(dateVal, pattern) : formatDate(new Date(), pattern);
   }
 
-  // Replace placeholders. Preserve {{serial}} when no serial value is supplied
-  // so downstream compilers can inject their own serial command (^C00 / ^F00).
-  const snVal = (serial !== undefined && serial !== '') ? serial : '{{serial}}';
-
-  const rawDoneDate = extraObj.done_date || extraObj.doneDate || extraObj.date || '';
-
-  const varMap = {
-    serial: snVal,
-    sn: snVal,
-    origin: originVal,
-    order: originVal,
-    order_id: orderIdVal,
-    orderid: orderIdVal,
-    delivery_order: orderIdVal,
-    dn: orderIdVal,
-    categ: categVal,
-    device_name: deviceName || categVal || product || '',
-    devicename: deviceName || categVal || product || '',
-    product: product || '',
-    product_no: product || '',
-    productno: product || '',
-    item_no: product || '',
-    itemno: product || '',
-    done_date: rawDoneDate,
-    donedate: rawDoneDate,
-    date: rawDoneDate,
-    options_text: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''),
-    optionstext: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || ''),
-    options: Array.isArray(activeOptions) ? activeOptions.join(', ') : (activeOptions || '')
-  };
-
-  if (extraObj) {
-    for (const [k, v] of Object.entries(extraObj)) {
-      if (v !== undefined && v !== null) {
-        varMap[k.toLowerCase()] = String(v);
-        varMap[k] = String(v);
-      }
-    }
-  }
-
-  // Matches: {{ varName }} or {{ varName | filter1:arg | filter2 }}
-  const placeholderRegex = /\{\{\s*([^}|]+?)(?:\s*\|\s*([^}]+))?\s*\}\}/g;
-
-  let resolved = rawText.replace(placeholderRegex, (match, rawKey, filterStr) => {
-    const key = rawKey.trim();
-    const val = varMap[key] !== undefined ? varMap[key] : varMap[key.toLowerCase()];
-    if (val === undefined) {
-      return match;
-    }
-    // If serial placeholder was kept as literal '{{serial}}', preserve placeholder
-    if (val === '{{serial}}') {
-      return match;
-    }
-    if (filterStr) {
-      return applyFilter(val, filterStr.trim());
-    }
-    return val;
-  });
-
-  return resolved;
+  return replacePlaceholders(rawText);
 }
 
 /**

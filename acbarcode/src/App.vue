@@ -5,7 +5,7 @@
     <header class="app-header">
       <div class="header-inner">
         <div class="header-left">
-          <h1 class="app-title">Product Label Generator</h1>
+          <h1 class="app-title">Label Maker</h1>
           <nav v-if="currentRole === 'admin'" class="header-nav-tabs">
             <button
               type="button"

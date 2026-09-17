@@ -1,6 +1,6 @@
-# Barcode Label Maker (Vue 3 Static)
+# Label Maker (Vue 3)
 
-A Vue 3 tool to generate product labels with CODE128 barcodes, product info, website, and logo. Download as PDF (styled for 100x60mm labels).
+A Vue 3 tool to design, manage, and generate product labels (Atlas Copco & SUTO-iTEC) with barcodes, QR codes, graphics, product info, and print integration. Download as PDF or print via bridge.
 
 ## Features
 - Product dropdown (with search and auto-fill)

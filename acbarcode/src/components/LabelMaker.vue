@@ -162,7 +162,7 @@
     <OdooServerModal v-model="showOdooModal" />
 
     <!-- Product Modal (Add/Edit) -->
-    <div v-if="showProductModal" class="modal-overlay" @click="showProductModal = false">
+    <div v-if="showProductModal" class="modal-overlay">
       <div class="modal-card" @click.stop>
         <h3>{{ modalMode === 'add' ? 'Add Product' : 'Edit Product' }}</h3>
         <form @submit.prevent="submitProduct">

@@ -53,6 +53,9 @@ if (!cols.includes('note')) {
 if (!cols.includes('isSpecial')) {
   db.exec("ALTER TABLE templates ADD COLUMN isSpecial INTEGER NOT NULL DEFAULT 0");
 }
+if (!cols.includes('midVariables')) {
+  db.exec("ALTER TABLE templates ADD COLUMN midVariables TEXT NOT NULL DEFAULT '[]'");
+}
 
 function isDeliveryTemplate(tpl) {
   if (!tpl) return false;
@@ -101,6 +104,7 @@ function rowToTemplate(row) {
     elements_en: safeParse(row.elements_en, []),
     elements_cn: safeParse(row.elements_cn, []),
     subTemplates: safeParse(row.subTemplates, []),
+    midVariables: safeParse(row.midVariables, []),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -142,7 +146,8 @@ function normalizeTemplate(tpl) {
     config: (tpl.config && typeof tpl.config === 'object') ? tpl.config : { widthMm: 35, heightMm: 22, dpi: 203 },
     elements_en: Array.isArray(tpl.elements_en) ? tpl.elements_en : [],
     elements_cn: Array.isArray(tpl.elements_cn) ? tpl.elements_cn : [],
-    subTemplates: Array.isArray(tpl.subTemplates) ? tpl.subTemplates.map(normalizeSubTemplate) : []
+    subTemplates: Array.isArray(tpl.subTemplates) ? tpl.subTemplates.map(normalizeSubTemplate) : [],
+    midVariables: Array.isArray(tpl.midVariables) ? tpl.midVariables : []
   };
 }
 
@@ -180,8 +185,8 @@ function insertTemplate(tpl) {
   const t = normalizeTemplate(tpl);
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, midVariables, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @midVariables, @created_at, @updated_at)
   `).run({
     id: String(t.id || ''),
     name: String(t.name || ''),
@@ -193,6 +198,7 @@ function insertTemplate(tpl) {
     elements_en: JSON.stringify(t.elements_en || []),
     elements_cn: JSON.stringify(t.elements_cn || []),
     subTemplates: JSON.stringify(t.subTemplates || []),
+    midVariables: JSON.stringify(t.midVariables || []),
     created_at: now,
     updated_at: now
   });
@@ -206,7 +212,7 @@ function updateTemplate(id, tpl) {
   db.prepare(`
     UPDATE templates
     SET name = @name, itemNumbers = @itemNumbers, deviceName = @deviceName, note = @note, isSpecial = @isSpecial, config = @config,
-        elements_en = @elements_en, elements_cn = @elements_cn, subTemplates = @subTemplates, updated_at = @updated_at
+        elements_en = @elements_en, elements_cn = @elements_cn, subTemplates = @subTemplates, midVariables = @midVariables, updated_at = @updated_at
     WHERE id = @id
   `).run({
     id: String(t.id || ''),
@@ -219,6 +225,7 @@ function updateTemplate(id, tpl) {
     elements_en: JSON.stringify(t.elements_en || []),
     elements_cn: JSON.stringify(t.elements_cn || []),
     subTemplates: JSON.stringify(t.subTemplates || []),
+    midVariables: JSON.stringify(t.midVariables || []),
     updated_at: new Date().toISOString()
   });
   return getTemplateById(t.id);
@@ -229,8 +236,8 @@ function replaceAll(templatesList) {
   const sorted = sortDeliveryFirst(list);
   const now = new Date().toISOString();
   const insert = db.prepare(`
-    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, created_at, updated_at)
-    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @created_at, @updated_at)
+    INSERT OR REPLACE INTO templates (id, name, itemNumbers, deviceName, note, isSpecial, config, elements_en, elements_cn, subTemplates, midVariables, created_at, updated_at)
+    VALUES (@id, @name, @itemNumbers, @deviceName, @note, @isSpecial, @config, @elements_en, @elements_cn, @subTemplates, @midVariables, @created_at, @updated_at)
   `);
   db.exec('BEGIN');
   try {
@@ -247,6 +254,7 @@ function replaceAll(templatesList) {
         elements_en: JSON.stringify(t.elements_en || []),
         elements_cn: JSON.stringify(t.elements_cn || []),
         subTemplates: JSON.stringify(t.subTemplates || []),
+        midVariables: JSON.stringify(t.midVariables || []),
         created_at: now,
         updated_at: now
       });

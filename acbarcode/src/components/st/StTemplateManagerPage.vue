@@ -177,7 +177,7 @@
 
     <!-- Request History Modal Overlay -->
     <transition name="modal-fade">
-      <div v-if="isHistoryOpen" class="st-modal-overlay" @click.self="isHistoryOpen = false">
+      <div v-if="isHistoryOpen" class="st-modal-overlay">
         <div class="st-modal-container history-modal">
           <div class="st-modal-header">
             <h3>📜 Print Request History (Latest 50 HTTP POSTs)</h3>
@@ -233,7 +233,7 @@
 
     <!-- Unlock Template Password Modal -->
     <transition name="modal-fade">
-      <div v-if="isUnlockModalOpen" class="st-modal-overlay" @click.self="closeUnlockModal">
+      <div v-if="isUnlockModalOpen" class="st-modal-overlay">
         <div class="st-modal-container unlock-modal">
           <div class="st-modal-header">
             <h3>🔒 Unlock Template</h3>

@@ -69,7 +69,7 @@
 
     <!-- Unlock Template Password Modal -->
     <transition name="modal-fade">
-      <div v-if="isUnlockModalOpen" class="st-modal-overlay" @click.self="closeUnlockModal">
+      <div v-if="isUnlockModalOpen" class="st-modal-overlay">
         <div class="st-modal-container unlock-modal">
           <div class="st-modal-header">
             <h3>🔒 Unlock Template</h3>
@@ -119,7 +119,7 @@ import { START_BAT } from '../utils/stGoLabelBatch.js';
 import JSZip from 'jszip';
 import { renderStCanvasDynamic } from '../utils/stCanvasRenderer.js';
 import { generateSerialRange } from '../utils/stSerialRange.js';
-import { resolveElementText } from '../utils/stOptionResolver.js';
+import { resolveElementText, evaluateMidVariables } from '../utils/stOptionResolver.js';
 import { matchTemplateByItemNo, DEFAULT_ELEMENTS_EN, DEFAULT_ELEMENTS_CN, isSpecialTemplate } from '../utils/stTemplateManager.js';
 import {
   templates,
@@ -150,28 +150,56 @@ const currentPreviewIndex = ref(0);
 const previewCardRef = ref(null);
 const activeLang = ref('EN'); // 'EN' | 'CN'
 
-// Parsed key-value map from CSTM input (e.g. "option_a=High, option_b=16bar")
+// Parsed key-value map from CSTM input + evaluated Mid-Variables from active template
 const parsedCustomVars = computed(() => {
   const map = {};
   const str = stCustomVarsInput.value;
-  if (!str || typeof str !== 'string') return map;
-  const parts = str.split(/[,;\n]+/);
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    const eqIdx = trimmed.indexOf('=') !== -1 ? trimmed.indexOf('=') : trimmed.indexOf(':');
-    if (eqIdx !== -1) {
-      const k = trimmed.slice(0, eqIdx).trim();
-      const val = trimmed.slice(eqIdx + 1).trim();
-      if (k) {
-        map[k] = val;
-        map[k.toLowerCase()] = val;
+  if (str && typeof str === 'string') {
+    const parts = str.split(/[,;\n]+/);
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const eqIdx = trimmed.indexOf('=') !== -1 ? trimmed.indexOf('=') : trimmed.indexOf(':');
+      if (eqIdx !== -1) {
+        const k = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim();
+        if (k) {
+          const cleanK = k.replace(/^\{+|\}+$/g, '').trim();
+          map[k] = val;
+          map[k.toLowerCase()] = val;
+          map[cleanK] = val;
+          map[cleanK.toLowerCase()] = val;
+        }
+      } else {
+        const cleanK = trimmed.replace(/^\{+|\}+$/g, '').trim();
+        map[trimmed] = '1';
+        map[trimmed.toLowerCase()] = '1';
+        map[cleanK] = '1';
+        map[cleanK.toLowerCase()] = '1';
       }
-    } else {
-      map[trimmed] = '1';
-      map[trimmed.toLowerCase()] = '1';
     }
   }
+
+  // Also evaluate template-level Mid-Variables (Product-to-Value or Option-to-Value mapping)
+  const midVars = activeTemplate.value?.midVariables;
+  if (Array.isArray(midVars) && midVars.length > 0) {
+    const evaluated = evaluateMidVariables(midVars, {
+      prod: activeProd.value,
+      product: activeProd.value,
+      opt: stOptionsInput.value,
+      options: stOptionsInput.value,
+      sn: currentPreviewSN.value
+    });
+    for (const [k, v] of Object.entries(evaluated)) {
+      const cleanK = k.replace(/^\{+|\}+$/g, '').trim();
+      map[k] = v;
+      map[k.toLowerCase()] = v;
+      map[cleanK] = v;
+      map[cleanK.toLowerCase()] = v;
+    }
+  }
+
+  map.midVariables = midVars || [];
   return map;
 });
 
@@ -179,30 +207,29 @@ const parsedCustomVars = computed(() => {
 const detectedOptionVars = computed(() => {
   const vars = new Set();
   const builtinNames = new Set([
-    'serial', 'sn', 'product', 'product_no', 'productno', 'item_no', 'itemno',
-    'producttype', 'product type', 'options', 'option', 'options_text', 'optionstext',
-    'done_date', 'donedate', 'date', 'devicename', 'device_name', 'categ', 'origin', 'order'
+    'serial', 'sn', 'product', 'prod', 'product_no', 'productno', 'item_no', 'itemno',
+    'producttype', 'product type', 'options', 'opt', 'option', 'options_text', 'optionstext',
+    'done_date', 'donedate', 'date', 'devicename', 'device_name', 'categ', 'origin', 'order',
+    'order_id', 'orderid', 'delivery_order', 'dn'
   ]);
 
-  (stElements.value || []).forEach(el => {
-    const raw = el.text || el.rawText || el.data || '';
-    if (typeof raw === 'string') {
-      const matches = raw.matchAll(/\{\{\s*([^}|]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
-      for (const m of matches) {
-        const name = m[1].trim();
-        const lower = name.toLowerCase().replace(/[\s_-]+/g, '');
-        if (!builtinNames.has(lower)) {
-          vars.add(name);
-        }
-      }
+  (activeTemplate.value?.midVariables || []).forEach(mv => {
+    if (mv && mv.name) {
+      builtinNames.add(mv.name.toLowerCase().replace(/[\s_-]+/g, ''));
     }
-    if (typeof el.enableCondition === 'string') {
-      const matches = el.enableCondition.matchAll(/\{\{\s*([^}|!=<>'"\s]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
-      for (const m of matches) {
-        const name = m[1].trim();
-        const lower = name.toLowerCase().replace(/[\s_-]+/g, '');
-        if (!builtinNames.has(lower)) {
-          vars.add(name);
+  });
+
+  (stElements.value || []).forEach(el => {
+    const fieldsToScan = [el.text, el.rawText, el.data, el.sutoProductType, el.sutoPrefix, el.enableCondition];
+    for (const field of fieldsToScan) {
+      if (typeof field === 'string') {
+        const matches = field.matchAll(/\{\{\s*([^}|!=<>'"\s]+?)(?:\s*\|\s*[^}]+)?\s*\}\}/g);
+        for (const m of matches) {
+          const name = m[1].trim();
+          const lower = name.toLowerCase().replace(/[\s_-]+/g, '');
+          if (!builtinNames.has(lower)) {
+            vars.add(name);
+          }
         }
       }
     }
@@ -563,7 +590,8 @@ function buildLabelDefs() {
     filename: mainFilename,
     name: main.name,
     elements: langElements(main),
-    config: main.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+    config: main.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+    midVariables: main.midVariables || []
   }];
 
   (main.subTemplates || []).forEach((sub, i) => {
@@ -577,7 +605,8 @@ function buildLabelDefs() {
       filename: fname,
       name: sub.name,
       elements: langElements(sub),
-      config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+      config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+      midVariables: main.midVariables || []
     });
   });
   return defs;
@@ -588,8 +617,18 @@ async function exportEZPX() {
   const firstSN = range[0] || '12345678';
   const serials = range.length > 0 ? range : [firstSN];
   const currentProduct = activeProd.value;
-  const devName = activeTemplate.value?.deviceName || '';
-  const opts = { labelsPerCut: 0, product: currentProduct, optionsText: stOptionsInput.value, deviceName: devName, csvDatabase: true };
+  const extraContext = {
+    midVariables: activeTemplate.value?.midVariables || [],
+    ...(parsedCustomVars.value || {})
+  };
+  const opts = {
+    labelsPerCut: 0,
+    product: currentProduct,
+    optionsText: stOptionsInput.value,
+    deviceName: devName,
+    csvDatabase: true,
+    extra: extraContext
+  };
 
   // Main + each sub-template produce their own .ezpx, all sharing data.csv
   const defs = buildLabelDefs();
@@ -601,7 +640,8 @@ async function exportEZPX() {
     defs,
     product: currentProduct,
     deviceName: devName,
-    optionsText: stOptionsInput.value
+    optionsText: stOptionsInput.value,
+    extra: extraContext
   });
 
   // Filename shows range: firstSN_to_lastSN when multi
@@ -836,10 +876,10 @@ async function downloadOptionsScenarioPDF() {
   const renderedScenarios = [];
   for (const sc of scenarios) {
     const optionsText = sc.codes.join(', ');
-    await renderStCanvasDynamic(offscreenCanvas, langElements(label), config, firstSN, currentProduct, optionsText, devName);
+    await renderStCanvasDynamic(offscreenCanvas, langElements(label), config, firstSN, currentProduct, optionsText, devName, parsedCustomVars.value);
     const dataUrl = offscreenCanvas.toDataURL('image/png');
     const rows = optElements.map(el => {
-      const resolved = resolveElementText(el, sc.codes, firstSN, currentProduct, devName);
+      const resolved = resolveElementText(el, sc.codes, firstSN, currentProduct, devName, parsedCustomVars.value);
       return { name: el.name || el.type || 'element', text: resolved };
     });
     renderedScenarios.push({ codes: sc.codes, dataUrl, rows });

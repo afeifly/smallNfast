@@ -94,7 +94,8 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       defs.push({
         filename: mainFilename,
         elements: JSON.parse(JSON.stringify(mainElements)),
-        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+        midVariables: matched.midVariables || []
       });
       (matched.subTemplates || []).forEach((sub, i) => {
         const subBase = sanitize(sub.name, `sub${i + 1}`);
@@ -107,7 +108,8 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
         defs.push({
           filename: fname,
           elements: JSON.parse(JSON.stringify(subElements)),
-          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 }
+          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 203 },
+          midVariables: matched.midVariables || []
         });
       });
     }
@@ -146,7 +148,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
       optionsText: optionsStr,
       deviceName: matchedDeviceName,
       csvDatabase: true,
-      extra
+      extra: { ...extra, midVariables: def.midVariables || [] }
     });
     files.push({ filename: def.filename, xml });
   }
@@ -155,7 +157,7 @@ async function generateStEzpxXml(product, serialNumbers = [], options = [], temp
     product: productName,
     deviceName: matchedDeviceName,
     optionsText: optionsStr,
-    extra
+    extra: { ...extra, midVariables: (defs[0] && defs[0].midVariables) || [] }
   });
 
   return { files, csvContent };
@@ -214,7 +216,8 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
         name: matched.name,
         type: 'main',
         elements: JSON.parse(JSON.stringify(mainElements)),
-        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+        config: matched.config || { widthMm: 35, heightMm: 22, dpi: 300 },
+        midVariables: matched.midVariables || []
       });
       (matched.subTemplates || []).forEach((sub, i) => {
         const subElements = getTemplateElements(sub, lang);
@@ -223,7 +226,8 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
           name: sub.name,
           type: 'sub',
           elements: JSON.parse(JSON.stringify(subElements)),
-          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 300 }
+          config: sub.config || { widthMm: 35, heightMm: 22, dpi: 300 },
+          midVariables: matched.midVariables || []
         });
       });
     }
@@ -277,6 +281,7 @@ async function generateStEzplJson(product, serialNumbers = [], options = [], tem
         doneDate: done_date || '',
         date: done_date || '',
         preview: preview !== false,
+        midVariables: def.midVariables || [],
         ...(extra || {})
       }
     );

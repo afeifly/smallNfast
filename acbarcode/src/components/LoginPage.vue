@@ -3,7 +3,7 @@
     <div class="login-card">
       <div class="login-header">
         <img src="/logo.png" alt="Logo" class="login-logo" />
-        <h1>Barcode Label Maker</h1>
+        <h1>Label Maker</h1>
         <p class="login-subtitle">Enter password to continue</p>
       </div>
       <form @submit.prevent="handleLogin">

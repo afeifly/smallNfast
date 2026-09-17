@@ -130,7 +130,8 @@ export function createTemplate() {
     config: defaultConfig(),
     elements_en: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_EN)),
     elements_cn: JSON.parse(JSON.stringify(DEFAULT_ELEMENTS_CN)),
-    subTemplates: []
+    subTemplates: [],
+    midVariables: []
   };
   templates.value.push(newTpl);
   templates.value = sortTemplatesWithDeliveryFirst(templates.value);
@@ -172,7 +173,7 @@ export function deleteTemplate() {
   return true;
 }
 
-export function updateTemplateField({ id, name, itemNumbers, deviceName, note, config }) {
+export function updateTemplateField({ id, name, itemNumbers, deviceName, note, config, midVariables }) {
   const tpl = templates.value.find(t => t.id === id);
   if (!tpl) return;
   if (name !== undefined) tpl.name = name;
@@ -180,6 +181,7 @@ export function updateTemplateField({ id, name, itemNumbers, deviceName, note, c
   if (deviceName !== undefined) tpl.deviceName = deviceName;
   if (note !== undefined) tpl.note = note;
   if (config !== undefined) tpl.config = { ...config };
+  if (midVariables !== undefined) tpl.midVariables = midVariables;
   scheduleSave();
 }
 

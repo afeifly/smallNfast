@@ -129,6 +129,7 @@ import {
   activeSubTemplate,
   templatesLoaded,
   loadTemplates,
+  scheduleSave,
   flushTemplateSave,
   hasUnsavedDesignerChanges,
   copyEnToCn as storeCopyEnToCn,
@@ -290,7 +291,8 @@ function takeSnapshot(label) {
     {
       elements_en: label.elements_en || [],
       elements_cn: label.elements_cn || [],
-      config: label.config || {}
+      config: label.config || {},
+      midVariables: activeTemplate.value?.midVariables || []
     },
     (key, value) => (key === 'expanded' ? undefined : value)
   );
@@ -303,6 +305,7 @@ function revertCurrentLabelToSnapshot() {
     if (parsed.elements_en) currentLabel.value.elements_en = JSON.parse(JSON.stringify(parsed.elements_en));
     if (parsed.elements_cn) currentLabel.value.elements_cn = JSON.parse(JSON.stringify(parsed.elements_cn));
     if (parsed.config) currentLabel.value.config = JSON.parse(JSON.stringify(parsed.config));
+    if (parsed.midVariables && activeTemplate.value) activeTemplate.value.midVariables = JSON.parse(JSON.stringify(parsed.midVariables));
     hasUnsavedChanges.value = false;
   } catch (err) {
     console.error('Failed to revert label snapshot:', err);
@@ -455,16 +458,23 @@ function onCopyEnToCn() {
   showStAlert(`Copied EN layout to CN for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Copy EN → CN', 'info');
 }
 
-// ── Per-label JSON export / import (current editor elements) ────────────
+// ── Per-label JSON export / import (current editor elements & mid-variables) ────
 function exportSingleTemplateJson() {
+  const tpl = activeTemplate.value;
   const label = currentLabel.value;
   if (!label) return;
   const currentElements = activeLang.value === 'CN' ? (label.elements_cn || []) : (label.elements_en || []);
 
   const data = {
     name: currentLabelName.value,
+    deviceName: tpl?.deviceName || '',
+    note: tpl?.note || label.note || '',
+    itemNumbers: tpl?.itemNumbers ? JSON.parse(JSON.stringify(tpl.itemNumbers)) : [],
     config: label.config ? JSON.parse(JSON.stringify(label.config)) : { widthMm: 35, heightMm: 22, dpi: 203 },
-    elements: JSON.parse(JSON.stringify(currentElements))
+    elements: JSON.parse(JSON.stringify(currentElements)),
+    elements_en: label.elements_en ? JSON.parse(JSON.stringify(label.elements_en)) : (activeLang.value === 'EN' ? JSON.parse(JSON.stringify(currentElements)) : []),
+    elements_cn: label.elements_cn ? JSON.parse(JSON.stringify(label.elements_cn)) : (activeLang.value === 'CN' ? JSON.parse(JSON.stringify(currentElements)) : []),
+    midVariables: tpl?.midVariables ? JSON.parse(JSON.stringify(tpl.midVariables)) : []
   };
 
   const jsonStr = JSON.stringify(data, null, 2);
@@ -491,11 +501,12 @@ function importSingleTemplateJson(event) {
     try {
       const data = JSON.parse(e.target.result);
       if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const tpl = activeTemplate.value;
         const label = currentLabel.value;
-        if (!label) return;
+        if (!label || !tpl) return;
         const ok = await showStConfirm({
           title: 'Import JSON Layout',
-          message: `Importing will OVERWRITE the current editor elements of "${currentLabelName.value}". Continue?`,
+          message: `Importing will OVERWRITE the current editor elements and settings of "${currentLabelName.value}". Continue?`,
           confirmText: 'Import & Overwrite',
           type: 'warning'
         });
@@ -506,17 +517,45 @@ function importSingleTemplateJson(event) {
         if (data.config) {
           label.config = { ...label.config, ...data.config };
         }
-        // Extract elements regardless of whether the file used elements, elements_en, or elements_cn
-        const fallbackDefault = activeLang.value === 'CN' ? DEFAULT_ELEMENTS_CN : DEFAULT_ELEMENTS_EN;
-        const importedElements = data.elements || data.elements_en || data.elements_cn || JSON.parse(JSON.stringify(fallbackDefault));
-
-        if (activeLang.value === 'CN') {
-          label.elements_cn = JSON.parse(JSON.stringify(importedElements));
-        } else {
-          label.elements_en = JSON.parse(JSON.stringify(importedElements));
+        if (data.deviceName && !tpl.deviceName) {
+          tpl.deviceName = data.deviceName;
         }
+        if (data.note && !tpl.note) {
+          tpl.note = data.note;
+        }
+        if (Array.isArray(data.itemNumbers) && data.itemNumbers.length > 0 && (!tpl.itemNumbers || tpl.itemNumbers.length === 0)) {
+          tpl.itemNumbers = JSON.parse(JSON.stringify(data.itemNumbers));
+        }
+
+        // Import midVariables (mid-variables belonging to the template)
+        let importedMidVarsCount = 0;
+        if (Array.isArray(data.midVariables) && data.midVariables.length > 0) {
+          tpl.midVariables = JSON.parse(JSON.stringify(data.midVariables));
+          importedMidVarsCount = tpl.midVariables.length;
+        }
+
+        // Extract elements
+        if (Array.isArray(data.elements_en) && data.elements_en.length > 0) {
+          label.elements_en = JSON.parse(JSON.stringify(data.elements_en));
+        }
+        if (Array.isArray(data.elements_cn) && data.elements_cn.length > 0) {
+          label.elements_cn = JSON.parse(JSON.stringify(data.elements_cn));
+        }
+
+        // Fallback for older json files that only had a single elements array
+        if (Array.isArray(data.elements) && !data.elements_en && !data.elements_cn) {
+          if (activeLang.value === 'CN') {
+            label.elements_cn = JSON.parse(JSON.stringify(data.elements));
+          } else {
+            label.elements_en = JSON.parse(JSON.stringify(data.elements));
+          }
+        }
+
         hasUnsavedChanges.value = true;
-        showStAlert(`Elements imported into current editor for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Template Imported', 'info');
+        scheduleSave();
+        updateCanvas();
+        const midVarMsg = importedMidVarsCount > 0 ? ` (${importedMidVarsCount} mid-variables included)` : '';
+        showStAlert(`Template elements and settings${midVarMsg} imported into editor for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Template Imported', 'info');
       } else {
         showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
       }

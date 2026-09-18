@@ -92,6 +92,12 @@ let _fileVersion = 0;
 let _sampleIntervalSec = 1;
 let _fileBuffer = null;   // Fully loaded file ArrayBuffer for zero-copy sync memory reads
 
+// Multi-file session: parsed records for every file in the current session.
+// When > 1 file is present, the public accessors expose a merged "virtual file".
+let _files = [];
+let _merged = null;   // { channels, channelMap, startMs, stopMs, gridSec, numSamples, intervalMs }
+let _appendMode = false;  // classic <input> fallback: next selection appends instead of replaces
+
 let _onFileLoadedCallbacks = [];
 
 // Large-CSV pre-load prompt
@@ -182,13 +188,31 @@ async function _idbGetAll() {
 // ── Byte-reading helpers ──────────────────────────────────────────────────────
 
 /** Read exactly `length` bytes starting at `offset` from a File object. */
-async function _readSlice(file, offset, length) {
-  if (_fileBuffer) {
-    return new DataView(_fileBuffer, offset, length);
+async function _readSlice(file, offset, length, buffer) {
+  const buf = buffer === undefined ? _fileBuffer : buffer;
+  if (buf) {
+    return new DataView(buf, offset, length);
   }
   const blob = file.slice(offset, offset + length);
-  const buffer = await blob.arrayBuffer();
-  return new DataView(buffer);
+  const bufferData = await blob.arrayBuffer();
+  return new DataView(bufferData);
+}
+
+/** Slice-based read against a parsed file record (carries its own buffer/slice source). */
+function _fileSlice(fileRec, offset, length) {
+  if (fileRec.fileBuffer) {
+    return Promise.resolve(new DataView(fileRec.fileBuffer, offset, length));
+  }
+  const blob = fileRec.file.slice(offset, offset + length);
+  return blob.arrayBuffer().then(b => new DataView(b));
+}
+
+/** Greatest common divisor of two integers (>= 1). */
+function _gcd(a, b) {
+  a = Math.abs(Math.round(a));
+  b = Math.abs(Math.round(b));
+  while (b) { const t = a % b; a = b; b = t; }
+  return a || 1;
 }
 
 /** Decode null-terminated UTF-8 from a subarray of a DataView's buffer. */
@@ -321,14 +345,16 @@ function _buildFullChannelName(pheader, ch) {
 /**
  * Parse file / protocol / channel headers from `file` (File object or
  * anything with a `.slice(start,end)` → Blob interface).
- * Populates module-level state; does NOT read sample data.
+ * Fills `target` with the parsed header info; does NOT read sample data.
  */
-async function _parseHeaders(file) {
+async function _parseHeaders(file, target, buffer) {
+  const slice = (off, len) => _readSlice(file, off, len, buffer);
+
   // ── File info header (34 bytes starting at byte 0) ──
   try {
-    const fh = await _readSlice(file, 0, FILE_HEADER_LEN);
+    const fh = await slice(0, FILE_HEADER_LEN);
     const version = fh.getInt32(0, false);
-    _fileVersion = version;
+    target.fileVersion = version;
     const identifier = _decodeStr(fh, 4, 10);
     console.log(`[CsdAPI] File Info Header parsed - Version: ${version}, Identifier: "${identifier}"`);
     
@@ -340,11 +366,11 @@ async function _parseHeaders(file) {
   }
 
   // ── Protocol header (3552 bytes starting at byte 34) ──
-  const ph = await _readSlice(file, PROTOCOL_HEADER_START, PROTOCOL_HEADER_LEN);
+  const ph = await slice(PROTOCOL_HEADER_START, PROTOCOL_HEADER_LEN);
 
-  _deviceName = _decodeStr(ph, 506, 32) || 'CSD Device';
-  _deviceId = ph.getInt32(PROTOCOL_DEVICE_ID, false) || 0;
-  _deviceType = ph.getInt16(PROTOCOL_DEVICE_TYPE, false) || 0;
+  target.deviceName = _decodeStr(ph, 506, 32) || 'CSD Device';
+  target.deviceId = ph.getInt32(PROTOCOL_DEVICE_ID, false) || 0;
+  target.deviceType = ph.getInt16(PROTOCOL_DEVICE_TYPE, false) || 0;
 
   let rawChannels = ph.getInt32(3016, false);
   let rawSamples = ph.getInt32(3020, false);
@@ -362,19 +388,19 @@ async function _parseHeaders(file) {
   } else if (rawChannels <= 0) {
     rawChannels = 9;
   }
-  _numChannels = rawChannels;
+  target.numChannels = rawChannels;
 
   // Data record geometry (needed to derive the real sample count)
-  _dataStart = CHANNEL_HEADERS_START + _numChannels * CHANNEL_HEADER_LEN;
-  _recordLen = RECORD_ID_LEN + _numChannels * CHANNEL_VALUE_LEN;
+  target.dataStart = CHANNEL_HEADERS_START + target.numChannels * CHANNEL_HEADER_LEN;
+  target.recordLen = RECORD_ID_LEN + target.numChannels * CHANNEL_VALUE_LEN;
 
   // Sample count — repair it from the file size when the header is missing/inconsistent.
   // Some CSD files carry a wrong (0 or stale) sample count; derive the truth from the bytes.
   let computedSamples = 0;
-  if (fileSize > _dataStart && _recordLen > 0) {
-    computedSamples = Math.floor((fileSize - _dataStart) / _recordLen);
+  if (fileSize > target.dataStart && target.recordLen > 0) {
+    computedSamples = Math.floor((fileSize - target.dataStart) / target.recordLen);
   }
-  if (fileSize > 0 && _recordLen > 0) {
+  if (fileSize > 0 && target.recordLen > 0) {
     if (rawSamples <= 0 || Math.abs(rawSamples - computedSamples) > 1) {
       console.warn(`[CsdAPI] Header sample count (${rawSamples}) inconsistent with file size; using ${computedSamples}.`);
       rawSamples = computedSamples;
@@ -382,7 +408,7 @@ async function _parseHeaders(file) {
   } else if (rawSamples < 0) {
     rawSamples = 0;
   }
-  _numSamples = rawSamples;
+  target.numSamples = rawSamples;
 
   let rawStart = Number(ph.getBigInt64(3032, false));
   let rawStop = Number(ph.getBigInt64(3040, false));
@@ -391,26 +417,26 @@ async function _parseHeaders(file) {
   if (Math.abs(rawStart) > MAX_TS) rawStart = 0;
   if (Math.abs(rawStop) > MAX_TS) rawStop = 0;
 
-  _sampleIntervalSec = sampleRateRaw > 0 ? sampleRateRaw : 1;
-  _sampleRate = 1 / _sampleIntervalSec;
+  target.sampleIntervalSec = sampleRateRaw > 0 ? sampleRateRaw : 1;
+  target.sampleRate = 1 / target.sampleIntervalSec;
 
-  _startTimeMs = rawStart > 0 ? rawStart : Date.now() - 3600000;
+  target.startTimeMs = rawStart > 0 ? rawStart : Date.now() - 3600000;
 
   // Stop time — trust the header only when it is valid and consistent with the (repaired)
   // sample count; otherwise derive it from start + samples × interval.
-  const computedStop = _startTimeMs + _numSamples * _sampleIntervalSec * 1000;
-  if (rawStop > 0 && rawStop >= _startTimeMs
-    && Math.abs(rawStop - computedStop) <= _sampleIntervalSec * 1000 * 2) {
-    _stopTimeMs = rawStop;
+  const computedStop = target.startTimeMs + target.numSamples * target.sampleIntervalSec * 1000;
+  if (rawStop > 0 && rawStop >= target.startTimeMs
+    && Math.abs(rawStop - computedStop) <= target.sampleIntervalSec * 1000 * 2) {
+    target.stopTimeMs = rawStop;
   } else {
-    _stopTimeMs = computedStop;
+    target.stopTimeMs = computedStop;
   }
 
   // ── Channel headers (918 bytes each) ──
-  _channels = [];
-  for (let i = 0; i < _numChannels; i++) {
+  target.channels = [];
+  for (let i = 0; i < target.numChannels; i++) {
     const chStart = CHANNEL_HEADERS_START + i * CHANNEL_HEADER_LEN;
-    const ch = await _readSlice(file, chStart, CHANNEL_HEADER_LEN);
+    const ch = await slice(chStart, CHANNEL_HEADER_LEN);
 
     // pref = int64 at byte 0
     const pref = Number(ch.getBigInt64(0, false));
@@ -448,10 +474,10 @@ async function _parseHeaders(file) {
     const newDeviceID = ch.getInt32(CH_NEW_DEVICE_ID, false);
     const subDeviceID = ch.getInt32(CH_SUB_DEVICE_ID, false);
     const sensorID = ch.getInt32(CH_SENSOR_ID, false);
-    const slaveAddress = _fileVersion > 4 ? ch.getInt8(CH_SLAVE_ADDRESS) : 0;
+    const slaveAddress = target.fileVersion > 4 ? ch.getInt8(CH_SLAVE_ADDRESS) : 0;
 
     const fullName = _buildFullChannelName(
-      { deviceId: _deviceId, deviceType: _deviceType },
+      { deviceId: target.deviceId, deviceType: target.deviceType },
       {
         description: desc,
         unit: unitText,
@@ -464,7 +490,7 @@ async function _parseHeaders(file) {
       }
     );
 
-    _channels.push({
+    target.channels.push({
       channel_id: i,
       location_id: 1,
       sensor_id: sensorID || i,
@@ -484,9 +510,11 @@ async function _parseHeaders(file) {
     });
   }
 
-  console.log(`[CsdAPI] Parsed ${_numChannels} channels, ${_numSamples} samples @ ${_sampleRate.toFixed(3)} Hz`);
-  console.log(`[CsdAPI] Time range: ${new Date(_startTimeMs).toISOString()} → ${new Date(_stopTimeMs).toISOString()}`);
-  console.log('[CsdAPI] Channels:', _channels.map(c => `[${c.channel_id}] "${c.logic_channel_description}" (${c.unit_in_ascii})`));
+  console.log(`[CsdAPI] Parsed ${target.numChannels} channels, ${target.numSamples} samples @ ${target.sampleRate.toFixed(3)} Hz`);
+  console.log(`[CsdAPI] Time range: ${new Date(target.startTimeMs).toISOString()} → ${new Date(target.stopTimeMs).toISOString()}`);
+  console.log('[CsdAPI] Channels:', target.channels.map(c => `[${c.channel_id}] "${c.logic_channel_description}" (${c.unit_in_ascii})`));
+
+  return target;
 }
 
 /**
@@ -546,6 +574,77 @@ async function _readChannelData(file, chIdx, startSample, endSample, step) {
   return values;
 }
 
+/**
+ * Lazy read of one channel's float64 values from a parsed file record
+ * (used by the merged multi-file session). Mirrors `_readChannelData`.
+ */
+async function _readFileChannelData(fileRec, chIdx, startSample, endSample, step) {
+  const values = [];
+  const chByteOffset = RECORD_ID_LEN + chIdx * CHANNEL_VALUE_LEN;
+  const totalRecords = endSample - startSample + 1;
+  const spanBytes = totalRecords * fileRec.recordLen;
+
+  if (fileRec.fileBuffer) {
+    const dv = new DataView(fileRec.fileBuffer);
+    let recordStart = fileRec.dataStart + startSample * fileRec.recordLen;
+    for (let s = startSample; s <= endSample; s += step) {
+      const v = dv.getFloat64(recordStart + chByteOffset, false);
+      values.push((v <= DATA_OVERRANGE) ? null : v);
+      recordStart += step * fileRec.recordLen;
+    }
+    return values;
+  }
+
+  if (spanBytes < 50 * 1024 * 1024) {
+    const dv = await _fileSlice(fileRec, fileRec.dataStart + startSample * fileRec.recordLen, spanBytes);
+    for (let s = 0; s < totalRecords; s += step) {
+      const recordOffset = s * fileRec.recordLen;
+      const v = dv.getFloat64(recordOffset + chByteOffset, false);
+      values.push((v <= DATA_OVERRANGE) ? null : v);
+    }
+    return values;
+  }
+
+  const batchSize = 100;
+  for (let s = startSample; s <= endSample; s += step * batchSize) {
+    const promises = [];
+    const batchEnd = Math.min(endSample, s + step * (batchSize - 1));
+    for (let curr = s; curr <= batchEnd; curr += step) {
+      const recordStart = fileRec.dataStart + curr * fileRec.recordLen;
+      promises.push(_fileSlice(fileRec, recordStart + chByteOffset, CHANNEL_VALUE_LEN));
+    }
+    const slices = await Promise.all(promises);
+    for (const dv of slices) {
+      const v = dv.getFloat64(0, false);
+      values.push((v <= DATA_OVERRANGE) ? null : v);
+    }
+  }
+  return values;
+}
+
+/**
+ * Read a contiguous page of channel values from one file record.
+ * Returns { s0, values: { channelId: Float64Array } } where s0 is the sample
+ * index of the first element (so callers can map grid time → array index).
+ */
+async function _readFileChannelsPage(fileRec, chans, s0, s1) {
+  const count = Math.max(0, s1 - s0 + 1);
+  const out = {};
+  if (count <= 0) return { s0, values: out };
+  const byteLength = count * fileRec.recordLen;
+  const offset = fileRec.dataStart + s0 * fileRec.recordLen;
+  const dv = await _fileSlice(fileRec, offset, byteLength);
+  for (const c of chans) {
+    const arr = new Float64Array(count);
+    for (let i = 0; i < count; i++) {
+      const v = dv.getFloat64(i * fileRec.recordLen + RECORD_ID_LEN + c.localIdx * CHANNEL_VALUE_LEN, false);
+      arr[i] = (v <= DATA_OVERRANGE) ? NaN : v;
+    }
+    out[c.id] = arr;
+  }
+  return { s0, values: out };
+}
+
 // Helper to load large files chunk-by-chunk and report real progress
 async function _readArrayBufferWithProgress(file, onProgress) {
   const size = file.size;
@@ -575,6 +674,28 @@ async function _readArrayBufferWithProgress(file, onProgress) {
 
 // ── File-load entry point ─────────────────────────────────────────────────────
 
+/** Buffer a file fully when it is small enough; returns { file, fileBuffer }. */
+async function _bufferFileIfSmall(file) {
+  const LIMIT = 800 * 1024 * 1024; // 800 MB
+  if (file && file.size && file.size < LIMIT && typeof file.arrayBuffer === 'function') {
+    try {
+      const fullBuffer = await _readArrayBufferWithProgress(file);
+      const wrapped = {
+        name: file.name,
+        size: file.size,
+        slice(start, end) {
+          const sliced = fullBuffer.slice(start, end);
+          return { arrayBuffer: async () => sliced };
+        }
+      };
+      return { file: wrapped, fileBuffer: fullBuffer };
+    } catch (e) {
+      console.warn('[CsdAPI] Failed to buffer file for append, falling back to lazy load:', e);
+    }
+  }
+  return { file, fileBuffer: null };
+}
+
 /** Shows the large-CSV dialog and waits for the user's choice: 'open' | 'convert' | 'cancel' */
 function _promptLargeCsvChoice(file) {
   return new Promise((resolve) => {
@@ -600,6 +721,8 @@ async function _loadFromFile(file) {
   _fileLoaded = false;
   _isCsvMode = false;
   _fileBuffer = null; // Clear previous buffer reference
+  _files = [];
+  _merged = null;     // Clear any previous multi-file session
 
   // ── Large CSV check (before showing loading overlay) ───────────────────────
   const LARGE_CSV_THRESHOLD = 800 * 1024 * 1024; // 800 MB
@@ -668,7 +791,9 @@ async function _loadFromFile(file) {
 
   try {
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.9, filename: file.name } }));
-    await _parseHeaders(fileToLoad);
+    const target = {};
+    await _parseHeaders(fileToLoad, target, _fileBuffer);
+    _applyHeaderTarget(target);
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
   } catch (err) {
     console.error('[CsdAPI] Header parse failed:', err);
@@ -678,8 +803,107 @@ async function _loadFromFile(file) {
 
   _file = fileToLoad;
   _fileLoaded = true;
+  _files = [_buildFileRecord(fileToLoad)];
+  _merged = null;
   _onFileLoadedCallbacks.forEach(fn => fn());
   return true;
+}
+
+/** Copy a parsed header target into the module-level single-file state. */
+function _applyHeaderTarget(target) {
+  _deviceName = target.deviceName;
+  _deviceId = target.deviceId;
+  _deviceType = target.deviceType;
+  _fileVersion = target.fileVersion;
+  _numChannels = target.numChannels;
+  _numSamples = target.numSamples;
+  _dataStart = target.dataStart;
+  _recordLen = target.recordLen;
+  _startTimeMs = target.startTimeMs;
+  _stopTimeMs = target.stopTimeMs;
+  _sampleIntervalSec = target.sampleIntervalSec;
+  _sampleRate = target.sampleRate;
+  _channels = target.channels;
+}
+
+/** Build a session record from a parsed header target. */
+function _recordFromTarget(file, target, fileBuffer) {
+  return {
+    file,
+    name: file ? file.name : '',
+    deviceName: target.deviceName,
+    deviceId: target.deviceId,
+    deviceType: target.deviceType,
+    fileVersion: target.fileVersion,
+    channels: target.channels,
+    numChannels: target.numChannels,
+    numSamples: target.numSamples,
+    startTimeMs: target.startTimeMs,
+    stopTimeMs: target.stopTimeMs,
+    sampleIntervalSec: target.sampleIntervalSec,
+    dataStart: target.dataStart,
+    recordLen: target.recordLen,
+    fileBuffer,
+  };
+}
+
+/** Snapshot the current single-file state into a session record. */
+function _buildFileRecord(file) {
+  return _recordFromTarget(file, {
+    deviceName: _deviceName,
+    deviceId: _deviceId,
+    deviceType: _deviceType,
+    fileVersion: _fileVersion,
+    channels: _channels,
+    numChannels: _numChannels,
+    numSamples: _numSamples,
+    startTimeMs: _startTimeMs,
+    stopTimeMs: _stopTimeMs,
+    sampleIntervalSec: _sampleIntervalSec,
+    dataStart: _dataStart,
+    recordLen: _recordLen,
+  }, _fileBuffer);
+}
+
+/** True when a CSD multi-file session is active. */
+function _isMulti() {
+  return _fileLoaded && !_isCsvMode && _files.length > 1 && !!_merged;
+}
+
+/** Rebuild the merged "virtual file" view from `_files`. */
+function _rebuildMerged() {
+  if (_files.length <= 1) {
+    _merged = null;
+    return;
+  }
+  const startMs = Math.min(..._files.map(f => f.startTimeMs));
+  const stopMs = Math.max(..._files.map(f => f.stopTimeMs));
+  const gridSec = _files.reduce((g, f) => _gcd(g, f.sampleIntervalSec), _files[0].sampleIntervalSec);
+  const intervalMs = gridSec * 1000;
+  const channels = [];
+  const channelMap = {};
+  _files.forEach((fr, fi) => {
+    fr.channels.forEach((ch, li) => {
+      const id = `${fi}:${li}`;
+      channelMap[id] = { id, fileIndex: fi, localIdx: li };
+      channels.push({ ...ch, channel_id: id, file_index: fi, local_channel_id: li });
+    });
+  });
+  const numSamples = Math.max(0, Math.ceil((stopMs - startMs) / intervalMs));
+  _merged = { channels, channelMap, startMs, stopMs, gridSec, intervalMs, numSamples };
+}
+
+/** Overlap validation (CANalyzer semantics): the appended file must share a time window with the session. */
+function _validateOverlap(record) {
+  if (_files.length === 0) return null;
+  const s = Math.max(..._files.map(f => f.startTimeMs));
+  const e = Math.min(..._files.map(f => f.stopTimeMs));
+  const interStart = Math.max(record.startTimeMs, s);
+  const interStop = Math.min(record.stopTimeMs, e);
+  if (interStop <= interStart) {
+    return 'No common time range with the loaded file(s). Please select a file that overlaps in time.';
+  }
+  return null;
 }
 
 // ── Recent-files persistence (localStorage metadata + IDB handles) ────────────
@@ -699,7 +923,7 @@ function _saveRecentMeta(name, size, path = null) {
 const _fsaSupported = typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 
 /** Show the OS file picker via File System Access API, persist the handle. */
-async function _openWithFSA() {
+async function _openWithFSA(append = false) {
   let handles;
   try {
     handles = await window.showOpenFilePicker({
@@ -713,6 +937,14 @@ async function _openWithFSA() {
 
   const handle = handles[0];
   const file = await handle.getFile();
+
+  if (append) {
+    const res = await CsdAPI.appendFile(file);
+    if (!res.ok && window.showAppNotification) {
+      window.showAppNotification('Append Failed', res.reason, 'error');
+    }
+    return;
+  }
 
   // Persist the handle in IndexedDB keyed by filename
   await _idbPut(file.name, handle);
@@ -743,7 +975,19 @@ function _ensureFileInput() {
       return;
     }
     _saveRecentMeta(file.name, file.size);
-    await _loadFromFile(file);
+    if (_appendMode) {
+      _appendMode = false;
+      const res = await CsdAPI.appendFile(file);
+      if (!res.ok) {
+        if (window.showAppNotification) {
+          window.showAppNotification('Append Failed', res.reason, 'error');
+        } else {
+          alert(res.reason);
+        }
+      }
+    } else {
+      await _loadFromFile(file);
+    }
     _fileInput.value = '';
   });
 }
@@ -762,11 +1006,56 @@ const CsdAPI = {
    */
   openFile() {
     if (_fsaSupported) {
-      _openWithFSA();
+      _openWithFSA(false);
     } else {
       _ensureFileInput();
       _fileInput.click();
     }
+  },
+
+  /**
+   * Append one more .csd file to the current multi-file session.
+   * The appended file must share an overlapping time window with the session.
+   * Returns { ok, reason?, numFiles? }.
+   */
+  openAppend() {
+    if (_fsaSupported) {
+      _openWithFSA(true);
+    } else {
+      _appendMode = true;
+      _ensureFileInput();
+      _fileInput.click();
+    }
+  },
+
+  async appendFile(file) {
+    if (!_fileLoaded || _isCsvMode) {
+      return { ok: false, reason: 'No CSD file is loaded to append to.' };
+    }
+    if (!file || !file.name || !file.name.toLowerCase().endsWith('.csd')) {
+      return { ok: false, reason: 'Only .csd files can be appended.' };
+    }
+    try {
+      const { file: fileToLoad, fileBuffer } = await _bufferFileIfSmall(file);
+      const target = {};
+      await _parseHeaders(fileToLoad, target, fileBuffer);
+      const overlapErr = _validateOverlap(target);
+      if (overlapErr) {
+        return { ok: false, reason: overlapErr };
+      }
+      _files.push(_recordFromTarget(fileToLoad, target, fileBuffer));
+      _rebuildMerged();
+      _onFileLoadedCallbacks.forEach(fn => fn());
+      return { ok: true, numFiles: _files.length };
+    } catch (e) {
+      console.error('[CsdAPI] appendFile error:', e);
+      return { ok: false, reason: e.message || 'Failed to append file.' };
+    }
+  },
+
+  /** Number of files currently in the session (1 for a normal single-file load). */
+  getNumLoadedFiles() {
+    return _files.length > 0 ? _files.length : (_fileLoaded ? 1 : 0);
   },
 
   /**
@@ -894,12 +1183,18 @@ const CsdAPI = {
     if (_fileLoaded && _isCsvMode) {
       return CsvAPI.getFileTimeRange();
     }
+    if (_isMulti()) {
+      return { start: _merged.startMs, stop: _merged.stopMs };
+    }
     return { start: _startTimeMs, stop: _stopTimeMs };
   },
 
   getLoadedFileName() {
     if (_fileLoaded && _isCsvMode) {
       return CsvAPI.getLoadedFileName();
+    }
+    if (_isMulti()) {
+      return `${_files.length} files`;
     }
     return _file ? _file.name : '';
   },
@@ -908,6 +1203,9 @@ const CsdAPI = {
     if (_fileLoaded && _isCsvMode) {
       return CsvAPI.getNumOfSamples();
     }
+    if (_isMulti()) {
+      return _merged.numSamples;
+    }
     return _numSamples;
   },
 
@@ -915,12 +1213,19 @@ const CsdAPI = {
     if (_fileLoaded && _isCsvMode) {
       return CsvAPI.getSampleRate();
     }
+    if (_isMulti()) {
+      return 1 / _merged.gridSec;
+    }
     return _sampleRate;
   },
 
   getTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
     if (_fileLoaded && _isCsvMode) {
       CsvAPI.getTablePage(pageIndex, pageSize, selectedChannelIds, callback);
+      return;
+    }
+    if (_isMulti()) {
+      this._getMergedTablePage(pageIndex, pageSize, selectedChannelIds, callback);
       return;
     }
     if (!_fileLoaded || !_file) {
@@ -978,6 +1283,159 @@ const CsdAPI = {
     });
   },
 
+  /** Table page over the merged multi-file session, aligned to the GCD grid. */
+  _getMergedTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
+    const m = _merged;
+    const total = m.numSamples;
+    if (!m || total <= 0) {
+      setTimeout(() => callback({ total: 0, rows: [] }), 50);
+      return;
+    }
+    const startGrid = pageIndex * pageSize;
+    const endGrid = Math.min(startGrid + pageSize - 1, total - 1);
+    const count = Math.max(0, endGrid - startGrid + 1);
+    if (count <= 0) {
+      setTimeout(() => callback({ total, rows: [] }), 50);
+      return;
+    }
+
+    const ids = (selectedChannelIds && selectedChannelIds.length)
+      ? selectedChannelIds
+      : m.channels.map(c => c.channel_id);
+    const selected = [];
+    for (const id of ids) {
+      const cm = m.channelMap[id];
+      if (cm) selected.push({ ...cm, id: String(id) });
+    }
+
+    const byFile = {};
+    for (const c of selected) {
+      (byFile[c.fileIndex] = byFile[c.fileIndex] || []).push(c);
+    }
+
+    const startMs = m.startMs + startGrid * m.intervalMs;
+    const endMs = m.startMs + endGrid * m.intervalMs;
+
+    const fileData = {};
+    const reads = [];
+    for (const fiStr of Object.keys(byFile)) {
+      const fi = Number(fiStr);
+      const fr = _files[fi];
+      if (fr.numSamples <= 0) {
+        fileData[fi] = { s0: 0, values: {} };
+        continue;
+      }
+      const s0 = Math.max(0, Math.min(fr.numSamples - 1, Math.round((startMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec)));
+      const s1 = Math.max(s0, Math.min(fr.numSamples - 1, Math.round((endMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec)));
+      reads.push(_readFileChannelsPage(fr, byFile[fi], s0, s1).then(d => { fileData[fi] = d; }));
+    }
+
+    Promise.all(reads).then(() => {
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const gridIndex = startGrid + i;
+        const timeMs = startMs + i * m.intervalMs;
+        const values = {};
+        for (const c of selected) {
+          const fr = _files[c.fileIndex];
+          const d = fileData[c.fileIndex];
+          if (!d || !d.values[c.id]) continue;
+          const sIdx = Math.round((timeMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec);
+          const rel = sIdx - d.s0;
+          const v = (rel >= 0 && rel < d.values[c.id].length) ? d.values[c.id][rel] : NaN;
+          values[c.id] = Number.isNaN(v) ? null : v;
+        }
+        rows.push({ index: gridIndex, recordId: gridIndex, timestampMs: timeMs, values });
+      }
+      callback({
+        total,
+        sampleRate: 1 / m.gridSec,
+        startTimeMs: m.startMs,
+        stopTimeMs: m.stopMs,
+        rows
+      });
+    }).catch(err => {
+      console.error('[CsdAPI] merged getTablePage error:', err);
+      callback({ total, rows: [] });
+    });
+  },
+
+  // ── Export helpers (single or merged multi-file session) ────────────────────
+
+  _exportChannels() { return _isMulti() ? _merged.channels : _channels; },
+  _exportNumSamples() { return _isMulti() ? _merged.numSamples : _numSamples; },
+  _exportStartMs() { return _isMulti() ? _merged.startMs : _startTimeMs; },
+  _exportStopMs() { return _isMulti() ? _merged.stopMs : _stopTimeMs; },
+  _exportIntervalSec() { return _isMulti() ? _merged.gridSec : _sampleIntervalSec; },
+
+  /**
+   * Read `count` export rows starting at grid/sample index `start`.
+   * Returns [{ timestampMs, values: { channelId: number|null } }].
+   * channelId is the merged string id in multi-file mode, the channel index otherwise.
+   */
+  async _readExportPage(start, count) {
+    if (count <= 0) return [];
+    if (_isMulti()) {
+      const m = _merged;
+      const startMs = m.startMs + start * m.intervalMs;
+      const endMs = m.startMs + (start + count - 1) * m.intervalMs;
+      const byFile = {};
+      for (const ch of m.channels) {
+        (byFile[ch.file_index] = byFile[ch.file_index] || []).push({
+          id: ch.channel_id,
+          localIdx: ch.local_channel_id,
+        });
+      }
+const fileData = {};
+      const reads = [];
+      for (const fiStr of Object.keys(byFile)) {
+        const fi = Number(fiStr);
+        const fr = _files[fi];
+        if (fr.numSamples <= 0) {
+          fileData[fi] = { s0: 0, values: {} };
+          continue;
+        }
+        const s0 = Math.max(0, Math.min(fr.numSamples - 1, Math.round((startMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec)));
+        const s1 = Math.max(s0, Math.min(fr.numSamples - 1, Math.round((endMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec)));
+        reads.push(_readFileChannelsPage(fr, byFile[fi], s0, s1).then(d => { fileData[fi] = d; }));
+      }
+      await Promise.all(reads);
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const timeMs = startMs + i * m.intervalMs;
+        const values = {};
+        for (const ch of m.channels) {
+          const fr = _files[ch.file_index];
+          const d = fileData[ch.file_index];
+          if (!d || !d.values[ch.channel_id]) { values[ch.channel_id] = null; continue; }
+          const sIdx = Math.round((timeMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec);
+          const rel = sIdx - d.s0;
+          const v = (rel >= 0 && rel < d.values[ch.channel_id].length) ? d.values[ch.channel_id][rel] : NaN;
+          values[ch.channel_id] = Number.isNaN(v) ? null : v;
+        }
+        rows.push({ timestampMs: timeMs, values });
+      }
+      return rows;
+    }
+
+    // single-file mode — contiguous slice (unchanged behaviour)
+    const offset = _dataStart + start * _recordLen;
+    const byteLength = count * _recordLen;
+    const dv = await _readSlice(_file, offset, byteLength);
+    const rows = [];
+    for (let i = 0; i < count; i++) {
+      const recordOffset = i * _recordLen;
+      const timestampMs = _startTimeMs + ((start + i) / _sampleRate) * 1000;
+      const values = {};
+      for (let c = 0; c < _numChannels; c++) {
+        const v = dv.getFloat64(recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN, false);
+        values[c] = (v <= DATA_OVERRANGE) ? null : v;
+      }
+      rows.push({ timestampMs, values });
+    }
+    return rows;
+  },
+
 
   // ── Standard MockAPI-compatible methods ─────────────────────────────────────
 
@@ -992,12 +1450,13 @@ const CsdAPI = {
     }
 
     // Pick up to 2 default channels (prefer flow-related units)
-    const flowPriority = _channels.filter(ch => {
+    const srcChannels = _isMulti() ? _merged.channels : _channels;
+    const flowPriority = srcChannels.filter(ch => {
       const u = (ch.unit_in_ascii || '').toLowerCase();
       const d = (ch.logic_channel_description || '').toLowerCase();
       return u.includes('m') || u.includes('flow') || d.includes('m³') || d.includes('m3') || d.includes('flow');
     });
-    const sorted = [...flowPriority, ..._channels.filter(ch => !flowPriority.includes(ch))];
+    const sorted = [...flowPriority, ...srcChannels.filter(ch => !flowPriority.includes(ch))];
     const defaults = sorted.slice(0, 2);
 
     const COLORS = ['#00ac86', '#FF5630', '#36B37E', '#6554C0', '#FF8B00',
@@ -1011,12 +1470,12 @@ const CsdAPI = {
         sensor_id: ch.sensor_id,
       },
       color: COLORS[idx % COLORS.length],
-      display_channel_option_id: 1000 + ch.channel_id,
+      display_channel_option_id: 1000 + idx,
     }));
 
     setTimeout(() => callback([{
       alias_name: username || 'CSD',
-      createddate: _startTimeMs,
+      createddate: _isMulti() ? _merged.startMs : _startTimeMs,
       display_channel_option: displayChannelOption,
       username: username || 'csd',
     }]), 50);
@@ -1031,8 +1490,9 @@ const CsdAPI = {
       setTimeout(() => callback({ logging_chs: [] }), 50);
       return;
     }
+    const src = _isMulti() ? _merged.channels : _channels;
     setTimeout(() => callback({
-      logging_chs: _channels.map(ch => ({
+      logging_chs: src.map(ch => ({
         channel_id: ch.channel_id,
         location_id: ch.location_id,
         sensor_id: ch.sensor_id,
@@ -1042,6 +1502,7 @@ const CsdAPI = {
         unit_in_ascii: ch.unit_in_ascii,
         resolution: ch.resolution,
         full_channel_name: ch.full_channel_name,
+        file_index: ch.file_index,
       }))
     }), 50);
   },
@@ -1049,6 +1510,10 @@ const CsdAPI = {
   getMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback) {
     if (_fileLoaded && _isCsvMode) {
       CsvAPI.getMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback);
+      return;
+    }
+    if (_isMulti()) {
+      this._getMergedMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback);
       return;
     }
     if (!_fileLoaded || !_file) {
@@ -1102,15 +1567,59 @@ const CsdAPI = {
     });
   },
 
+  /** Measurement data for one channel over the merged multi-file session. */
+  _getMergedMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback) {
+    const id = String(channelId);
+    const cm = _merged ? _merged.channelMap[id] : null;
+    if (!cm) {
+      setTimeout(() => callback([]), 50);
+      return;
+    }
+    const fr = _files[cm.fileIndex];
+    const ch = fr.channels[cm.localIdx];
+
+    const qStart = startTime - 3600000 * 8;
+    const qStop = stopTime - 3600000 * 8;
+    const timeToSample = ms => {
+      if (fr.sampleIntervalSec <= 0) return 0;
+      return Math.max(0, Math.floor((ms - fr.startTimeMs) / 1000 / fr.sampleIntervalSec));
+    };
+
+    let startSample = timeToSample(qStart);
+    let endSample = timeToSample(qStop);
+    startSample = Math.max(0, Math.min(startSample, fr.numSamples - 1));
+    endSample = Math.max(startSample, Math.min(endSample, fr.numSamples - 1));
+
+    const range = endSample - startSample + 1;
+    const step = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
+
+    const actualStartMs = fr.startTimeMs + startSample * fr.sampleIntervalSec * 1000;
+    const pointIntervalMs = step * fr.sampleIntervalSec * 1000;
+
+    _readFileChannelData(fr, cm.localIdx, startSample, endSample, step).then(values => {
+      callback([{
+        channel_id: id,
+        measurementData: [values],
+        realStartTime: [actualStartMs + 3600000 * 8],
+        pointInterval: [pointIntervalMs],
+        min: ch._min,
+        max: ch._max,
+      }]);
+    }).catch(err => {
+      console.error('[CsdAPI] merged getMeasurementData error:', err);
+      callback([]);
+    });
+  },
+
   getMutilMeasurementData(channelIds, startTime, tableInterval, getDataWay, callback) {
     if (_fileLoaded && _isCsvMode) {
       CsvAPI.getMutilMeasurementData(channelIds, startTime, tableInterval, getDataWay, callback);
       return;
     }
     if (!channelIds || channelIds.length === 0) { callback([]); return; }
-    const stopTime = _stopTimeMs > _startTimeMs
-      ? (_stopTimeMs + 3600000 * 8)
-      : startTime + 3600000 * 24;
+    const stopTime = _isMulti()
+      ? (_merged.stopMs + 3600000 * 8)
+      : (_stopTimeMs > _startTimeMs ? (_stopTimeMs + 3600000 * 8) : startTime + 3600000 * 24);
     this.getMeasurementData(channelIds[0], startTime, stopTime, tableInterval, getDataWay, callback);
   },
 
@@ -1237,7 +1746,12 @@ const CsdAPI = {
   },
 
   async _exportAllChannelsToCsvStreaming(onProgress) {
-    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    const srcChannels = this._exportChannels();
+    const srcNumSamples = this._exportNumSamples();
+    const srcStartMs = this._exportStartMs();
+    const srcStopMs = this._exportStopMs();
+    const srcIntervalSec = this._exportIntervalSec();
+    const baseName = (_file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export") + (_isMulti() ? "_combined" : "");
     let handle;
     try {
       handle = await window.showSaveFilePicker({
@@ -1288,14 +1802,14 @@ const CsdAPI = {
       };
 
       let initialText = `${_deviceName} Raw Data\n\n`;
-      initialText += `Start Date Time,${formatDateTimeHeader(_startTimeMs)}\n`;
-      initialText += `End Date Time,${formatDateTimeHeader(_stopTimeMs)}\n`;
-      initialText += `Sample Rate(sec),${_sampleIntervalSec}\n`;
-      initialText += `NO.Of Channels,${_numChannels}\n`;
-      initialText += `NO.Of Records,${_numSamples}\n\n`;
+      initialText += `Start Date Time,${formatDateTimeHeader(srcStartMs)}\n`;
+      initialText += `End Date Time,${formatDateTimeHeader(srcStopMs)}\n`;
+      initialText += `Sample Rate(sec),${srcIntervalSec}\n`;
+      initialText += `NO.Of Channels,${srcChannels.length}\n`;
+      initialText += `NO.Of Records,${srcNumSamples}\n\n`;
       initialText += 'No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point\n';
       
-      _channels.forEach((ch, idx) => {
+      srcChannels.forEach((ch, idx) => {
         const chName = ch.logic_channel_description || `CH${idx + 1}`;
         const sensor = ch.sensor_description || `Sensor ${idx + 1}`;
         const unit = ch.unit_in_ascii || '';
@@ -1306,7 +1820,7 @@ const CsdAPI = {
       initialText += '\n';
 
       const dataHeaders = ['Date Time'];
-      _channels.forEach((ch, idx) => {
+      srcChannels.forEach((ch, idx) => {
         const chName = ch.logic_channel_description || `CH${idx + 1}`;
         const unit = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
         dataHeaders.push(`${chName}${unit}`);
@@ -1318,31 +1832,16 @@ const CsdAPI = {
       const chunkSize = 5000;
       let dataBuffer = [];
 
-      for (let start = 0; start < _numSamples; start += chunkSize) {
-        const end = Math.min(start + chunkSize, _numSamples);
-        const count = end - start;
-        const offset = _dataStart + start * _recordLen;
-        const byteLength = count * _recordLen;
+      for (let start = 0; start < srcNumSamples; start += chunkSize) {
+        const count = Math.min(chunkSize, srcNumSamples - start);
+        const rows = await this._readExportPage(start, count);
 
-        const dv = await _readSlice(_file, offset, byteLength);
-
-        for (let i = 0; i < count; i++) {
-          const recordIndex = start + i;
-          const recordOffset = i * _recordLen;
-
-          const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
-          const dateStr = formatDateTimeDataRow(timestampMs);
-
+        for (const row of rows) {
+          const dateStr = formatDateTimeDataRow(row.timestampMs);
           const rowValues = [dateStr];
-
-          for (let c = 0; c < _numChannels; c++) {
-            const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
-            const v = dv.getFloat64(valOffset, false);
-            if (v <= DATA_OVERRANGE) {
-              rowValues.push('');
-            } else {
-              rowValues.push(v);
-            }
+          for (const ch of srcChannels) {
+            const v = row.values[ch.channel_id];
+            rowValues.push((v == null || Number.isNaN(v)) ? '' : v);
           }
           dataBuffer.push(rowValues.join(','));
         }
@@ -1352,7 +1851,7 @@ const CsdAPI = {
         dataBuffer = [];
 
         if (onProgress) {
-          onProgress(end / _numSamples);
+          onProgress((start + count) / srcNumSamples);
         }
         await new Promise(resolve => setTimeout(resolve, 0));
       }
@@ -1363,6 +1862,12 @@ const CsdAPI = {
   },
 
   async _exportAllChannelsToCsvInMemory(onProgress) {
+    const srcChannels = this._exportChannels();
+    const srcNumSamples = this._exportNumSamples();
+    const srcStartMs = this._exportStartMs();
+    const srcStopMs = this._exportStopMs();
+    const srcIntervalSec = this._exportIntervalSec();
+
     const formatDateTimeHeader = (ms) => {
       const date = new Date(ms);
       const day = date.getDate();
@@ -1396,16 +1901,16 @@ const CsdAPI = {
 
     csvChunks.push(`${_deviceName} Raw Data\n\n`);
 
-    csvChunks.push(`Start Date Time,${formatDateTimeHeader(_startTimeMs)}\n`);
-    csvChunks.push(`End Date Time,${formatDateTimeHeader(_stopTimeMs)}\n`);
+    csvChunks.push(`Start Date Time,${formatDateTimeHeader(srcStartMs)}\n`);
+    csvChunks.push(`End Date Time,${formatDateTimeHeader(srcStopMs)}\n`);
 
-    csvChunks.push(`Sample Rate(sec),${_sampleIntervalSec}\n`);
+    csvChunks.push(`Sample Rate(sec),${srcIntervalSec}\n`);
 
-    csvChunks.push(`NO.Of Channels,${_numChannels}\n`);
-    csvChunks.push(`NO.Of Records,${_numSamples}\n\n`);
+    csvChunks.push(`NO.Of Channels,${srcChannels.length}\n`);
+    csvChunks.push(`NO.Of Records,${srcNumSamples}\n\n`);
 
     csvChunks.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point\n');
-    _channels.forEach((ch, idx) => {
+    srcChannels.forEach((ch, idx) => {
       const chName = ch.logic_channel_description || `CH${idx + 1}`;
       const sensor = ch.sensor_description || `Sensor ${idx + 1}`;
       const unit = ch.unit_in_ascii || '';
@@ -1426,7 +1931,7 @@ const CsdAPI = {
     csvChunks.push('\n');
 
     const dataHeaders = ['Date Time'];
-    _channels.forEach((ch, idx) => {
+    srcChannels.forEach((ch, idx) => {
       const chName = ch.logic_channel_description || `CH${idx + 1}`;
       const unit = ch.unit_in_ascii ? ` - ${ch.unit_in_ascii}` : '';
       dataHeaders.push(`${chName}${unit}`);
@@ -1436,31 +1941,16 @@ const CsdAPI = {
     const chunkSize = 5000;
     let dataBuffer = [];
 
-    for (let start = 0; start < _numSamples; start += chunkSize) {
-      const end = Math.min(start + chunkSize, _numSamples);
-      const count = end - start;
-      const offset = _dataStart + start * _recordLen;
-      const byteLength = count * _recordLen;
+    for (let start = 0; start < srcNumSamples; start += chunkSize) {
+      const count = Math.min(chunkSize, srcNumSamples - start);
+      const rows = await this._readExportPage(start, count);
 
-      const dv = await _readSlice(_file, offset, byteLength);
-
-      for (let i = 0; i < count; i++) {
-        const recordIndex = start + i;
-        const recordOffset = i * _recordLen;
-
-        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
-        const dateStr = formatDateTimeDataRow(timestampMs);
-
+      for (const row of rows) {
+        const dateStr = formatDateTimeDataRow(row.timestampMs);
         const rowValues = [dateStr];
-
-        for (let c = 0; c < _numChannels; c++) {
-          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
-          const v = dv.getFloat64(valOffset, false);
-          if (v <= DATA_OVERRANGE) {
-            rowValues.push('');
-          } else {
-            rowValues.push(v);
-          }
+        for (const ch of srcChannels) {
+          const v = row.values[ch.channel_id];
+          rowValues.push((v == null || Number.isNaN(v)) ? '' : v);
         }
         dataBuffer.push(rowValues.join(','));
       }
@@ -1471,7 +1961,7 @@ const CsdAPI = {
       }
 
       if (onProgress) {
-        onProgress(end / _numSamples);
+        onProgress((start + count) / srcNumSamples);
       }
       await new Promise(resolve => setTimeout(resolve, 0));
     }
@@ -1485,7 +1975,7 @@ const CsdAPI = {
     const link = document.createElement('a');
     link.href = url;
 
-    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    const baseName = (_file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export") + (_isMulti() ? "_combined" : "");
     link.setAttribute('download', `${baseName}_all_channels.csv`);
     document.body.appendChild(link);
     link.click();
@@ -1501,9 +1991,15 @@ const CsdAPI = {
       throw new Error("No CSD file loaded");
     }
 
+    const srcChannels = this._exportChannels();
+    const srcNumSamples = this._exportNumSamples();
+    const srcStartMs = this._exportStartMs();
+    const srcStopMs = this._exportStopMs();
+    const srcIntervalSec = this._exportIntervalSec();
+
     const LIMIT_800MB = 800 * 1024 * 1024; // 800 MB
-    if (_numSamples > 1048576 || _file.size >= LIMIT_800MB) {
-      const msg = `This dataset contains ${_numSamples.toLocaleString()} records, ` +
+    if (srcNumSamples > 1048576 || (_file.size || 0) >= LIMIT_800MB) {
+      const msg = `This dataset contains ${srcNumSamples.toLocaleString()} records, ` +
         `which exceeds Excel's maximum worksheet row limit (1,048,576 rows) or memory safe limits.\n\n` +
         `Please export this dataset to CSV format instead.`;
       if (window.showAppNotification) {
@@ -1562,19 +2058,19 @@ const CsdAPI = {
     // Row 4: Start Time
     metaXml += '   <Row>\n';
     metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">Start Time</Data></Cell>\n';
-    metaXml += `    <Cell><Data ss:Type="String">${formatDateTime(_startTimeMs)}</Data></Cell>\n`;
+    metaXml += `    <Cell><Data ss:Type="String">${formatDateTime(srcStartMs)}</Data></Cell>\n`;
     metaXml += '   </Row>\n';
 
     // Row 5: End Time
     metaXml += '   <Row>\n';
     metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">End Time</Data></Cell>\n';
-    metaXml += `    <Cell><Data ss:Type="String">${formatDateTime(_stopTimeMs)}</Data></Cell>\n`;
+    metaXml += `    <Cell><Data ss:Type="String">${formatDateTime(srcStopMs)}</Data></Cell>\n`;
     metaXml += '   </Row>\n';
 
     // Row 6: Sample Rate (sec)
     metaXml += '   <Row>\n';
     metaXml += '    <Cell ss:StyleID="sLabel"><Data ss:Type="String">Sample Rate (sec)</Data></Cell>\n';
-    metaXml += `    <Cell><Data ss:Type="Number">${_sampleIntervalSec}</Data></Cell>\n`;
+    metaXml += `    <Cell><Data ss:Type="Number">${srcIntervalSec}</Data></Cell>\n`;
     metaXml += '   </Row>\n';
 
     // Row 7: empty
@@ -1586,7 +2082,7 @@ const CsdAPI = {
     // Row 9: Column headers — TIME + channel descriptions with unit
     metaXml += '   <Row>\n';
     metaXml += '    <Cell ss:StyleID="sHeader"><Data ss:Type="String">TIME</Data></Cell>\n';
-    _channels.forEach(ch => {
+    srcChannels.forEach(ch => {
       const desc = ch.logic_channel_description || `Channel ${ch.channel_id}`;
       const unit = ch.unit_in_ascii ? ` (${ch.unit_in_ascii})` : '';
       metaXml += `    <Cell ss:StyleID="sHeader"><Data ss:Type="String">${escXml(desc + unit)}</Data></Cell>\n`;
@@ -1596,36 +2092,27 @@ const CsdAPI = {
     const xmlChunks = [xmlHeader, metaXml];
 
     const chunkSize = 5000;
-    for (let start = 0; start < _numSamples; start += chunkSize) {
-      const end = Math.min(start + chunkSize, _numSamples);
-      const count = end - start;
-      const offset = _dataStart + start * _recordLen;
-      const byteLength = count * _recordLen;
-
-      const dv = await _readSlice(_file, offset, byteLength);
+    for (let start = 0; start < srcNumSamples; start += chunkSize) {
+      const count = Math.min(chunkSize, srcNumSamples - start);
+      const rows = await this._readExportPage(start, count);
 
       let chunkXml = '';
-      for (let i = 0; i < count; i++) {
-        const recordIndex = start + i;
-        const recordOffset = i * _recordLen;
-
-        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
-        const dateStr = formatDateTime(timestampMs);
+      for (const row of rows) {
+        const dateStr = formatDateTime(row.timestampMs);
 
         chunkXml += '   <Row>\n';
         chunkXml += `    <Cell><Data ss:Type="String">${dateStr}</Data></Cell>\n`;
 
-        for (let c = 0; c < _numChannels; c++) {
-          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
-          const v = dv.getFloat64(valOffset, false);
-          chunkXml += `    <Cell><Data ss:Type="Number">${v}</Data></Cell>\n`;
+        for (const ch of srcChannels) {
+          const v = row.values[ch.channel_id];
+          chunkXml += `    <Cell><Data ss:Type="Number">${(v == null || Number.isNaN(v)) ? '' : v}</Data></Cell>\n`;
         }
         chunkXml += '   </Row>\n';
       }
       xmlChunks.push(chunkXml);
 
       if (onProgress) {
-        onProgress(end / _numSamples);
+        onProgress((start + count) / srcNumSamples);
       }
       await new Promise(resolve => setTimeout(resolve, 0));
     }
@@ -1637,7 +2124,7 @@ const CsdAPI = {
     const link = document.createElement('a');
     link.href = url;
 
-    const baseName = _file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export";
+    const baseName = (_file.name ? _file.name.replace(/\.[^/.]+$/, "") : "export") + (_isMulti() ? "_combined" : "");
     link.setAttribute('download', `${baseName}_all_channels.xls`);
     document.body.appendChild(link);
     link.click();
@@ -1653,34 +2140,16 @@ const CsdAPI = {
       throw new Error("No CSD file loaded");
     }
     const allRows = [];
+    const srcNumSamples = this._exportNumSamples();
     const chunkSize = 10000;
-    for (let start = 0; start < _numSamples; start += chunkSize) {
-      const end = Math.min(start + chunkSize, _numSamples);
-      const count = end - start;
-      const offset = _dataStart + start * _recordLen;
-      const byteLength = count * _recordLen;
-
-      const dv = await _readSlice(_file, offset, byteLength);
-
-      for (let i = 0; i < count; i++) {
-        const recordIndex = start + i;
-        const recordOffset = i * _recordLen;
-        const timestampMs = _startTimeMs + (recordIndex / _sampleRate) * 1000;
-
-        const values = {};
-        for (let c = 0; c < _numChannels; c++) {
-          const valOffset = recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN;
-          const v = dv.getFloat64(valOffset, false);
-          values[c] = (v <= DATA_OVERRANGE) ? null : v;
-        }
-
-        allRows.push({
-          timestampMs,
-          values
-        });
+    for (let start = 0; start < srcNumSamples; start += chunkSize) {
+      const count = Math.min(chunkSize, srcNumSamples - start);
+      const rows = await this._readExportPage(start, count);
+      for (const row of rows) {
+        allRows.push({ timestampMs: row.timestampMs, values: row.values });
       }
       if (onProgress) {
-        onProgress(end / _numSamples);
+        onProgress((start + count) / srcNumSamples);
       }
       await new Promise(resolve => setTimeout(resolve, 0));
     }

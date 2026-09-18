@@ -25,6 +25,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import AddIcon from '@mui/icons-material/Add';
 import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
 
@@ -283,6 +284,12 @@ function App() {
     }
   };
 
+  const handleAppendCsd = () => {
+    if (TestAPI.openAppend) {
+      TestAPI.openAppend();
+    }
+  };
+
   const handleLoadRecentFile = async (file) => {
     localStorage.removeItem('selectedChannels');
     if (file.path && TestAPI.loadFileFromPath) {
@@ -463,6 +470,14 @@ function App() {
             <Tooltip title="Open File">
               <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
                 <FolderOpenIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {isCsdMode && fileLoaded && (
+            <Tooltip title="Append File">
+              <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
+                <AddIcon />
               </IconButton>
             </Tooltip>
           )}

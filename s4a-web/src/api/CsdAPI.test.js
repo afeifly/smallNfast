@@ -741,4 +741,252 @@ No.,Date Time,CH1 - mV,CH2 - mV
     expect(range.stop).toBe(startTimeMs + numSamples * 1000); // garbage stop → derived from samples
   });
 
+  it('appends a second CSD file into a merged multi-file session', async () => {
+    const encoder = new TextEncoder();
+    const startTimeMs = 1716380000000;
+    const numSamples = 5;
+
+    // Build a CSD buffer with `numChannels` channels whose channel c holds value base + i*100 + c
+    function buildFile(name, numChannels, base, intervalSec = 1, thisStart = startTimeMs) {
+      const protocolHeaderStart = 34;
+      const channelHeadersStart = 3586;
+      const recordLen = 4 + numChannels * 8;
+      const dataStart = channelHeadersStart + numChannels * 918;
+      const totalSize = dataStart + numSamples * recordLen;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+
+      view.setInt32(0, 5, false);
+      const idBytes = encoder.encode('SUTO CSD');
+      for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+      view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+      view.setInt32(protocolHeaderStart + 3020, numSamples, false);
+      view.setInt32(protocolHeaderStart + 3024, intervalSec, false);
+      view.setBigInt64(protocolHeaderStart + 3032, BigInt(thisStart), false);
+      view.setBigInt64(protocolHeaderStart + 3040, BigInt(thisStart + numSamples * intervalSec * 1000), false);
+
+      for (let c = 0; c < numChannels; c++) {
+        const chStart = channelHeadersStart + c * 918;
+        view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+        const descName = `Ch_${c}`;
+        view.setInt16(chStart + 8, descName.length, false);
+        const descBytes = encoder.encode(descName);
+        for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+        view.setInt32(chStart + 848, 2, false);
+        view.setFloat64(chStart + 852, 0, false);
+        view.setFloat64(chStart + 860, 1000, false);
+        view.setInt32(chStart + 876, 5000 + c, false);
+      }
+
+      for (let s = 0; s < numSamples; s++) {
+        const recStart = dataStart + s * recordLen;
+        view.setInt32(recStart, s, false);
+        for (let c = 0; c < numChannels; c++) {
+          view.setFloat64(recStart + 4 + c * 8, base + s * 100 + c, false);
+        }
+      }
+
+      return {
+        name,
+        size: totalSize,
+        slice(start, end) { return { arrayBuffer: async () => buffer.slice(start, end) }; }
+      };
+    }
+
+    // File A: 2 channels, base 10 (10,20 / 110,120 / ...)
+    const fileA = buildFile('A.csd', 2, 10);
+    const handleA = { queryPermission: async () => 'granted', requestPermission: async () => 'granted', getFile: async () => fileA };
+    await CsdAPI.loadFileFromHandle(handleA);
+
+    expect(CsdAPI.getNumLoadedFiles()).toBe(1);
+    expect(CsdAPI.getNumOfSamples()).toBe(numSamples);
+
+    // Append file B: 2 channels, overlapping window, base 1000
+    const fileB = buildFile('B.csd', 2, 1000);
+    const resB = await CsdAPI.appendFile(fileB);
+    expect(resB.ok).toBe(true);
+    expect(resB.numFiles).toBe(2);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(2);
+    expect(CsdAPI.getNumOfSamples()).toBe(numSamples); // same grid → same sample count
+
+    let channels = null;
+    CsdAPI.getChannels(res => { channels = res.logging_chs; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(channels).toHaveLength(4);
+    expect(channels[0].channel_id).toBe('0:0');
+    expect(channels[2].channel_id).toBe('1:0');
+
+    // getTablePage returns merged rows with values from both files
+    let page = null;
+    CsdAPI.getTablePage(0, 10, channels.map(c => c.channel_id), res => { page = res; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(page.total).toBe(numSamples);
+    expect(page.rows).toHaveLength(numSamples);
+    expect(page.rows[0].values['0:0']).toBe(10);
+    expect(page.rows[0].values['0:1']).toBe(11);
+    expect(page.rows[0].values['1:0']).toBe(1000);
+    expect(page.rows[1].values['0:0']).toBe(110);
+    expect(page.rows[1].values['1:0']).toBe(1100);
+
+    // Append a non-overlapping file → rejected
+    const fileC = buildFile('C.csd', 2, 5000, 1, startTimeMs + 86400000);
+    const resC = await CsdAPI.appendFile(fileC);
+    expect(resC.ok).toBe(false);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(2);
+  });
+
+  it('exports merged multi-file data to CSV', async () => {
+    const encoder = new TextEncoder();
+    const startTimeMs = 1716380000000;
+    const numSamples = 5;
+
+    function buildFile(name, numChannels, base, intervalSec = 1, thisStart = startTimeMs) {
+      const protocolHeaderStart = 34;
+      const channelHeadersStart = 3586;
+      const recordLen = 4 + numChannels * 8;
+      const dataStart = channelHeadersStart + numChannels * 918;
+      const totalSize = dataStart + numSamples * recordLen;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+
+      view.setInt32(0, 5, false);
+      const idBytes = encoder.encode('SUTO CSD');
+      for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+      view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+      view.setInt32(protocolHeaderStart + 3020, numSamples, false);
+      view.setInt32(protocolHeaderStart + 3024, intervalSec, false);
+      view.setBigInt64(protocolHeaderStart + 3032, BigInt(thisStart), false);
+      view.setBigInt64(protocolHeaderStart + 3040, BigInt(thisStart + numSamples * intervalSec * 1000), false);
+
+      for (let c = 0; c < numChannels; c++) {
+        const chStart = channelHeadersStart + c * 918;
+        view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+        const descName = `Ch_${c}`;
+        view.setInt16(chStart + 8, descName.length, false);
+        const descBytes = encoder.encode(descName);
+        for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+        view.setInt32(chStart + 848, 2, false);
+        view.setFloat64(chStart + 852, 0, false);
+        view.setFloat64(chStart + 860, 1000, false);
+        view.setInt32(chStart + 876, 5000 + c, false);
+      }
+
+      for (let s = 0; s < numSamples; s++) {
+        const recStart = dataStart + s * recordLen;
+        view.setInt32(recStart, s, false);
+        for (let c = 0; c < numChannels; c++) {
+          view.setFloat64(recStart + 4 + c * 8, base + s * 100 + c, false);
+        }
+      }
+
+      return {
+        name,
+        size: totalSize,
+        slice(start, end) { return { arrayBuffer: async () => buffer.slice(start, end) }; }
+      };
+    }
+
+    const fileA = buildFile('A.csd', 2, 10);
+    const handleA = { queryPermission: async () => 'granted', requestPermission: async () => 'granted', getFile: async () => fileA };
+    await CsdAPI.loadFileFromHandle(handleA);
+    const resB = await CsdAPI.appendFile(buildFile('B.csd', 2, 1000));
+    expect(resB.ok).toBe(true);
+
+    const createdBlobs = [];
+    const downloadedFiles = [];
+    global.URL.createObjectURL = (blob) => { createdBlobs.push(blob); return 'mock-url'; };
+    global.URL.revokeObjectURL = () => {};
+    const origAppend = document.body.appendChild;
+    const origRemove = document.body.removeChild;
+    document.body.appendChild = (el) => {
+      if (el.tagName === 'A') downloadedFiles.push({ download: el.getAttribute('download') });
+      return origAppend.call(document.body, el);
+    };
+    document.body.removeChild = origRemove;
+
+    await CsdAPI.exportAllChannelsToCsv(() => {});
+
+    const csv = await createdBlobs[0].text();
+    const lines = csv.split('\n');
+    expect(lines[0]).toBe('CSD Device Raw Data');
+    expect(lines[4]).toBe('Sample Rate(sec),1');
+    expect(lines[5]).toBe('NO.Of Channels,4');
+    expect(lines[14]).toBe('Date Time,Ch_0,Ch_1,Ch_0,Ch_1');
+    expect(lines[15]).toContain(',10,11,1000,1001');
+    expect(downloadedFiles[0].download).toContain('_combined');
+
+    document.body.appendChild = origAppend;
+    document.body.removeChild = origRemove;
+  });
+
+  it('does not read past a buffered file boundary when exporting a merged session', async () => {
+    const encoder = new TextEncoder();
+    const startTimeMs = 1716380000000;
+
+    function buildFile(name, numChannels, numSamples, base) {
+      const protocolHeaderStart = 34;
+      const channelHeadersStart = 3586;
+      const recordLen = 4 + numChannels * 8;
+      const dataStart = channelHeadersStart + numChannels * 918;
+      const totalSize = dataStart + numSamples * recordLen;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+
+      view.setInt32(0, 5, false);
+      const idBytes = encoder.encode('SUTO CSD');
+      for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+      view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+      view.setInt32(protocolHeaderStart + 3020, numSamples, false);
+      view.setInt32(protocolHeaderStart + 3024, 1, false);
+      view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
+      view.setBigInt64(protocolHeaderStart + 3040, BigInt(startTimeMs + numSamples * 1000), false);
+
+      for (let c = 0; c < numChannels; c++) {
+        const chStart = channelHeadersStart + c * 918;
+        view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+        const descName = `Ch_${c}`;
+        view.setInt16(chStart + 8, descName.length, false);
+        const descBytes = encoder.encode(descName);
+        for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+        view.setInt32(chStart + 848, 2, false);
+        view.setFloat64(chStart + 852, 0, false);
+        view.setFloat64(chStart + 860, 1000, false);
+        view.setInt32(chStart + 876, 5000 + c, false);
+      }
+
+      for (let s = 0; s < numSamples; s++) {
+        const recStart = dataStart + s * recordLen;
+        view.setInt32(recStart, s, false);
+        for (let c = 0; c < numChannels; c++) {
+          view.setFloat64(recStart + 4 + c * 8, base + s * 100 + c, false);
+        }
+      }
+
+      return {
+        name,
+        size: totalSize,
+        async arrayBuffer() { return buffer; },
+        slice(start, end) { return { arrayBuffer: async () => buffer.slice(start, end) }; }
+      };
+    }
+
+    // File A is long (12k samples); file B overlaps only the first 10 samples.
+    const fileA = buildFile('A.csd', 2, 12000, 10);
+    const handleA = { queryPermission: async () => 'granted', requestPermission: async () => 'granted', getFile: async () => fileA };
+    await CsdAPI.loadFileFromHandle(handleA);
+
+    const fileB = buildFile('B.csd', 2, 10, 1000);
+    const resB = await CsdAPI.appendFile(fileB);
+    expect(resB.ok).toBe(true);
+
+    // Page that starts far beyond B's data — must not read past B's buffer.
+    const rows = await CsdAPI._readExportPage(5000, 5000);
+    expect(rows).toHaveLength(5000);
+    expect(rows[0].values['1:0']).toBe(null); // B has no data at that time
+    expect(rows[0].values['0:0']).toBe(500010); // A continues normally
+  });
+
 });

@@ -29,6 +29,7 @@ exports.create = (req, res) => {
     auth: auth,
     customerId: customerId,
     active: 1,
+    imei: null,
   };
 
   License.create(item)

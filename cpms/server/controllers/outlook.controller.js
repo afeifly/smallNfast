@@ -40,7 +40,7 @@ exports.getAuthorization = (req, res) => {
       .then(data => {
         if (data) {
           if (data.app === app) {
-            if (data.imei) {
+            if (data.imei && data.imei !== 'undefined' && data.imei !== 'null') {
               if (data.imei === imei) {
                 logger.debug("imei auth success");
                 sendAuthBack(res, data);

@@ -66,6 +66,7 @@ export function analyzeCompressorChannel(
 ) {
   const energyCostPerKwh = options.energyCostPerKwh ?? DEFAULTS.ENERGY_COST_PER_KWH;
   const voltage = options.voltage ?? DEFAULTS.SUPPLY_VOLTAGE;
+  const workHourPerYear = options.workHourPerYear ?? WORKING_HOUR_PER_YEAR;
 
   compressor.resetStatisticsValues();
 
@@ -300,7 +301,7 @@ export function analyzeCompressorChannel(
   }
 
   // 1-year projection
-  const yearRatio = validSeconds > 0 ? (WORKING_HOUR_PER_YEAR * 3600) / validSeconds : 0;
+  const yearRatio = validSeconds > 0 ? (workHourPerYear * 3600) / validSeconds : 0;
   compressor.FullLoadHoursOneYear = compressor.FullLoadHours * yearRatio;
   compressor.UnLoadHoursOneYear = compressor.UnLoadHours * yearRatio;
   compressor.NoLoadHoursOneYear = compressor.NoLoadHours * yearRatio;
@@ -422,6 +423,93 @@ function computeSystemTotals(compressors, leakThreshold, flowUnit, sampleInterva
     leakageCost: totalLeakage > 0 ? (totalLeakage / Math.max(1, totalAirDelivery)) * totalCost : 0,
     numCompressors: compressors.length,
     numCompressorsSelected: compressors.filter(c => c.Selected).length,
+  };
+}
+
+// ── System (flow channel) analysis ───────────────────────────────────────────
+
+/**
+ * Analyze the whole compressed-air system from a single designated "system flow
+ * channel" (the plant's main flow meter). Mirrors CAA System Analyze
+ * (`LeakStatistics.calculateSystemAnalyzesFlowChannelValueFields`).
+ *
+ * @param {Array<{timestampMs, value}>} channelData — system flow readings
+ * @param {number} sampleIntervalSec — sample interval in seconds
+ * @param {object} options
+ * @param {number} [options.leakThreshold=0] — leak baseline flow; falls back to min flow
+ * @param {string} [options.flowUnit='m\u00B3/h'] — flow unit of the channel
+ * @param {number} [options.airUnitCost=0] — cost per m³ (air unit cost)
+ * @param {number} [options.workHourPerYear=8760] — annual operating hours
+ * @returns {object} — system flow statistics
+ */
+export function analyzeSystemFlowChannel(channelData, sampleIntervalSec, options = {}) {
+  const leakThreshold = options.leakThreshold ?? 0;
+  const flowUnit = options.flowUnit ?? 'm\u00B3/h';
+  const airUnitCost = options.airUnitCost ?? 0;
+  const workHourPerYear = options.workHourPerYear ?? WORKING_HOUR_PER_YEAR;
+
+  let sumFlow = 0;
+  let numValid = 0;
+  let maxFlow = -Infinity;
+  let minFlow = Infinity;
+  let totalSeconds = 0;
+
+  for (const r of (channelData || [])) {
+    const v = r.value;
+    if (v == null || !isFinite(v)) continue;
+    sumFlow += v;
+    numValid++;
+    if (v > maxFlow) maxFlow = v;
+    if (v < minFlow) minFlow = v;
+    totalSeconds += sampleIntervalSec;
+  }
+
+  if (numValid === 0 || totalSeconds <= 0) {
+    return {
+      averageFlow: 0, maxFlow: 0, minFlow: 0,
+      totalAirDelivery: 0, totalAirDeliveryOneYear: 0,
+      totalLeakage: 0, totalLeakageOneYear: 0,
+      leakageRate: 0, leakageCost: 0, leakageCostOneYear: 0,
+      totalCost: 0, totalCostOneYear: 0, costPerM3: airUnitCost,
+      validHours: 0, flowUnit,
+    };
+  }
+
+  const hours = totalSeconds / 3600;
+  const averageFlow = sumFlow / numValid;
+  const srateHour = sampleIntervalSec / 3600;
+  const perHourRatio = flowUnitRatioToOneHour(flowUnit);
+
+  // total air delivery (m³) = Σ flow × hours-per-record × unit→m³ ratio
+  const totalAirDelivery = sumFlow * srateHour * perHourRatio;
+
+  const yearRatio = workHourPerYear / hours;
+  const totalAirDeliveryOneYear = totalAirDelivery * yearRatio;
+
+  // Leakage baseline: explicit threshold, otherwise the minimum flow observed
+  const leakFlow = leakThreshold > 0 ? leakThreshold : (minFlow === Infinity ? 0 : minFlow);
+  const totalLeakage = leakFlow * hours * perHourRatio;
+  const totalLeakageOneYear = totalLeakage * yearRatio;
+
+  const totalCost = totalAirDelivery * airUnitCost;
+  const totalCostOneYear = totalAirDeliveryOneYear * airUnitCost;
+
+  return {
+    averageFlow,
+    maxFlow: maxFlow === -Infinity ? 0 : maxFlow,
+    minFlow: minFlow === Infinity ? 0 : minFlow,
+    totalAirDelivery,
+    totalAirDeliveryOneYear,
+    totalLeakage,
+    totalLeakageOneYear,
+    leakageRate: totalAirDelivery > 0 ? totalLeakage / totalAirDelivery : 0,
+    leakageCost: totalLeakage * airUnitCost,
+    leakageCostOneYear: totalLeakageOneYear * airUnitCost,
+    totalCost,
+    totalCostOneYear,
+    costPerM3: airUnitCost,
+    validHours: hours,
+    flowUnit,
   };
 }
 

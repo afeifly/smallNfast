@@ -9,7 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import TestAPI from '../../api/TestAPI';
 import { Compressor, createDefaultCompressor, COMPRESSOR_TYPE_LOAD_UNLOAD, COMPRESSOR_TYPE_VARIABLE_FREQUENCY } from '../../analysis/CompressorEngine.js';
-import { analyzeSystem, extractChannelData, classifyChannel } from '../../analysis/LeakEngine.js';
+import { analyzeSystem, analyzeSystemFlowChannel, extractChannelData, classifyChannel } from '../../analysis/LeakEngine.js';
 import './Analyze.css';
 
 // Material-UI dialog and form components
@@ -68,7 +68,6 @@ const fmt = (n, decimals = 1) => {
 
 const fmtHrs = (h) => fmt(h, 1) + ' h';
 const fmtKwh = (k) => fmt(k, 1) + ' kWh';
-const fmtCost = (c) => '\u20AC' + fmt(c, 2);
 const fmtPct = (p) => (p * 100).toFixed(1) + '%';
 const fmtFlow = (v) => fmt(v, 2);
 
@@ -88,6 +87,23 @@ export default function CompressorAnalyze() {
   const [voltage, setVoltage] = useState(400);
   const [leakThreshold, setLeakThreshold] = useState(0);
 
+  // Analyze mode + System Analyze
+  const [analyzeMode, setAnalyzeMode] = useState('compressor'); // 'compressor' | 'system'
+  const [flowChannels, setFlowChannels] = useState([]);
+  const [systemFlowChannelId, setSystemFlowChannelId] = useState(null);
+  const [systemFlowResult, setSystemFlowResult] = useState(null);
+
+  // Analyze settings (mirror CAA AnalyzesSettingDialog / CalculateSettingDialog)
+  const [currency, setCurrency] = useState('\u20AC');
+  const [costPerM3, setCostPerM3] = useState(0.05);
+  const [co2PerKwh, setCo2PerKwh] = useState(0.55);
+  const [showCO2, setShowCO2] = useState(true);
+  const [workHourPerYear, setWorkHourPerYear] = useState(8760);
+  const [startTimeStr, setStartTimeStr] = useState('');
+  const [stopTimeStr, setStopTimeStr] = useState('');
+
+  const fmtCost = (c) => (currency || '\u20AC') + fmt(c, 2);
+
   // Compressor Config Modal Dialog state
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingCompressors, setEditingCompressors] = useState([]);
@@ -105,6 +121,24 @@ export default function CompressorAnalyze() {
     }
   }, [systemResult, compressors]);
 
+  // Load flow channels up-front so the System Flow Channel dropdown is populated
+  // even before the first analysis run.
+  useEffect(() => {
+    let cancelled = false;
+    if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) return undefined;
+    TestAPI.getChannels((res) => {
+      if (cancelled) return;
+      const chs = res ? res.logging_chs || [] : [];
+      const flows = chs.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'flow');
+      setFlowChannels(flows);
+      if (flows.length > 0) {
+        setSystemFlowChannelId((prev) => prev ?? flows[0].channel_id);
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleOpenSettings = async () => {
     // If we don't have compressors yet, discover channels first
     if (compressors.length === 0) {
@@ -112,6 +146,7 @@ export default function CompressorAnalyze() {
         const channels = await new Promise((resolve) => {
           TestAPI.getChannels((res) => resolve(res ? res.logging_chs || [] : []));
         });
+        setFlowChannels(channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'flow'));
         const currentChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'current');
         const powerChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'power');
         const inputChs = [...currentChs, ...powerChs];
@@ -217,6 +252,21 @@ export default function CompressorAnalyze() {
       const currentChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'current');
       const powerChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'power');
       const flowChs = channels.filter((ch) => classifyChannel(ch.unit_in_ascii) === 'flow');
+      setFlowChannels(flowChs);
+      if (flowChs.length > 0 && (systemFlowChannelId == null)) {
+        // remember the first flow channel as the default system flow channel
+        setSystemFlowChannelId((prev) => prev ?? flowChs[0].channel_id);
+      }
+
+      // Restrict to the selected analysis time period (whole file when empty)
+      if (startTimeStr) {
+        const t = new Date(startTimeStr).getTime();
+        if (!Number.isNaN(t)) allRows = allRows.filter(r => r.timestampMs >= t);
+      }
+      if (stopTimeStr) {
+        const t = new Date(stopTimeStr).getTime();
+        if (!Number.isNaN(t)) allRows = allRows.filter(r => r.timestampMs <= t);
+      }
 
       // Use either the provided customComps or the existing state, fallback to auto-generation
       const activeComps = customComps || compressors;
@@ -289,6 +339,22 @@ export default function CompressorAnalyze() {
         return;
       }
 
+      // Apply CO₂ factor and per-compressor flow-channel assignment
+      for (const comp of comps) {
+        comp.CO2EmmisionPerKWh = co2PerKwh;
+        if (comp.flowChannelId) {
+          const flowCh = channels.find(c => c.channel_id === comp.flowChannelId);
+          if (flowCh) {
+            comp.Unit = flowCh.channel_id;
+            comp.isFlowChannel = true;
+            comp.AirDeliveryUnit = flowCh.unit_in_ascii || comp.AirDeliveryUnit;
+            if (comp.Type === COMPRESSOR_TYPE_VARIABLE_FREQUENCY) {
+              comp._calculateVFAmpAndLinearCoefficiency();
+            }
+          }
+        }
+      }
+
       // Build data map
       const dataMap = new Map();
       for (const comp of comps) {
@@ -301,7 +367,22 @@ export default function CompressorAnalyze() {
         energyCostPerKwh: energyCost,
         voltage,
         leakThreshold,
+        workHourPerYear,
       });
+
+      // System Analyze: additionally summarize the designated system flow channel
+      let sysFlow = null;
+      if (analyzeMode === 'system' && systemFlowChannelId != null) {
+        const flowCh = channels.find(c => c.channel_id === systemFlowChannelId);
+        const flowData = extractChannelData(allRows, systemFlowChannelId);
+        sysFlow = analyzeSystemFlowChannel(flowData, sampleIntervalSec, {
+          leakThreshold,
+          flowUnit: flowCh ? flowCh.unit_in_ascii : 'm\u00B3/h',
+          airUnitCost: costPerM3,
+          workHourPerYear,
+        });
+      }
+      setSystemFlowResult(sysFlow);
 
       setCompressors(result.compressors);
       setSystemResult(result.system);
@@ -474,6 +555,77 @@ export default function CompressorAnalyze() {
         <h3 className="sidebar-section-title">Settings</h3>
 
         <div className="sidebar-input-group">
+          <label className="sidebar-label">Analyze Type</label>
+          <select
+            className="sidebar-input"
+            value={analyzeMode}
+            onChange={(e) => setAnalyzeMode(e.target.value)}
+          >
+            <option value="compressor">Compressor Analyses</option>
+            <option value="system">System Analyses</option>
+          </select>
+        </div>
+
+        {analyzeMode === 'system' && (
+          <div className="sidebar-input-group">
+            <label className="sidebar-label">System Flow Channel</label>
+            <select
+              className="sidebar-input"
+              value={systemFlowChannelId || ''}
+              onChange={(e) => setSystemFlowChannelId(e.target.value || null)}
+            >
+              {flowChannels.length === 0 && <option value="">No flow channels</option>}
+              {flowChannels.map((ch) => (
+                <option key={ch.channel_id} value={ch.channel_id}>
+                  {ch.full_channel_name || ch.logic_channel_description || ch.channel_id}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="sidebar-input-group">
+          <label className="sidebar-label">Analysis Time Period (optional)</label>
+          <input
+            className="sidebar-input"
+            type="datetime-local"
+            value={startTimeStr}
+            onChange={(e) => setStartTimeStr(e.target.value)}
+            placeholder="Start"
+          />
+          <input
+            className="sidebar-input"
+            type="datetime-local"
+            value={stopTimeStr}
+            onChange={(e) => setStopTimeStr(e.target.value)}
+            placeholder="End"
+            style={{ marginTop: '6px' }}
+          />
+        </div>
+
+        <div className="sidebar-input-group">
+          <label className="sidebar-label">Currency</label>
+          <input
+            className="sidebar-input"
+            type="text"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value || '\u20AC')}
+          />
+        </div>
+
+        <div className="sidebar-input-group">
+          <label className="sidebar-label">Cost per m³ (air)</label>
+          <input
+            className="sidebar-input"
+            type="number"
+            step="0.001"
+            min="0"
+            value={costPerM3}
+            onChange={(e) => setCostPerM3(parseFloat(e.target.value) || 0)}
+          />
+        </div>
+
+        <div className="sidebar-input-group">
           <label className="sidebar-label">Energy Cost (€/kWh)</label>
           <input
             className="sidebar-input"
@@ -507,6 +659,40 @@ export default function CompressorAnalyze() {
             value={leakThreshold}
             onChange={(e) => setLeakThreshold(parseFloat(e.target.value) || 0)}
           />
+        </div>
+
+        <div className="sidebar-input-group">
+          <label className="sidebar-label">CO₂ Emission (kg/kWh)</label>
+          <input
+            className="sidebar-input"
+            type="number"
+            step="0.01"
+            min="0"
+            value={co2PerKwh}
+            onChange={(e) => setCo2PerKwh(parseFloat(e.target.value) || 0)}
+          />
+        </div>
+
+        <div className="sidebar-input-group">
+          <label className="sidebar-label">Working Hour / Year</label>
+          <input
+            className="sidebar-input"
+            type="number"
+            step="100"
+            min="1"
+            value={workHourPerYear}
+            onChange={(e) => setWorkHourPerYear(parseInt(e.target.value, 10) || 8760)}
+          />
+        </div>
+
+        <div className="sidebar-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="checkbox"
+            id="showCO2"
+            checked={showCO2}
+            onChange={(e) => setShowCO2(e.target.checked)}
+          />
+          <label htmlFor="showCO2" className="sidebar-label" style={{ margin: 0 }}>Display CO₂ in report</label>
         </div>
 
         <button className="sidebar-reload-btn" onClick={() => runAnalysis()} disabled={loading}>
@@ -554,9 +740,9 @@ export default function CompressorAnalyze() {
             {/* Report Header */}
             <div className="report-header screen-only" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div className="report-title-section" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <h2 className="report-main-title" style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Compressor Analysis Report</h2>
+                <h2 className="report-main-title" style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: 0 }}>{analyzeMode === 'system' ? 'System Analysis Report' : 'Compressor Analysis Report'}</h2>
                 <p className="report-subtitle" style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
-                  System analysis details and efficiency statistics
+                  {analyzeMode === 'system' ? 'System flow + compressor efficiency statistics' : 'System analysis details and efficiency statistics'}
                 </p>
               </div>
               <button 
@@ -629,6 +815,61 @@ export default function CompressorAnalyze() {
               </div>
             </div>
 
+            {/* System Analyze — designated system flow channel summary (CAA System Analyze) */}
+            {analyzeMode === 'system' && systemFlowResult && (
+              <div className="table-card">
+                <h4 className="card-title">System Analyze — {systemFlowResult.flowUnit} flow channel</h4>
+                <div className="report-table-wrapper">
+                  <table className="report-table">
+                    <tbody>
+                      <tr>
+                        <td><strong>Average Flow</strong></td>
+                        <td>{fmtFlow(systemFlowResult.averageFlow)} {systemFlowResult.flowUnit}</td>
+                        <td><strong>Max Flow</strong></td>
+                        <td>{fmtFlow(systemFlowResult.maxFlow)} {systemFlowResult.flowUnit}</td>
+                      </tr>
+                      <tr>
+                        <td><strong>Min Flow</strong></td>
+                        <td>{fmtFlow(systemFlowResult.minFlow)} {systemFlowResult.flowUnit}</td>
+                        <td><strong>Total Air Delivery</strong></td>
+                        <td>{fmt(systemFlowResult.totalAirDelivery, 1)} m³</td>
+                      </tr>
+                      <tr>
+                        <td><strong>Total Air Delivery (1 yr)</strong></td>
+                        <td>{fmt(systemFlowResult.totalAirDeliveryOneYear, 0)} m³</td>
+                        <td><strong>Valid Record Time</strong></td>
+                        <td>{fmt(systemFlowResult.validHours, 1)} h</td>
+                      </tr>
+                      <tr>
+                        <td><strong>Average Leakage</strong></td>
+                        <td>{fmtFlow(leakThreshold || systemFlowResult.minFlow)} {systemFlowResult.flowUnit}</td>
+                        <td><strong>Total Leakage</strong></td>
+                        <td>{fmt(systemFlowResult.totalLeakage, 1)} m³</td>
+                      </tr>
+                      <tr>
+                        <td><strong>Leakage Rate</strong></td>
+                        <td>{fmtPct(systemFlowResult.leakageRate)}</td>
+                        <td><strong>Leakage Cost</strong></td>
+                        <td>{fmtCost(systemFlowResult.leakageCost)}</td>
+                      </tr>
+                      <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
+                        <td><strong>Cost per m³</strong></td>
+                        <td>{fmtCost(systemFlowResult.costPerM3)}/m³</td>
+                        <td><strong>Total Cost</strong></td>
+                        <td>{fmtCost(systemFlowResult.totalCost)}</td>
+                      </tr>
+                      <tr>
+                        <td><strong>Total Leakage (1 yr)</strong></td>
+                        <td>{fmt(systemFlowResult.totalLeakageOneYear, 1)} m³</td>
+                        <td><strong>Total Cost (1 yr)</strong></td>
+                        <td>{fmtCost(systemFlowResult.totalCostOneYear)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Flow & System Summary Table — matching CAA StatisticsReportDialog */}
             <div className="table-card">
               <h4 className="card-title">Flow & System Summary</h4>
@@ -677,19 +918,23 @@ export default function CompressorAnalyze() {
                       <td><strong>Total Leakage (1 yr)</strong></td>
                       <td>{fmt(systemResult.totalLeakage * (systemResult.totalAirDeliveryOneYear / Math.max(1, systemResult.totalAirDelivery)), 1)} m³</td>
                     </tr>
-                    <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
-                      <td><strong>Number of Compressors</strong></td>
-                      <td>{systemResult.numCompressorsSelected} / {systemResult.numCompressors}</td>
-                      <td><strong>Total CO₂</strong></td>
-                      <td>{fmt(systemResult.totalCO2Emmision, 2)} kg</td>
-                    </tr>
-                    <tr>
-                      <td><strong>Total CO₂ (1 yr)</strong></td>
-                      <td>{fmt(systemResult.totalCO2EmmisionOneYear, 2)} kg</td>
-                      <td></td>
-                      <td></td>
-                    </tr>
-                  </tbody>
+                    {showCO2 && (
+                        <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
+                          <td><strong>Number of Compressors</strong></td>
+                          <td>{systemResult.numCompressorsSelected} / {systemResult.numCompressors}</td>
+                          <td><strong>Total CO₂</strong></td>
+                          <td>{fmt(systemResult.totalCO2Emmision, 2)} kg</td>
+                        </tr>
+                      )}
+                      {showCO2 && (
+                        <tr>
+                          <td><strong>Total CO₂ (1 yr)</strong></td>
+                          <td>{fmt(systemResult.totalCO2EmmisionOneYear, 2)} kg</td>
+                          <td></td>
+                          <td></td>
+                        </tr>
+                      )}
+</tbody>
                 </table>
               </div>
             </div>
@@ -728,7 +973,7 @@ export default function CompressorAnalyze() {
                       <th>Max Flow</th>
                       <th>Avg Flow</th>
                       <th>Spec. Power</th>
-                      <th>CO₂ (kg)</th>
+                      {showCO2 && <th>CO₂ (kg)</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -749,7 +994,7 @@ export default function CompressorAnalyze() {
                         <td>{fmtFlow(c.MaxFlow)}</td>
                         <td>{fmtFlow(c.AverageFlow)}</td>
                         <td>{fmt(c.SpecificPower, 4)}</td>
-                        <td>{fmt(c.CO2Emmision, 2)}</td>
+                        {showCO2 && <td>{fmt(c.CO2Emmision, 2)}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -770,7 +1015,7 @@ export default function CompressorAnalyze() {
                       <td></td>
                       <td></td>
                       <td></td>
-                      <td>{fmt(compressors.reduce((s, c) => s + c.CO2Emmision, 0), 2)}</td>
+                      {showCO2 && <td>{fmt(compressors.reduce((s, c) => s + c.CO2Emmision, 0), 2)}</td>}
                     </tr>
                   </tfoot>
                 </table>
@@ -790,7 +1035,7 @@ export default function CompressorAnalyze() {
                       <th>Full Load (h)</th>
                       <th>Unload (h)</th>
                       <th>No Load (h)</th>
-                      <th>CO₂ (kg)</th>
+                      {showCO2 && <th>CO₂ (kg)</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -802,7 +1047,7 @@ export default function CompressorAnalyze() {
                         <td>{fmtHrs(c.FullLoadHoursOneYear)}</td>
                         <td>{fmtHrs(c.UnLoadHoursOneYear)}</td>
                         <td>{fmtHrs(c.NoLoadHoursOneYear)}</td>
-                        <td>{fmt(c.CO2EmmisionOneYear, 2)}</td>
+                        {showCO2 && <td>{fmt(c.CO2EmmisionOneYear, 2)}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -814,7 +1059,7 @@ export default function CompressorAnalyze() {
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.FullLoadHoursOneYear, 0))}</td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.UnLoadHoursOneYear, 0))}</td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.NoLoadHoursOneYear, 0))}</td>
-                      <td>{fmt(compressors.reduce((s, c) => s + c.CO2EmmisionOneYear, 0), 2)}</td>
+                      {showCO2 && <td>{fmt(compressors.reduce((s, c) => s + c.CO2EmmisionOneYear, 0), 2)}</td>}
                     </tr>
                   </tfoot>
                 </table>
@@ -902,6 +1147,24 @@ export default function CompressorAnalyze() {
                         >
                           <MenuItem value={COMPRESSOR_TYPE_LOAD_UNLOAD}>Load / Unload</MenuItem>
                           <MenuItem value={COMPRESSOR_TYPE_VARIABLE_FREQUENCY}>Variable Frequency</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '4px' }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Flow Channel (optional)</InputLabel>
+                        <Select
+                          value={editingCompressors[selectedCompIdx].flowChannelId || ''}
+                          label="Flow Channel (optional)"
+                          onChange={(e) => handleUpdateEditingComp('flowChannelId', e.target.value || null)}
+                        >
+                          <MenuItem value="">None</MenuItem>
+                          {flowChannels.map((ch) => (
+                            <MenuItem key={ch.channel_id} value={ch.channel_id}>
+                              {ch.full_channel_name || ch.logic_channel_description || ch.channel_id}
+                            </MenuItem>
+                          ))}
                         </Select>
                       </FormControl>
                     </div>

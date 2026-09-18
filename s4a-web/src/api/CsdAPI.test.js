@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { classifyChannel } from '../analysis/LeakEngine.js';
 import CsdAPI from './CsdAPI';
 
 describe('CsdAPI Parser', () => {
@@ -987,6 +990,45 @@ No.,Date Time,CH1 - mV,CH2 - mV
     expect(rows).toHaveLength(5000);
     expect(rows[0].values['1:0']).toBe(null); // B has no data at that time
     expect(rows[0].values['0:0']).toBe(500010); // A continues normally
+  });
+
+  it('recognizes the flow channel unit (m³/min) in the real Demo file', async () => {
+    const demoPath = path.join(process.cwd(), 'reference/Demo file.csd');
+    if (!fs.existsSync(demoPath)) return; // skip when the file is not present
+
+    const buffer = fs.readFileSync(demoPath);
+    const mockFile = {
+      name: 'Demo file.csd',
+      size: buffer.length,
+      async arrayBuffer() {
+        const b = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        return b;
+      },
+      slice(start, end) {
+        const b = buffer.subarray(start, end);
+        return { arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) };
+      }
+    };
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    const success = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(success).toBe(true);
+
+    let channels = null;
+    CsdAPI.getChannels(res => { channels = res.logging_chs; });
+    await new Promise(r => setTimeout(r, 60));
+
+    expect(channels.length).toBe(12);
+    const flowCh = channels.find(ch => ch.unit_in_ascii === 'm\u00B3/min');
+    expect(flowCh).toBeTruthy();
+    expect(flowCh.logic_channel_description).toBe('Flow');
+    expect(classifyChannel(flowCh.unit_in_ascii)).toBe('flow');
+    const flows = channels.filter(ch => classifyChannel(ch.unit_in_ascii) === 'flow');
+    expect(flows.length).toBeGreaterThan(0);
   });
 
 });

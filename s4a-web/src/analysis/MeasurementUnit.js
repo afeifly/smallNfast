@@ -145,6 +145,26 @@ function indexOf(arr, val) {
   return -1;
 }
 
+/** Normalize a unit string for tolerant matching (trim, lowercase, ³↔3, drop N-prefix, strip spaces). */
+function normalizeUnit(unit) {
+  return String(unit || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/\u00A0/g, '')
+    .replace(/\u00B3/g, '3')
+    .replace(/^n/, '');
+}
+
+/** Index of a flow unit in FLOW_RATE_UNITS, tolerant of case/whitespace/³-vs-3/N-prefix. */
+function flowUnitIndex(unit) {
+  const n = normalizeUnit(unit);
+  for (let i = 0; i < FLOW_RATE_UNITS.length; i++) {
+    if (normalizeUnit(FLOW_RATE_UNITS[i]) === n) return i;
+  }
+  return -1;
+}
+
 /** Check if unit is current (A) */
 export function isCurrentUnit(unit) {
   return unit === CURRENT_UNIT;
@@ -152,18 +172,18 @@ export function isCurrentUnit(unit) {
 
 /** Check if unit is a flow rate */
 export function isFlowRateUnit(unit) {
-  return FLOW_RATE_UNITS.includes(unit);
+  return flowUnitIndex(unit) >= 0;
 }
 
 /** Conversion ratio from given flow unit to m³/h */
 export function ratioToM3PerHour(unit) {
-  const i = indexOf(FLOW_RATE_UNITS, unit);
+  const i = flowUnitIndex(unit);
   return i >= 0 ? FLOW_UNIT_RATIO_TO_M3_PER_HOUR[i] : 1;
 }
 
 /** Conversion ratio from given FLOW unit to m³ (consumption) */
 export function ratioToM3BasedOnFlowUnit(flowUnit) {
-  const i = indexOf(FLOW_RATE_UNITS, flowUnit);
+  const i = flowUnitIndex(flowUnit);
   return i >= 0 ? CONSUMPTION_UNITS_RATIO_TO_M3[i] : 1;
 }
 
@@ -175,19 +195,19 @@ export function ratioToM3BasedOnConsumptionUnit(unit) {
 
 /** How many of this flow unit fit in 1 hour (e.g. l/min → 60) */
 export function flowUnitRatioToOneHour(unit) {
-  const i = indexOf(FLOW_RATE_UNITS, unit);
+  const i = flowUnitIndex(unit);
   return i >= 0 ? FLOW_UNIT_RATIO_TO_1_HOUR[i] : 1;
 }
 
 /** Resolution (decimal places) for a flow unit */
 export function flowUnitResolution(unit) {
-  const i = indexOf(FLOW_RATE_UNITS, unit);
+  const i = flowUnitIndex(unit);
   return i >= 0 ? FLOW_RATE_UNIT_RESOLUTIONS[i] : 0;
 }
 
 /** Get the corresponding consumption unit for a given flow unit */
 export function getConsumptionUnit(flowUnit) {
-  const i = indexOf(FLOW_RATE_UNITS, flowUnit);
+  const i = flowUnitIndex(flowUnit);
   return i >= 0 ? CONSUMPTION_UNITS[i] : '';
 }
 

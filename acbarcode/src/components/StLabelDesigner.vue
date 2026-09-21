@@ -499,8 +499,6 @@ function exportSingleTemplateJson() {
     itemNumbers: tpl?.itemNumbers ? JSON.parse(JSON.stringify(tpl.itemNumbers)) : [],
     config: label.config ? JSON.parse(JSON.stringify(label.config)) : { widthMm: 35, heightMm: 22, dpi: 203 },
     elements: JSON.parse(JSON.stringify(currentElements)),
-    elements_en: label.elements_en ? JSON.parse(JSON.stringify(label.elements_en)) : (activeLang.value === 'EN' ? JSON.parse(JSON.stringify(currentElements)) : []),
-    elements_cn: label.elements_cn ? JSON.parse(JSON.stringify(label.elements_cn)) : (activeLang.value === 'CN' ? JSON.parse(JSON.stringify(currentElements)) : []),
     midVariables: tpl?.midVariables ? JSON.parse(JSON.stringify(tpl.midVariables)) : []
   };
 
@@ -531,9 +529,10 @@ function importSingleTemplateJson(event) {
         const tpl = activeTemplate.value;
         const label = currentLabel.value;
         if (!label || !tpl) return;
+        const currentLangLabel = activeLang.value === 'CN' ? 'Chinese (CN)' : 'English (EN)';
         const ok = await showStConfirm({
           title: 'Import JSON Layout',
-          message: `Importing will OVERWRITE the current editor elements and settings of "${currentLabelName.value}". Continue?`,
+          message: `Importing will OVERWRITE the current ${currentLangLabel} editor elements and settings of "${currentLabelName.value}". Continue?`,
           confirmText: 'Import & Overwrite',
           type: 'warning'
         });
@@ -561,20 +560,44 @@ function importSingleTemplateJson(event) {
           importedMidVarsCount = tpl.midVariables.length;
         }
 
-        // Extract elements
-        if (Array.isArray(data.elements_en) && data.elements_en.length > 0) {
-          label.elements_en = JSON.parse(JSON.stringify(data.elements_en));
-        }
-        if (Array.isArray(data.elements_cn) && data.elements_cn.length > 0) {
-          label.elements_cn = JSON.parse(JSON.stringify(data.elements_cn));
+        // Helper to check if an array contains renderable visual elements (not just empty folders)
+        const hasVisualElements = (arr) => Array.isArray(arr) && arr.some(el => el && el.type !== 'folder');
+
+        // Determine which elements to import into the currently active language tab
+        let elementsToImport = null;
+
+        if (activeLang.value === 'CN') {
+          if (hasVisualElements(data.elements_cn)) {
+            elementsToImport = data.elements_cn;
+          } else if (hasVisualElements(data.elements)) {
+            elementsToImport = data.elements;
+          } else if (hasVisualElements(data.elements_en)) {
+            elementsToImport = data.elements_en;
+          } else if (Array.isArray(data.elements)) {
+            elementsToImport = data.elements;
+          } else if (Array.isArray(data.elements_cn)) {
+            elementsToImport = data.elements_cn;
+          }
+        } else {
+          // EN
+          if (hasVisualElements(data.elements_en)) {
+            elementsToImport = data.elements_en;
+          } else if (hasVisualElements(data.elements)) {
+            elementsToImport = data.elements;
+          } else if (hasVisualElements(data.elements_cn)) {
+            elementsToImport = data.elements_cn;
+          } else if (Array.isArray(data.elements)) {
+            elementsToImport = data.elements;
+          } else if (Array.isArray(data.elements_en)) {
+            elementsToImport = data.elements_en;
+          }
         }
 
-        // Fallback for older json files that only had a single elements array
-        if (Array.isArray(data.elements) && !data.elements_en && !data.elements_cn) {
+        if (Array.isArray(elementsToImport)) {
           if (activeLang.value === 'CN') {
-            label.elements_cn = JSON.parse(JSON.stringify(data.elements));
+            label.elements_cn = JSON.parse(JSON.stringify(elementsToImport));
           } else {
-            label.elements_en = JSON.parse(JSON.stringify(data.elements));
+            label.elements_en = JSON.parse(JSON.stringify(elementsToImport));
           }
         }
 
@@ -582,7 +605,7 @@ function importSingleTemplateJson(event) {
         scheduleSave();
         updateCanvas();
         const midVarMsg = importedMidVarsCount > 0 ? ` (${importedMidVarsCount} mid-variables included)` : '';
-        showStAlert(`Template elements and settings${midVarMsg} imported into editor for "${currentLabelName.value}". Click "Save Changes" to commit!`, 'Template Imported', 'info');
+        showStAlert(`Template elements and settings${midVarMsg} imported into editor for "${currentLabelName.value}" (${currentLangLabel}). Click "Save Changes" to commit!`, 'Template Imported', 'info');
       } else {
         showStAlert('Invalid template JSON file format.', 'Import Failed', 'warning');
       }

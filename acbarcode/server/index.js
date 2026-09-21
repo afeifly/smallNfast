@@ -1291,8 +1291,8 @@ async function handleStLabelInternal(req, res) {
       } else {
         // Fallback for single product payload
         products = [{
-          categ: body.categ || body.category || body.device_name || body.deviceName || '',
-          product: body.product || body.item_number || body.item_no || 'Internal',
+          categ: body.categ || body.category || body.device_name || body.deviceName || body.name || '',
+          product: body.product || body.item_number || body.item_no || body.default_code || 'Internal',
           serial_numbers: body.serial_numbers || body.serials || ['12345678'],
           options_text: body.options_text || body.optionsText || body.options || '',
           done_date: body.done_date || body.doneDate || body.date || done_date
@@ -1309,6 +1309,17 @@ async function handleStLabelInternal(req, res) {
       preview = req.body.preview !== false && req.body.preview !== 'false' && req.body.preview !== 0 && req.body.preview !== '0';
     }
 
+    const internalStandardKeys = new Set(['origin', 'order', 'order_id', 'orderId', 'internal_order', 'mo', 'lang', 'language', 'done_date', 'date', 'template_xml', 'template', 'products', 'preview']);
+    const extraOptionParams = {};
+    if (typeof req.body === 'object' && req.body) {
+      for (const [k, v] of Object.entries(req.body)) {
+        if (!internalStandardKeys.has(k) && v !== undefined && v !== null) {
+          extraOptionParams[k] = v;
+          extraOptionParams[k.toLowerCase()] = v;
+        }
+      }
+    }
+
     const ezplJson = await generateStInternalMultiProductEzplJson({
       origin,
       order_id,
@@ -1316,7 +1327,8 @@ async function handleStLabelInternal(req, res) {
       lang: normalizedLang,
       templateXml: template_xml,
       preview,
-      done_date
+      done_date,
+      ...extraOptionParams
     });
 
     return res.status(200).json(ezplJson);

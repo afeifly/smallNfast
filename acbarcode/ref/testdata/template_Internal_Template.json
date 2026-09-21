@@ -1,0 +1,200 @@
+{
+  "name": "Internal Template",
+  "deviceName": "",
+  "note": "Default SUTO-iTEC Internal label template (35×22mm @300 DPI). Always pinned and protected.",
+  "itemNumbers": [],
+  "config": {
+    "widthMm": 35,
+    "heightMm": 22,
+    "dpi": 300
+  },
+  "elements": [
+    {
+      "id": "el_logo",
+      "type": "image",
+      "name": "Logo",
+      "src": "/t_logo.jpg",
+      "xMm": 1,
+      "yMm": 1,
+      "widthMm": 9.6,
+      "storedName": "Logo",
+      "expanded": false
+    },
+    {
+      "id": "el_header_url",
+      "type": "text",
+      "name": "Header URL",
+      "text": "www.suto-itec.cn",
+      "xMm": 15.5,
+      "yMm": 1.8,
+      "fontSize": 5,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_divider",
+      "type": "hline",
+      "name": "Top Divider Line",
+      "xMm": 1,
+      "yMm": 4.2,
+      "x1Mm": 34,
+      "thicknessDots": 9,
+      "expanded": false
+    },
+    {
+      "id": "el_origin",
+      "type": "text",
+      "name": "发货单号",
+      "text": "单号: {{origin}}",
+      "xMm": 1,
+      "yMm": 4.8,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_order_id",
+      "type": "text",
+      "name": "送货单号",
+      "text": "送货单: {{order_id}}",
+      "xMm": 1,
+      "yMm": 5.5,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_model",
+      "type": "text",
+      "name": "Model Title",
+      "text": "型号: {{categ}}",
+      "xMm": 1,
+      "yMm": 6.3,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_item_no",
+      "type": "text",
+      "name": "Item No.",
+      "text": "订货号: {{product}}",
+      "xMm": 1,
+      "yMm": 7.8,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_serial",
+      "type": "text",
+      "name": "Serial No.",
+      "text": "序列号: {{serial}}",
+      "xMm": 1,
+      "yMm": 9.3,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_fieldbus",
+      "type": "text",
+      "name": "Fieldbus",
+      "text": "总线: Modbus/RTU+模拟量",
+      "xMm": 1,
+      "yMm": 12.3,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_power",
+      "type": "text",
+      "name": "Power supply",
+      "text": "供电电源: 16...30 VDC",
+      "xMm": 1,
+      "yMm": 14.2,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_pressure",
+      "type": "text",
+      "name": "Max. Pressure",
+      "text": "耐压极限: 5.0 MPa(g)",
+      "xMm": 1,
+      "yMm": 15.9,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_separator",
+      "type": "hline",
+      "lineShape": "VLine",
+      "name": "Vertical Separator",
+      "xMm": 19.6,
+      "yMm": 14.3,
+      "y1Mm": 17.3,
+      "thicknessDots": 5,
+      "expanded": false
+    },
+    {
+      "id": "el_accuracy",
+      "type": "text",
+      "name": "Accuracy",
+      "text": "测量精度: 1.5%",
+      "xMm": 20.4,
+      "yMm": 14.2,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_mfd",
+      "type": "text",
+      "name": "MFD",
+      "text": "出厂日期: 2027-07",
+      "xMm": 20.4,
+      "yMm": 15.9,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_qr_serial",
+      "type": "qrcode",
+      "name": "QR Serial",
+      "text": "{{serial}}",
+      "xMm": 1,
+      "yMm": 17.6,
+      "qrSizeMm": 10,
+      "expanded": false
+    },
+    {
+      "id": "el_device_name",
+      "type": "text",
+      "name": "Device Name",
+      "text": "{{deviceName}}",
+      "xMm": 12,
+      "yMm": 17.6,
+      "fontSize": 4,
+      "bold": true,
+      "expanded": false
+    },
+    {
+      "id": "el_bgx",
+      "type": "image",
+      "name": "Bottom Right Image",
+      "src": "/b_bgx.png",
+      "xMm": 18,
+      "yMm": 17.6,
+      "widthMm": 16,
+      "storedName": "Bottom_Right_Image",
+      "autoBottomRight": true,
+      "expanded": false
+    }
+  ],
+  "midVariables": []
+}

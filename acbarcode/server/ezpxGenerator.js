@@ -342,7 +342,8 @@ async function generateStSpecialMultiProductEzplJson({
   templateXml = null,
   preview = true,
   done_date = '',
-  templateType = 'delivery'
+  templateType = 'delivery',
+  extraParams = {}
 } = {}) {
   const { parseEzpxXmlToTemplate } = await import('../src/utils/stEzpxParser.js');
   const normalizedLang = (typeof lang === 'string' && (lang.toLowerCase() === 'cn' || lang.toLowerCase().startsWith('zh'))) ? 'cn' : 'en';
@@ -414,11 +415,11 @@ async function generateStSpecialMultiProductEzplJson({
   }
 
   // Flatten all serials across products
-  const productReservedKeys = new Set(['categ', 'category', 'device_name', 'deviceName', 'product', 'item_number', 'item_no', 'serial_numbers', 'serials', 'options_text', 'optionsText', 'options', 'done_date', 'doneDate', 'date']);
+  const productReservedKeys = new Set(['categ', 'category', 'device_name', 'deviceName', 'name', 'product', 'item_number', 'item_no', 'default_code', 'serial_numbers', 'serials', 'options_text', 'optionsText', 'options', 'done_date', 'doneDate', 'date']);
   const flatItems = [];
   for (const p of products) {
-    const categ = String(p.categ || p.category || p.device_name || p.deviceName || '').trim();
-    const product = String(p.product || p.item_number || p.item_no || '').trim();
+    const categ = String(p.categ || p.category || p.device_name || p.deviceName || p.name || '').trim();
+    const product = String(p.product || p.item_number || p.item_no || p.default_code || '').trim();
     const optionsText = p.options_text || p.optionsText || p.options || '';
     const itemDoneDate = p.done_date || p.doneDate || p.date || done_date || '';
 

@@ -74,41 +74,65 @@
                 <span>Template is protected (read-only). Click <strong>🔒 Locked</strong> above to unlock with the admin password.</span>
               </div>
 
-              <!-- Line 1: Template Name + Item Numbers / SKUs -->
-              <div class="field-grid-2">
-                <div class="field-col">
-                  <label>Template Name</label>
-                  <input type="text" :disabled="isCurrentTemplateLocked" :value="activeTemplate.name" @input="activeTemplate.name = $event.target.value; scheduleSave()" placeholder="e.g. Standard" />
-                </div>
-                <div class="field-col">
-                  <label>Item Numbers / SKUs <span class="hint-inline">(comma-separated)</span></label>
-                  <input type="text" :disabled="isCurrentTemplateLocked" :value="rawItemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
-                </div>
-              </div>
+              <!-- Main card layout: fields on left, fixed-size scaling preview on right -->
+              <div class="main-card-layout">
+                <div class="main-fields-area">
+                  <!-- Line 1: Template Name + Item Numbers / SKUs -->
+                  <div class="field-grid-2">
+                    <div class="field-col">
+                      <label>Template Name</label>
+                      <input type="text" :disabled="isCurrentTemplateLocked" :value="activeTemplate.name" @input="activeTemplate.name = $event.target.value; scheduleSave()" placeholder="e.g. Standard" />
+                    </div>
+                    <div class="field-col">
+                      <label>Item Numbers / SKUs <span class="hint-inline">(comma-separated)</span></label>
+                      <input type="text" :disabled="isCurrentTemplateLocked" :value="rawItemNumbersText" @input="onItemNumbersInput" placeholder="e.g. S695 4035, S695 4036, S403" />
+                    </div>
+                  </div>
 
-              <!-- Line 2: Label Size -->
-              <div class="field-row">
-                <div class="field-col" style="max-width: 260px;">
-                  <label>Label Size <span class="hint-inline">(Width × Height mm)</span></label>
-                  <div class="dims-inputs">
-                    <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
-                    <span class="dim-sep">×</span>
-                    <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
-                    <span class="dim-unit">mm</span>
+                  <!-- Line 2: Label Size -->
+                  <div class="field-row">
+                    <div class="field-col" style="max-width: 260px;">
+                      <label>Label Size <span class="hint-inline">(Width × Height mm)</span></label>
+                      <div class="dims-inputs">
+                        <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.widthMm" @input="setConfig('widthMm', $event.target.value)" />
+                        <span class="dim-sep">×</span>
+                        <input type="number" step="0.1" :disabled="isCurrentTemplateLocked" :value="activeTemplate.config?.heightMm" @input="setConfig('heightMm', $event.target.value)" />
+                        <span class="dim-unit">mm</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Line 3: Note (what this template is for) -->
+                  <div class="field-col">
+                    <label>Note <span class="hint-inline">(purpose / usage hint, visible in designer)</span></label>
+                    <textarea
+                      rows="2"
+                      :disabled="isCurrentTemplateLocked"
+                      :value="activeTemplate.note || ''"
+                      @input="activeTemplate.note = $event.target.value; scheduleSave()"
+                      placeholder="e.g. Standard flow sensor label, used for S695 4035 / S403. Created by admin."
+                    ></textarea>
                   </div>
                 </div>
-              </div>
 
-              <!-- Line 3: Note (what this template is for) -->
-              <div class="field-col">
-                <label>Note <span class="hint-inline">(purpose / usage hint, visible in designer)</span></label>
-                <textarea
-                  rows="2"
-                  :disabled="isCurrentTemplateLocked"
-                  :value="activeTemplate.note || ''"
-                  @input="activeTemplate.note = $event.target.value; scheduleSave()"
-                  placeholder="e.g. Standard flow sensor label, used for S695 4035 / S403. Created by admin."
-                ></textarea>
+                <!-- Fixed-size scaling preview picture -->
+                <div class="main-preview-panel">
+                  <div class="preview-panel-header">
+                    <span class="preview-tag">👁️ Preview</span>
+                    <div class="preview-lang-pill">
+                      <button type="button" class="lang-pill-btn" :class="{ active: previewLang === 'EN' }" @click="previewLang = 'EN'">EN</button>
+                      <button type="button" class="lang-pill-btn" :class="{ active: previewLang === 'CN' }" @click="previewLang = 'CN'">CN</button>
+                    </div>
+                  </div>
+                  <div class="preview-viewport" @click="handleOpenInDesigner" title="Click to open in Designer">
+                    <img v-if="mainPreviewUrl" :src="mainPreviewUrl" class="fixed-scaling-img" alt="Main Label Preview" />
+                    <div v-else class="preview-spinner">Rendering...</div>
+                  </div>
+                  <div class="preview-footer-info">
+                    <span>{{ activeTemplate.config?.widthMm || 35 }} × {{ activeTemplate.config?.heightMm || 22 }} mm</span>
+                    <span>{{ activeTemplate.config?.dpi || 300 }} DPI</span>
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -123,6 +147,11 @@
             <div class="card-body tight">
               <div v-if="subCount(activeTemplate) === 0" class="tpl-empty small">No sub-templates configured.</div>
               <div v-for="sub in activeTemplate.subTemplates" :key="sub.id" class="sub-row-compact">
+                <!-- Sub-template thumbnail preview -->
+                <div class="sub-thumb-viewport" @click="handleOpenInDesigner" title="Click to open in Designer">
+                  <img v-if="subPreviewUrls[sub.id]" :src="subPreviewUrls[sub.id]" class="sub-scaling-img" alt="Sub Preview" />
+                  <span v-else class="sub-thumb-placeholder">🏷️</span>
+                </div>
                 <div class="sub-fields">
                   <input type="text" :disabled="isCurrentTemplateLocked" :value="sub.name" @input="sub.name = $event.target.value; scheduleSave()" class="sub-name-compact" placeholder="Sub-template name" />
                   <input type="text" :disabled="isCurrentTemplateLocked" :value="sub.note || ''" @input="sub.note = $event.target.value; scheduleSave()" class="sub-note-compact" placeholder="Note (what this sub-template is for)" />
@@ -274,8 +303,67 @@ import {
 import { isSpecialTemplate, isDeliveryTemplate, isInternalTemplate, sortTemplatesWithDeliveryFirst, verifyAdminPassword } from '../../utils/stTemplateManager.js';
 import { parseEzpxXmlToTemplate } from '../../utils/stEzpxParser.js';
 import { showStAlert, showStConfirm } from '../../utils/stDialog.js';
+import { renderStCanvasDynamic } from '../../utils/stCanvasRenderer.js';
 
 const emit = defineEmits(['open-in-designer']);
+
+// ── Preview Generation State & Functions ────────────────────────────
+const previewLang = ref('EN');
+const mainPreviewUrl = ref('');
+const subPreviewUrls = ref({});
+
+function getTplElements(tpl, lang) {
+  if (!tpl) return [];
+  const langKey = lang === 'CN' ? 'elements_cn' : 'elements_en';
+  const list = tpl[langKey];
+  if (Array.isArray(list) && list.some(el => el && el.type !== 'folder')) {
+    return list;
+  }
+  if (Array.isArray(tpl.elements) && tpl.elements.some(el => el && el.type !== 'folder')) {
+    return tpl.elements;
+  }
+  const altKey = lang === 'CN' ? 'elements_en' : 'elements_cn';
+  if (Array.isArray(tpl[altKey]) && tpl[altKey].some(el => el && el.type !== 'folder')) {
+    return tpl[altKey];
+  }
+  return list || tpl.elements || [];
+}
+
+async function renderTemplateToDataUrl(tpl, lang = 'EN') {
+  if (!tpl) return '';
+  const offscreen = document.createElement('canvas');
+  const elements = getTplElements(tpl, lang);
+  const cfg = tpl.config || { widthMm: 35, heightMm: 22, dpi: 300 };
+  const prod = tpl.itemNumbers?.[0] || 'S695 4035';
+  const devName = tpl.deviceName || '';
+  const extra = { midVariables: tpl.midVariables || [] };
+  await renderStCanvasDynamic(offscreen, elements, cfg, '3726 0001', prod, '', devName, extra);
+  return offscreen.toDataURL('image/png');
+}
+
+async function updatePreviews() {
+  if (!activeTemplate.value) {
+    mainPreviewUrl.value = '';
+    subPreviewUrls.value = {};
+    return;
+  }
+  try {
+    mainPreviewUrl.value = await renderTemplateToDataUrl(activeTemplate.value, previewLang.value);
+    const subMap = {};
+    if (Array.isArray(activeTemplate.value.subTemplates)) {
+      for (const sub of activeTemplate.value.subTemplates) {
+        subMap[sub.id] = await renderTemplateToDataUrl(sub, previewLang.value);
+      }
+    }
+    subPreviewUrls.value = subMap;
+  } catch (err) {
+    console.error('Failed to update template manager previews:', err);
+  }
+}
+
+watch([activeTemplate, previewLang], () => {
+  nextTick(() => updatePreviews());
+}, { deep: true, immediate: true });
 
 // ── Template Lock State ─────────────────────────────────────────────
 const isUnlockModalOpen = ref(false);
@@ -797,11 +885,128 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
+/* ── Main card preview layout ── */
+.main-card-layout {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .main-card-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.main-fields-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.main-preview-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.preview-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.preview-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.preview-lang-pill {
+  display: flex;
+  background: #e2e8f0;
+  border-radius: 12px;
+  padding: 2px;
+}
+
+.lang-pill-btn {
+  border: none;
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #64748b;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lang-pill-btn.active {
+  background: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.preview-viewport {
+  width: 100%;
+  height: 125px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.preview-viewport:hover {
+  border-color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.15);
+}
+
+.fixed-scaling-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  display: block;
+}
+
+.preview-spinner {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.preview-footer-info {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
 /* ── Sub-templates compact rows ── */
 .sub-row-compact {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 6px 10px;
   border: 1px solid #edf2f7;
   border-radius: 6px;
@@ -809,6 +1014,41 @@ onMounted(async () => {
   background: #fafbfc;
   flex-wrap: wrap;
 }
+
+.sub-thumb-viewport {
+  width: 58px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px;
+  box-sizing: border-box;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s;
+}
+
+.sub-thumb-viewport:hover {
+  border-color: #3b82f6;
+}
+
+.sub-scaling-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.sub-thumb-placeholder {
+  font-size: 0.9rem;
+  opacity: 0.5;
+}
+
 .sub-fields { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
 .sub-name-compact { flex: 1; }
 .sub-note-compact { color: #718096; font-size: 0.82rem; }

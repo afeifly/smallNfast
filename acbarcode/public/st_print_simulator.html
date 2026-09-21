@@ -30,16 +30,37 @@
 
 <body class="bg-light">
     <div class="container py-5" style="max-width: 720px;">
-        <div class="card">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">Product</h5>
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 border-bottom">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">🖨️ ST Label Print Simulator</h5>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1" id="target-endpoint-badge">POST /st_label</span>
+                </div>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
+                <!-- Label Type Selector Tabs -->
+                <div class="mb-4">
+                    <label class="form-label fw-semibold text-muted small text-uppercase mb-2">Select Template / Label Endpoint</label>
+                    <div class="btn-group w-100" role="group" aria-label="Label Type">
+                        <input type="radio" class="btn-check" name="label-type" id="type-normal" value="normal" checked onchange="onLabelTypeChange('normal')">
+                        <label class="btn btn-outline-primary fw-semibold" for="type-normal">🏷️ Standard / Custom</label>
+
+                        <input type="radio" class="btn-check" name="label-type" id="type-delivery" value="delivery" onchange="onLabelTypeChange('delivery')">
+                        <label class="btn btn-outline-primary fw-semibold" for="type-delivery">🚚 Special Delivery</label>
+
+                        <input type="radio" class="btn-check" name="label-type" id="type-internal" value="internal" onchange="onLabelTypeChange('internal')">
+                        <label class="btn btn-outline-primary fw-semibold" for="type-internal">🏭 Special Internal</label>
+                    </div>
+                    <div class="form-text mt-2 text-muted" id="type-description">
+                        Standard mode: matches custom templates by product item number via <code>/st_label</code>.
+                    </div>
+                </div>
+
                 <form id="product-form" onsubmit="event.preventDefault(); printST();">
                     <div class="row g-3">
                         <div class="col-12">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <label class="form-label mb-0" for="api-base">API base (label server)</label>
+                                <label class="form-label mb-0 fw-semibold" for="api-base">API base (label server)</label>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none"
                                     id="reset-api-base" title="Reset to current website URL">Reset to website
                                     URL</button>
@@ -49,25 +70,44 @@
                                     id="api-base-default-label"></code>). You can also enter
                                 <code>http://localhost:5005</code> or another server IP for testing.</div>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Product</label>
+
+                        <!-- Delivery / Internal fields: Origin & Order ID -->
+                        <div class="col-md-6" id="field-origin-group" style="display:none;">
+                            <label class="form-label fw-semibold" id="origin-label">Origin (SO / MO / Picking)</label>
+                            <input id="origin" class="form-control" placeholder="e.g. WH/OUT/0012 or MO-2609-0012" />
+                        </div>
+                        <div class="col-md-6" id="field-order-id-group" style="display:none;">
+                            <label class="form-label fw-semibold" id="order-id-label">Order ID / Delivery Note (DN / MO)</label>
+                            <input id="order-id" class="form-control" placeholder="e.g. DN-2026-088" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Product (Item Number / default_code)</label>
                             <input id="product" class="form-control" value="S695 4120" />
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Device / Model Name (categ / name)</label>
+                            <input id="device-name" class="form-control" placeholder="e.g. S403 Flow Sensor" />
+                        </div>
+
                         <div class="col-12">
-                            <label class="form-label">Serial numbers (comma separated)</label>
+                            <label class="form-label fw-semibold">Serial numbers (comma separated)</label>
                             <input id="serials" class="form-control" value="2726 8785, 2726 8786" />
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Options</label>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Options</label>
                             <input id="options" class="form-control"
                                 value="A1003, A1010, A1323, A1409, A1410, A1420, A1426" />
                         </div>
-                        <div class="col-12">
-                            <label class="form-label">Language (lang)</label>
-                            <input id="lang" class="form-control" value="zh" />
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Language (lang)</label>
+                            <select id="lang" class="form-select">
+                                <option value="zh" selected>zh / cn (Chinese)</option>
+                                <option value="en">en (English)</option>
+                            </select>
                         </div>
-                        <div class="col-12 text-end">
-                            <button type="submit" class="btn btn-primary" id="print-st-btn">Print ST</button>
+                        <div class="col-12 text-end mt-4">
+                            <button type="submit" class="btn btn-primary px-4 py-2 fw-semibold" id="print-st-btn">🖨️ Test & Show Dialog</button>
                         </div>
                         <div id="form-error" class="col-12"></div>
                     </div>
@@ -75,10 +115,7 @@
             </div>
         </div>
         <p class="text-muted small mt-3 mb-0">
-            Standalone "Print ST" simulator. On load it POSTs the same payload as
-            <code>curl -X POST {api-base}/st_label</code>, then shows the
-            <strong>Modify</strong> dialog (widget) exactly as Odoo would.
-            If the label server is unreachable, it falls back to embedded sample data.
+            Standalone "Print ST" simulator. Select an endpoint above (Standard, Delivery, or Internal), tweak the payload, and click <strong>Test & Show Dialog</strong> to view the dialog (widget) exactly as Odoo would.
         </p>
     </div>
 
@@ -428,24 +465,89 @@
             }
         }
 
+        // ===== Template Endpoints & Presets =====
+        const TYPE_PRESETS = {
+            normal: {
+                endpoint: "/st_label",
+                desc: "Standard mode: matches custom templates by product item number via <code>POST /st_label</code>.",
+                product: "S695 4120",
+                deviceName: "S403 Flow Sensor",
+                serials: "2726 8785, 2726 8786",
+                options: "A1003, A1010, A1323, A1409, A1410, A1420, A1426",
+                origin: "",
+                orderId: "",
+                showOrigin: false
+            },
+            delivery: {
+                endpoint: "/st_label_delivery",
+                desc: "Delivery mode: directly tests the special <strong>Delivery Template</strong> via <code>POST /st_label_delivery</code>.",
+                product: "S695 4035",
+                deviceName: "S403 Delivery Label",
+                serials: "3726 0001, 3726 0002",
+                options: "1-1.6, A1007",
+                origin: "SO-2026-0045",
+                orderId: "DN-2026-088",
+                showOrigin: true
+            },
+            internal: {
+                endpoint: "/st_label_internal",
+                desc: "Internal mode: directly tests the special <strong>Internal Template</strong> via <code>POST /st_label_internal</code>.",
+                product: "S695 4120",
+                deviceName: "S421 Thermal Mass Flow Meter (Inline), 1.6 MPa",
+                serials: "3025 0001, 3025 0002",
+                options: "1-1.6, A1007",
+                origin: "MO-2609-0012",
+                orderId: "MO-4567",
+                showOrigin: true
+            }
+        };
+
+        function onLabelTypeChange(type) {
+            const preset = TYPE_PRESETS[type] || TYPE_PRESETS.normal;
+            const badge = document.getElementById("target-endpoint-badge");
+            if (badge) badge.textContent = "POST " + preset.endpoint;
+            const desc = document.getElementById("type-description");
+            if (desc) desc.innerHTML = preset.desc;
+
+            const productEl = document.getElementById("product");
+            if (productEl) productEl.value = preset.product;
+            const devEl = document.getElementById("device-name");
+            if (devEl) devEl.value = preset.deviceName;
+            const serialsEl = document.getElementById("serials");
+            if (serialsEl) serialsEl.value = preset.serials;
+            const optEl = document.getElementById("options");
+            if (optEl) optEl.value = preset.options;
+            const originEl = document.getElementById("origin");
+            if (originEl) originEl.value = preset.origin;
+            const orderEl = document.getElementById("order-id");
+            if (orderEl) orderEl.value = preset.orderId;
+
+            const originGroup = document.getElementById("field-origin-group");
+            const orderGroup = document.getElementById("field-order-id-group");
+            if (originGroup) originGroup.style.display = preset.showOrigin ? "block" : "none";
+            if (orderGroup) orderGroup.style.display = preset.showOrigin ? "block" : "none";
+        }
+
         function showDialog(data) {
-            const cfg = templateConfig(data.templates && data.templates[0]);
-            const serials = data.serial_numbers || [];
+            const firstItem = data.templates?.[0]?.items?.[0];
+            const serials = data.serial_numbers || (data.templates ? data.templates.flatMap(t => (t.items || []).map(i => i.serial)) : []);
             currentState = {
-                product: data.product || "",
-                options: data.options || "",
-                lang: data.lang || "cn",
+                product: data.product || firstItem?.product || document.getElementById("product").value || "",
+                options: data.options || firstItem?.options_text || document.getElementById("options").value || "",
+                lang: data.lang || document.getElementById("lang").value || "cn",
                 done_date: data.done_date || "",
                 available_patches: data.available_patches || [],
                 serial_numbers: serials,
                 templates: data.templates || []
             };
-            document.getElementById("w-product").value = data.product || "";
-            document.getElementById("w-options").value = Array.isArray(data.options) ? data.options.join(", ") : data.options || "";
-            document.getElementById("w-device").value = data.device_name || "";
-            document.getElementById("w-total").value = data.total_serials ?? serials.length ?? 0;
+            const devName = data.device_name || data.templates?.[0]?.name || document.getElementById("device-name")?.value || "";
+            document.getElementById("w-product").value = currentState.product;
+            document.getElementById("w-options").value = Array.isArray(currentState.options) ? currentState.options.join(", ") : currentState.options || "";
+            document.getElementById("w-device").value = devName;
+            const totalCount = data.total_serials ?? data.total_labels ?? serials.length ?? 0;
+            document.getElementById("w-total").value = totalCount;
             document.getElementById("w-summary").textContent =
-                `${data.product || ""} · ${data.device_name || ""} · ${data.total_serials ?? serials.length ?? 0} serials`;
+                `${currentState.product} · ${devName} · ${totalCount} serials`;
             setStatus("");
             showMainView();
             renderTemplates(data);
@@ -457,39 +559,62 @@
             await fetchAndShow(payload);
         }
 
-        async function initDemo() {
-            const payload = buildPayload();
-            const errEl = document.getElementById("form-error");
-            errEl.innerHTML = "";
-            try {
-                const data = await postToServer(payload);
-                document.getElementById("product").value = data.product || payload.product;
-                document.getElementById("serials").value = (data.serial_numbers || []).join(", ") || document.getElementById("serials").value;
-                if (data.options && data.options.length) {
-                    document.getElementById("options").value = data.options.join(", ");
-                }
-                document.getElementById("lang").value = data.lang || payload.lang;
-                showDialog(data);
-            } catch (e) {
-                console.warn("st_label unreachable on init, using sample data:", e.message);
-                errEl.innerHTML =
-                    `<div class="alert alert-warning">st_label unreachable (${e.message}). Showing embedded sample response so you can view the dialog.</div>`;
-                showDialog(SAMPLE_RESPONSE);
-            }
+        // On initial page load: only initialize form & endpoint presets. DO NOT pop up the dialog!
+        function initDemo() {
+            initApiBase();
+            onLabelTypeChange("normal");
         }
 
         function buildPayload() {
+            const type = document.querySelector('input[name="label-type"]:checked')?.value || 'normal';
+            const product = document.getElementById("product").value.trim();
+            const deviceName = (document.getElementById("device-name")?.value || "").trim();
+            const serials = document.getElementById("serials").value.split(",").map(s => s.trim()).filter(Boolean);
+            const options = document.getElementById("options").value.split(",").map(s => s.trim()).filter(Boolean);
+            const lang = document.getElementById("lang").value.trim() || "cn";
+            const origin = (document.getElementById("origin")?.value || "").trim();
+            const orderId = (document.getElementById("order-id")?.value || "").trim();
+
+            if (type === 'delivery' || type === 'internal') {
+                return {
+                    origin,
+                    order_id: orderId,
+                    lang,
+                    format: "json",
+                    preview: true,
+                    products: [
+                        {
+                            categ: deviceName,
+                            name: deviceName,
+                            product: product,
+                            default_code: product,
+                            serial_numbers: serials,
+                            options_text: options.join(', '),
+                            options: options
+                        }
+                    ]
+                };
+            }
+
             return {
-                "product": document.getElementById("product").value,
-                "serial_numbers": document.getElementById("serials").value.split(",").map(s => s.trim()).filter(Boolean),
-                "options": document.getElementById("options").value.split(",").map(s => s.trim()).filter(Boolean),
-                "lang": document.getElementById("lang").value || "cn",
-                "format": "json",
+                product: product,
+                default_code: product,
+                name: deviceName,
+                device_name: deviceName,
+                serial_numbers: serials,
+                options: options,
+                lang: lang,
+                format: "json",
+                preview: true
             };
         }
 
         async function postToServer(payload) {
-            const resp = await fetch(getApiBase() + "/st_label", {
+            const type = document.querySelector('input[name="label-type"]:checked')?.value || 'normal';
+            const preset = TYPE_PRESETS[type] || TYPE_PRESETS.normal;
+            const endpoint = preset.endpoint;
+
+            const resp = await fetch(getApiBase() + endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),

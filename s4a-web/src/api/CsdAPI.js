@@ -641,6 +641,7 @@ async function _readFileChannelsPage(fileRec, chans, s0, s1) {
       arr[i] = (v <= DATA_OVERRANGE) ? NaN : v;
     }
     out[c.id] = arr;
+    if (c.key) out[c.key] = arr;
   }
   return { s0, values: out };
 }
@@ -870,6 +871,19 @@ function _isMulti() {
   return _fileLoaded && !_isCsvMode && _files.length > 1 && !!_merged;
 }
 
+function _hasTimeOverlap(files) {
+  for (let i = 0; i < files.length; i++) {
+    for (let j = i + 1; j < files.length; j++) {
+      const f1 = files[i];
+      const f2 = files[j];
+      if (Math.max(f1.startTimeMs, f2.startTimeMs) < Math.min(f1.stopTimeMs, f2.stopTimeMs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** Rebuild the merged "virtual file" view from `_files`. */
 function _rebuildMerged() {
   if (_files.length <= 1) {
@@ -882,26 +896,77 @@ function _rebuildMerged() {
   const intervalMs = gridSec * 1000;
   const channels = [];
   const channelMap = {};
-  _files.forEach((fr, fi) => {
-    fr.channels.forEach((ch, li) => {
-      const id = `${fi}:${li}`;
-      channelMap[id] = { id, fileIndex: fi, localIdx: li };
-      channels.push({ ...ch, channel_id: id, file_index: fi, local_channel_id: li });
+
+  const isOverlapping = _hasTimeOverlap(_files);
+
+  if (isOverlapping) {
+    // Option A: Overlapping files (parallel concurrent logging) -> separate channels
+    _files.forEach((fr, fi) => {
+      fr.channels.forEach((ch, li) => {
+        const id = `${fi}:${li}`;
+        const chEntry = {
+          ...ch,
+          id,
+          channel_id: id,
+          file_index: fi,
+          local_channel_id: li,
+          fileIndex: fi,
+          localIdx: li,
+          bindings: [{ fileIndex: fi, localIdx: li }],
+        };
+        channelMap[id] = chEntry;
+        channels.push(chEntry);
+      });
     });
-  });
+  } else {
+    // Option B: Sequential / non-overlapping files -> smart channel unification
+    const norm = s => (s || '').trim().toLowerCase();
+    _files.forEach((fr, fi) => {
+      fr.channels.forEach((ch, li) => {
+        const name = norm(ch.logic_channel_description || ch.full_channel_name);
+        const sensor = norm(ch.sensor_description);
+        const unit = norm(ch.unit_in_ascii);
+
+        let match = null;
+        if (name) {
+          match = channels.find(u => norm(u.logic_channel_description || u.full_channel_name) === name);
+        }
+        if (!match && sensor && unit) {
+          match = channels.find(u => norm(u.sensor_description) === sensor && norm(u.unit_in_ascii) === unit);
+        }
+
+        if (match) {
+          match.bindings.push({ fileIndex: fi, localIdx: li });
+          match._min = Math.min(match._min, ch._min);
+          match._max = Math.max(match._max, ch._max);
+          channelMap[`${fi}:${li}`] = match;
+        } else {
+          const id = `${channels.length}`;
+          const compoundId = `${fi}:${li}`;
+          const chEntry = {
+            ...ch,
+            id,
+            channel_id: id,
+            fileIndex: fi,
+            localIdx: li,
+            bindings: [{ fileIndex: fi, localIdx: li }],
+          };
+          channels.push(chEntry);
+          channelMap[id] = chEntry;
+          channelMap[compoundId] = chEntry;
+        }
+      });
+    });
+  }
+
   const numSamples = Math.max(0, Math.ceil((stopMs - startMs) / intervalMs));
   _merged = { channels, channelMap, startMs, stopMs, gridSec, intervalMs, numSamples };
 }
 
-/** Overlap validation (CANalyzer semantics): the appended file must share a time window with the session. */
+/** Overlap validation: In Option B (concatenation / time gap allowed), any valid CSD file can be appended. */
 function _validateOverlap(record) {
-  if (_files.length === 0) return null;
-  const s = Math.max(..._files.map(f => f.startTimeMs));
-  const e = Math.min(..._files.map(f => f.stopTimeMs));
-  const interStart = Math.max(record.startTimeMs, s);
-  const interStop = Math.min(record.stopTimeMs, e);
-  if (interStop <= interStart) {
-    return 'No common time range with the loaded file(s). Please select a file that overlaps in time.';
+  if (!record || record.numChannels <= 0) {
+    return 'Invalid file: no channels found.';
   }
   return null;
 }
@@ -1029,11 +1094,21 @@ const CsdAPI = {
   },
 
   async appendFile(file) {
-    if (!_fileLoaded || _isCsvMode) {
-      return { ok: false, reason: 'No CSD file is loaded to append to.' };
+    if (!_fileLoaded) {
+      return { ok: false, reason: 'No file is loaded to append to.' };
+    }
+    if (_isCsvMode) {
+      if (!file || !file.name || !file.name.toLowerCase().endsWith('.csv')) {
+        return { ok: false, reason: 'Cannot append a CSD file to a CSV session. Please append a .csv file.' };
+      }
+      const res = await CsvAPI.appendFile(file);
+      if (res && res.ok) {
+        _onFileLoadedCallbacks.forEach(fn => fn());
+      }
+      return res;
     }
     if (!file || !file.name || !file.name.toLowerCase().endsWith('.csd')) {
-      return { ok: false, reason: 'Only .csd files can be appended.' };
+      return { ok: false, reason: 'Cannot append a CSV file to a CSD session. Please append a .csd file.' };
     }
     try {
       const { file: fileToLoad, fileBuffer } = await _bufferFileIfSmall(file);
@@ -1055,6 +1130,9 @@ const CsdAPI = {
 
   /** Number of files currently in the session (1 for a normal single-file load). */
   getNumLoadedFiles() {
+    if (_fileLoaded && _isCsvMode) {
+      return CsvAPI.getNumLoadedFiles ? CsvAPI.getNumLoadedFiles() : 1;
+    }
     return _files.length > 0 ? _files.length : (_fileLoaded ? 1 : 0);
   },
 
@@ -1304,13 +1382,20 @@ const CsdAPI = {
       : m.channels.map(c => c.channel_id);
     const selected = [];
     for (const id of ids) {
-      const cm = m.channelMap[id];
-      if (cm) selected.push({ ...cm, id: String(id) });
+      const cm = m.channelMap[id] || m.channelMap[String(id)];
+      if (cm && !selected.includes(cm)) selected.push(cm);
     }
 
     const byFile = {};
     for (const c of selected) {
-      (byFile[c.fileIndex] = byFile[c.fileIndex] || []).push(c);
+      const bindings = c.bindings || [c];
+      for (const b of bindings) {
+        (byFile[b.fileIndex] = byFile[b.fileIndex] || []).push({
+          ...b,
+          id: c.channel_id,
+          key: `${b.fileIndex}:${b.localIdx}`
+        });
+      }
     }
 
     const startMs = m.startMs + startGrid * m.intervalMs;
@@ -1321,7 +1406,7 @@ const CsdAPI = {
     for (const fiStr of Object.keys(byFile)) {
       const fi = Number(fiStr);
       const fr = _files[fi];
-      if (fr.numSamples <= 0) {
+      if (fr.numSamples <= 0 || endMs < fr.startTimeMs || startMs > fr.stopTimeMs) {
         fileData[fi] = { s0: 0, values: {} };
         continue;
       }
@@ -1337,13 +1422,23 @@ const CsdAPI = {
         const timeMs = startMs + i * m.intervalMs;
         const values = {};
         for (const c of selected) {
-          const fr = _files[c.fileIndex];
-          const d = fileData[c.fileIndex];
-          if (!d || !d.values[c.id]) continue;
-          const sIdx = Math.round((timeMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec);
-          const rel = sIdx - d.s0;
-          const v = (rel >= 0 && rel < d.values[c.id].length) ? d.values[c.id][rel] : NaN;
-          values[c.id] = Number.isNaN(v) ? null : v;
+          let val = null;
+          const bindings = c.bindings || [c];
+          for (const b of bindings) {
+            const fr = _files[b.fileIndex];
+            if (timeMs >= fr.startTimeMs && timeMs <= fr.stopTimeMs) {
+              const d = fileData[b.fileIndex];
+              const arr = d && d.values && (d.values[`${b.fileIndex}:${b.localIdx}`] || d.values[c.channel_id]);
+              if (arr) {
+                const sIdx = Math.round((timeMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec);
+                const rel = sIdx - d.s0;
+                const v = (rel >= 0 && rel < arr.length) ? arr[rel] : NaN;
+                val = Number.isNaN(v) ? null : v;
+                break;
+              }
+            }
+          }
+          values[c.channel_id] = val;
         }
         rows.push({ index: gridIndex, recordId: gridIndex, timestampMs: timeMs, values });
       }
@@ -1381,17 +1476,21 @@ const CsdAPI = {
       const endMs = m.startMs + (start + count - 1) * m.intervalMs;
       const byFile = {};
       for (const ch of m.channels) {
-        (byFile[ch.file_index] = byFile[ch.file_index] || []).push({
-          id: ch.channel_id,
-          localIdx: ch.local_channel_id,
-        });
+        const bindings = ch.bindings || [ch];
+        for (const b of bindings) {
+          (byFile[b.fileIndex] = byFile[b.fileIndex] || []).push({
+            ...b,
+            id: ch.channel_id,
+            key: `${b.fileIndex}:${b.localIdx}`
+          });
+        }
       }
-const fileData = {};
+      const fileData = {};
       const reads = [];
       for (const fiStr of Object.keys(byFile)) {
         const fi = Number(fiStr);
         const fr = _files[fi];
-        if (fr.numSamples <= 0) {
+        if (fr.numSamples <= 0 || endMs < fr.startTimeMs || startMs > fr.stopTimeMs) {
           fileData[fi] = { s0: 0, values: {} };
           continue;
         }
@@ -1405,13 +1504,23 @@ const fileData = {};
         const timeMs = startMs + i * m.intervalMs;
         const values = {};
         for (const ch of m.channels) {
-          const fr = _files[ch.file_index];
-          const d = fileData[ch.file_index];
-          if (!d || !d.values[ch.channel_id]) { values[ch.channel_id] = null; continue; }
-          const sIdx = Math.round((timeMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec);
-          const rel = sIdx - d.s0;
-          const v = (rel >= 0 && rel < d.values[ch.channel_id].length) ? d.values[ch.channel_id][rel] : NaN;
-          values[ch.channel_id] = Number.isNaN(v) ? null : v;
+          let val = null;
+          const bindings = ch.bindings || [ch];
+          for (const b of bindings) {
+            const fr = _files[b.fileIndex];
+            if (timeMs >= fr.startTimeMs && timeMs <= fr.stopTimeMs) {
+              const d = fileData[b.fileIndex];
+              const arr = d && d.values && (d.values[`${b.fileIndex}:${b.localIdx}`] || d.values[ch.channel_id]);
+              if (arr) {
+                const sIdx = Math.round((timeMs - fr.startTimeMs) / 1000 / fr.sampleIntervalSec);
+                const rel = sIdx - d.s0;
+                const v = (rel >= 0 && rel < arr.length) ? arr[rel] : NaN;
+                val = Number.isNaN(v) ? null : v;
+                break;
+              }
+            }
+          }
+          values[ch.channel_id] = val;
         }
         rows.push({ timestampMs: timeMs, values });
       }
@@ -1503,6 +1612,7 @@ const fileData = {};
         resolution: ch.resolution,
         full_channel_name: ch.full_channel_name,
         file_index: ch.file_index,
+        bindings: ch.bindings,
       }))
     }), 50);
   },
@@ -1570,40 +1680,76 @@ const fileData = {};
   /** Measurement data for one channel over the merged multi-file session. */
   _getMergedMeasurementData(channelId, startTime, stopTime, tableInterval, getDataWay, callback) {
     const id = String(channelId);
-    const cm = _merged ? _merged.channelMap[id] : null;
+    const cm = _merged ? (_merged.channelMap[id] || _merged.channelMap[parseInt(id, 10)]) : null;
     if (!cm) {
       setTimeout(() => callback([]), 50);
       return;
     }
-    const fr = _files[cm.fileIndex];
-    const ch = fr.channels[cm.localIdx];
 
     const qStart = startTime - 3600000 * 8;
     const qStop = stopTime - 3600000 * 8;
-    const timeToSample = ms => {
-      if (fr.sampleIntervalSec <= 0) return 0;
-      return Math.max(0, Math.floor((ms - fr.startTimeMs) / 1000 / fr.sampleIntervalSec));
-    };
 
-    let startSample = timeToSample(qStart);
-    let endSample = timeToSample(qStop);
-    startSample = Math.max(0, Math.min(startSample, fr.numSamples - 1));
-    endSample = Math.max(startSample, Math.min(endSample, fr.numSamples - 1));
+    const bindings = cm.bindings || [cm];
+    const reads = [];
 
-    const range = endSample - startSample + 1;
-    const step = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
+    for (const b of bindings) {
+      const fr = _files[b.fileIndex];
+      const ch = fr.channels[b.localIdx];
+      if (qStop < fr.startTimeMs || qStart > fr.stopTimeMs) {
+        continue;
+      }
+      const timeToSample = ms => {
+        if (fr.sampleIntervalSec <= 0) return 0;
+        return Math.max(0, Math.floor((ms - fr.startTimeMs) / 1000 / fr.sampleIntervalSec));
+      };
+      const clampedQStart = Math.max(qStart, fr.startTimeMs);
+      const clampedQStop = Math.min(qStop, fr.stopTimeMs);
+      let startSample = timeToSample(clampedQStart);
+      let endSample = timeToSample(clampedQStop);
+      startSample = Math.max(0, Math.min(startSample, fr.numSamples - 1));
+      endSample = Math.max(startSample, Math.min(endSample, fr.numSamples - 1));
 
-    const actualStartMs = fr.startTimeMs + startSample * fr.sampleIntervalSec * 1000;
-    const pointIntervalMs = step * fr.sampleIntervalSec * 1000;
+      const range = endSample - startSample + 1;
+      const step = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
+      const actualStartMs = fr.startTimeMs + startSample * fr.sampleIntervalSec * 1000;
+      const pointIntervalMs = step * fr.sampleIntervalSec * 1000;
 
-    _readFileChannelData(fr, cm.localIdx, startSample, endSample, step).then(values => {
+      reads.push(_readFileChannelData(fr, b.localIdx, startSample, endSample, step).then(values => ({
+        values,
+        actualStartMs,
+        pointIntervalMs,
+        ch,
+      })));
+    }
+
+    if (reads.length === 0) {
+      const fr0 = _files[bindings[0].fileIndex];
+      const ch0 = fr0.channels[bindings[0].localIdx];
+      setTimeout(() => callback([{
+        channel_id: id,
+        measurementData: [[]],
+        realStartTime: [qStart + 3600000 * 8],
+        pointInterval: [1000],
+        min: ch0._min,
+        max: ch0._max,
+      }]), 50);
+      return;
+    }
+
+    Promise.all(reads).then(results => {
+      const measurementData = results.map(r => r.values);
+      const realStartTime = results.map(r => r.actualStartMs + 3600000 * 8);
+      const pointInterval = results.map(r => r.pointIntervalMs);
+      const min = Math.min(...results.map(r => r.ch._min));
+      const max = Math.max(...results.map(r => r.ch._max));
+
       callback([{
         channel_id: id,
-        measurementData: [values],
-        realStartTime: [actualStartMs + 3600000 * 8],
-        pointInterval: [pointIntervalMs],
-        min: ch._min,
-        max: ch._max,
+        measurementData,
+        realStartTime,
+        pointInterval,
+        min,
+        max,
       }]);
     }).catch(err => {
       console.error('[CsdAPI] merged getMeasurementData error:', err);

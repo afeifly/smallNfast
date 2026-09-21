@@ -15,6 +15,13 @@ let _rowOffsets = null;         // Float64Array of starting byte positions for r
 let _rowTimestamps = null;      // Float64Array of timestamps (ms) for rows
 let _rowRecordIds = null;       // Int32Array of record numbers for rows
 
+// Multi-file state
+let _csvFiles = [];             // Array of file metadata records: { file, ... }
+let _isMultiCsv = false;        // True when more than one CSV file is loaded
+let _rowFileIndices = null;     // Uint8Array of fileIndex per row when in multi-file mode
+let _rowLocalIndices = null;    // Uint32Array of local row index within that file
+let _channelMap = null;         // Mapping from channel_id to { fileIndex, localIdx, channel } when multi-channel
+
 let _deviceName = 'CSV Device';
 let _startTimeMs = 0;
 let _stopTimeMs = 0;
@@ -207,6 +214,296 @@ function validateCsvHeader(lines) {
   return true;
 }
 
+// Helper: Parse and index a single CSV file
+async function _parseAndIndexCsvFile(file) {
+  // 1. Initial 150KB read to parse metadata
+  const slice = file.slice(0, 150 * 1024);
+  const text = await slice.text();
+  const lines = text.split(/\r?\n/);
+
+  // Verify header format and metadata
+  validateCsvHeader(lines);
+  
+  let deviceName = 'CSV Device';
+  let startTimeMs = 0;
+  let stopTimeMs = 0;
+  let sampleIntervalSec = 1;
+  let channels = [];
+  
+  let dataHeaderLineIdx = -1;
+  let lineIdx = 0;
+  
+  if (lines[0]) {
+    deviceName = lines[0].trim();
+  }
+  
+  lineIdx = 2; // skip empty line
+  
+  while (lineIdx < lines.length) {
+    const line = lines[lineIdx].trim();
+    if (!line) {
+      lineIdx++;
+      continue;
+    }
+    
+    // Metadata Table
+    if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
+      lineIdx++;
+      while (lineIdx < lines.length) {
+        const chanLine = lines[lineIdx].trim();
+        if (!chanLine) {
+          lineIdx++;
+          break;
+        }
+        const parts = parseCsvLine(chanLine);
+        if (parts.length >= 6) {
+          const idx = parseInt(parts[0], 10) - 1;
+          const name = parts[1];
+          const sensor = parts[2];
+          const unit = parts[3];
+          const resStr = parts[4];
+          
+          let resolution = 2;
+          if (resStr.includes('.')) {
+            resolution = resStr.split('.')[1].length;
+          } else if (resStr === '1') {
+            resolution = 0;
+          } else {
+            const parsedRes = parseInt(resStr, 10);
+            if (!isNaN(parsedRes)) resolution = parsedRes;
+          }
+          
+          channels.push({
+            channel_id: idx,
+            location_id: 1,
+            sensor_id: idx,
+            logic_channel_description: name,
+            physical_channel_description: name,
+            sensor_description: sensor,
+            unit_in_ascii: unit,
+            resolution: resolution,
+            _min: 0,
+            _max: 100,
+          });
+        }
+        lineIdx++;
+      }
+      continue;
+    }
+    
+    // Key-value metadata
+    const commaIdx = line.indexOf(',');
+    if (commaIdx !== -1) {
+      const key = line.slice(0, commaIdx).trim();
+      const val = line.slice(commaIdx + 1).trim();
+      
+      if (key === 'Start Date Time') {
+        startTimeMs = parseDateTimeString(val);
+      } else if (key === 'End Date Time') {
+        stopTimeMs = parseDateTimeString(val);
+      } else if (key === 'Sample Rate(sec)') {
+        sampleIntervalSec = parseFloat(val) || 1;
+      }
+    }
+    
+    // Data row header check
+    if (line.startsWith('Date Time,') || line.startsWith('No.,Date Time,')) {
+      dataHeaderLineIdx = lineIdx;
+      break;
+    }
+    
+    lineIdx++;
+  }
+  
+  if (dataHeaderLineIdx === -1) {
+    throw new Error("Could not find CSV data header start line");
+  }
+  
+  // Check for UTF-8 BOM
+  const bomSlice = await file.slice(0, 3).arrayBuffer();
+  const bomBytes = new Uint8Array(bomSlice);
+  const hasBOM = bomBytes[0] === 0xEF && bomBytes[1] === 0xBB && bomBytes[2] === 0xBF;
+  const bomOffset = hasBOM ? 3 : 0;
+
+  // Calculate data rows byte offset start (foolproof for both LF and CRLF)
+  const headerLine = lines[dataHeaderLineIdx];
+  const headerStrIdx = text.indexOf(headerLine);
+  if (headerStrIdx === -1) {
+    throw new Error("Could not locate data header string in file text");
+  }
+  const nextNewlineIdx = text.indexOf('\n', headerStrIdx);
+  const headerEndCharIdx = nextNewlineIdx !== -1 ? nextNewlineIdx + 1 : headerStrIdx + headerLine.length + 1;
+  
+  // Convert character index to exact byte offset in the UTF-8 file (adding BOM if present)
+  const dataStartByte = new TextEncoder().encode(text.slice(0, headerEndCharIdx)).length + bomOffset;
+  
+  // 2. High-speed Streaming Indexer
+  const fileSize = file.size;
+  const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks
+  let currentByteOffset = dataStartByte;
+  
+  const tempOffsets = [];
+  const tempTimestamps = [];
+  const tempRecordIds = [];
+  
+  const chMin = Array(channels.length).fill(Infinity);
+  const chMax = Array(channels.length).fill(-Infinity);
+  
+  while (currentByteOffset < fileSize) {
+    const endByte = Math.min(currentByteOffset + CHUNK_SIZE, fileSize);
+    const slice = file.slice(currentByteOffset, endByte);
+    const chunkText = await slice.text();
+    
+    let searchIdx = 0;
+    while (searchIdx < chunkText.length) {
+      const newlineIdx = chunkText.indexOf('\n', searchIdx);
+      if (newlineIdx === -1) {
+        break; // end of chunk
+      }
+      
+      const lineStartByte = currentByteOffset + searchIdx;
+      const line = chunkText.slice(searchIdx, newlineIdx).trim();
+      
+      if (line) {
+        const parts = parseCsvLine(line);
+        if (parts.length > 0) {
+          let dateStr = parts[0];
+          let valuesStartIndex = 1;
+          let recordId = 0;
+          
+          if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
+            recordId = parseInt(parts[0], 10);
+            dateStr = parts[1];
+            valuesStartIndex = 2;
+          }
+          
+          const timestampMs = parseDateTimeString(dateStr);
+          if (timestampMs > 0) {
+            tempOffsets.push(lineStartByte);
+            tempTimestamps.push(timestampMs);
+            tempRecordIds.push(recordId || (tempRecordIds.length + 1));
+            
+            // On-the-fly min/max
+            for (let c = 0; c < channels.length; c++) {
+              const valStr = parts[valuesStartIndex + c];
+              if (valStr !== undefined && valStr !== '') {
+                const v = parseFloat(valStr);
+                if (!isNaN(v)) {
+                  if (v < chMin[c]) chMin[c] = v;
+                  if (v > chMax[c]) chMax[c] = v;
+                }
+              }
+            }
+          }
+        }
+      }
+      searchIdx = newlineIdx + 1;
+    }
+    
+    currentByteOffset += searchIdx;
+    
+    const progress = currentByteOffset / fileSize;
+    window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+      detail: { progress: 0.1 + progress * 0.7, filename: file.name } 
+    }));
+    
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  
+  // Finalize Float64/Int32 arrays
+  window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+    detail: { progress: 0.82, filename: file.name } 
+  }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  const rowOffsets = new Float64Array(tempOffsets);
+  const rowTimestamps = new Float64Array(tempTimestamps);
+  const rowRecordIds = new Int32Array(tempRecordIds);
+  
+  const finalStartTimeMs = startTimeMs || (rowTimestamps.length > 0 ? rowTimestamps[0] : 0);
+  const finalStopTimeMs = stopTimeMs || (rowTimestamps.length > 0 ? rowTimestamps[rowTimestamps.length - 1] : finalStartTimeMs);
+  
+  // Set computed min/max
+  channels.forEach((ch, idx) => {
+    ch._min = isFinite(chMin[idx]) ? chMin[idx] : 0;
+    ch._max = isFinite(chMax[idx]) ? chMax[idx] : 100;
+  });
+
+  // 3. Compute detected interval using sampled median (avoids O(n log n) sort on large files)
+  window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+    detail: { progress: 0.88, filename: file.name } 
+  }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  let detectedIntervalSec = sampleIntervalSec;
+  if (rowTimestamps.length >= 2) {
+    const SAMPLE_COUNT = 2000;
+    const step = Math.max(1, Math.floor((rowTimestamps.length - 1) / SAMPLE_COUNT));
+    const sampledDeltas = [];
+    for (let i = step; i < rowTimestamps.length; i += step) {
+      const d = rowTimestamps[i] - rowTimestamps[i - 1];
+      if (d > 0) sampledDeltas.push(d);
+    }
+    if (sampledDeltas.length > 0) {
+      sampledDeltas.sort((a, b) => a - b);
+      const mid = Math.floor(sampledDeltas.length / 2);
+      const medianMs = sampledDeltas.length % 2 === 0
+        ? (sampledDeltas[mid - 1] + sampledDeltas[mid]) / 2
+        : sampledDeltas[mid];
+      detectedIntervalSec = medianMs / 1000;
+    }
+  }
+  const detectedIntervalMs = detectedIntervalSec * 1000;
+  
+  window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
+    detail: { progress: 0.93, filename: file.name } 
+  }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  const gapThresholdMs = GAP_THRESHOLD_FACTOR * detectedIntervalMs;
+  const gaps = [];
+  for (let i = 1; i < rowTimestamps.length; i++) {
+    const delta = rowTimestamps[i] - rowTimestamps[i - 1];
+    if (delta > gapThresholdMs) {
+      gaps.push({
+        from: rowTimestamps[i - 1],
+        to: rowTimestamps[i],
+        missingSec: Math.round((delta - detectedIntervalMs) / 1000)
+      });
+    }
+  }
+  
+  if (gaps.length === 0) {
+    console.log(`[CsvAPI] Gap report: no gaps detected in "${file.name}". Detected interval: ${detectedIntervalSec.toFixed(2)} sec`);
+  } else {
+    console.warn(`[CsvAPI] Gap report: ${gaps.length} gap(s) in "${file.name}" (detected interval: ${detectedIntervalSec.toFixed(2)} sec)`);
+    gaps.slice(0, 5).forEach((g, idx) => {
+      const from = new Date(g.from).toISOString();
+      const to = new Date(g.to).toISOString();
+      console.warn(`  Gap ${idx + 1}: ${from} → ${to}  (~${g.missingSec} sec missing)`);
+    });
+    if (gaps.length > 5) {
+      console.warn(`  ... and ${gaps.length - 5} more gap(s)`);
+    }
+  }
+
+  return {
+    file,
+    deviceName,
+    startTimeMs: finalStartTimeMs,
+    stopTimeMs: finalStopTimeMs,
+    sampleIntervalSec,
+    detectedIntervalMs,
+    channels,
+    numChannels: channels.length,
+    numSamples: rowOffsets.length,
+    rowOffsets,
+    rowTimestamps,
+    rowRecordIds,
+    gaps,
+  };
+}
+
 // ── CsvAPI Interface Implementation ───────────────────────────────────────────
 
 const CsvAPI = {
@@ -218,298 +515,33 @@ const CsvAPI = {
     try {
       _fileLoaded = false;
       _file = file;
-      
-      // 1. Initial 150KB read to parse metadata
-      const slice = file.slice(0, 150 * 1024);
-      const text = await slice.text();
-      const lines = text.split(/\r?\n/);
+      _csvFiles = [];
+      _isMultiCsv = false;
+      _rowFileIndices = null;
+      _rowLocalIndices = null;
+      _channelMap = null;
 
-      // Verify header format and metadata
-      validateCsvHeader(lines);
-      
-      let deviceName = 'CSV Device';
-      let startTimeMs = 0;
-      let stopTimeMs = 0;
-      let sampleIntervalSec = 1;
-      let channels = [];
-      
-      let dataHeaderLineIdx = -1;
-      let lineIdx = 0;
-      
-      if (lines[0]) {
-        deviceName = lines[0].trim();
-      }
-      
-      lineIdx = 2; // skip empty line
-      
-      while (lineIdx < lines.length) {
-        const line = lines[lineIdx].trim();
-        if (!line) {
-          lineIdx++;
-          continue;
-        }
-        
-        // Metadata Table
-        if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
-          lineIdx++;
-          while (lineIdx < lines.length) {
-            const chanLine = lines[lineIdx].trim();
-            if (!chanLine) {
-              lineIdx++;
-              break;
-            }
-            const parts = parseCsvLine(chanLine);
-            if (parts.length >= 6) {
-              const idx = parseInt(parts[0], 10) - 1;
-              const name = parts[1];
-              const sensor = parts[2];
-              const unit = parts[3];
-              const resStr = parts[4];
-              
-              let resolution = 2;
-              if (resStr.includes('.')) {
-                resolution = resStr.split('.')[1].length;
-              } else if (resStr === '1') {
-                resolution = 0;
-              } else {
-                const parsedRes = parseInt(resStr, 10);
-                if (!isNaN(parsedRes)) resolution = parsedRes;
-              }
-              
-              channels.push({
-                channel_id: idx,
-                location_id: 1,
-                sensor_id: idx,
-                logic_channel_description: name,
-                physical_channel_description: name,
-                sensor_description: sensor,
-                unit_in_ascii: unit,
-                resolution: resolution,
-                _min: 0,
-                _max: 100,
-              });
-            }
-            lineIdx++;
-          }
-          continue;
-        }
-        
-        // Key-value metadata
-        const commaIdx = line.indexOf(',');
-        if (commaIdx !== -1) {
-          const key = line.slice(0, commaIdx).trim();
-          const val = line.slice(commaIdx + 1).trim();
-          
-          if (key === 'Start Date Time') {
-            startTimeMs = parseDateTimeString(val);
-          } else if (key === 'End Date Time') {
-            stopTimeMs = parseDateTimeString(val);
-          } else if (key === 'Sample Rate(sec)') {
-            sampleIntervalSec = parseFloat(val) || 1;
-          }
-        }
-        
-        // Data row header check
-        if (line.startsWith('Date Time,') || line.startsWith('No.,Date Time,')) {
-          dataHeaderLineIdx = lineIdx;
-          break;
-        }
-        
-        lineIdx++;
-      }
-      
-      if (dataHeaderLineIdx === -1) {
-        throw new Error("Could not find CSV data header start line");
-      }
-      
-      // Check for UTF-8 BOM
-      const bomSlice = await file.slice(0, 3).arrayBuffer();
-      const bomBytes = new Uint8Array(bomSlice);
-      const hasBOM = bomBytes[0] === 0xEF && bomBytes[1] === 0xBB && bomBytes[2] === 0xBF;
-      const bomOffset = hasBOM ? 3 : 0;
+      const parsed = await _parseAndIndexCsvFile(file);
 
-      // Calculate data rows byte offset start (foolproof for both LF and CRLF)
-      const headerLine = lines[dataHeaderLineIdx];
-      const headerStrIdx = text.indexOf(headerLine);
-      if (headerStrIdx === -1) {
-        throw new Error("Could not locate data header string in file text");
-      }
-      const nextNewlineIdx = text.indexOf('\n', headerStrIdx);
-      const headerEndCharIdx = nextNewlineIdx !== -1 ? nextNewlineIdx + 1 : headerStrIdx + headerLine.length + 1;
-      
-      // Convert character index to exact byte offset in the UTF-8 file (adding BOM if present)
-      const dataStartByte = new TextEncoder().encode(text.slice(0, headerEndCharIdx)).length + bomOffset;
-      
-      // 2. High-speed Streaming Indexer
-      const fileSize = file.size;
-      const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks
-      let currentByteOffset = dataStartByte;
-      
-      const tempOffsets = [];
-      const tempTimestamps = [];
-      const tempRecordIds = [];
-      
-      const chMin = Array(channels.length).fill(Infinity);
-      const chMax = Array(channels.length).fill(-Infinity);
-      
-      while (currentByteOffset < fileSize) {
-        const endByte = Math.min(currentByteOffset + CHUNK_SIZE, fileSize);
-        const slice = file.slice(currentByteOffset, endByte);
-        const chunkText = await slice.text();
-        
-        let searchIdx = 0;
-        while (searchIdx < chunkText.length) {
-          const newlineIdx = chunkText.indexOf('\n', searchIdx);
-          if (newlineIdx === -1) {
-            break; // end of chunk
-          }
-          
-          const lineStartByte = currentByteOffset + searchIdx;
-          const line = chunkText.slice(searchIdx, newlineIdx).trim();
-          
-          if (line) {
-            const parts = parseCsvLine(line);
-            if (parts.length > 0) {
-              let dateStr = parts[0];
-              let valuesStartIndex = 1;
-              let recordId = 0;
-              
-              if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
-                recordId = parseInt(parts[0], 10);
-                dateStr = parts[1];
-                valuesStartIndex = 2;
-              }
-              
-              const timestampMs = parseDateTimeString(dateStr);
-              if (timestampMs > 0) {
-                tempOffsets.push(lineStartByte);
-                tempTimestamps.push(timestampMs);
-                tempRecordIds.push(recordId || (tempRecordIds.length + 1));
-                
-                // On-the-fly min/max
-                for (let c = 0; c < channels.length; c++) {
-                  const valStr = parts[valuesStartIndex + c];
-                  if (valStr !== undefined && valStr !== '') {
-                    const v = parseFloat(valStr);
-                    if (!isNaN(v)) {
-                      if (v < chMin[c]) chMin[c] = v;
-                      if (v > chMax[c]) chMax[c] = v;
-                    }
-                  }
-                }
-              }
-            }
-          }
-          searchIdx = newlineIdx + 1;
-        }
-        
-        currentByteOffset += searchIdx;
-        
-        const progress = currentByteOffset / fileSize;
-        window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
-          detail: { progress: 0.1 + progress * 0.7, filename: file.name } 
-        }));
-        
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
-      
-      // Finalize Float64/Int32 arrays
-      window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
-        detail: { progress: 0.82, filename: file.name } 
-      }));
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      _rowOffsets = new Float64Array(tempOffsets);
-      _rowTimestamps = new Float64Array(tempTimestamps);
-      _rowRecordIds = new Int32Array(tempRecordIds);
-      
-      _deviceName = deviceName;
-      _startTimeMs = startTimeMs || (_rowTimestamps.length > 0 ? _rowTimestamps[0] : 0);
-      _stopTimeMs = stopTimeMs || (_rowTimestamps.length > 0 ? _rowTimestamps[_rowTimestamps.length - 1] : _startTimeMs);
-      _sampleIntervalSec = sampleIntervalSec;
+      _rowOffsets = parsed.rowOffsets;
+      _rowTimestamps = parsed.rowTimestamps;
+      _rowRecordIds = parsed.rowRecordIds;
+      _deviceName = parsed.deviceName;
+      _startTimeMs = parsed.startTimeMs;
+      _stopTimeMs = parsed.stopTimeMs;
+      _sampleIntervalSec = parsed.sampleIntervalSec;
       _sampleRate = 1 / _sampleIntervalSec;
-      _numChannels = channels.length;
-      _numSamples = _rowOffsets.length;
-      
-      // Set computed min/max
-      channels.forEach((ch, idx) => {
-        ch._min = isFinite(chMin[idx]) ? chMin[idx] : 0;
-        ch._max = isFinite(chMax[idx]) ? chMax[idx] : 100;
-      });
-      _channels = channels;
-      
-      // DIAGNOSTIC LOG FOR LARGE FILES & SHIFTS
-      if (_rowOffsets.length > 0) {
-        file.slice(_rowOffsets[0], _rowOffsets[0] + 300).text().then(slicedText => {
-          console.log("[CsvAPI Debug] First Row Indexing:", {
-            totalSamples: _numSamples,
-            firstOffset: _rowOffsets[0],
-            firstTimestamp: new Date(_rowTimestamps[0]).toISOString(),
-            firstRecordId: _rowRecordIds[0],
-            slicedText
-          });
-        }).catch(err => {
-          console.error("[CsvAPI Debug] Slicing error:", err);
-        });
-      }
-      
-      // 3. Compute detected interval using sampled median (avoids O(n log n) sort on large files)
-      window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
-        detail: { progress: 0.88, filename: file.name } 
+      _detectedIntervalMs = parsed.detectedIntervalMs;
+      _numChannels = parsed.numChannels;
+      _numSamples = parsed.numSamples;
+      _channels = parsed.channels.map((ch, idx) => ({
+        ...ch,
+        channel_id: idx,
+        fileBindings: { 0: idx },
       }));
-      await new Promise(resolve => setTimeout(resolve, 0));
 
-      let detectedIntervalSec = _sampleIntervalSec;
-      if (_rowTimestamps.length >= 2) {
-        // Sample up to 2000 evenly-spaced deltas instead of computing all N-1 deltas
-        const SAMPLE_COUNT = 2000;
-        const step = Math.max(1, Math.floor((_rowTimestamps.length - 1) / SAMPLE_COUNT));
-        const sampledDeltas = [];
-        for (let i = step; i < _rowTimestamps.length; i += step) {
-          const d = _rowTimestamps[i] - _rowTimestamps[i - 1];
-          if (d > 0) sampledDeltas.push(d);
-        }
-        if (sampledDeltas.length > 0) {
-          // Sort only the small sample array
-          sampledDeltas.sort((a, b) => a - b);
-          const mid = Math.floor(sampledDeltas.length / 2);
-          const medianMs = sampledDeltas.length % 2 === 0
-            ? (sampledDeltas[mid - 1] + sampledDeltas[mid]) / 2
-            : sampledDeltas[mid];
-          detectedIntervalSec = medianMs / 1000;
-        }
-      }
-      _detectedIntervalMs = detectedIntervalSec * 1000;
-      
-      window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
-        detail: { progress: 0.93, filename: file.name } 
-      }));
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      const gapThresholdMs = GAP_THRESHOLD_FACTOR * _detectedIntervalMs;
-      const gaps = [];
-      for (let i = 1; i < _rowTimestamps.length; i++) {
-        const delta = _rowTimestamps[i] - _rowTimestamps[i - 1];
-        if (delta > gapThresholdMs) {
-          gaps.push({
-            from: _rowTimestamps[i - 1],
-            to: _rowTimestamps[i],
-            missingSec: Math.round((delta - _detectedIntervalMs) / 1000)
-          });
-        }
-      }
-      
-      if (gaps.length === 0) {
-        console.log(`[CsvAPI] Gap report: no gaps detected. Detected interval: ${detectedIntervalSec.toFixed(2)} sec`);
-      } else {
-        console.warn(`[CsvAPI] Gap report: ${gaps.length} gap(s) in "${file.name}" (detected interval: ${detectedIntervalSec.toFixed(2)} sec)`);
-        gaps.forEach((g, idx) => {
-          const from = new Date(g.from).toISOString();
-          const to = new Date(g.to).toISOString();
-          console.warn(`  Gap ${idx + 1}: ${from} → ${to}  (~${g.missingSec} sec missing)`);
-        });
-      }
-      
+      _csvFiles = [parsed];
+      _isMultiCsv = false;
       _fileLoaded = true;
       console.log(`[CsvAPI] Lazily loaded & indexed ${_numChannels} channels, ${_numSamples} samples from CSV file "${file.name}"`);
       return true;
@@ -519,11 +551,166 @@ const CsvAPI = {
     }
   },
 
+  async appendFile(file) {
+    if (!_fileLoaded) {
+      return { ok: false, reason: 'No CSV file loaded to append to.' };
+    }
+    if (!file || !file.name || !file.name.toLowerCase().endsWith('.csv')) {
+      return { ok: false, reason: 'Only .csv files can be appended.' };
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('fileLoadStart', { detail: { filename: file.name } }));
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.1, filename: file.name } }));
+
+      const parsed = await _parseAndIndexCsvFile(file);
+
+      const fi = _csvFiles.length;
+      _csvFiles.push(parsed);
+
+      // Smart channel unification:
+      // Match incoming channels to existing unified channels by name or sensor+unit.
+      // If a match is found, link this file's column to the existing channel so
+      // it continues seamlessly across files as one.
+      // If no match is found (e.g. newly added channel), add it to the channel list.
+      const norm = s => (s || '').trim().toLowerCase();
+      parsed.channels.forEach((newCh, lIdx) => {
+        const newName = norm(newCh.logic_channel_description);
+        const newSensor = norm(newCh.sensor_description);
+        const newUnit = norm(newCh.unit_in_ascii);
+
+        let match = null;
+        if (newName) {
+          match = _channels.find(u => norm(u.logic_channel_description) === newName);
+        }
+        if (!match && newSensor && newUnit) {
+          match = _channels.find(u => norm(u.sensor_description) === newSensor && norm(u.unit_in_ascii) === newUnit);
+        }
+
+        if (match) {
+          if (!match.fileBindings) match.fileBindings = {};
+          match.fileBindings[fi] = lIdx;
+          match._min = Math.min(match._min, newCh._min);
+          match._max = Math.max(match._max, newCh._max);
+        } else {
+          _channels.push({
+            ...newCh,
+            channel_id: _channels.length,
+            fileBindings: { [fi]: lIdx },
+            _min: newCh._min,
+            _max: newCh._max,
+          });
+        }
+      });
+      _numChannels = _channels.length;
+
+      const totalSamples = _numSamples + parsed.numSamples;
+      const mergedOffsets = new Float64Array(totalSamples);
+      const mergedTimestamps = new Float64Array(totalSamples);
+      const mergedRecordIds = new Int32Array(totalSamples);
+      const mergedFileIndices = new Uint8Array(totalSamples);
+      const mergedLocalIndices = new Uint32Array(totalSamples);
+
+      // In Option B (Time Concatenation), files represent sequential recording periods
+      // or separate files appended to the session.
+      // Keeping each file's sample records contiguous (by file order / file start time)
+      // preserves high-speed block reading of byte-offsets without interleaving file handles.
+      if (parsed.startTimeMs >= _startTimeMs) {
+        // Appended file is chronological (after or same start time as base file)
+        mergedTimestamps.set(_rowTimestamps, 0);
+        mergedOffsets.set(_rowOffsets, 0);
+        mergedRecordIds.set(_rowRecordIds, 0);
+        if (_rowFileIndices) {
+          mergedFileIndices.set(_rowFileIndices, 0);
+          mergedLocalIndices.set(_rowLocalIndices, 0);
+        } else {
+          for (let idx = 0; idx < _numSamples; idx++) {
+            mergedLocalIndices[idx] = idx;
+          }
+        }
+
+        mergedTimestamps.set(parsed.rowTimestamps, _numSamples);
+        mergedOffsets.set(parsed.rowOffsets, _numSamples);
+        mergedRecordIds.set(parsed.rowRecordIds, _numSamples);
+        mergedFileIndices.fill(fi, _numSamples, totalSamples);
+        for (let j = 0; j < parsed.numSamples; j++) {
+          mergedLocalIndices[_numSamples + j] = j;
+        }
+      } else {
+        // Appended file was recorded earlier than the current session
+        mergedTimestamps.set(parsed.rowTimestamps, 0);
+        mergedOffsets.set(parsed.rowOffsets, 0);
+        mergedRecordIds.set(parsed.rowRecordIds, 0);
+        mergedFileIndices.fill(fi, 0, parsed.numSamples);
+        for (let j = 0; j < parsed.numSamples; j++) {
+          mergedLocalIndices[j] = j;
+        }
+
+        mergedTimestamps.set(_rowTimestamps, parsed.numSamples);
+        mergedOffsets.set(_rowOffsets, parsed.numSamples);
+        mergedRecordIds.set(_rowRecordIds, parsed.numSamples);
+        if (_rowFileIndices) {
+          mergedFileIndices.set(_rowFileIndices, parsed.numSamples);
+          mergedLocalIndices.set(_rowLocalIndices, parsed.numSamples);
+        } else {
+          for (let idx = 0; idx < _numSamples; idx++) {
+            mergedLocalIndices[parsed.numSamples + idx] = idx;
+          }
+        }
+      }
+
+      _rowOffsets = mergedOffsets;
+      _rowTimestamps = mergedTimestamps;
+      _rowRecordIds = mergedRecordIds;
+      _rowFileIndices = mergedFileIndices;
+      _rowLocalIndices = mergedLocalIndices;
+      _numSamples = totalSamples;
+
+      _startTimeMs = Math.min(_startTimeMs, parsed.startTimeMs);
+      _stopTimeMs = Math.max(_stopTimeMs, parsed.stopTimeMs);
+
+      _isMultiCsv = true;
+
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 1.0, filename: file.name } }));
+      console.log(`[CsvAPI] Appended "${file.name}" (${parsed.numSamples} samples). Total samples now: ${_numSamples}`);
+
+      const gapSummary = this.getGapSummary();
+      if (gapSummary.gapCount > 0) {
+        console.log(`[CsvAPI] Combined session gap report: ${gapSummary.gapCount} gap(s) detected across ${_csvFiles.length} files:`);
+        gapSummary.gaps.slice(0, 5).forEach((g, idx) => {
+          const from = new Date(g.from).toISOString();
+          const to = new Date(g.to).toISOString();
+          console.log(`  Gap ${idx + 1}: ${from} → ${to} (~${Math.round(g.missingMs / 1000)} sec missing)`);
+        });
+        if (gapSummary.gapCount > 5) {
+          console.log(`  ... and ${gapSummary.gapCount - 5} more gap(s)`);
+        }
+      } else {
+        console.log(`[CsvAPI] Combined session gap report: continuous data across ${_csvFiles.length} files.`);
+      }
+
+      return { ok: true, numFiles: _csvFiles.length };
+    } catch (e) {
+      console.error('[CsvAPI] appendFile error:', e);
+      window.dispatchEvent(new CustomEvent('fileLoadProgress', {
+        detail: { progress: 0, filename: file ? file.name : '', error: true, errorMessage: e.message || 'Failed to append CSV file.' }
+      }));
+      return { ok: false, reason: e.message || 'Failed to append CSV file.' };
+    }
+  },
+
+  getNumLoadedFiles() {
+    return _isMultiCsv ? _csvFiles.length : (_fileLoaded ? 1 : 0);
+  },
+
   getFileTimeRange() {
     return { start: _startTimeMs, stop: _stopTimeMs };
   },
 
   getLoadedFileName() {
+    if (_isMultiCsv && _csvFiles.length > 1) {
+      return `${_csvFiles.length} files`;
+    }
     return _file ? _file.name : '';
   },
 
@@ -568,40 +755,123 @@ const CsvAPI = {
       setTimeout(() => callback({ total: _numSamples, rows: [] }), 50);
       return;
     }
-    
-    const startByte = _rowOffsets[startSample];
-    const endByte = (endSample + 1 < _numSamples) ? _rowOffsets[endSample + 1] : _file.size;
-    
-    // Read only the slice for this page
-    const slice = _file.slice(startByte, endByte);
-    slice.text().then(text => {
-      const lines = text.split(/\r?\n/);
-      const pageRows = [];
-      let parsedCount = 0;
+
+    if (!_isMultiCsv) {
+      // ── SINGLE-FILE FAST PATH (100% UNCHANGED) ──────────────────────────
+      const startByte = _rowOffsets[startSample];
+      const endByte = (endSample + 1 < _numSamples) ? _rowOffsets[endSample + 1] : _file.size;
       
+      // Read only the slice for this page
+      const slice = _file.slice(startByte, endByte);
+      slice.text().then(text => {
+        const lines = text.split(/\r?\n/);
+        const pageRows = [];
+        let parsedCount = 0;
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          
+          const parts = parseCsvLine(line);
+          if (parts.length > 0) {
+            const rowIdx = startSample + parsedCount;
+            if (rowIdx > endSample) break;
+            
+            let valuesStartIndex = 1;
+            if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
+              valuesStartIndex = 2;
+            }
+            
+            const values = {};
+            for (let c = 0; c < _channels.length; c++) {
+              if (selectedChannelIds && !selectedChannelIds.includes(c)) continue;
+              const valStr = parts[valuesStartIndex + c];
+              const v = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
+              values[c] = (v === null || isNaN(v)) ? null : v;
+            }
+            
+            pageRows.push({
+              index: rowIdx,
+              recordId: _rowRecordIds[rowIdx],
+              timestampMs: _rowTimestamps[rowIdx],
+              values
+            });
+            parsedCount++;
+          }
+        }
+        
+        callback({
+          total: _numSamples,
+          sampleRate: _sampleRate,
+          startTimeMs: _startTimeMs,
+          stopTimeMs: _stopTimeMs,
+          rows: pageRows
+        });
+      }).catch(e => {
+        console.error("[CsvAPI] Failed to fetch table page:", e);
+        callback({ total: _numSamples, rows: [] });
+      });
+      return;
+    }
+
+    // ── MULTI-FILE PATH ──────────────────────────────────────────────────
+    const groups = [];
+    let curGroup = { fileIndex: _rowFileIndices[startSample], startSample, endSample: startSample };
+    for (let s = startSample + 1; s <= endSample; s++) {
+      const fi = _rowFileIndices[s];
+      if (fi === curGroup.fileIndex) {
+        curGroup.endSample = s;
+      } else {
+        groups.push(curGroup);
+        curGroup = { fileIndex: fi, startSample: s, endSample: s };
+      }
+    }
+    groups.push(curGroup);
+
+    Promise.all(groups.map(async g => {
+      const fileRecord = _csvFiles[g.fileIndex];
+      const startLocal = _rowLocalIndices[g.startSample];
+      const endLocal = _rowLocalIndices[g.endSample];
+      const startByte = fileRecord.rowOffsets[startLocal];
+      const endByte = (endLocal + 1 < fileRecord.numSamples) ? fileRecord.rowOffsets[endLocal + 1] : fileRecord.file.size;
+      const text = await fileRecord.file.slice(startByte, endByte).text();
+      const lines = text.split(/\r?\n/);
+
+      const groupRows = [];
+      let parsedCount = 0;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        
         const parts = parseCsvLine(line);
         if (parts.length > 0) {
-          const rowIdx = startSample + parsedCount;
-          if (rowIdx > endSample) break;
-          
+          const rowIdx = g.startSample + parsedCount;
+          if (rowIdx > g.endSample) break;
+
           let valuesStartIndex = 1;
           if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
             valuesStartIndex = 2;
           }
-          
+
           const values = {};
           for (let c = 0; c < _channels.length; c++) {
-            if (selectedChannelIds && !selectedChannelIds.includes(c)) continue;
-            const valStr = parts[valuesStartIndex + c];
-            const v = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
-            values[c] = (v === null || isNaN(v)) ? null : v;
+            const ch = _channels[c];
+            if (selectedChannelIds && 
+                !selectedChannelIds.includes(c) && 
+                !selectedChannelIds.includes(ch.channel_id) && 
+                !selectedChannelIds.includes(String(ch.channel_id))) {
+              continue;
+            }
+            const localIdx = ch.fileBindings ? ch.fileBindings[g.fileIndex] : c;
+            if (localIdx !== undefined && localIdx !== null) {
+              const valStr = parts[valuesStartIndex + localIdx];
+              const v = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
+              values[ch.channel_id] = (v === null || isNaN(v)) ? null : v;
+            } else {
+              values[ch.channel_id] = null;
+            }
           }
-          
-          pageRows.push({
+
+          groupRows.push({
             index: rowIdx,
             recordId: _rowRecordIds[rowIdx],
             timestampMs: _rowTimestamps[rowIdx],
@@ -610,16 +880,17 @@ const CsvAPI = {
           parsedCount++;
         }
       }
-      
+      return groupRows;
+    })).then(results => {
       callback({
         total: _numSamples,
         sampleRate: _sampleRate,
         startTimeMs: _startTimeMs,
         stopTimeMs: _stopTimeMs,
-        rows: pageRows
+        rows: results.flat()
       });
     }).catch(e => {
-      console.error("[CsvAPI] Failed to fetch table page:", e);
+      console.error("[CsvAPI] Failed to fetch merged table page:", e);
       callback({ total: _numSamples, rows: [] });
     });
   },
@@ -637,6 +908,7 @@ const CsvAPI = {
     }
 
     const ch = _channels[chIdx];
+    const fileBindings = ch.fileBindings || { 0: chIdx };
 
     // Adjust for the +8 h the UI adds before calling us
     const qStart = startTime - 3600000 * 8;
@@ -671,12 +943,13 @@ const CsvAPI = {
     const pointIntervalMs = step * _detectedIntervalMs;
     const gapThresholdMs  = GAP_THRESHOLD_FACTOR * _detectedIntervalMs;
 
-    // Identify segments separated by time-loss gaps
+    // Identify segments separated by time-loss gaps or file boundary
     const segments = [];
     let currentSegStart = startIdx;
     for (let i = startIdx + 1; i <= endIdx; i++) {
       const delta = _rowTimestamps[i] - _rowTimestamps[i - 1];
-      if (delta > gapThresholdMs) {
+      const fileChanged = _isMultiCsv && (_rowFileIndices[i] !== _rowFileIndices[i - 1]);
+      if (delta > gapThresholdMs || fileChanged) {
         segments.push({ start: currentSegStart, end: i - 1 });
         currentSegStart = i;
       }
@@ -692,13 +965,28 @@ const CsvAPI = {
       const batchSize = 5000;
       for (const seg of segments) {
         const segValues = [];
+        const segFileIdx = _isMultiCsv ? _rowFileIndices[seg.start] : 0;
+        const localColIdx = fileBindings[segFileIdx];
+        if (localColIdx === undefined || localColIdx === null) {
+          continue; // Channel was not recorded in this file
+        }
+        const targetFileRecord = _isMultiCsv ? _csvFiles[segFileIdx] : null;
+        const targetFile = targetFileRecord ? targetFileRecord.file : _file;
         
         for (let batchStart = seg.start; batchStart <= seg.end; batchStart += batchSize) {
           const batchEnd = Math.min(batchStart + batchSize - 1, seg.end);
           const startByte = _rowOffsets[batchStart];
-          const endByte = (batchEnd + 1 < _numSamples) ? _rowOffsets[batchEnd + 1] : _file.size;
+          let endByte;
+          if (_isMultiCsv && targetFileRecord) {
+            const endLocal = _rowLocalIndices[batchEnd];
+            endByte = (endLocal + 1 < targetFileRecord.numSamples)
+              ? targetFileRecord.rowOffsets[endLocal + 1]
+              : targetFile.size;
+          } else {
+            endByte = (batchEnd + 1 < _numSamples) ? _rowOffsets[batchEnd + 1] : _file.size;
+          }
           
-          const slice = _file.slice(startByte, endByte);
+          const slice = targetFile.slice(startByte, endByte);
           const text = await slice.text();
           const lines = text.split(/\r?\n/);
           
@@ -718,7 +1006,7 @@ const CsvAPI = {
                 if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
                   valuesStartIndex = 2;
                 }
-                const valStr = parts[valuesStartIndex + chIdx];
+                const valStr = parts[valuesStartIndex + localColIdx];
                 const v = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
                 segValues.push((v === null || isNaN(v)) ? null : v);
               } else {
@@ -887,45 +1175,67 @@ const CsvAPI = {
     const chunkSize = 5000;
     for (let start = 0; start < _numSamples; start += chunkSize) {
       const end = Math.min(start + chunkSize, _numSamples);
-      const startByte = _rowOffsets[start];
-      const endByte = (end < _numSamples) ? _rowOffsets[end] : _file.size;
-      
-      const slice = _file.slice(startByte, endByte);
-      const text = await slice.text();
-      const lines = text.split(/\r?\n/);
-      
       let chunkXml = '';
-      let lineIdx = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+
+      if (!_isMultiCsv) {
+        const startByte = _rowOffsets[start];
+        const endByte = (end < _numSamples) ? _rowOffsets[end] : _file.size;
         
-        const rowIdx = start + lineIdx;
-        if (rowIdx >= end) break;
+        const slice = _file.slice(startByte, endByte);
+        const text = await slice.text();
+        const lines = text.split(/\r?\n/);
         
-        const parts = parseCsvLine(line);
-        if (parts.length > 0) {
-          let valuesStartIndex = 1;
-          if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
-            valuesStartIndex = 2;
-          }
+        let lineIdx = 0;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
           
-          const dateStr = formatDateTime(_rowTimestamps[rowIdx]);
+          const rowIdx = start + lineIdx;
+          if (rowIdx >= end) break;
+          
+          const parts = parseCsvLine(line);
+          if (parts.length > 0) {
+            let valuesStartIndex = 1;
+            if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
+              valuesStartIndex = 2;
+            }
+            
+            const dateStr = formatDateTime(_rowTimestamps[rowIdx]);
+            chunkXml += '   <Row>\n';
+            chunkXml += `    <Cell><Data ss:Type="String">${dateStr}</Data></Cell>\n`;
+            
+            for (let c = 0; c < _numChannels; c++) {
+              const valStr = parts[valuesStartIndex + c];
+              if (valStr === undefined || valStr === '') {
+                chunkXml += '    <Cell><Data ss:Type="String"></Data></Cell>\n';
+              } else {
+                chunkXml += `    <Cell><Data ss:Type="Number">${parseFloat(valStr)}</Data></Cell>\n`;
+              }
+            }
+            chunkXml += '   </Row>\n';
+          }
+          lineIdx++;
+        }
+      } else {
+        const pageRows = await new Promise(resolve => {
+          this.getTablePage(Math.floor(start / chunkSize), chunkSize, null, res => resolve(res.rows || []));
+        });
+        for (const row of pageRows) {
+          const dateStr = formatDateTime(row.timestampMs);
           chunkXml += '   <Row>\n';
           chunkXml += `    <Cell><Data ss:Type="String">${dateStr}</Data></Cell>\n`;
-          
-          for (let c = 0; c < _numChannels; c++) {
-            const valStr = parts[valuesStartIndex + c];
-            if (valStr === undefined || valStr === '') {
+          for (let c = 0; c < _channels.length; c++) {
+            const v = row.values[c];
+            if (v === null || v === undefined || isNaN(v)) {
               chunkXml += '    <Cell><Data ss:Type="String"></Data></Cell>\n';
             } else {
-              chunkXml += `    <Cell><Data ss:Type="Number">${parseFloat(valStr)}</Data></Cell>\n`;
+              chunkXml += `    <Cell><Data ss:Type="Number">${v}</Data></Cell>\n`;
             }
           }
           chunkXml += '   </Row>\n';
         }
-        lineIdx++;
       }
+
       xmlChunks.push(chunkXml);
 
       if (onProgress) {
@@ -954,19 +1264,74 @@ const CsvAPI = {
       throw new Error("No CSV file loaded");
     }
     
-    // Direct, zero-heap binary download of the original file
-    const url = URL.createObjectURL(_file);
+    if (!_isMultiCsv) {
+      // Direct, zero-heap binary download of the original file
+      const url = URL.createObjectURL(_file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', _file.name || `export_all_channels.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      if (onProgress) {
+        onProgress(1.0);
+      }
+      return;
+    }
+
+    // Multi-file CSV export: generate combined CSV
+    const formatDateTime = (ms) => {
+      const d = new Date(ms);
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    };
+
+    let headerText = `${_deviceName}\n\n`;
+    headerText += `Description,Record File\n`;
+    headerText += `Start Date Time,${formatDateTime(_startTimeMs)}\n`;
+    headerText += `End Date Time,${formatDateTime(_stopTimeMs)}\n`;
+    headerText += `Sample Rate(sec),${_sampleIntervalSec}\n\n`;
+    headerText += `No.,Channel,Sensor,Unit,Resolution\n`;
+    _channels.forEach((ch, idx) => {
+      headerText += `${idx + 1},${ch.logic_channel_description || ''},${ch.sensor_description || ''},${ch.unit_in_ascii || ''},${ch.resolution || 2},0,100\n`;
+    });
+    headerText += `\nDate Time`;
+    _channels.forEach(ch => {
+      headerText += `,${ch.logic_channel_description || ''}`;
+    });
+    headerText += `\n`;
+
+    const chunks = [headerText];
+    const PAGE_SIZE = 5000;
+    for (let s = 0; s < _numSamples; s += PAGE_SIZE) {
+      const end = Math.min(s + PAGE_SIZE, _numSamples);
+      const pageRows = await new Promise(resolve => {
+        this.getTablePage(Math.floor(s / PAGE_SIZE), PAGE_SIZE, null, res => resolve(res.rows || []));
+      });
+      let pageText = '';
+      for (const row of pageRows) {
+        pageText += `${formatDateTime(row.timestampMs)}`;
+        for (let c = 0; c < _channels.length; c++) {
+          const v = row.values[c];
+          pageText += `,${(v !== null && v !== undefined && !isNaN(v)) ? v : ''}`;
+        }
+        pageText += `\n`;
+      }
+      chunks.push(pageText);
+      if (onProgress) onProgress(end / _numSamples);
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', _file.name || `export_all_channels.csv`);
+    link.setAttribute('download', `${_csvFiles.length}_files_merged.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
-    if (onProgress) {
-      onProgress(1.0);
-    }
   },
 
   /**
@@ -992,9 +1357,9 @@ const CsvAPI = {
     let segStartRow = 0;
     for (let i = 1; i < _numSamples; i++) {
       const delta = _rowTimestamps[i] - _rowTimestamps[i - 1];
-      if (delta > gapThresholdMs) {
-        const missingSamples = Math.round((delta - intervalMs) / intervalMs);
-
+      const fileChanged = _isMultiCsv && (_rowFileIndices[i] !== _rowFileIndices[i - 1]);
+      const isGap = delta > gapThresholdMs;
+      if (isGap || fileChanged) {
         // Close the current segment
         segments.push({
           startRow:    segStartRow,
@@ -1004,15 +1369,18 @@ const CsvAPI = {
           rowCount:    i - segStartRow,
         });
 
-        gaps.push({
-          from:          _rowTimestamps[i - 1],
-          to:            _rowTimestamps[i],
-          deltaMs:       delta,
-          missingSamples,
-          missingMs:     delta - intervalMs,
-          beforeRow:     i - 1,
-          afterRow:      i,
-        });
+        if (isGap) {
+          const missingSamples = Math.max(1, Math.round((delta - intervalMs) / intervalMs));
+          gaps.push({
+            from:          _rowTimestamps[i - 1],
+            to:            _rowTimestamps[i],
+            deltaMs:       delta,
+            missingSamples,
+            missingMs:     delta - intervalMs,
+            beforeRow:     i - 1,
+            afterRow:      i,
+          });
+        }
 
         segStartRow = i;
       }

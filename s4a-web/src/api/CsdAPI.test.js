@@ -832,11 +832,11 @@ No.,Date Time,CH1 - mV,CH2 - mV
     expect(page.rows[1].values['0:0']).toBe(110);
     expect(page.rows[1].values['1:0']).toBe(1100);
 
-    // Append a non-overlapping file → rejected
+    // Option B: Append a non-overlapping file (e.g. 24h later across data loss / gap) → accepted
     const fileC = buildFile('C.csd', 2, 5000, 1, startTimeMs + 86400000);
     const resC = await CsdAPI.appendFile(fileC);
-    expect(resC.ok).toBe(false);
-    expect(CsdAPI.getNumLoadedFiles()).toBe(2);
+    expect(resC.ok).toBe(true);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(3);
   });
 
   it('exports merged multi-file data to CSV', async () => {
@@ -1029,6 +1029,336 @@ No.,Date Time,CH1 - mV,CH2 - mV
     expect(classifyChannel(flowCh.unit_in_ascii)).toBe('flow');
     const flows = channels.filter(ch => classifyChannel(ch.unit_in_ascii) === 'flow');
     expect(flows.length).toBeGreaterThan(0);
+  });
+
+  it('appends a second CSV file into a merged session and isolates single-file open', async () => {
+    const csvContent1 = `CSV Device
+
+Description,Record File
+Start Date Time,20-05-2024 10:00:00
+End Date Time,20-05-2024 10:00:04
+Sample Rate(sec),1
+
+No.,Channel,Sensor,Unit,Resolution
+1,Flow,SensorA,m3/h,2,0,100
+2,Pressure,SensorB,bar,2,0,16
+
+Date Time,Flow,Pressure
+20-05-2024 10:00:00,10.5,6.0
+20-05-2024 10:00:01,11.0,6.1
+20-05-2024 10:00:02,11.5,6.2
+20-05-2024 10:00:03,12.0,6.3
+20-05-2024 10:00:04,12.5,6.4
+`;
+
+    const csvContent2 = `CSV Device
+
+Description,Record File
+Start Date Time,20-05-2024 12:00:00
+End Date Time,20-05-2024 12:00:04
+Sample Rate(sec),1
+
+No.,Channel,Sensor,Unit,Resolution
+1,Flow,SensorA,m3/h,2,0,100
+2,Pressure,SensorB,bar,2,0,16
+
+Date Time,Flow,Pressure
+20-05-2024 12:00:00,20.0,7.0
+20-05-2024 12:00:01,21.0,7.1
+20-05-2024 12:00:02,22.0,7.2
+20-05-2024 12:00:03,23.0,7.3
+20-05-2024 12:00:04,24.0,7.4
+`;
+
+    const encoder = new TextEncoder();
+    const buf1 = encoder.encode(csvContent1).buffer;
+    const buf2 = encoder.encode(csvContent2).buffer;
+
+    const mockCsv1 = {
+      name: 'file1.csv',
+      size: buf1.byteLength,
+      slice(start, end) {
+        const sliced = buf1.slice(start, end);
+        return {
+          arrayBuffer: async () => sliced,
+          text: async () => new TextDecoder().decode(sliced)
+        };
+      }
+    };
+
+    const mockCsv2 = {
+      name: 'file2.csv',
+      size: buf2.byteLength,
+      slice(start, end) {
+        const sliced = buf2.slice(start, end);
+        return {
+          arrayBuffer: async () => sliced,
+          text: async () => new TextDecoder().decode(sliced)
+        };
+      }
+    };
+
+    const handle1 = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockCsv1
+    };
+
+    // 1. Initial single-file load
+    const loaded1 = await CsdAPI.loadFileFromHandle(handle1);
+    expect(loaded1).toBe(true);
+    expect(CsdAPI.isCsvMode()).toBe(true);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(1);
+    expect(CsdAPI.getLoadedFileName()).toBe('file1.csv');
+    expect(CsdAPI.getNumOfSamples()).toBe(5);
+
+    // Single-file table query
+    let page1 = null;
+    CsdAPI.getTablePage(0, 10, [0, 1], res => { page1 = res; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(page1.rows).toHaveLength(5);
+    expect(page1.rows[0].values[0]).toBe(10.5);
+    expect(page1.rows[4].values[0]).toBe(12.5);
+
+    // 2. Append second CSV file (2 hours later gap)
+    const appendRes = await CsdAPI.appendFile(mockCsv2);
+    expect(appendRes.ok).toBe(true);
+    expect(appendRes.numFiles).toBe(2);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(2);
+    expect(CsdAPI.getLoadedFileName()).toBe('2 files');
+    expect(CsdAPI.getNumOfSamples()).toBe(10);
+
+    // Verify merged table page across both files
+    let mergedPage = null;
+    CsdAPI.getTablePage(0, 10, [0, 1], res => { mergedPage = res; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(mergedPage.rows).toHaveLength(10);
+    expect(mergedPage.rows[0].values[0]).toBe(10.5);
+    expect(mergedPage.rows[4].values[0]).toBe(12.5);
+    expect(mergedPage.rows[5].values[0]).toBe(20.0);
+    expect(mergedPage.rows[9].values[0]).toBe(24.0);
+
+    // Verify measurement data returns 2 segments for the 2 separated time blocks
+    let measData = null;
+    const tRange = CsdAPI.getFileTimeRange();
+    CsdAPI.getMeasurementData('0', tRange.start + 3600000 * 8, tRange.stop + 3600000 * 8, 1, 2, res => { measData = res; });
+    await new Promise(r => setTimeout(r, 80));
+    expect(measData).not.toBeNull();
+    expect(measData[0].measurementData.length).toBe(2);
+    expect(measData[0].measurementData[0]).toEqual([10.5, 11.0, 11.5, 12.0, 12.5]);
+    expect(measData[0].measurementData[1]).toEqual([20.0, 21.0, 22.0, 23.0, 24.0]);
+
+    // 3. User opens a single file again: MUST reset to single-file mode with zero multi-file effect
+    const reloaded = await CsdAPI.loadFileFromHandle(handle1);
+    expect(reloaded).toBe(true);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(1);
+    expect(CsdAPI.getLoadedFileName()).toBe('file1.csv');
+    expect(CsdAPI.getNumOfSamples()).toBe(5);
+
+    let singlePageAgain = null;
+    CsdAPI.getTablePage(0, 10, [0, 1], res => { singlePageAgain = res; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(singlePageAgain.rows).toHaveLength(5);
+  });
+
+  it('appends CSV files with different channel counts (e.g. 3 channels + 7 channels) into a merged multi-channel session', async () => {
+    function buildMockCsv(name, numChannels, startHour, numRows) {
+      let content = `Test Device\n\n`;
+      content += `Description,Record File\n`;
+      content += `Start Date Time,20-05-2024 ${String(startHour).padStart(2, '0')}:00:00\n`;
+      content += `End Date Time,20-05-2024 ${String(startHour).padStart(2, '0')}:00:${String(numRows - 1).padStart(2, '0')}\n`;
+      content += `Sample Rate(sec),1\n\n`;
+      content += `No.,Channel,Sensor,Unit,Resolution\n`;
+      for (let c = 0; c < numChannels; c++) {
+        content += `${c + 1},Sensor_${c + 1},SensorType,Unit_${c + 1},2,0,100\n`;
+      }
+      content += `\nDate Time`;
+      for (let c = 0; c < numChannels; c++) {
+        content += `,Sensor_${c + 1}`;
+      }
+      content += `\n`;
+      for (let r = 0; r < numRows; r++) {
+        content += `20-05-2024 ${String(startHour).padStart(2, '0')}:00:${String(r).padStart(2, '0')}`;
+        for (let c = 0; c < numChannels; c++) {
+          content += `,${(startHour * 100) + (r * 10) + c}`;
+        }
+        content += `\n`;
+      }
+      return {
+        name,
+        size: content.length,
+        slice(start, end) {
+          const s = content.slice(start, end);
+          return {
+            arrayBuffer: async () => new TextEncoder().encode(s).buffer,
+            text: async () => s
+          };
+        }
+      };
+    }
+
+    const csv3Ch = buildMockCsv('base_3ch.csv', 3, 2, 4);
+    const csv7Ch = buildMockCsv('appended_7ch.csv', 7, 3, 4);
+
+    const handle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => csv3Ch
+    };
+
+    // 1. Load base CSV with 3 channels
+    const loaded = await CsdAPI.loadFileFromHandle(handle);
+    expect(loaded).toBe(true);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(1);
+
+    // 2. Append second CSV with 7 channels
+    const appendRes = await CsdAPI.appendFile(csv7Ch);
+    expect(appendRes.ok).toBe(true);
+    expect(appendRes.numFiles).toBe(2);
+    expect(CsdAPI.getNumLoadedFiles()).toBe(2);
+
+    // 3. Verify smart channel unification:
+    // Sensor_1, Sensor_2, Sensor_3 are unified across both files.
+    // Sensor_4..Sensor_7 are added as new channels 3..6. Total channels = 7.
+    let channels = null;
+    CsdAPI.getChannels(res => { channels = res.logging_chs; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(channels).toHaveLength(7);
+    expect(channels[0].logic_channel_description).toBe('Sensor_1');
+    expect(channels[2].logic_channel_description).toBe('Sensor_3');
+    expect(channels[3].logic_channel_description).toBe('Sensor_4');
+    expect(channels[6].logic_channel_description).toBe('Sensor_7');
+
+    // 4. Verify table page contains values for both files:
+    // Channel 0 ('Sensor_1') has values in BOTH File 0 and File 1.
+    // Channel 3 ('Sensor_4') has null in File 0, and value 303 in File 1.
+    let tablePage = null;
+    CsdAPI.getTablePage(0, 10, [0, 3], res => { tablePage = res; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(tablePage.total).toBe(8); // 4 rows + 4 rows
+    expect(tablePage.rows[0].values[0]).toBe(200); // File 0, row 0, ch 0
+    expect(tablePage.rows[0].values[3]).toBeNull(); // File 0 does not have Sensor_4
+    expect(tablePage.rows[4].values[0]).toBe(300); // File 1, row 0, ch 0 (continued!)
+    expect(tablePage.rows[4].values[3]).toBe(303); // File 1, row 0, ch 3 (Sensor_4)
+
+    // 5. Verify getMeasurementData:
+    // Query unified Channel 0: returns data for BOTH file segments!
+    let measData0 = null;
+    const tRange = CsdAPI.getFileTimeRange();
+    CsdAPI.getMeasurementData('0', tRange.start + 3600000 * 8, tRange.stop + 3600000 * 8, 1, 2, res => { measData0 = res; });
+    await new Promise(r => setTimeout(r, 80));
+    expect(measData0).not.toBeNull();
+    expect(measData0[0].measurementData.length).toBe(2); // 2 segments (File 0 + File 1)
+    expect(measData0[0].measurementData[0]).toEqual([200, 210, 220, 230]);
+    expect(measData0[0].measurementData[1]).toEqual([300, 310, 320, 330]);
+
+    // Query newly added Channel 3 (Sensor_4): returns data only for File 1 segment!
+    let measData3 = null;
+    CsdAPI.getMeasurementData('3', tRange.start + 3600000 * 8, tRange.stop + 3600000 * 8, 1, 2, res => { measData3 = res; });
+    await new Promise(r => setTimeout(r, 80));
+    expect(measData3).not.toBeNull();
+    expect(measData3[0].measurementData.length).toBe(1); // 1 segment (only File 1)
+    expect(measData3[0].measurementData[0]).toEqual([303, 313, 323, 333]);
+  });
+
+  it('appends sequential CSD files with different channel counts into a unified session', async () => {
+    const encoder = new TextEncoder();
+    const startTimeMs = 1716380000000;
+    const numSamples = 5;
+
+    function buildCsd(name, numChannels, base, intervalSec = 1, thisStart = startTimeMs) {
+      const protocolHeaderStart = 34;
+      const channelHeadersStart = 3586;
+      const recordLen = 4 + numChannels * 8;
+      const dataStart = channelHeadersStart + numChannels * 918;
+      const totalSize = dataStart + numSamples * recordLen;
+      const buffer = new ArrayBuffer(totalSize);
+      const view = new DataView(buffer);
+
+      view.setInt32(0, 5, false);
+      const idBytes = encoder.encode('SUTO CSD');
+      for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+      view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+      view.setInt32(protocolHeaderStart + 3020, numSamples, false);
+      view.setInt32(protocolHeaderStart + 3024, intervalSec, false);
+      view.setBigInt64(protocolHeaderStart + 3032, BigInt(thisStart), false);
+      view.setBigInt64(protocolHeaderStart + 3040, BigInt(thisStart + numSamples * intervalSec * 1000), false);
+
+      for (let c = 0; c < numChannels; c++) {
+        const chStart = channelHeadersStart + c * 918;
+        view.setBigInt64(chStart + 0, BigInt(100 + c), false);
+        const descName = `Ch_${c}`;
+        view.setInt16(chStart + 8, descName.length, false);
+        const descBytes = encoder.encode(descName);
+        for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+        view.setInt32(chStart + 848, 2, false);
+        view.setFloat64(chStart + 852, 0, false);
+        view.setFloat64(chStart + 860, 1000, false);
+        view.setInt32(chStart + 876, 5000 + c, false);
+      }
+
+      for (let s = 0; s < numSamples; s++) {
+        const recStart = dataStart + s * recordLen;
+        view.setInt32(recStart, s, false);
+        for (let c = 0; c < numChannels; c++) {
+          view.setFloat64(recStart + 4 + c * 8, base + s * 10 + c, false);
+        }
+      }
+
+      return {
+        name,
+        size: totalSize,
+        slice(start, end) { return { arrayBuffer: async () => buffer.slice(start, end) }; }
+      };
+    }
+
+    // File 1: 3 channels (Ch_0, Ch_1, Ch_2), base 100
+    const file1 = buildCsd('file1.csd', 3, 100, 1, startTimeMs);
+    const handle1 = { queryPermission: async () => 'granted', requestPermission: async () => 'granted', getFile: async () => file1 };
+    await CsdAPI.loadFileFromHandle(handle1);
+
+    let initialChs = null;
+    CsdAPI.getChannels(res => { initialChs = res.logging_chs; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(initialChs).toHaveLength(3);
+
+    // File 2: 4 channels (Ch_0, Ch_1, Ch_2, Ch_3), base 500, recorded 1 hour later (non-overlapping)
+    const file2 = buildCsd('file2.csd', 4, 500, 1, startTimeMs + 3600000);
+    const resAppend = await CsdAPI.appendFile(file2);
+    expect(resAppend.ok).toBe(true);
+
+    // Verify smart channel unification:
+    // 3 shared channels (Ch_0, Ch_1, Ch_2) unified + 1 newly added channel (Ch_3) => 4 total channels!
+    let channels = null;
+    CsdAPI.getChannels(res => { channels = res.logging_chs; });
+    await new Promise(r => setTimeout(r, 60));
+    expect(channels).toHaveLength(4);
+    expect(channels.map(c => c.logic_channel_description)).toEqual(['Ch_0', 'Ch_1', 'Ch_2', 'Ch_3']);
+
+    // Check bindings:
+    expect(channels[0].bindings.length).toBe(2);
+    expect(channels[1].bindings.length).toBe(2);
+    expect(channels[2].bindings.length).toBe(2);
+    expect(channels[3].bindings.length).toBe(1);
+
+    // Verify getMeasurementData for unified channel (Ch_0):
+    let meas0 = null;
+    const tRange = CsdAPI.getFileTimeRange();
+    CsdAPI.getMeasurementData('0', tRange.start + 3600000 * 8, tRange.stop + 3600000 * 8, 1, 2, res => { meas0 = res; });
+    await new Promise(r => setTimeout(r, 80));
+    expect(meas0).not.toBeNull();
+    expect(meas0[0].measurementData.length).toBe(2); // 2 segments (File 1 and File 2)
+    expect(meas0[0].measurementData[0]).toEqual([100, 110, 120, 130, 140]);
+    expect(meas0[0].measurementData[1]).toEqual([500, 510, 520, 530, 540]);
+
+    // Verify getMeasurementData for newly added channel (Ch_3):
+    let meas3 = null;
+    CsdAPI.getMeasurementData('3', tRange.start + 3600000 * 8, tRange.stop + 3600000 * 8, 1, 2, res => { meas3 = res; });
+    await new Promise(r => setTimeout(r, 80));
+    expect(meas3).not.toBeNull();
+    expect(meas3[0].measurementData.length).toBe(1); // 1 segment (File 2 only)
+    expect(meas3[0].measurementData[0]).toEqual([503, 513, 523, 533, 543]);
   });
 
 });

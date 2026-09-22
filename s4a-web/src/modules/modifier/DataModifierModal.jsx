@@ -129,7 +129,8 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
           if (meta.channels && meta.channels.length > 0) {
             setRealtimeSelectedChs(meta.channels.map((c) => c.channel_id));
           }
-          setRealtimeStartSample(0);
+          // Default indicator at 30% of the file duration
+          setRealtimeStartSample(Math.round(0.3 * Math.max(0, meta.numSamples - 1)));
         }
       });
       setRemovedChannelIds([]);
@@ -140,7 +141,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       setCutPosition('end');
       setCellOverrides({});
       setRealtimeRows([]);
-      setRealtimeStartSample(0);
+      // realtimeStartSample is set after metadata loads (30% above)
     } else {
       // Reset progress
       setIsExporting(false);
@@ -491,7 +492,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
         .attr('stroke-dasharray', ch.isDerived ? '6,2' : null)
         .attr('d', lineGen);
     });
-  }, [previewData, visibleChannels]);
+  }, [previewData, visibleChannels, activeTab]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -1996,30 +1997,10 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                                 [ch.channel_id]: !isVis,
                               }))
                             }
-                            title={
-                              ch.isConsumptionCandidate
-                                ? `${ch.name} [${ch.unit || '-'}] - Totalizer / Consumption (Click to toggle)`
-                                : `${ch.name} [${ch.unit || '-'}] - Click to toggle`
-                            }
+                            title={`${ch.name} [${ch.unit || '-'}] - Click to toggle`}
                           >
                             <div className="modifier-legend-dot" style={{ backgroundColor: color }} />
                             <span>{ch.name}</span>
-                            {ch.isConsumptionCandidate && (
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  padding: '1px 4px',
-                                  borderRadius: 3,
-                                  marginLeft: 4,
-                                  background: isVis ? '#dcfce7' : '#f1f5f9',
-                                  color: isVis ? '#166534' : '#64748b',
-                                  fontWeight: 600,
-                                  border: isVis ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
-                                }}
-                              >
-                                Totalizer
-                              </span>
-                            )}
                           </div>
                         );
                       })}

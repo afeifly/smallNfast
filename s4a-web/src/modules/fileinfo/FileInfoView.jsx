@@ -2,6 +2,19 @@ import React from 'react';
 import TestAPI from '../../api/TestAPI';
 import './FileInfoView.css';
 
+const formatResolution = (val, resolution) => {
+  if (val === undefined || val === null || isNaN(val) || val <= -8888) {
+    return '-';
+  }
+  const digits = typeof resolution === 'number' && resolution >= 0 && resolution <= 6 
+    ? resolution 
+    : 2;
+  return Number(val).toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
+
 function FileInfoView() {
   const [fileInfo, setFileInfo] = React.useState(null);
 
@@ -115,20 +128,33 @@ function FileInfoView() {
                     <th>Sensor Model</th>
                     <th>Unit</th>
                     <th>Resolution</th>
+                    {!fileInfo.isCsv && <th>Min ~ Max</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {fileInfo.channels && fileInfo.channels.map((ch, idx) => (
-                    <tr key={idx}>
-                      <td className="col-index">#{idx + 1}</td>
-                      <td className="col-desc">{ch.full_channel_name || ch.logic_channel_description || `Channel ${ch.channel_id}`}</td>
-                      <td className="col-sensor">{ch.sensor_description || '-'}</td>
-                      <td className="col-unit">
-                        <span className="unit-badge-tag">{ch.unit_in_ascii || '-'}</span>
-                      </td>
-                      <td className="col-res">{ch.resolution !== undefined ? ch.resolution : '-'}</td>
-                    </tr>
-                  ))}
+                  {fileInfo.channels && fileInfo.channels.map((ch, idx) => {
+                    const minVal = formatResolution(ch.min !== undefined ? ch.min : ch._min, ch.resolution);
+                    const maxVal = formatResolution(ch.max !== undefined ? ch.max : ch._max, ch.resolution);
+                    const rangeDisplay = (minVal === '-' && maxVal === '-') ? '-' : `${minVal}~${maxVal}`;
+                    return (
+                      <tr key={idx}>
+                        <td className="col-index">#{idx + 1}</td>
+                        <td className="col-desc">{ch.full_channel_name || ch.logic_channel_description || `Channel ${ch.channel_id}`}</td>
+                        <td className="col-sensor">{ch.sensor_description || '-'}</td>
+                        <td className="col-unit">
+                          <span className="unit-badge-tag">{ch.unit_in_ascii || '-'}</span>
+                        </td>
+                        <td className="col-res">{ch.resolution !== undefined ? ch.resolution : '-'}</td>
+                        {!fileInfo.isCsv && (
+                          <td className="col-stat">
+                            <span className="stat-range-tag">
+                              {rangeDisplay}
+                            </span>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

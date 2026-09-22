@@ -1207,6 +1207,11 @@ const CsdAPI = {
     }
   },
 
+  async loadFile(file) {
+    if (!file) return false;
+    return await _loadFromFile(file);
+  },
+
   /**
    * Return list of recent file metadata (name, size, lastOpened)
    * stored in localStorage.
@@ -1455,6 +1460,73 @@ const CsdAPI = {
     });
   },
 
+  /**
+   * Patches sample values in memory and persists to original file if FileSystemFileHandle is available.
+   * @param {Object} overrides - { [recordIndex]: { [channelId]: newValue } }
+   * @returns {Promise<{ success: boolean, persisted: boolean, count: number }>}
+   */
+  async patchSampleValues(overrides) {
+    if (!_fileLoaded || !overrides) return { success: false, persisted: false, count: 0 };
+    let count = 0;
+
+    // 1. Update in-memory _fileBuffer if available
+    if (_fileBuffer) {
+      const dv = new DataView(_fileBuffer);
+      for (const [recIdxStr, chMap] of Object.entries(overrides)) {
+        const recordIndex = parseInt(recIdxStr, 10);
+        if (recordIndex < 0 || recordIndex >= _numSamples) continue;
+        const recOffset = _dataStart + recordIndex * _recordLen;
+        for (const [chIdStr, newVal] of Object.entries(chMap)) {
+          const chId = parseInt(chIdStr, 10);
+          if (chId < 0 || chId >= _numChannels) continue;
+          const valOffset = recOffset + RECORD_ID_LEN + chId * CHANNEL_VALUE_LEN;
+          dv.setFloat64(valOffset, Number(newVal), false);
+          count++;
+        }
+      }
+    }
+
+    // 2. Persist to file handle if available
+    let persisted = false;
+    try {
+      const isHandle = typeof FileSystemFileHandle !== 'undefined' && _file instanceof FileSystemFileHandle;
+      const handle = isHandle ? _file : await _idbGet(this.getLoadedFileName());
+      if (handle && handle.createWritable) {
+        const perm = await handle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          const requested = await handle.requestPermission({ mode: 'readwrite' });
+          if (requested !== 'granted') {
+            return { success: true, persisted: false, count };
+          }
+        }
+        const writable = await handle.createWritable({ keepExistingData: true });
+        if (_fileBuffer) {
+          await writable.write({ type: 'write', data: _fileBuffer, position: 0 });
+        } else {
+          for (const [recIdxStr, chMap] of Object.entries(overrides)) {
+            const recordIndex = parseInt(recIdxStr, 10);
+            if (recordIndex < 0 || recordIndex >= _numSamples) continue;
+            const recOffset = _dataStart + recordIndex * _recordLen;
+            for (const [chIdStr, newVal] of Object.entries(chMap)) {
+              const chId = parseInt(chIdStr, 10);
+              if (chId < 0 || chId >= _numChannels) continue;
+              const valOffset = recOffset + RECORD_ID_LEN + chId * CHANNEL_VALUE_LEN;
+              const buf = new ArrayBuffer(8);
+              new DataView(buf).setFloat64(0, Number(newVal), false);
+              await writable.write({ type: 'write', data: buf, position: valOffset });
+            }
+          }
+        }
+        await writable.close();
+        persisted = true;
+      }
+    } catch (e) {
+      console.warn('[CsdAPI] Failed to persist patch to file handle:', e);
+    }
+
+    return { success: true, persisted, count };
+  },
+
   // ── Export helpers (single or merged multi-file session) ────────────────────
 
   _exportChannels() { return _isMulti() ? _merged.channels : _channels; },
@@ -1540,7 +1612,7 @@ const CsdAPI = {
         const v = dv.getFloat64(recordOffset + RECORD_ID_LEN + c * CHANNEL_VALUE_LEN, false);
         values[c] = (v <= DATA_OVERRANGE) ? null : v;
       }
-      rows.push({ timestampMs, values });
+      rows.push({ index: start + i, timestampMs, values });
     }
     return rows;
   },
@@ -1611,6 +1683,9 @@ const CsdAPI = {
         unit_in_ascii: ch.unit_in_ascii,
         resolution: ch.resolution,
         full_channel_name: ch.full_channel_name,
+        min: ch.min !== undefined ? ch.min : ch._min,
+        max: ch.max !== undefined ? ch.max : ch._max,
+        color: ch.color,
         file_index: ch.file_index,
         bindings: ch.bindings,
       }))

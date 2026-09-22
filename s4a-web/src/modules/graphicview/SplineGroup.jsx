@@ -89,6 +89,7 @@ class SplineGroup extends Component {
 
 
   componentDidMount() {
+    this._isMounted = true;
     this.updateDisplay();
 
     this.dataTipPanel = d3.select('.data-tip-panel');
@@ -129,6 +130,14 @@ class SplineGroup extends Component {
         this.hideDataTipPanel();
         this.hideDateTip();
       });
+  }
+
+  componentWillUnmount() {
+    this._isMounted = false;
+    if (this.initTimeout) {
+      clearTimeout(this.initTimeout);
+      this.initTimeout = null;
+    }
   }
 
   /**
@@ -184,7 +193,11 @@ class SplineGroup extends Component {
       }
     });
 
-    setTimeout(() => {
+    if (this.initTimeout) {
+      clearTimeout(this.initTimeout);
+    }
+    this.initTimeout = setTimeout(() => {
+      if (!this._isMounted) return;
       lines = document.getElementsByClassName('sub-line');
       self.initMousePerLine();
 
@@ -210,7 +223,8 @@ class SplineGroup extends Component {
   }
 
   initMousePerLine() {
-    const isHovering = d3.select('.current-date-tip').attr('data-status') === 'active';
+    const tipEl = d3.select('.current-date-tip').node();
+    const isHovering = tipEl ? tipEl.getAttribute('data-status') === 'active' : false;
     const initialOpacity = isHovering ? 1 : 0;
 
     let mousePerLine = d3.select('#line-container')
@@ -296,8 +310,11 @@ class SplineGroup extends Component {
       return;
     }
 
-    if (!this.dragEnabled && (d3.select('.current-date-tip').attr('data-status') !== 'active' ||
-        (this.dataTipPanel && this.dataTipPanel.attr('data-status') !== 'active'))) {
+    const tipNode = d3.select('.current-date-tip').node();
+    const isTipActive = tipNode ? tipNode.getAttribute('data-status') === 'active' : false;
+    const isPanelActive = this.dataTipPanel && this.dataTipPanel.node() && this.dataTipPanel.attr('data-status') === 'active';
+
+    if (!this.dragEnabled && (!isTipActive || !isPanelActive)) {
       this.mouseOver(mouse);
     }
 
@@ -466,13 +483,16 @@ class SplineGroup extends Component {
 
   positionDateTip = (chartController, mouse) => {
     const label = d3.select('.date-tip-label');
+    const labelNode = label.node();
+    if (!labelNode) return;
+
     const date = chartController.xScale.invert(mouse[0]);
     
     // Update label text first
     label.text(dateFormat(date));
     
     // Measure actual text width
-    let labelWidth = Math.floor(label.node().getBBox().width);
+    let labelWidth = Math.floor(labelNode.getBBox().width);
     let w = labelWidth + 24; // Extra padding for premium spacing
     let h = 27;
 
@@ -611,7 +631,8 @@ class SplineGroup extends Component {
     }
 
     const x = this.dragStartX;
-    const w = parseInt(d3.select('#drag-bound').attr('width'));
+    const dragBoundNode = d3.select('#drag-bound').node();
+    const w = dragBoundNode ? parseInt(dragBoundNode.getAttribute('width') || '0', 10) : 0;
 
     let timesPerPix = chartController.computetimesPerPix(); //unit: millisecond
     let start = new Date(chartController.timePeriod.start.getTime() + x * timesPerPix);

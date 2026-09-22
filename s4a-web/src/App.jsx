@@ -6,6 +6,7 @@ import FileInfoView from './modules/fileinfo/FileInfoView';
 import CompressorAnalyze from './modules/analyze/CompressorAnalyze';
 import TestAPI from './api/TestAPI';
 import Loading from './components/loading/Loading';
+import DataModifierModal from './modules/modifier/DataModifierModal';
 import './App.css';
 
 import intl from 'react-intl-universal';
@@ -108,6 +109,7 @@ function App() {
   const [recentFiles, setRecentFiles] = React.useState([]);
   const [recentDialogOpen, setRecentDialogOpen] = React.useState(false);
   const [shareMenuAnchorEl, setShareMenuAnchorEl] = React.useState(null);
+  const [modifierOpen, setModifierOpen] = React.useState(false);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -459,9 +461,15 @@ function App() {
                 className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
                 onClick={() => setActiveTab('analyze')}
               >
-                Compressor Analyze <span className="beta-tag">Beta</span>
+                Compressor Analyze
               </button>
             )}
+            <button
+              className="tab-btn"
+              onClick={() => setModifierOpen(true)}
+            >
+              Data Studio
+            </button>
           </div>
         )}
 
@@ -1088,6 +1096,15 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Data Modification & Synthesis Studio Modal */}
+      <DataModifierModal
+        open={modifierOpen}
+        onClose={() => setModifierOpen(false)}
+        onFileReloaded={(name) => {
+          if (name) setLoadedFilename(name);
+        }}
+      />
     </div>
   );
 }

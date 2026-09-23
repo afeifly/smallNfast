@@ -62,6 +62,7 @@ function showlicense(req, res, kw) {
 
 // Routes
 router.post('/registration', (req, res) => {
+    console.log(new Date() + " Client POST /registration payload: " + JSON.stringify(req.body));
     const { localid, sn, email, company, user, addr, productid: product } = req.body;
     console.log(new Date() + " Register with product id=" + product + " sn=" + sn + " localid=" + localid);
 

@@ -6,3 +6,8 @@ server/tmp/
 server/data/templates.db
 server/data/templates.db-wal
 server/data/templates.db-shm
+
+# products and config
+server/data/products.json
+server/data/odoo_config.json
+

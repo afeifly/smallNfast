@@ -243,11 +243,11 @@ router.post('/api/licenses', (req, res) => {
                     const snId = done.insertId;
                     if (Number(pid) === constants.PRODUCT_TYPE_S4M) {
                         const sn_props = [
-                            [1, snId, properties.maxChs],
-                            [2, snId, properties.report],
+                            [1, snId, Number(properties.maxChs) || 0],
+                            [2, snId, properties.report ? 1 : 0],
                         ];
                         connection.query('insert into sn_cust_properties(property_define_id, sn_id, property_value) values ?', [sn_props], (err) => {
-                            if (err) console.error(err);
+                            if (err) console.error("Failed to insert sn_cust_properties for S4M:", err);
                             finalize();
                         });
                     } else if (Number(pid) === constants.PRODUCT_TYPE_LMS) {

@@ -118,6 +118,20 @@ CREATE TABLE IF NOT EXISTS users (
   role INTEGER DEFAULT 0,
   createdatetime TEXT
 );
+
+INSERT OR IGNORE INTO software_products (id, name, canbereset) VALUES
+  (1, 'S4A', 1),
+  (2, 'CAA', 1),
+  (3, 'S4M', 1),
+  (4, 'LMS-cloud', 1),
+  (6, 'LMS', 0);
+
+INSERT OR IGNORE INTO sn_properties_define (id, product_id, property_name, display_name, property_type, scaling_min, scaling_max, default_value) VALUES
+  (1, 3, 'max_channel', '', 1, 0, 100, 20),
+  (2, 3, 'report', '', 0, 0, 100, 0),
+  (3, 4, 'expire_years', NULL, 0, 0, 100, 1),
+  (4, 4, 'install_type', NULL, 0, 0, 100, 0),
+  (5, 4, 'max_users', NULL, 0, 0, 100, 1);
 `;
 
 const db = new Database(DB_PATH);
@@ -138,6 +152,7 @@ function formatDate(d) {
 function normalizeParam(v) {
     if (v instanceof Date) return formatDate(v);
     if (v === undefined) return null;
+    if (typeof v === 'boolean') return v ? 1 : 0;
     return v;
 }
 

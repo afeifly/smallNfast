@@ -1054,8 +1054,7 @@ function App() {
                 <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6' }}>
                   This file has an invalid <strong>{what}</strong> in its header
                   {repairInfo && repairInfo.fileName ? ` (${repairInfo.fileName})` : ''}.
-                  The data has been read using a repaired header, but your local file is still broken — other tools
-                  (e.g. CS Monitor) cannot open it.
+                  The data has been read using a repaired header, but your local file is still broken.
                 </div>
                 <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.6', background: '#f1f5f9', borderRadius: '8px', padding: '10px 12px' }}>
                   A repaired copy will be saved as <code style={{background:'#e2e8f0',padding:'1px 4px',borderRadius:'3px'}}>name_repaired.csd</code>.

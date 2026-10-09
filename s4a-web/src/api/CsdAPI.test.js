@@ -149,6 +149,10 @@ describe('CsdAPI Parser', () => {
     expect(dataResult[0].measurementData[0]).toHaveLength(numSamples);
     expect(dataResult[0].measurementData[0][0]).toBe(10.0);
     expect(dataResult[0].measurementData[0][4]).toBe(14.0);
+
+    // A healthy file must NOT trigger the repair prompt (even though it carries
+    // no cs_monitor record-pointer / sample-rate-factor / channel numbers).
+    expect(CsdAPI.needsRepair()).toBeNull();
   });
 
 
@@ -680,6 +684,34 @@ No.,Date Time,CH1 - mV,CH2 - mV
     const range = CsdAPI.getFileTimeRange();
     expect(range.start).toBe(startTimeMs);
     expect(range.stop).toBe(startTimeMs + numSamples * 1000); // stop derived from repaired samples
+
+    // The repaired header is detected so the UI can offer to persist it back.
+    const info = CsdAPI.needsRepair();
+    expect(info).not.toBeNull();
+    expect(info.sampleCount).toBe(true);
+    expect(info.stopTime).toBe(true);
+    expect(info.dataPointer).toBe(true); // record-position pointer @26 was 0
+
+    // The persist patches carry exactly the repaired values at the known offsets.
+    const patches = CsdAPI._buildHeaderPatches();
+    const byOffset = {};
+    patches.forEach(p => { byOffset[p.offset] = new DataView(p.data); });
+    const expectedDataStart = 34 + 3552 + numChannels * 918;
+    expect(byOffset[26].getBigInt64(0, false)).toBe(BigInt(expectedDataStart));
+    expect(byOffset[34 + 3020].getInt32(0, false)).toBe(numSamples);
+    expect(byOffset[34 + 3024].getInt32(0, false)).toBe(1);
+    expect(byOffset[34 + 3028].getInt32(0, false)).toBe(1000); // sample rate factor
+    expect(byOffset[34 + 3040].getBigInt64(0, false)).toBe(BigInt(startTimeMs + numSamples * 1000));
+    // Channel 2's ChannelNumber must become 1 (authors used 0 for every channel)
+    expect(byOffset[(34 + 3552 + 918) + 780].getInt32(0, false)).toBe(1);
+
+    // Applying those patches to a copy yields a file whose header reads correctly.
+    const patched = buffer.slice(0);
+    CsdAPI._applyHeaderPatchesToBuffer(patched);
+    const pdv = new DataView(patched);
+    expect(pdv.getInt32(34 + 3020, false)).toBe(numSamples);
+    expect(pdv.getBigInt64(34 + 3040, false)).toBe(BigInt(startTimeMs + numSamples * 1000));
+    expect(pdv.getBigInt64(26, false)).toBe(BigInt(expectedDataStart));
   });
 
   it('clamps an overstated header sample count and garbage stop time', async () => {

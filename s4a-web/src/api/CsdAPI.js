@@ -92,6 +92,11 @@ let _fileVersion = 0;
 let _sampleIntervalSec = 1;
 let _fileBuffer = null;   // Fully loaded file ArrayBuffer for zero-copy sync memory reads
 
+// Records which CSD header fields were repaired during parse (bad sample count,
+// invalid stop time, missing cs_monitor record-position pointer, etc.). Only
+// used to decide whether to offer writing the repair back to the file.
+let _headerRepairInfo = null;
+
 // Multi-file session: parsed records for every file in the current session.
 // When > 1 file is present, the public accessors expose a merged "virtual file".
 let _files = [];
@@ -351,10 +356,12 @@ async function _parseHeaders(file, target, buffer) {
   const slice = (off, len) => _readSlice(file, off, len, buffer);
 
   // ── File info header (34 bytes starting at byte 0) ──
+  let fileHeaderDataPtr = 0; // CSMDF "record position pointer" at byte 26
   try {
     const fh = await slice(0, FILE_HEADER_LEN);
     const version = fh.getInt32(0, false);
     target.fileVersion = version;
+    fileHeaderDataPtr = Number(fh.getBigInt64(26, false));
     const identifier = _decodeStr(fh, 4, 10);
     console.log(`[CsdAPI] File Info Header parsed - Version: ${version}, Identifier: "${identifier}"`);
     
@@ -396,6 +403,7 @@ async function _parseHeaders(file, target, buffer) {
 
   // Sample count — repair it from the file size when the header is missing/inconsistent.
   // Some CSD files carry a wrong (0 or stale) sample count; derive the truth from the bytes.
+  const rawSamplesAsStored = rawSamples;
   let computedSamples = 0;
   if (fileSize > target.dataStart && target.recordLen > 0) {
     computedSamples = Math.floor((fileSize - target.dataStart) / target.recordLen);
@@ -425,12 +433,27 @@ async function _parseHeaders(file, target, buffer) {
   // Stop time — trust the header only when it is valid and consistent with the (repaired)
   // sample count; otherwise derive it from start + samples × interval.
   const computedStop = target.startTimeMs + target.numSamples * target.sampleIntervalSec * 1000;
+  let repairedStop = false;
   if (rawStop > 0 && rawStop >= target.startTimeMs
     && Math.abs(rawStop - computedStop) <= target.sampleIntervalSec * 1000 * 2) {
     target.stopTimeMs = rawStop;
   } else {
     target.stopTimeMs = computedStop;
+    repairedStop = true;
   }
+
+  // Record what was repaired so the UI can offer to persist the fix back to disk.
+  const rawFactor = ph.getInt32(3028, false);
+  const rawPref = Number(ph.getBigInt64(0, false));
+  target.repairInfo = {
+    sampleCount: rawSamplesAsStored !== target.numSamples,
+    stopTime: repairedStop,
+    startTime: rawStart <= 0,
+    dataPointer: fileHeaderDataPtr <= 0,
+    sampleRateFactor: rawFactor <= 0,
+    pref: rawPref === 0 || rawPref === -1,
+    channelNumbers: false, // filled below from the parsed channel headers
+  };
 
   // ── Channel headers (918 bytes each) ──
   target.channels = [];
@@ -442,6 +465,7 @@ async function _parseHeaders(file, target, buffer) {
     const pref = Number(ch.getBigInt64(0, false));
 
     // Channel description: int16 length + up to 128 bytes at offset 8
+    const channelNumber = ch.getInt32(780, false);
     const descLen = ch.getInt16(8, false);
     const desc = _decodeStr(ch, 10, Math.min(descLen, 126)) || `Channel ${i}`;
 
@@ -495,6 +519,7 @@ async function _parseHeaders(file, target, buffer) {
       location_id: 1,
       sensor_id: sensorID || i,
       pref,
+      channel_number: channelNumber,
       new_device_id: newDeviceID,
       sub_device_id: subDeviceID,
       slave_address: slaveAddress,
@@ -508,6 +533,12 @@ async function _parseHeaders(file, target, buffer) {
       _max: isFinite(maxVal) ? maxVal : 0,
       resolution: isFinite(resolution) ? resolution : 0,
     });
+  }
+
+  // If every channel header carries ChannelNumber 0 (Data Studio export style),
+  // cs_monitor would collapse all channels into one line key — flag it for repair.
+  if (target.numChannels > 1) {
+    target.repairInfo.channelNumbers = target.channels.every(c => c.channel_number === 0);
   }
 
   console.log(`[CsdAPI] Parsed ${target.numChannels} channels, ${target.numSamples} samples @ ${target.sampleRate.toFixed(3)} Hz`);
@@ -722,6 +753,7 @@ async function _loadFromFile(file) {
   _fileLoaded = false;
   _isCsvMode = false;
   _fileBuffer = null; // Clear previous buffer reference
+  _headerRepairInfo = null;
   _files = [];
   _merged = null;     // Clear any previous multi-file session
 
@@ -825,6 +857,7 @@ function _applyHeaderTarget(target) {
   _sampleIntervalSec = target.sampleIntervalSec;
   _sampleRate = target.sampleRate;
   _channels = target.channels;
+  _headerRepairInfo = target.repairInfo || null;
 }
 
 /** Build a session record from a parsed header target. */
@@ -1525,6 +1558,197 @@ const CsdAPI = {
     }
 
     return { success: true, persisted, count };
+  },
+
+  /**
+   * Returns which CSD header fields were repaired during load, or null when the
+   * loaded file is healthy (or a CSV/merged session is active). Non-null signals
+   * that the UI should offer to persist the repair back to disk.
+   * @returns {Object|null}
+   */
+  needsRepair() {
+    if (!_fileLoaded || _isCsvMode || _isMulti()) return null;
+    if (!_headerRepairInfo) return null;
+    // Only auto-prompt for files whose measurement data is broken (bad stop time /
+    // sample count / start time). cs_monitor-compat fields (record pointer, sample
+    // rate factor, channel numbers) are fixed silently whenever a repair runs, but
+    // must not nag the user on every exported file.
+    const info = _headerRepairInfo;
+    if (!info.sampleCount && !info.stopTime && !info.startTime) return null;
+    return {
+      ...info,
+      fileName: _file && _file.name ? _file.name : '',
+    };
+  },
+
+  /** Build byte patches that write the repaired header values back into the file. */
+  _buildHeaderPatches() {
+    const patches = [];
+    const addInt32 = (offset, value) => {
+      const buf = new ArrayBuffer(4);
+      new DataView(buf).setInt32(0, value, false);
+      patches.push({ offset, data: buf });
+    };
+    const addInt64 = (offset, value) => {
+      const buf = new ArrayBuffer(8);
+      new DataView(buf).setBigInt64(0, BigInt(value), false);
+      patches.push({ offset, data: buf });
+    };
+
+    const dataStart = CHANNEL_HEADERS_START + _numChannels * CHANNEL_HEADER_LEN;
+    const pref = BigInt(Math.floor(_startTimeMs)) * 100n;
+
+    // File info header (0..33). Record-position pointer read by cs_monitor at byte 26.
+    addInt64(26, dataStart);
+
+    // Protocol header (starts at 34).
+    if (_headerRepairInfo.pref) addInt64(34, pref); // protocol reference number
+    addInt32(34 + 3016, _numChannels);
+    addInt32(34 + 3020, _numSamples);
+    addInt32(34 + 3024, Math.max(1, Math.round(_sampleIntervalSec)));
+    if (_headerRepairInfo.sampleRateFactor) addInt32(34 + 3028, 1000);
+    addInt64(34 + 3032, _startTimeMs);
+    addInt64(34 + 3040, _stopTimeMs);
+
+    // Channel headers (starts at 3586). Repaired only when the originals are unusable.
+    if (_headerRepairInfo.channelNumbers || _headerRepairInfo.pref) {
+      for (let i = 0; i < _numChannels; i++) {
+        const base = CHANNEL_HEADERS_START + i * CHANNEL_HEADER_LEN;
+        if (_headerRepairInfo.pref) addInt64(base, pref);
+        if (_headerRepairInfo.channelNumbers) {
+          addInt32(base + 780, i); // ChannelNumber
+          addInt32(base + 784, 0); // Unit code
+        }
+      }
+    }
+
+    return patches;
+  },
+
+  /** Apply the header patches to an in-memory copy of the given buffer. */
+  _applyHeaderPatchesToBuffer(buffer) {
+    const dv = new DataView(buffer);
+    for (const p of this._buildHeaderPatches()) {
+      const src = new Uint8Array(p.data);
+      for (let i = 0; i < src.length; i++) dv.setUint8(p.offset + i, src[i]);
+    }
+  },
+
+  /**
+   * Writes the repaired header values back to the original file when the app has
+   * a writable handle (File System Access API). In-memory `_fileBuffer` is patched
+   * in place regardless.
+   * @returns {Promise<{persisted:boolean, reason:string}>}
+   */
+  async repairAndSaveToFile() {
+    if (!this.needsRepair()) return { persisted: false, reason: 'no-repair-needed' };
+
+    // Always keep the in-memory view consistent with the repaired header.
+    if (_fileBuffer) this._applyHeaderPatchesToBuffer(_fileBuffer);
+
+    try {
+      const isHandle = typeof FileSystemFileHandle !== 'undefined' && _file instanceof FileSystemFileHandle;
+      const handle = isHandle ? _file : await _idbGet(this.getLoadedFileName());
+      if (!handle || !handle.createWritable) {
+        return { persisted: false, reason: 'no-write-handle' };
+      }
+      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        const requested = await handle.requestPermission({ mode: 'readwrite' });
+        if (requested !== 'granted') {
+          return { persisted: false, reason: 'permission-denied' };
+        }
+      }
+      const writable = await handle.createWritable({ keepExistingData: true });
+      if (_fileBuffer) {
+        await writable.write({ type: 'write', data: _fileBuffer, position: 0 });
+      } else {
+        for (const p of this._buildHeaderPatches()) {
+          await writable.write({ type: 'write', data: p.data, position: p.offset });
+        }
+      }
+      await writable.close();
+      _headerRepairInfo = null; // header on disk is now fixed
+      return { persisted: true, reason: 'saved' };
+    } catch (e) {
+      console.warn('[CsdAPI] Failed to persist repair to file handle:', e);
+      return { persisted: false, reason: 'write-failed' };
+    }
+  },
+
+  /**
+   * Writes a repaired copy of the current file (original never touched). Works for
+   * large files too by streaming the body after the patched header.
+   * @returns {Promise<{saved:boolean}>}
+   */
+  async saveRepairedCopy() {
+    if (!this.needsRepair()) return { saved: false };
+    const original = _file;
+    const dataStart = CHANNEL_HEADERS_START + _numChannels * CHANNEL_HEADER_LEN;
+
+    const readRange = async (offset, length) => {
+      if (_fileBuffer) {
+        const buf = _fileBuffer.slice(offset, offset + length);
+        return new Uint8Array(buf);
+      }
+      const blob = original.slice(offset, offset + length);
+      return new Uint8Array(await blob.arrayBuffer());
+    };
+
+    // Build the patched header block (original header bytes + repairs).
+    const headerBytes = new Uint8Array(dataStart);
+    const head = await readRange(0, dataStart);
+    headerBytes.set(head.subarray(0, Math.min(head.length, dataStart)));
+    const headerBuf = headerBytes.buffer.slice(0);
+    this._applyHeaderPatchesToBuffer(headerBuf);
+    headerBytes.set(new Uint8Array(headerBuf));
+
+    const suggestedName = (original && original.name ? original.name.replace(/\.[^/.]+$/, '') : 'repaired') + '_repaired.csd';
+    const fileSize = original && original.size ? original.size : (_fileBuffer ? _fileBuffer.byteLength : 0);
+    const CHUNK = 8 * 1024 * 1024;
+
+    // Writable-file path: Chrome/Edge/Safari with the File System Access API.
+    if (typeof window.showSaveFilePicker === 'function') {
+      let handle;
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{ description: 'CSD Files', accept: { 'application/octet-stream': ['.csd'] } }],
+        });
+      } catch (e) {
+        return { saved: false }; // user cancelled
+      }
+
+      const writable = await handle.createWritable();
+      await writable.write(headerBytes);
+      if (typeof original.slice === 'function') {
+        for (let pos = dataStart; pos < fileSize; pos += CHUNK) {
+          const chunk = await readRange(pos, Math.min(CHUNK, fileSize - pos));
+          await writable.write(chunk);
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+      await writable.close();
+      return { saved: true };
+    }
+
+    // Download fallback: browsers without the save picker (Firefox, older Safari).
+    const parts = [headerBytes];
+    if (typeof original.slice === 'function') {
+      for (let pos = dataStart; pos < fileSize; pos += CHUNK) {
+        parts.push(await readRange(pos, Math.min(CHUNK, fileSize - pos)));
+      }
+    }
+    const blob = new Blob(parts, { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', suggestedName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return { saved: true, viaDownload: true };
   },
 
   // ── Export helpers (single or merged multi-file session) ────────────────────

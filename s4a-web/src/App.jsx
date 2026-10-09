@@ -134,6 +134,9 @@ function App() {
   const [largeCsvDialogOpen, setLargeCsvDialogOpen] = React.useState(false);
   const [largeCsvInfo, setLargeCsvInfo] = React.useState(null); // { filename, sizeMB, sizeGB }
 
+  // Header-repair dialog (offered automatically after opening a broken CSD file)
+  const [repairInfo, setRepairInfo] = React.useState(null);
+
   React.useEffect(() => {
     if (!localStorage.getItem('username')) {
       localStorage.setItem('username', 'admin');
@@ -167,6 +170,10 @@ function App() {
         }
         if (TestAPI.getRecentFiles) {
           setRecentFiles(TestAPI.getRecentFiles());
+        }
+        // Offer to write the header repair back to the file.
+        if (isCsdMode && TestAPI.needsRepair) {
+          setRepairInfo(TestAPI.needsRepair());
         }
       });
     }
@@ -273,6 +280,18 @@ function App() {
       TestAPI.openFile();
     }
   };
+
+  const handleSaveRepairedCopy = async () => {
+    const res = await TestAPI.saveRepairedCopy();
+    setRepairInfo(null);
+    if (res && res.saved) {
+      window.showAppNotification('Repaired Copy Saved', 'A repaired copy was saved. The original file was not modified.', 'success');
+    } else {
+      window.showAppNotification('Save Cancelled', 'No repaired copy was saved.', 'info');
+    }
+  };
+
+  const handleDismissRepair = () => setRepairInfo(null);
 
   const handleHeaderOpenCsd = () => {
     const list = TestAPI.getRecentFiles ? TestAPI.getRecentFiles() : [];
@@ -1006,6 +1025,54 @@ function App() {
           <Button onClick={() => setCsdGapDialogOpen(false)} variant="outlined"
             style={{ borderRadius: '8px', fontWeight: '700', color: '#475569', borderColor: '#cbd5e1', textTransform: 'none' }}>
             Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Header-repair dialog (offered when the opened CSD needed a repair) */}
+      <Dialog open={Boolean(repairInfo)} onClose={handleDismissRepair} maxWidth="sm">
+        <DialogTitle className="dialog-title" style={{ background: 'linear-gradient(135deg,#0f766e,#00ac86)', color: '#fff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ffe000" strokeWidth="2.2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            <span>Repair Header And Save?</span>
+          </div>
+        </DialogTitle>
+        <DialogContent style={{ padding: '20px 24px' }}>
+          {(() => {
+            const parts = [];
+            if (repairInfo && repairInfo.stopTime) parts.push('stop time');
+            if (repairInfo && repairInfo.sampleCount) parts.push('sample count');
+            if (repairInfo && repairInfo.startTime) parts.push('start time');
+            if (repairInfo && repairInfo.sampleRateFactor) parts.push('sample rate');
+            if (repairInfo && repairInfo.dataPointer) parts.push('data pointer');
+            if (repairInfo && repairInfo.channelNumbers) parts.push('channel numbers');
+            const what = parts.length > 0 ? parts.join(', ') : 'header';
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6' }}>
+                  This file has an invalid <strong>{what}</strong> in its header
+                  {repairInfo && repairInfo.fileName ? ` (${repairInfo.fileName})` : ''}.
+                  The data has been read using a repaired header, but your local file is still broken — other tools
+                  (e.g. CS Monitor) cannot open it.
+                </div>
+                <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.6', background: '#f1f5f9', borderRadius: '8px', padding: '10px 12px' }}>
+                  A repaired copy will be saved as <code style={{background:'#e2e8f0',padding:'1px 4px',borderRadius:'3px'}}>name_repaired.csd</code>.
+                  The original file is <strong>never modified</strong>.
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions style={{ padding: '12px 20px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0', gap: '8px' }}>
+          <Button onClick={handleDismissRepair} variant="outlined"
+            style={{ borderRadius: '8px', fontWeight: '700', color: '#64748b', borderColor: '#cbd5e1', textTransform: 'none' }}>
+            Dismiss
+          </Button>
+          <Button onClick={handleSaveRepairedCopy} variant="contained"
+            style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color: '#fff', borderRadius: '8px', fontWeight: '800', textTransform: 'none' }}>
+            Save Repaired Copy
           </Button>
         </DialogActions>
       </Dialog>

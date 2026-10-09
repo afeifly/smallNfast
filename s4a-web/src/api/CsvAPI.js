@@ -1449,20 +1449,29 @@ const CsvAPI = {
       for (let i = len; i < maxLen; i++) dv.setUint8(offset + i, 0);
     }
 
+    // CSMDF readers (cs_monitor) locate the channel headers and data records via
+    // the "record position pointer" stored at file-header byte 26. Without it they
+    // read zero channel headers and the channel list disappears.
+    const dataStartOffset = FILE_HEADER_LEN + PROTOCOL_HEADER_LEN + CHANNEL_HEADER_LEN * _numChannels;
+    const protoPref = BigInt(Math.floor(_startTimeMs)) * 100n; // non-zero protocol reference
+
     // ── 1. File Info Header (34 bytes) ────────────────────────────────────────
     const fileHeader = new ArrayBuffer(FILE_HEADER_LEN);
     const fhDv = new DataView(fileHeader);
     fhDv.setInt32(0, 1, false);                    // version = 1
     writeStr(fhDv, 4, 'SUTO CSD', 10);            // identifier (10 bytes)
+    fhDv.setBigInt64(26, BigInt(dataStartOffset), false); // pointer to first data record
     // remaining bytes default to 0
 
     // ── 2. Protocol Header (3552 bytes) ───────────────────────────────────────
     const protoHeader = new ArrayBuffer(PROTOCOL_HEADER_LEN);
     const phDv = new DataView(protoHeader);
+    phDv.setBigInt64(0, protoPref, false);                  // protocol header reference
     writeStr(phDv, 506, _deviceName || 'CSV Device', 32);  // device name
     phDv.setInt32(3016, _numChannels, false);               // channel count
     phDv.setInt32(3020, totalSamples,  false);              // sample count
     phDv.setInt32(3024, Math.round(intervalSec), false);    // sample interval (sec)
+    phDv.setInt32(3028, 1000, false);                       // sample rate factor (ms)
     phDv.setBigInt64(3032, BigInt(_startTimeMs), false);    // start time ms
     phDv.setBigInt64(3040, BigInt(_stopTimeMs),  false);    // stop time ms
 
@@ -1473,8 +1482,8 @@ const CsvAPI = {
     _channels.forEach((ch, idx) => {
       const base = idx * CHANNEL_HEADER_LEN;
 
-      // pref (int64) at offset 0 — use 0
-      chDv.setBigInt64(base + 0, BigInt(0), false);
+      // pref (int64) at offset 0 — must equal the protocol header reference
+      chDv.setBigInt64(base + 0, protoPref, false);
 
       // Channel desc: int16 length + chars at +10
       const desc = ch.logic_channel_description || `CH${idx + 1}`;
@@ -1482,6 +1491,10 @@ const CsvAPI = {
       const descLen = Math.min(descEnc.length, 126);
       chDv.setInt16(base + 8, descLen, false);
       for (let i = 0; i < descLen; i++) chDv.setUint8(base + 10 + i, descEnc[i]);
+
+      // ChannelNumber (int32) at 780, Unit (int32) at 784 (unit text follows at 788)
+      chDv.setInt32(base + 780, idx, false);
+      chDv.setInt32(base + 784, 0, false);
 
       // Sub-device desc length at +138 (empty)
       chDv.setInt16(base + 138, 0, false);
@@ -1766,27 +1779,31 @@ const CsvAPI = {
       const dv  = new DataView(buf);
       dv.setInt32(0, 1, false);
       writeStr(dv, 4, 'SUTO CSD', 10);
+      // pointer to first data record (read by cs_monitor to locate channel headers/data)
+      dv.setBigInt64(26, BigInt(FILE_HEADER_LEN + PROTOCOL_HEADER_LEN + CHANNEL_HEADER_LEN * _numChannels), false);
       return buf;
     }
 
-    function buildProtoHeader(segStartMs, segStopMs, segSamples) {
+    function buildProtoHeader(segStartMs, segStopMs, segSamples, pref) {
       const buf = new ArrayBuffer(PROTOCOL_HEADER_LEN);
       const dv  = new DataView(buf);
+      dv.setBigInt64(0, pref, false);
       writeStr(dv, 506, _deviceName || 'CSV Device', 32);
       dv.setInt32(3016, _numChannels, false);
       dv.setInt32(3020, segSamples,   false);
       dv.setInt32(3024, Math.round(intervalSec), false);
+      dv.setInt32(3028, 1000, false);                          // sample rate factor (ms)
       dv.setBigInt64(3032, BigInt(segStartMs), false);
       dv.setBigInt64(3040, BigInt(segStopMs),  false);
       return buf;
     }
 
-    function buildChannelHeaders(segMin, segMax) {
+    function buildChannelHeaders(segMin, segMax, pref) {
       const buf = new ArrayBuffer(CHANNEL_HEADER_LEN * _numChannels);
       const dv  = new DataView(buf);
       _channels.forEach((ch, idx) => {
         const base = idx * CHANNEL_HEADER_LEN;
-        dv.setBigInt64(base, BigInt(0), false);
+        dv.setBigInt64(base, pref, false);
         const desc    = ch.logic_channel_description || `CH${idx + 1}`;
         const descEnc = new TextEncoder().encode(desc);
         const descLen = Math.min(descEnc.length, 126);
@@ -1794,6 +1811,8 @@ const CsvAPI = {
         for (let i = 0; i < descLen; i++) dv.setUint8(base + 10 + i, descEnc[i]);
         dv.setInt16(base + 138, 0, false);
         dv.setInt16(base + 268, 0, false);
+        dv.setInt32(base + 780, idx, false);                     // ChannelNumber
+        dv.setInt32(base + 784, 0, false);                       // Unit code
         const senDesc = ch.sensor_description || desc;
         const senEnc  = new TextEncoder().encode(senDesc);
         const senLen  = Math.min(senEnc.length, 17);
@@ -1895,11 +1914,12 @@ const CsvAPI = {
         if (segMin[c] === Infinity) segMin[c] = 0;
         if (segMax[c] === -Infinity) segMax[c] = 100;
       }
-      const chHeadersBuf = buildChannelHeaders(segMin, segMax);
+      const segPref = BigInt(Math.floor(segStartMs)) * 100n;
+      const chHeadersBuf = buildChannelHeaders(segMin, segMax, segPref);
 
       // Download this segment's CSD file
       const blob = new Blob(
-        [buildFileHeader(), buildProtoHeader(segStartMs, segStopMs, totalSamples), chHeadersBuf, dataBuf],
+        [buildFileHeader(), buildProtoHeader(segStartMs, segStopMs, totalSamples, segPref), chHeadersBuf, dataBuf],
         { type: 'application/octet-stream' }
       );
       const url  = URL.createObjectURL(blob);

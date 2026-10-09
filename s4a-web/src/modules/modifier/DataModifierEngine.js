@@ -1382,19 +1382,28 @@ export class DataModifierEngine {
     if (onProgress) onProgress(0.92);
 
     // ── Build Headers ─────────────────────────────────────────────────────────
+    // CSMDF readers (cs_monitor) locate channel headers and data records via the
+    // "record position pointer" at file-header byte 26. Without it the channel
+    // list is empty.
+    const dataStartOffset = FILE_HEADER_LEN + PROTOCOL_HEADER_LEN + CHANNEL_HEADER_LEN * numOutChannels;
+    const protoPref = BigInt(Math.floor(effectiveStartTimeMs)) * 100n;
+
     // 1. File Header (34 bytes)
     const fileHeader = new ArrayBuffer(FILE_HEADER_LEN);
     const fhDv = new DataView(fileHeader);
     fhDv.setInt32(0, 1, false); // version = 1
     writeStr(fhDv, 4, 'SUTO CSD', 10);
+    fhDv.setBigInt64(26, BigInt(dataStartOffset), false); // pointer to first data record
 
     // 2. Protocol Header (3552 bytes)
     const protoHeader = new ArrayBuffer(PROTOCOL_HEADER_LEN);
     const phDv = new DataView(protoHeader);
+    phDv.setBigInt64(0, protoPref, false);
     writeStr(phDv, 506, 'SUTO S4A Log', 32);
     phDv.setInt32(3016, numOutChannels, false);
     phDv.setInt32(3020, totalSamples, false);
     phDv.setInt32(3024, Math.round(intervalSec), false);
+    phDv.setInt32(3028, 1000, false); // sample rate factor (ms)
     phDv.setBigInt64(3032, BigInt(effectiveStartTimeMs), false);
     phDv.setBigInt64(3040, BigInt(newStopTimeMs), false);
 
@@ -1404,7 +1413,7 @@ export class DataModifierEngine {
 
     outputChannels.forEach((ch, idx) => {
       const base = idx * CHANNEL_HEADER_LEN;
-      chDv.setBigInt64(base + 0, BigInt(0), false);
+      chDv.setBigInt64(base + 0, protoPref, false);
 
       // Channel description
       const desc = ch.name || `CH${idx + 1}`;
@@ -1412,6 +1421,10 @@ export class DataModifierEngine {
       const descLen = Math.min(descEnc.length, 126);
       chDv.setInt16(base + 8, descLen, false);
       for (let i = 0; i < descLen; i++) chDv.setUint8(base + 10 + i, descEnc[i]);
+
+      // ChannelNumber / Unit
+      chDv.setInt32(base + 780, idx, false);
+      chDv.setInt32(base + 784, 0, false);
 
       // Sensor desc
       const senEnc = new TextEncoder().encode(desc);

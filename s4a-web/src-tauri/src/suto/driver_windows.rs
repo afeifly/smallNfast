@@ -19,11 +19,17 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, WriteFile, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    GENERIC_READ, GENERIC_WRITE, OPEN_EXISTING,
+    OPEN_EXISTING,
 };
 use windows_sys::Win32::System::IO::{
-    CancelIo, CreateEventW, DeviceIoControl, GetOverlappedResult, WaitForSingleObject, OVERLAPPED,
+    CancelIo, DeviceIoControl, GetOverlappedResult, OVERLAPPED,
 };
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, WaitForSingleObject,
+};
+
+const GENERIC_READ: u32 = 0x8000_0000;
+const GENERIC_WRITE: u32 = 0x4000_0000;
 
 // Interface GUID: {325ddf96-938c-11d3-9e34-0080c82727f4}
 const GUID_USBIO_IFACE: windows_sys::core::GUID = windows_sys::core::GUID {
@@ -97,7 +103,7 @@ impl WindowsUsbTransport {
                 null_mut(),
                 DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
             );
-            if devs == INVALID_HANDLE_VALUE {
+            if devs == INVALID_HANDLE_VALUE as isize {
                 let err = GetLastError();
                 log_event(
                     "ERROR",
@@ -392,7 +398,7 @@ impl SutoTransport for WindowsUsbTransport {
         unsafe {
             let mut ov: OVERLAPPED = std::mem::zeroed();
             ov.hEvent = CreateEventW(null(), 1, 0, null());
-            if ov.hEvent == 0 {
+            if ov.hEvent.is_null() {
                 let err = GetLastError();
                 let msg = format!("CreateEventW failed: {}", err);
                 log_event("ERROR", "USB_TX", &msg, None);
@@ -445,7 +451,7 @@ impl SutoTransport for WindowsUsbTransport {
         unsafe {
             let mut ov: OVERLAPPED = std::mem::zeroed();
             ov.hEvent = CreateEventW(null(), 1, 0, null());
-            if ov.hEvent == 0 {
+            if ov.hEvent.is_null() {
                 let err = GetLastError();
                 let msg = format!("CreateEventW failed: {}", err);
                 log_event("ERROR", "USB_RX", &msg, None);

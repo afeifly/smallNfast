@@ -344,7 +344,12 @@ const FinalAPI = new Proxy(BaseAPI, {
     }
     if (currentApiMode === 'monitor') {
       if (prop === 'getChannels') {
-        return (callback) => TauriSutoAPI.getChannels(callback);
+        return async (callback) => {
+          const raw = await TauriSutoAPI.getChannels();
+          const list = Array.isArray(raw) ? raw : (raw?.logging_chs || []);
+          if (callback) callback({ logging_chs: list });
+          return list;
+        };
       }
       if (prop === 'getMeasurementData') {
         return (chId, start, stop, pointInterval, callback) => {

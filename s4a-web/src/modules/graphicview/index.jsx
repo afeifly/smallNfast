@@ -313,6 +313,7 @@ class GraphicView extends Component {
   componentWillUnmount() {
     this.chartController.clearTimer();
     d3.select(window).on('resize.updateChart', null);
+    d3.select('#App').on('checkTimer', null);
     if (this.fileLoadedUnsubscribe) {
       this.fileLoadedUnsubscribe();
     }

@@ -8,6 +8,8 @@
  * files (1.3GB to 10GB+) with extremely low memory footprint (<250MB RAM).
  */
 
+import TauriSutoAPI from './TauriSutoAPI';
+
 // ── State variables ───────────────────────────────────────────────────────────
 let _fileLoaded = false;
 let _file = null;               // Kept open for lazy slice-based reading
@@ -544,6 +546,11 @@ const CsvAPI = {
       _isMultiCsv = false;
       _fileLoaded = true;
       console.log(`[CsvAPI] Lazily loaded & indexed ${_numChannels} channels, ${_numSamples} samples from CSV file "${file.name}"`);
+      TauriSutoAPI.logClientEvent(
+        'INFO',
+        'FILE',
+        `Loaded CSV "${file.name}": ${_numChannels} channels, ${_numSamples} samples`
+      );
       return true;
     } catch (e) {
       console.error('[CsvAPI] Load file failed:', e);

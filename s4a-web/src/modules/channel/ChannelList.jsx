@@ -198,7 +198,13 @@ class ChannelList extends Component {
     }
 
     const { chartController } = this.props;
-    const channels = responseData.logging_chs;
+    const channels = Array.isArray(responseData)
+      ? responseData
+      : (responseData.logging_chs || []);
+
+    if (!channels || !channels.length) {
+      return;
+    }
 
     // Reset accumulated state so re-loading (e.g. after a new CSD file) is clean
     this.sensorList = [];

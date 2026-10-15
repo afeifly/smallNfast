@@ -10,8 +10,9 @@ import TauriSutoAPI from './api/TauriSutoAPI';
 import Loading from './components/loading/Loading';
 import DataModifierModal from './modules/modifier/DataModifierModal';
 import DebugLogModal from './components/DebugLogModal';
+import DeviceConnectModal from './components/DeviceConnectModal';
 import './App.css';
-import { isDesktop, getRuntimePlatform } from './util/platform';
+import { isDesktop, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -121,6 +122,7 @@ function App() {
   const [detectError, setDetectError] = React.useState(null);
   const [deviceInfo, setDeviceInfo] = React.useState(null);
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
+  const [showConnectModal, setShowConnectModal] = React.useState(false);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -284,24 +286,16 @@ function App() {
     };
   }, []);
 
-  const handleDetectDevice = async () => {
-    setDetectingDevice(true);
-    setDetectError(null);
-    try {
-      const conn = await TauriSutoAPI.connectUsb();
-      setDeviceInfo(conn);
-      TestAPI.setMode('monitor');
-      setAppMode('monitor');
-      setActiveTab('online');
-    } catch (err) {
-      console.error('[App] Device detect error:', err);
-      setDetectError(err.message || 'No SUTO USB device detected. Please verify USB connection.');
-    } finally {
-      setDetectingDevice(false);
-    }
+  const handleDeviceConnected = (conn) => {
+    setDeviceInfo(conn);
+    TestAPI.setMode('monitor');
+    setAppMode('monitor');
+    setActiveTab('online');
+    TauriSutoAPI.logClientEvent('INFO', 'APP', `Device connected via ${conn.transport || 'SUTO'} (${conn.device || conn.host || 'active'})`);
   };
 
   const handleDisconnectMonitor = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'APP', 'Disconnecting monitor session');
     try {
       await TauriSutoAPI.disconnect();
     } catch (e) {
@@ -314,6 +308,7 @@ function App() {
   };
 
   const handleReturnHome = () => {
+    TauriSutoAPI.logClientEvent('INFO', 'APP', 'Navigated back to Welcome Home');
     if (appMode === 'monitor') {
       TauriSutoAPI.disconnect().catch(console.warn);
       TestAPI.setMode('analyze');
@@ -327,10 +322,12 @@ function App() {
     if (TestAPI.removeRecentFile) {
       const updated = await TestAPI.removeRecentFile(file.name);
       setRecentFiles(updated);
+      TauriSutoAPI.logClientEvent('INFO', 'FILE', `Removed recent file: ${file.name}`);
     }
   };
 
   const handleOpenFile = () => {
+    TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Triggered Open File action');
     TestAPI.setMode('analyze');
     setAppMode('analyze');
     if (TestAPI.openFile) {
@@ -503,32 +500,17 @@ function App() {
             </defs>
           </svg>
           <span className="app-title">S4A-Web</span>
-          {isDesktop && (
-            <span
-              style={{
-                fontSize: '11px',
-                padding: '2px 8px',
-                borderRadius: '999px',
-                backgroundColor: 'rgba(0, 0, 0, 0.12)',
-                color: '#1e293b',
-                fontWeight: 600,
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase'
-              }}
-              title={`Runtime: ${getRuntimePlatform()}`}
-            >
-              Desktop
-            </span>
-          )}
           {appMode && (
-            <>
-              <button className="header-home-btn" onClick={handleReturnHome} title="Return to Welcome Screen">
-                ← Welcome
-              </button>
-              <span className={`header-mode-indicator ${appMode}`}>
-                {appMode === 'monitor' ? 'Monitor Mode' : 'Analyze Mode'}
-              </span>
-            </>
+            <button
+              className="header-home-btn"
+              onClick={handleReturnHome}
+              title="Back to Home"
+              aria-label="Back to Home"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
           )}
         </div>
 
@@ -604,11 +586,8 @@ function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '12px', fontWeight: '600', color: '#047857', background: 'rgba(5, 150, 105, 0.15)', padding: '4px 10px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                {deviceInfo?.device || 'Live SUTO Sensor'}
+                {resolveDeviceTypeName(null, deviceInfo)}
               </span>
-              <Button size="small" variant="outlined" color="inherit" onClick={handleDisconnectMonitor} style={{ fontSize: '11px', textTransform: 'none', fontWeight: 600 }}>
-                Disconnect
-              </Button>
             </div>
           )}
 
@@ -654,27 +633,18 @@ function App() {
             </>
           )}
 
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => setShowDebugLogs(true)}
-            style={{
-              fontSize: '11px',
-              textTransform: 'none',
-              fontWeight: 600,
-              borderColor: '#cbd5e1',
-              color: '#334155',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '3px 8px',
-              borderRadius: '6px',
-            }}
-            title="View live SUTO USB Win32 communication & hardware diagnostic logs"
-          >
-            <span style={{ fontSize: '14px' }}>🐞</span>
-            Debug Logs
-          </Button>
+          <Tooltip title="System Diagnostic Logs">
+            <IconButton
+              className="header-icon-btn"
+              onClick={() => setShowDebugLogs(true)}
+              style={{ color: '#334155', padding: '6px' }}
+              aria-label="System Diagnostic Logs"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+            </IconButton>
+          </Tooltip>
         </div>
       </header>
 
@@ -755,35 +725,12 @@ function App() {
 
                   <button
                     className="landing-cta-btn landing-cta-monitor"
-                    onClick={handleDetectDevice}
-                    disabled={detectingDevice}
+                    onClick={() => setShowConnectModal(true)}
                   >
-                    {detectingDevice ? (
-                      <>
-                        <span className="status-pulse-dot" />
-                        Detecting SUTO Device...
-                      </>
-                    ) : (
-                      <>
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        Detect & Connect Device
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    className="landing-cta-btn"
-                    onClick={() => setShowDebugLogs(true)}
-                    style={{
-                      marginTop: '8px',
-                      background: '#334155',
-                      boxShadow: 'none',
-                    }}
-                  >
-                    <span style={{ fontSize: '15px' }}>🐞</span>
-                    View USB Diagnostic Logs
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Detect & Connect Device
                   </button>
 
                   {detectError && (
@@ -795,9 +742,9 @@ function App() {
                   <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Supported Transports:</div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#334155', fontWeight: 600 }}>Direct USB (cscdc.sys)</span>
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#64748b' }}>Ethernet (CS-Bus)</span>
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#64748b' }}>RS485 / Modbus</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#334155', fontWeight: 600 }}>Direct USB</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>Ethernet TCP</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>Bluetooth (BLE)</span>
                     </div>
                   </div>
                 </div>
@@ -808,7 +755,7 @@ function App() {
           /* Monitor Mode Views: Online View, Graphic View, Table View */
           <div className="view-content-wrapper">
             {activeTab === 'online' ? (
-              <OnlineView onDisconnect={handleDisconnectMonitor} />
+              <OnlineView onDisconnect={handleDisconnectMonitor} deviceInfo={deviceInfo} />
             ) : activeTab === 'graphic' ? (
               <GraphicView />
             ) : (
@@ -1433,6 +1380,13 @@ function App() {
       <DebugLogModal
         isOpen={showDebugLogs}
         onClose={() => setShowDebugLogs(false)}
+      />
+
+      {/* SUTO Multi-Transport Device Connect Modal (USB, TCP, BLE) */}
+      <DeviceConnectModal
+        isOpen={showConnectModal}
+        onClose={() => setShowConnectModal(false)}
+        onConnected={handleDeviceConnected}
       />
     </div>
   );

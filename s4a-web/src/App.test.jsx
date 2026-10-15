@@ -28,6 +28,9 @@ describe('App', () => {
     const detectBtn = screen.getByText('Detect & Connect Device');
     fireEvent.click(detectBtn);
 
+    const usbBtn = await screen.findByText(/Detect & Connect USB/);
+    fireEvent.click(usbBtn);
+
     await waitFor(() => {
       expect(screen.getByText('Online View')).toBeDefined();
       expect(screen.getByText('Graphic View')).toBeDefined();
@@ -43,6 +46,8 @@ describe('App', () => {
     });
 
     fireEvent.click(screen.getByText('Detect & Connect Device'));
+    const usbBtn = await screen.findByText(/Detect & Connect USB/);
+    fireEvent.click(usbBtn);
 
     await waitFor(() => {
       expect(screen.getByText('Online View')).toBeDefined();
@@ -61,8 +66,8 @@ describe('App', () => {
     });
 
     // Return to Welcome page
-    const welcomeBtn = screen.getByText('← Welcome');
-    fireEvent.click(welcomeBtn);
+    const backBtn = screen.getByTitle('Back to Home');
+    fireEvent.click(backBtn);
 
     await waitFor(() => {
       expect(screen.getByText('File Analyze Mode')).toBeDefined();

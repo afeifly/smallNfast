@@ -370,7 +370,7 @@ class ChartController {
   };
 
   startTimer = () => {
-    clearInterval(this.timer);
+    this.clearTimer();
 
     //Refresh data immediately
     this.showRealtimeData();
@@ -425,8 +425,9 @@ class ChartController {
 
 
   clearTimer() {
-    if (this.datasourceMode === 'Realtime') {
+    if (this.timer) {
       clearInterval(this.timer);
+      this.timer = null;
     }
   }
 };

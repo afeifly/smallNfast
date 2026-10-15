@@ -23,6 +23,7 @@
  */
 
 import CsvAPI from './CsvAPI';
+import TauriSutoAPI from './TauriSutoAPI';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -544,6 +545,11 @@ async function _parseHeaders(file, target, buffer) {
   console.log(`[CsdAPI] Parsed ${target.numChannels} channels, ${target.numSamples} samples @ ${target.sampleRate.toFixed(3)} Hz`);
   console.log(`[CsdAPI] Time range: ${new Date(target.startTimeMs).toISOString()} → ${new Date(target.stopTimeMs).toISOString()}`);
   console.log('[CsdAPI] Channels:', target.channels.map(c => `[${c.channel_id}] "${c.logic_channel_description}" (${c.unit_in_ascii})`));
+  TauriSutoAPI.logClientEvent(
+    'INFO',
+    'FILE',
+    `Loaded CSD file: ${target.numChannels} channels, ${target.numSamples} samples @ ${target.sampleRate.toFixed(3)} Hz`
+  );
 
   return target;
 }

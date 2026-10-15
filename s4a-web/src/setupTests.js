@@ -30,3 +30,10 @@ if (typeof globalThis !== 'undefined' && (!globalThis.localStorage || typeof glo
     writable: true,
   });
 }
+
+// Default mock for Tauri desktop environment in test runner
+if (typeof window !== 'undefined' && !window.__TAURI_INTERNALS__) {
+  window.__TAURI_INTERNALS__ = {
+    invoke: async () => ({ success: true, channels: [], info: {} }),
+  };
+}

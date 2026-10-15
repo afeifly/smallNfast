@@ -23,7 +23,9 @@ function getStatusColor(status) {
   }
 }
 
-export default function OnlineView({ onDisconnect }) {
+import { resolveDeviceTypeName } from '../../util/platform';
+
+export default function OnlineView({ onDisconnect, deviceInfo }) {
   const [channels, setChannels] = useState([]);
   const [sysInfo, setSysInfo] = useState(null);
   const [isLive, setIsLive] = useState(true);
@@ -31,10 +33,32 @@ export default function OnlineView({ onDisconnect }) {
   const [error, setError] = useState(null);
   const [showLogs, setShowLogs] = useState(false);
   const pollTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const isFetchingRef = useRef(false);
+
+  const deviceDisplayName = resolveDeviceTypeName(sysInfo, deviceInfo);
+  const isEthernet = deviceInfo?.transport === 'TCP' || TauriSutoAPI.getActiveTransport() === 'TCP' || Boolean(deviceInfo?.host);
+  const ethernetIp = isEthernet
+    ? (deviceInfo?.host ? `${deviceInfo.host}${deviceInfo.port && deviceInfo.port !== 502 && deviceInfo.port !== '502' ? `:${deviceInfo.port}` : ''}` : sysInfo?.ip)
+    : (sysInfo?.ip || null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const fetchLiveMeasurements = useCallback(async () => {
+    if (isFetchingRef.current || !isMountedRef.current) return;
+    isFetchingRef.current = true;
     try {
       const data = await TauriSutoAPI.getMeasurementData();
+      if (!isMountedRef.current) return;
       if (data && data.length) {
         setChannels((prevChannels) => {
           const valMap = new Map(data.map((d) => [d.channel_id, d]));
@@ -56,25 +80,34 @@ export default function OnlineView({ onDisconnect }) {
         setError(null);
       }
     } catch (err) {
-      console.warn('[OnlineView] Polling warning:', err);
+      if (isMountedRef.current) {
+        console.warn('[OnlineView] Polling warning:', err);
+      }
+    } finally {
+      isFetchingRef.current = false;
     }
   }, []);
 
   const loadInitialData = useCallback(async () => {
     try {
       const chs = await TauriSutoAPI.getChannels();
+      if (!isMountedRef.current) return;
       setChannels(chs || []);
       setLastUpdate(new Date());
 
       // Query system info as non-blocking enhancement
       try {
         const info = await TauriSutoAPI.getSystemInfo();
-        setSysInfo(info || null);
+        if (isMountedRef.current) {
+          setSysInfo(info || null);
+        }
       } catch (e) {
         console.warn('[OnlineView] System info not available:', e);
       }
     } catch (err) {
-      setError(err?.message || 'Failed to load device information');
+      if (isMountedRef.current) {
+        setError(err?.message || 'Failed to load device information');
+      }
     }
   }, []);
 
@@ -84,7 +117,10 @@ export default function OnlineView({ onDisconnect }) {
 
   useEffect(() => {
     if (!isLive) {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
       return;
     }
 
@@ -93,7 +129,10 @@ export default function OnlineView({ onDisconnect }) {
     }, POLL_INTERVAL_MS);
 
     return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     };
   }, [isLive, fetchLiveMeasurements]);
 
@@ -137,13 +176,18 @@ export default function OnlineView({ onDisconnect }) {
           </div>
           <div className="device-text-group">
             <h2 className="device-title">
-              {sysInfo?.device_name || 'SUTO Connected Hardware'}
+              {deviceDisplayName}
               <span className={`online-status-badge ${isLive ? 'status-badge-live' : 'status-badge-paused'}`}>
                 <span className="status-pulse-dot" />
                 {isLive ? 'LIVE' : 'PAUSED'}
               </span>
             </h2>
             <div className="device-meta-row">
+              {ethernetIp && (
+                <span className="device-meta-item">
+                  IP: <strong>{ethernetIp}</strong>
+                </span>
+              )}
               {sysInfo?.serial_number && (
                 <span className="device-meta-item">
                   SN: <strong>{sysInfo.serial_number}</strong>
@@ -152,11 +196,6 @@ export default function OnlineView({ onDisconnect }) {
               {sysInfo?.firmware_version && (
                 <span className="device-meta-item">
                   FW: <strong>{sysInfo.firmware_version}</strong>
-                </span>
-              )}
-              {sysInfo?.calibration_date && (
-                <span className="device-meta-item">
-                  Calibrated: <strong>{sysInfo.calibration_date}</strong>
                 </span>
               )}
               {lastUpdate && (
@@ -170,14 +209,8 @@ export default function OnlineView({ onDisconnect }) {
 
         {/* Action Controls */}
         <div className="online-controls">
-          <button className="online-btn" onClick={() => setShowLogs(true)} title="View USB communication logs">
-            🐞 USB Logs
-          </button>
           <button className="online-btn" onClick={toggleLive}>
             {isLive ? 'Pause Polling' : 'Resume Polling'}
-          </button>
-          <button className="online-btn" onClick={handleRescan}>
-            Refresh
           </button>
           {onDisconnect && (
             <button className="online-btn" onClick={onDisconnect} style={{ color: '#ef4444' }}>

@@ -10,21 +10,32 @@
  *  - Arbitrary SUTO commands (CTY, SCTY, ACT)
  */
 
-import { isTauri } from '../util/platform';
+import { isTauri, checkIsTauri } from '../util/platform';
 import { invoke } from '@tauri-apps/api/core';
+import BleSutoAPI from './BleSutoAPI';
+
+const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke);
 
 // Rolling measurement buffer for chart display (keeps last 3600 points)
 const historyBuffer = new Map();
 const MAX_HISTORY = 3600;
+let activeTransport = 'USB'; // 'USB' | 'TCP' | 'BLE'
+let activeMeasurementPromise = null;
+let lastMeasurementResult = null;
+let lastMeasurementTime = 0;
 
 export const TauriSutoAPI = {
   isAvailable() {
-    return isTauri;
+    return hasTauri();
+  },
+
+  getActiveTransport() {
+    return activeTransport;
   },
 
   /** List available USB devices */
   async listUsbDevices() {
-    if (!isTauri) {
+    if (!hasTauri()) {
       return [{ path: 'USB\\VID_04D8&PID_0001\\SIMULATED', description: 'SUTO S331 / DS310 (Simulated Demo)' }];
     }
     return await invoke('suto_list_usb_devices');
@@ -32,16 +43,49 @@ export const TauriSutoAPI = {
 
   /** Connect to SUTO USB device and auto-discover address */
   async connectUsb(devicePath = null) {
-    if (!isTauri) {
-      return { address: 1, channels_count: 4, device: 'SUTO DS310 (Simulated Demo)' };
+    activeTransport = 'USB';
+    await this.logClientEvent('INFO', 'SUTO_IPC', `Connecting via Direct USB (path: ${devicePath || 'auto'})...`);
+    if (!hasTauri()) {
+      await this.logClientEvent('INFO', 'SUTO_DISC', 'Web simulation mode: connected to SUTO DS310 demo');
+      return { address: 1, channels_count: 4, device: 'SUTO DS310 (Simulated Demo)', transport: 'USB' };
     }
-    return await invoke('suto_connect_usb', { path: devicePath });
+    const res = await invoke('suto_connect_usb', { path: devicePath });
+    return { address: res, transport: 'USB' };
+  },
+
+  /** Connect to SUTO device via Ethernet TCP Socket */
+  async connectTcp(host = '192.168.1.100', port = 502) {
+    activeTransport = 'TCP';
+    await this.logClientEvent('INFO', 'TCP_OPEN', `Initiating Ethernet TCP connection to ${host}:${port}...`);
+    if (!hasTauri()) {
+      await this.logClientEvent('INFO', 'TCP_OPEN', `Web mode: connected to SUTO Ethernet at ${host}:${port} (Demo)`);
+      return { address: 1, host, port, transport: 'TCP', device: `SUTO S461 TCP (${host}:${port})` };
+    }
+    const res = await invoke('suto_connect_tcp', { host, port: parseInt(port, 10) });
+    return { address: res, host, port, transport: 'TCP' };
+  },
+
+  /** Connect to SUTO device via Web Bluetooth (BLE) */
+  async connectBle() {
+    activeTransport = 'BLE';
+    await this.logClientEvent('INFO', 'BLE_CONN', 'Initiating Web Bluetooth (BLE) connection...');
+    const conn = await BleSutoAPI.connectBle();
+    return { ...conn, transport: 'BLE' };
   },
 
   /** Disconnect from active device */
   async disconnect() {
-    if (!isTauri) return;
-    return await invoke('suto_disconnect');
+    await this.logClientEvent('INFO', 'SUTO_IPC', `Disconnecting active transport (${activeTransport})...`);
+    activeMeasurementPromise = null;
+    lastMeasurementResult = null;
+    lastMeasurementTime = 0;
+    if (activeTransport === 'BLE') {
+      await BleSutoAPI.disconnect();
+    } else if (hasTauri()) {
+      await invoke('suto_disconnect');
+    }
+    activeTransport = null;
+    return true;
   },
 
   /**
@@ -49,7 +93,19 @@ export const TauriSutoAPI = {
    * @param {Function} [callback]
    */
   async getChannels(callback) {
-    if (!isTauri) {
+    if (activeTransport === 'BLE') {
+      try {
+        const chs = await BleSutoAPI.getChannels();
+        if (callback) callback(chs);
+        return chs;
+      } catch (err) {
+        console.warn('[TauriSutoAPI] BLE getChannels failed:', err);
+        if (callback) callback([]);
+        return [];
+      }
+    }
+
+    if (!hasTauri()) {
       const mockChannels = [
         // Device 1: SUTO DS310 Main Unit
         { channel_id: 1, channel_name: 'Flow', unit: 'm³/h', unit_index: 3, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Flow Sensor', active: true, selected: true },
@@ -93,9 +149,39 @@ export const TauriSutoAPI = {
    * @param {Function} [callback]
    */
   async getMeasurementData(callback) {
+    if (activeTransport === 'BLE') {
+      const now = Date.now();
+      // Reuse recent fresh measurement within 750ms
+      if (lastMeasurementResult && (now - lastMeasurementTime < 750)) {
+        if (callback) callback(lastMeasurementResult);
+        return lastMeasurementResult;
+      }
+
+      // If a measurement query is already in flight, coalesce onto the same promise
+      if (activeMeasurementPromise) {
+        const res = await activeMeasurementPromise;
+        if (callback) callback(res);
+        return res;
+      }
+
+      activeMeasurementPromise = BleSutoAPI.getMeasurementData()
+        .then((res) => {
+          lastMeasurementResult = res;
+          lastMeasurementTime = Date.now();
+          return res;
+        })
+        .finally(() => {
+          activeMeasurementPromise = null;
+        });
+
+      const res = await activeMeasurementPromise;
+      if (callback) callback(res);
+      return res;
+    }
+
     try {
       let values;
-      if (!isTauri) {
+      if (!hasTauri()) {
         const now = Date.now();
         values = [
           { id: 1, unit: 'm³/h', resolution: 1, status: 'normal', value: +(145.2 + Math.sin(now / 5000) * 12.5).toFixed(1) },
@@ -199,7 +285,10 @@ export const TauriSutoAPI = {
    * Get device system information (serial number, firmware version, device name, etc.)
    */
   async getSystemInfo() {
-    if (!isTauri) {
+    if (activeTransport === 'BLE') {
+      return await BleSutoAPI.getSystemInfo();
+    }
+    if (!hasTauri()) {
       return {
         serial_number: 'SIM-SUTO-2026-99',
         device_id: 310,
@@ -216,7 +305,7 @@ export const TauriSutoAPI = {
    * Get logger status (enabled, recorded count, start/end time, interval)
    */
   async getLoggerStatus() {
-    if (!isTauri) {
+    if (!hasTauri()) {
       return {
         logging_active: true,
         records_count: 14200,
@@ -237,7 +326,7 @@ export const TauriSutoAPI = {
    * @param {number} [addr]
    */
   async sendCommand(cty, scty, act, data = null, addr = null) {
-    if (!isTauri) throw new Error('Tauri runtime not detected');
+    if (!hasTauri()) throw new Error('Tauri runtime not detected');
     return await invoke('suto_send_command', {
       addr,
       cty,
@@ -253,7 +342,7 @@ export const TauriSutoAPI = {
    * @param {Array<number>} data
    */
   async sendRaw(addr, data) {
-    if (!isTauri) throw new Error('Tauri runtime not detected');
+    if (!hasTauri()) throw new Error('Tauri runtime not detected');
     return await invoke('suto_send_raw', { addr, data });
   },
 
@@ -264,7 +353,7 @@ export const TauriSutoAPI = {
 
   /** Get diagnostic log entries from Rust engine or mock buffer */
   async getLogs(sinceId = 0) {
-    if (!isTauri) {
+    if (!hasTauri()) {
       return (window._mockSutoLogs || []).filter(l => l.id > sinceId);
     }
     return await invoke('suto_get_logs', { sinceId });
@@ -272,7 +361,7 @@ export const TauriSutoAPI = {
 
   /** Clear all diagnostic logs */
   async clearLogs() {
-    if (!isTauri) {
+    if (!hasTauri()) {
       window._mockSutoLogs = [];
       return;
     }
@@ -281,7 +370,7 @@ export const TauriSutoAPI = {
 
   /** Get disk path to the suto_usb.log file */
   async getLogFilePath() {
-    if (!isTauri) {
+    if (!hasTauri()) {
       return './suto_usb.log (Browser Mock)';
     }
     return await invoke('suto_get_log_file_path');
@@ -289,7 +378,7 @@ export const TauriSutoAPI = {
 
   /** Write a client-side event to the unified SUTO log */
   async logClientEvent(level, tag, message) {
-    if (!isTauri) {
+    if (!hasTauri()) {
       window._mockSutoLogs = window._mockSutoLogs || [];
       window._mockSutoLogs.push({
         id: Date.now(),

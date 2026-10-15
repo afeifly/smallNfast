@@ -173,9 +173,11 @@ pub fn parse_channel_settings(payload: &[u8]) -> Vec<ChannelInfo> {
         let s = &payload[off..off + STRUCT_SIZE];
 
         let logical_channel_no = s[0];
-        if logical_channel_no == 0 || logical_channel_no == 0xFF {
-            continue;
-        }
+        let ch_id = if logical_channel_no > 0 && logical_channel_no < 0xFF {
+            logical_channel_no
+        } else {
+            (i + 1) as u8
+        };
 
         let dev_desc = extract_latin1_string(&s[1..22]);
         let sensor_desc = extract_latin1_string(&s[43..64]);
@@ -190,12 +192,14 @@ pub fn parse_channel_settings(payload: &[u8]) -> Vec<ChannelInfo> {
             ch_desc
         } else if !sensor_desc.is_empty() {
             sensor_desc.clone()
+        } else if !dev_desc.is_empty() {
+            format!("{} CH{}", dev_desc, ch_id)
         } else {
-            format!("CH{}", logical_channel_no)
+            format!("CH{}", ch_id)
         };
 
         channels.push(ChannelInfo {
-            id: logical_channel_no,
+            id: ch_id,
             description: display_desc,
             unit,
             unit_index,

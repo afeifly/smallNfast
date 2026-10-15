@@ -19,6 +19,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             suto::suto_list_usb_devices,
             suto::suto_connect_usb,
+            suto::suto_connect_tcp,
             suto::suto_disconnect,
             suto::suto_get_channels,
             suto::suto_get_values,

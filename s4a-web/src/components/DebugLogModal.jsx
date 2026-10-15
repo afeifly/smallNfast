@@ -58,7 +58,9 @@ export default function DebugLogModal({ isOpen, onClose }) {
   const filteredLogs = logs.filter(entry => {
     if (filterLevel === 'ERROR' && entry.level !== 'ERROR') return false;
     if (filterLevel === 'WARN' && entry.level !== 'WARN' && entry.level !== 'ERROR') return false;
-    if (filterLevel === 'USB' && !entry.tag.startsWith('USB') && !entry.tag.startsWith('COMM')) return false;
+    if (filterLevel === 'COMM' && !entry.tag.startsWith('USB') && !entry.tag.startsWith('TCP') && !entry.tag.startsWith('BLE') && !entry.tag.startsWith('COMM') && !entry.tag.startsWith('SUTO')) return false;
+    if (filterLevel === 'FILE' && !entry.tag.startsWith('FILE') && !entry.tag.startsWith('CSD') && !entry.tag.startsWith('CSV')) return false;
+    if (filterLevel === 'APP' && !entry.tag.startsWith('APP') && !entry.tag.startsWith('IPC')) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -101,11 +103,11 @@ export default function DebugLogModal({ isOpen, onClose }) {
         {/* Header */}
         <div className="debug-log-header">
           <div className="debug-log-header-left">
-            <span className="debug-log-icon">🐞</span>
+            <span className="debug-log-icon">📋</span>
             <div>
-              <h3 className="debug-log-title">SUTO USB Diagnostic & Hardware Logs</h3>
+              <h3 className="debug-log-title">S4A System & Diagnostic Logs</h3>
               <p className="debug-log-subtitle">
-                Real-time Win32 IOCTL, pipe transfers, protocol frames & driver diagnostics
+                Real-time USB, Ethernet/TCP, Bluetooth (BLE), File I/O & Application diagnostics
               </p>
             </div>
           </div>
@@ -128,7 +130,7 @@ export default function DebugLogModal({ isOpen, onClose }) {
         {/* Controls Toolbar */}
         <div className="debug-log-toolbar">
           <div className="debug-log-filters">
-            {['ALL', 'USB', 'WARN', 'ERROR'].map(lvl => (
+            {['ALL', 'COMM', 'FILE', 'APP', 'WARN', 'ERROR'].map(lvl => (
               <button
                 key={lvl}
                 className={`filter-btn ${filterLevel === lvl ? 'active' : ''}`}
@@ -136,11 +138,15 @@ export default function DebugLogModal({ isOpen, onClose }) {
               >
                 {lvl === 'ALL'
                   ? 'All Logs'
-                  : lvl === 'USB'
-                  ? 'USB Traffic'
+                  : lvl === 'COMM'
+                  ? 'Hardware & Comm'
+                  : lvl === 'FILE'
+                  ? 'Files (CSD/CSV)'
+                  : lvl === 'APP'
+                  ? 'Application'
                   : lvl === 'WARN'
-                  ? 'Warnings & Errors'
-                  : 'Errors Only'}
+                  ? 'Warnings'
+                  : 'Errors'}
               </button>
             ))}
           </div>

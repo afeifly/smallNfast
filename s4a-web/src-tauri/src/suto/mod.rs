@@ -8,6 +8,8 @@ pub mod logger;
 pub mod protocol;
 pub mod transport;
 
+pub mod driver_tcp;
+
 #[cfg(target_os = "windows")]
 pub mod driver_windows;
 
@@ -103,6 +105,46 @@ pub async fn suto_connect_usb(
 }
 
 #[tauri::command]
+pub async fn suto_connect_tcp(
+    host: String,
+    port: u16,
+    state: State<'_, SutoState>,
+) -> Result<u8, String> {
+    log_event("INFO", "SUTO_IPC", &format!("suto_connect_tcp called with {}:{}", host, port), None);
+
+    let mut tcp = driver_tcp::TcpTransport::new();
+    tcp.connect(&host, port)?;
+
+    // Perform discovery by sending 'A' with address 0
+    log_event("INFO", "SUTO_DISC", "Sending Address 0 Discovery Query over Ethernet...", None);
+    let disc_pkt = pack_packet(0, &[CMD_DISCOVERY_ASCII]);
+    let reply = tcp.write_and_read(&disc_pkt, 2500)?;
+
+    let active_addr = if !reply.is_empty() && reply[0] != 0 {
+        reply[0]
+    } else {
+        1
+    };
+
+    log_event(
+        "INFO",
+        "SUTO_DISC",
+        &format!("Ethernet discovery successful! Device assigned active RS485/Bus address: {} (0x{:02X})", active_addr, active_addr),
+        None,
+    );
+
+    {
+        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
+        *t_lock = Some(Box::new(tcp));
+
+        let mut addr_lock = state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
+        *addr_lock = active_addr;
+    }
+
+    Ok(active_addr)
+}
+
+#[tauri::command]
 pub fn suto_disconnect(state: State<'_, SutoState>) -> Result<(), String> {
     log_event("INFO", "SUTO_IPC", "suto_disconnect called", None);
     let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
@@ -134,12 +176,26 @@ pub async fn suto_get_channels(
         log_event("INFO", "SUTO_CH", &format!("Reported channel count: {}", count), None);
 
         // 2. Get channel settings
-        let mut get_ch_cmd = Vec::from(CMD_GET_CH_SETTING_PREFIX);
-        get_ch_cmd.push(1); // start from 1
-        get_ch_cmd.push(count);
-
-        let ch_setting_pkt = pack_packet(addr, &get_ch_cmd);
-        transport.write_and_read(&ch_setting_pkt, 2500)?
+        // Attempt Transformed Channel Settings (0x0B) supported by S330/S331 (CSLib CSCOMMExtend.java),
+        // falling back to Standard Channel Settings (0x02).
+        let ch_setting_res = {
+            let ch_transf_pkt = pack_packet(addr, &[0x04, 0x02, 0x0B, 1, count]);
+            match transport.write_and_read(&ch_transf_pkt, 2500) {
+                Ok(reply) if reply.len() > 4 && reply[2] == 0x3E => {
+                    log_event("INFO", "SUTO_CH", "Received transformed channel settings (0x0B)", None);
+                    Ok(reply)
+                }
+                _ => {
+                    log_event("DEBUG", "SUTO_CH", "0x0B not returned, falling back to 0x02 channel settings", None);
+                    let mut get_ch_cmd = Vec::from(CMD_GET_CH_SETTING_PREFIX);
+                    get_ch_cmd.push(1); // start from 1
+                    get_ch_cmd.push(count);
+                    let ch_setting_pkt = pack_packet(addr, &get_ch_cmd);
+                    transport.write_and_read(&ch_setting_pkt, 2500)
+                }
+            }
+        };
+        ch_setting_res?
     };
 
     let deframed = deframe_multi_frame(&reply)?;

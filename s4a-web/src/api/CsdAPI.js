@@ -1293,6 +1293,16 @@ const CsdAPI = {
 
   isFileLoaded() { return _fileLoaded; },
 
+  reset() {
+    _fileLoaded = false;
+    _isCsvMode = false;
+    _fileBuffer = null;
+    _headerRepairInfo = null;
+    _files = [];
+    _merged = null;
+    _onFileLoadedCallbacks = [];
+  },
+
   isCsvMode() { return _fileLoaded && _isCsvMode; },
 
   getFileTimeRange() {

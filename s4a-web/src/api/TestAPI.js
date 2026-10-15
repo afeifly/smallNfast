@@ -1,11 +1,11 @@
 import RequestUtil from '../util/RequestUtil';
 import MockAPI from './MockAPI';
 import CsdAPI from './CsdAPI';
+import TauriSutoAPI from './TauriSutoAPI';
 
 const API_URL = `${RequestUtil.HOST}/device`;
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
-const USE_CSD  = import.meta.env.VITE_USE_CSD  === 'true';
 
 let RealAPI = {
 
@@ -322,6 +322,50 @@ let RealAPI = {
   }
 }
 
-const FinalAPI = USE_CSD ? CsdAPI : USE_MOCK ? MockAPI : RealAPI;
+let currentApiMode = 'analyze'; // 'analyze' or 'monitor'
+
+export const setApiMode = (mode) => {
+  currentApiMode = mode;
+};
+
+export const getApiMode = () => currentApiMode;
+
+const BaseAPI = USE_MOCK ? MockAPI : CsdAPI;
+
+const FinalAPI = new Proxy(BaseAPI, {
+  get(target, prop) {
+    if (prop === 'setMode') {
+      return (mode) => {
+        currentApiMode = mode;
+      };
+    }
+    if (prop === 'getMode') {
+      return () => currentApiMode;
+    }
+    if (currentApiMode === 'monitor') {
+      if (prop === 'getChannels') {
+        return (callback) => TauriSutoAPI.getChannels(callback);
+      }
+      if (prop === 'getMeasurementData') {
+        return (chId, start, stop, pointInterval, callback) => {
+          const cb = typeof chId === 'function' ? chId : callback;
+          return TauriSutoAPI.getMeasurementData(cb);
+        };
+      }
+      if (prop === 'getTablePage') {
+        return (pageIndex, pageSize, selectedChannelIds, callback) => {
+          return TauriSutoAPI.getTablePage(pageIndex, pageSize, selectedChannelIds, callback);
+        };
+      }
+      if (prop === 'isFileLoaded') {
+        return () => true;
+      }
+      if (prop === 'getLoadedFileName') {
+        return () => 'SUTO Live Sensor';
+      }
+    }
+    return target[prop];
+  },
+});
 
 export default FinalAPI;

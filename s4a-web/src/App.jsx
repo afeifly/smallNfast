@@ -4,10 +4,14 @@ import TableView from './modules/tableview/TableView';
 import ConsumptionReport from './modules/consumption/ConsumptionReport';
 import FileInfoView from './modules/fileinfo/FileInfoView';
 import CompressorAnalyze from './modules/analyze/CompressorAnalyze';
+import OnlineView from './modules/onlineview/OnlineView';
 import TestAPI from './api/TestAPI';
+import TauriSutoAPI from './api/TauriSutoAPI';
 import Loading from './components/loading/Loading';
 import DataModifierModal from './modules/modifier/DataModifierModal';
+import DebugLogModal from './components/DebugLogModal';
 import './App.css';
+import { isDesktop, getRuntimePlatform } from './util/platform';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -30,7 +34,6 @@ import AddIcon from '@mui/icons-material/Add';
 import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
 const featureReport = import.meta.env.VITE_ENABLE_CONSUMPTION_REPORT === 'true';
 const featureCompressor = import.meta.env.VITE_ENABLE_COMPRESSOR_ANALYZE === 'true';
 
@@ -104,12 +107,20 @@ const getNotiColors = (type) => {
 
 function App() {
   const [initDone, setInitDone] = React.useState(false);
+  // appMode: null (welcome screen), 'analyze' (file analyze mode), or 'monitor' (device monitor mode)
+  const [appMode, setAppMode] = React.useState(null);
   const [fileLoaded, setFileLoaded] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('graphic');
   const [recentFiles, setRecentFiles] = React.useState([]);
   const [recentDialogOpen, setRecentDialogOpen] = React.useState(false);
   const [shareMenuAnchorEl, setShareMenuAnchorEl] = React.useState(null);
   const [modifierOpen, setModifierOpen] = React.useState(false);
+
+  // Device monitor states
+  const [detectingDevice, setDetectingDevice] = React.useState(false);
+  const [detectError, setDetectError] = React.useState(null);
+  const [deviceInfo, setDeviceInfo] = React.useState(null);
+  const [showDebugLogs, setShowDebugLogs] = React.useState(false);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -138,8 +149,10 @@ function App() {
   const [repairInfo, setRepairInfo] = React.useState(null);
 
   React.useEffect(() => {
-    if (!localStorage.getItem('username')) {
-      localStorage.setItem('username', 'admin');
+    if (typeof localStorage !== 'undefined') {
+      if (!localStorage.getItem('username')) {
+        localStorage.setItem('username', 'admin');
+      }
     }
 
     intl.init({
@@ -157,6 +170,7 @@ function App() {
 
     if (TestAPI.isFileLoaded && TestAPI.isFileLoaded()) {
       setFileLoaded(true);
+      setAppMode('analyze');
       if (TestAPI.getLoadedFileName) {
         setLoadedFilename(TestAPI.getLoadedFileName());
       }
@@ -165,6 +179,7 @@ function App() {
     if (TestAPI.onFileLoaded) {
       TestAPI.onFileLoaded(() => {
         setFileLoaded(true);
+        setAppMode('analyze');
         if (TestAPI.getLoadedFileName) {
           setLoadedFilename(TestAPI.getLoadedFileName());
         }
@@ -172,7 +187,7 @@ function App() {
           setRecentFiles(TestAPI.getRecentFiles());
         }
         // Offer to write the header repair back to the file.
-        if (isCsdMode && TestAPI.needsRepair) {
+        if (TestAPI.needsRepair) {
           setRepairInfo(TestAPI.needsRepair());
         }
       });
@@ -205,6 +220,8 @@ function App() {
       setLoadingFilename(e.detail.filename);
       setFileLoading(true);
       setFileLoadingProgress(0);
+      TestAPI.setMode('analyze');
+      setAppMode('analyze');
       setActiveTab('graphic');
     };
 
@@ -267,6 +284,44 @@ function App() {
     };
   }, []);
 
+  const handleDetectDevice = async () => {
+    setDetectingDevice(true);
+    setDetectError(null);
+    try {
+      const conn = await TauriSutoAPI.connectUsb();
+      setDeviceInfo(conn);
+      TestAPI.setMode('monitor');
+      setAppMode('monitor');
+      setActiveTab('online');
+    } catch (err) {
+      console.error('[App] Device detect error:', err);
+      setDetectError(err.message || 'No SUTO USB device detected. Please verify USB connection.');
+    } finally {
+      setDetectingDevice(false);
+    }
+  };
+
+  const handleDisconnectMonitor = async () => {
+    try {
+      await TauriSutoAPI.disconnect();
+    } catch (e) {
+      console.warn(e);
+    }
+    setDeviceInfo(null);
+    TestAPI.setMode('analyze');
+    setAppMode(null);
+    setActiveTab('graphic');
+  };
+
+  const handleReturnHome = () => {
+    if (appMode === 'monitor') {
+      TauriSutoAPI.disconnect().catch(console.warn);
+      TestAPI.setMode('analyze');
+      setDeviceInfo(null);
+    }
+    setAppMode(null);
+  };
+
   const handleRemoveRecentFile = async (file, e) => {
     if (e) e.stopPropagation();
     if (TestAPI.removeRecentFile) {
@@ -276,6 +331,8 @@ function App() {
   };
 
   const handleOpenFile = () => {
+    TestAPI.setMode('analyze');
+    setAppMode('analyze');
     if (TestAPI.openFile) {
       TestAPI.openFile();
     }
@@ -313,6 +370,8 @@ function App() {
 
   const handleLoadRecentFile = async (file) => {
     localStorage.removeItem('selectedChannels');
+    TestAPI.setMode('analyze');
+    setAppMode('analyze');
     if (file.path && TestAPI.loadFileFromPath) {
       await TestAPI.loadFileFromPath(file.path);
     } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
@@ -444,10 +503,58 @@ function App() {
             </defs>
           </svg>
           <span className="app-title">S4A-Web</span>
+          {isDesktop && (
+            <span
+              style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '999px',
+                backgroundColor: 'rgba(0, 0, 0, 0.12)',
+                color: '#1e293b',
+                fontWeight: 600,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase'
+              }}
+              title={`Runtime: ${getRuntimePlatform()}`}
+            >
+              Desktop
+            </span>
+          )}
+          {appMode && (
+            <>
+              <button className="header-home-btn" onClick={handleReturnHome} title="Return to Welcome Screen">
+                ← Welcome
+              </button>
+              <span className={`header-mode-indicator ${appMode}`}>
+                {appMode === 'monitor' ? 'Monitor Mode' : 'Analyze Mode'}
+              </span>
+            </>
+          )}
         </div>
 
-        {/* View Switcher Tabs (only shown in CSD mode and when a file is loaded, or always in non-CSD mode) */}
-        {(!isCsdMode || fileLoaded) && (
+        {/* View Switcher Tabs */}
+        {appMode === 'monitor' ? (
+          <div className="header-tabs">
+            <button
+              className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
+              onClick={() => setActiveTab('online')}
+            >
+              Online View
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
+              onClick={() => setActiveTab('graphic')}
+            >
+              Graphic View
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
+              onClick={() => setActiveTab('table')}
+            >
+              Table View
+            </button>
+          </div>
+        ) : (appMode === 'analyze' && fileLoaded) ? (
           <div className="header-tabs">
             <button
               className={`tab-btn ${activeTab === 'fileinfo' ? 'active' : ''}`}
@@ -490,27 +597,35 @@ function App() {
               Data Studio
             </button>
           </div>
-        )}
+        ) : null}
 
         <div className="header-right" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {isCsdMode && fileLoaded && (
-            <Tooltip title="Open File">
-              <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
-                <FolderOpenIcon />
-              </IconButton>
-            </Tooltip>
+          {appMode === 'monitor' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: '#047857', background: 'rgba(5, 150, 105, 0.15)', padding: '4px 10px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
+                {deviceInfo?.device || 'Live SUTO Sensor'}
+              </span>
+              <Button size="small" variant="outlined" color="inherit" onClick={handleDisconnectMonitor} style={{ fontSize: '11px', textTransform: 'none', fontWeight: 600 }}>
+                Disconnect
+              </Button>
+            </div>
           )}
 
-          {isCsdMode && fileLoaded && (
-            <Tooltip title="Append File">
-              <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
-                <AddIcon />
-              </IconButton>
-            </Tooltip>
-          )}
-
-          {isCsdMode && fileLoaded && (
+          {appMode === 'analyze' && fileLoaded && (
             <>
+              <Tooltip title="Open File">
+                <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
+                  <FolderOpenIcon />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Append File">
+                <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
+                  <AddIcon />
+                </IconButton>
+              </Tooltip>
+
               <Tooltip title="Export Data">
                 <IconButton className="header-icon-btn" onClick={handleShareClick} style={{ color: '#0f172a' }}>
                   <ShareIcon />
@@ -538,84 +653,215 @@ function App() {
               </Menu>
             </>
           )}
+
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => setShowDebugLogs(true)}
+            style={{
+              fontSize: '11px',
+              textTransform: 'none',
+              fontWeight: 600,
+              borderColor: '#cbd5e1',
+              color: '#334155',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+            }}
+            title="View live SUTO USB Win32 communication & hardware diagnostic logs"
+          >
+            <span style={{ fontSize: '14px' }}>🐞</span>
+            Debug Logs
+          </Button>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="app-main-content">
-        {isCsdMode && !fileLoaded ? (
-          /* Landing page when no file is loaded */
+        {!appMode ? (
+          /* Welcome Landing Page with dual modes */
           <div className="landing-container">
-            <div className="landing-card">
-              <div className="landing-logo-container">
-                <svg className="landing-card-logo" viewBox="0 0 24 24" width="64" height="64">
-                  <path
-                    fill="none"
-                    stroke="url(#landing-logo-grad)"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 17l6-6 4 4 8-8"
-                  />
-                  <defs>
-                    <linearGradient id="landing-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#00ac86" />
-                      <stop offset="100%" stopColor="#007d61" />
-                    </linearGradient>
-                  </defs>
-                </svg>
+            <div className="landing-wrapper">
+              <div className="landing-modes-grid">
+                {/* Mode Card 1: File Analyze Mode */}
+                <div className="landing-mode-card">
+                  <span className="mode-card-badge badge-analyze">File Analysis</span>
+                  <div className="mode-icon-box mode-icon-analyze">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h2 className="mode-card-title">File Analyze Mode</h2>
+                  <p className="mode-card-desc">
+                    Open and inspect recorded CSD and CSV log files. Perform deep graphic trends, table lookups, and compressor/consumption reporting.
+                  </p>
+
+                  <button className="landing-cta-btn" onClick={handleOpenFile}>
+                    <FolderOpenIcon style={{ fontSize: 20 }} />
+                    Open File
+                  </button>
+
+                  {recentFiles.length > 0 && (
+                    <div className="recent-files-section">
+                      <h3 className="recent-files-title">Recent Files</h3>
+                      <div className="recent-files-list">
+                        {recentFiles.map((file, idx) => (
+                          <div
+                            key={idx}
+                            className="recent-file-item"
+                            onClick={() => handleLoadRecentFile(file)}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}
+                          >
+                            <div className="recent-file-info" style={{ flex: 1 }}>
+                              <span className="recent-file-name">{file.name}</span>
+                              <span className="recent-file-meta">
+                                {file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => handleRemoveRecentFile(file, e)}
+                                style={{ color: '#94a3b8' }}
+                                className="recent-file-delete-btn"
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                              <svg className="recent-file-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mode Card 2: Device Monitor Mode */}
+                <div className="landing-mode-card">
+                  <span className="mode-card-badge badge-monitor">Real-time SUTO Hardware</span>
+                  <div className="mode-icon-box mode-icon-monitor">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <h2 className="mode-card-title">Device Monitor Mode</h2>
+                  <p className="mode-card-desc">
+                    Connect to SUTO DS310 / S331 flow, pressure, dew point, or multi-channel sensors via direct USB driver for real-time monitoring and graphing.
+                  </p>
+
+                  <button
+                    className="landing-cta-btn landing-cta-monitor"
+                    onClick={handleDetectDevice}
+                    disabled={detectingDevice}
+                  >
+                    {detectingDevice ? (
+                      <>
+                        <span className="status-pulse-dot" />
+                        Detecting SUTO Device...
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Detect & Connect Device
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    className="landing-cta-btn"
+                    onClick={() => setShowDebugLogs(true)}
+                    style={{
+                      marginTop: '8px',
+                      background: '#334155',
+                      boxShadow: 'none',
+                    }}
+                  >
+                    <span style={{ fontSize: '15px' }}>🐞</span>
+                    View USB Diagnostic Logs
+                  </button>
+
+                  {detectError && (
+                    <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+                      ⚠ {detectError}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Supported Transports:</div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#334155', fontWeight: 600 }}>Direct USB (cscdc.sys)</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#64748b' }}>Ethernet (CS-Bus)</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#64748b' }}>RS485 / Modbus</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <h1 className="landing-title">Welcome to S4A-web</h1>
-              <p className="landing-subtitle">
-                Open a file to show data and start analyzing sensor measurements.
-              </p>
-
-              <button className="landing-cta-btn" onClick={handleOpenFile}>
-                <svg className="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Open File
-              </button>
-
-              {recentFiles.length > 0 && (
-                <div className="recent-files-section">
-                  <h3 className="recent-files-title">Recent Files</h3>
-                  <div className="recent-files-list">
-                    {recentFiles.map((file, idx) => (
-                      <div
-                        key={idx}
-                        className="recent-file-item"
-                        onClick={() => handleLoadRecentFile(file)}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}
-                      >
-                        <div className="recent-file-info" style={{ flex: 1 }}>
-                          <span className="recent-file-name">{file.name}</span>
-                          <span className="recent-file-meta">
-                            {file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+            </div>
+          </div>
+        ) : appMode === 'monitor' ? (
+          /* Monitor Mode Views: Online View, Graphic View, Table View */
+          <div className="view-content-wrapper">
+            {activeTab === 'online' ? (
+              <OnlineView onDisconnect={handleDisconnectMonitor} />
+            ) : activeTab === 'graphic' ? (
+              <GraphicView />
+            ) : (
+              <TableView />
+            )}
+          </div>
+        ) : !fileLoaded ? (
+          /* File Analyze Mode with no file loaded yet */
+          <div className="landing-container">
+            <div className="landing-wrapper">
+              <div className="landing-card" style={{ maxWidth: 520, margin: '0 auto' }}>
+                <h2 className="landing-title">File Analyze Mode</h2>
+                <p className="landing-subtitle">
+                  Select a CSD or CSV file to begin analysis, or pick from recent files below.
+                </p>
+                <button className="landing-cta-btn" onClick={handleOpenFile}>
+                  <FolderOpenIcon style={{ fontSize: 20 }} />
+                  Open File
+                </button>
+                {recentFiles.length > 0 && (
+                  <div className="recent-files-section">
+                    <h3 className="recent-files-title">Recent Files</h3>
+                    <div className="recent-files-list">
+                      {recentFiles.map((file, idx) => (
+                        <div
+                          key={idx}
+                          className="recent-file-item"
+                          onClick={() => handleLoadRecentFile(file)}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                        >
+                          <div className="recent-file-info" style={{ flex: 1 }}>
+                            <span className="recent-file-name">{file.name}</span>
+                            <span className="recent-file-meta">
+                              {file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')}
+                            </span>
+                          </div>
                           <IconButton
                             size="small"
                             onClick={(e) => handleRemoveRecentFile(file, e)}
                             style={{ color: '#94a3b8' }}
-                            className="recent-file-delete-btn"
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
-                          <svg className="recent-file-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         ) : (
-          /* Main content display */
+          /* File Analyze Mode with loaded file */
           <div className="view-content-wrapper">
             {activeTab === 'fileinfo' ? (
               <FileInfoView />
@@ -1083,10 +1329,16 @@ function App() {
       <footer className="app-status-bar">
         <div className="status-bar-left">
           <div className="status-indicator">
-            <span className={`status-dot ${fileLoaded ? 'active' : ''}`}></span>
-            <span className="status-text">{fileLoaded ? 'Data Loaded' : 'No File Open'}</span>
+            <span className={`status-dot ${appMode === 'monitor' || fileLoaded ? 'active' : ''}`}></span>
+            <span className="status-text">
+              {appMode === 'monitor'
+                ? `Monitor: ${deviceInfo?.device || 'Live SUTO Sensor'}`
+                : fileLoaded
+                ? 'Data Loaded'
+                : 'Ready'}
+            </span>
           </div>
-          {fileLoaded && loadedFilename && (
+          {appMode === 'analyze' && fileLoaded && loadedFilename && (
             <>
               <span className="status-separator">|</span>
               <div className="current-file-display" title="Current Opened File">
@@ -1099,9 +1351,14 @@ function App() {
           )}
         </div>
         <div className="status-bar-right">
-          {fileLoaded && TestAPI.isCsvMode && (
+          {appMode === 'monitor' && (
+            <span className="status-badge" style={{ color: '#10b981', borderColor: '#059669' }}>
+              ONLINE MONITOR
+            </span>
+          )}
+          {appMode === 'analyze' && fileLoaded && TestAPI.isCsvMode && (
             <span className="status-badge">
-              {TestAPI.isCsvMode() ? 'CSV Mode' : 'CSD Mode'}
+              {TestAPI.isCsvMode() ? 'CSV File' : 'CSD File'}
             </span>
           )}
           <span className="status-timestamp">
@@ -1170,6 +1427,12 @@ function App() {
         onFileReloaded={(name) => {
           if (name) setLoadedFilename(name);
         }}
+      />
+
+      {/* SUTO Hardware & USB Diagnostic Log Modal */}
+      <DebugLogModal
+        isOpen={showDebugLogs}
+        onClose={() => setShowDebugLogs(false)}
       />
     </div>
   );

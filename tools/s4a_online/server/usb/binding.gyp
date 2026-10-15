@@ -1,0 +1,1 @@
+{"targets":[{"defines":["NAPI_DISABLE_CPP_EXCEPTIONS","UNICODE","_UNICODE"],"dependencies":["<!(node -p \"require('node-addon-api').gyp\")"],"include_dirs":["<!@(node -p \"require('node-addon-api').include\")"],"libraries":["-lsetupapi"],"msvs_settings":{"VCCLCompilerTool":{"ExceptionHandling":1}},"sources":["native/binding.cc"],"target_name":"usbio"}]}

@@ -2,13 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { viteSingleFile } from "vite-plugin-singlefile"
 
-// In CSD mode (VITE_USE_CSD=true) we skip viteSingleFile so the
-// .wasm module can be served as a separate static asset.
-const isCsdMode = process.env.VITE_USE_CSD === 'true';
+const useSingleFile = process.env.VITE_SINGLE_FILE === 'true';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: isCsdMode ? [react()] : [react(), viteSingleFile()],
+  plugins: useSingleFile ? [react(), viteSingleFile()] : [react()],
   base: './',
   server: {
     host: true,

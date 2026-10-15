@@ -1,0 +1,354 @@
+/* OnlineView.css - SUTO Device Telemetry System */
+
+.online-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  background-color: #f8fafc;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ── Top Header / Status Panel ── */
+.online-top-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 22px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+.online-device-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.device-avatar-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #00ac86 0%, #007d61 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 172, 134, 0.25);
+}
+
+.device-text-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.device-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.01em;
+}
+
+.device-meta-row {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+
+.device-meta-item strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.online-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.status-badge-live {
+  background-color: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+
+.status-badge-paused {
+  background-color: #fefce8;
+  color: #ca8a04;
+  border: 1px solid #fef08a;
+}
+
+.status-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.2); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.online-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.online-btn {
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  outline: none;
+}
+
+.online-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* ── Device Cards Flex Grid ── */
+.suto-devices-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+/* ── Individual Device Card (368px width as requested) ── */
+.suto-device-card {
+  width: 368px;
+  min-width: 320px;
+  max-width: 420px;
+  flex: 0 0 368px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06), 0 2px 4px -1px rgba(15, 23, 42, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.suto-device-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
+  border-color: #cbd5e1;
+}
+
+/* ── Device Header Bar ── */
+.suto-device-header {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  background: linear-gradient(135deg, #00ac86 0%, #008265 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ffffff;
+}
+
+.suto-device-title-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.suto-device-header-icon {
+  flex-shrink: 0;
+  opacity: 0.95;
+}
+
+.suto-device-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suto-device-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.suto-ch-count-badge {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.suto-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #a7f3d0;
+  box-shadow: 0 0 6px #a7f3d0;
+}
+
+/* ── Channel Rows List ── */
+.suto-channel-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: #ffffff;
+}
+
+.suto-channel-row {
+  height: 50px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.suto-channel-row:last-child {
+  border-bottom: none;
+}
+
+.suto-channel-row:hover {
+  background-color: #f8fafc;
+}
+
+/* ── Left Meta: Status Dot + Name + Chip ── */
+.suto-channel-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.suto-channel-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.suto-channel-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.suto-channel-chip {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  flex-shrink: 0;
+}
+
+/* ── Right Values: Value + Unit ── */
+.suto-channel-right {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.suto-channel-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  text-align: right;
+  min-width: 65px;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
+}
+
+.suto-channel-value.is-blank {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.suto-channel-unit {
+  width: 58px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Card Footer ── */
+.suto-device-footer {
+  height: 32px;
+  background: #fafafa;
+  border-top: 1px solid #f1f5f9;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.suto-footer-info {
+  letter-spacing: 0.01em;
+}
+
+.suto-footer-status {
+  color: #10b981;
+  font-weight: 600;
+}

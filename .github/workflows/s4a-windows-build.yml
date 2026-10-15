@@ -1,0 +1,90 @@
+name: Build S4A Desktop (Windows exe)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, s4a-local]
+    paths:
+      - 's4a-web/**'
+      - '.github/workflows/s4a-windows-build.yml'
+  pull_request:
+    branches: [main, s4a-local]
+    paths:
+      - 's4a-web/**'
+      - '.github/workflows/s4a-windows-build.yml'
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Release (.exe)
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: s4a-web
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: s4a-web/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: s4a-web/src-tauri
+
+      - name: Install Frontend Dependencies
+        run: npm install
+
+      - name: Run Frontend Tests
+        run: npm test -- --run
+
+      - name: Run Rust Tests
+        working-directory: s4a-web/src-tauri
+        run: cargo test
+
+      - name: Build Web Application
+        run: npm run build
+
+      - name: Build Tauri Windows Release (.exe and installers)
+        run: npm run tauri:build
+
+      - name: Upload Standalone Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: S4A-Windows-Portable-EXE
+          path: s4a-web/src-tauri/target/release/s4a-web.exe
+          if-no-files-found: error
+
+      - name: Upload Windows Installers (NSIS / MSI)
+        uses: actions/upload-artifact@v4
+        with:
+          name: S4A-Windows-Installers
+          path: |
+            s4a-web/src-tauri/target/release/bundle/nsis/*.exe
+            s4a-web/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: warn
+
+      - name: Upload Assets to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            s4a-web/src-tauri/target/release/s4a-web.exe
+            s4a-web/src-tauri/target/release/bundle/nsis/*.exe
+            s4a-web/src-tauri/target/release/bundle/msi/*.msi

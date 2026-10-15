@@ -31,8 +31,7 @@ import Loading from '../../components/loading/Loading';
 
 import './css/GraphicView.css';
 
-// CSD mode is active when the app is started with `npm run dev:csd`
-const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
+const isMonitorMode = () => TestAPI.getMode && TestAPI.getMode() === 'monitor';
 
 
 class GraphicView extends Component {
@@ -48,7 +47,7 @@ class GraphicView extends Component {
     this.state = {
       showYAxisSetting: false,
       showChannelSetting: false,
-      dataType: isCsdMode ? 'History' : 'Realtime',
+      dataType: isMonitorMode() ? 'Realtime' : 'History',
       denoisingChecked: true,
       noLoggingChannels: true,
       recentFilesOpen: false,
@@ -57,9 +56,7 @@ class GraphicView extends Component {
     }
 
     this.chartController = new ChartController();
-    if (isCsdMode) {
-      this.chartController.datasourceMode = 'History';
-    }
+    this.chartController.datasourceMode = isMonitorMode() ? 'Realtime' : 'History';
     this.graphicView = null;
     this.channelListVisible = false;
   }
@@ -95,22 +92,9 @@ class GraphicView extends Component {
 
         <div className="graphic-view" ref={this.graphicViewRef}>
           <div className="app-window-title">
-            <span>{!isCsdMode && intl.get('GRAPHIC_VIEW')}</span>
+            <span />
 
             <div className="window-title-right-area">
-              {!isCsdMode && (
-                <div className="toggle-button-group" >
-                  <div className="toggle-selected-mask" />
-                  <div className="toggle-button" data-type="realtime"
-                    onClick={() => this.switchDataSource('realtime')}>
-                    {intl.get('REALTIME_DATA')}
-                  </div>
-                  <div className="toggle-button" data-type="history"
-                    onClick={() => this.switchDataSource('history')}>
-                    {intl.get('HISTORY_DATA')}
-                  </div>
-                </div>
-              )}
 
               {/* Channel list button */}
               <Tooltip title={intl.get('CHANNEL')}>
@@ -236,16 +220,16 @@ class GraphicView extends Component {
 
     // In CSD mode: when a file is opened, switch chart to History mode spanning
     // the file's actual date range, then reload channel + measurement data.
-    if (isCsdMode && TestAPI.onFileLoaded) {
+    if (TestAPI.onFileLoaded) {
       this.fileLoadedUnsubscribe = TestAPI.onFileLoaded(() => {
-        console.log('[GraphicView] CSD file loaded — refreshing with correct time range...');
+        console.log('[GraphicView] File loaded — refreshing with correct time range...');
         this._applyCsdTimeRange();
         this.getData();
       });
     }
 
     this.setPosition(0);
-    this.initToggleButton(isCsdMode ? 'history' : 'realtime');
+    this.initToggleButton(isMonitorMode() ? 'realtime' : 'history');
 
     d3.select(window).on('resize.updateChart', () => {
       let chartX = 0;

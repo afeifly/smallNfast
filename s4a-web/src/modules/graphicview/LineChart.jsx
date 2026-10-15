@@ -43,16 +43,8 @@ class LineChart extends Component {
 
   render() {
     const { chartController } = this.props;
-    const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
-
-    let placeholderText = intl.get('NO_CHANNEL');
-    if (isCsdMode) {
-      if (this.state.fileLoaded || (TestAPI.isFileLoaded && TestAPI.isFileLoaded())) {
-        placeholderText = 'No channel selected';
-      } else {
-        placeholderText = 'Open a CSD file to show data';
-      }
-    }
+    const isLoaded = this.state.fileLoaded || (TestAPI.isFileLoaded && TestAPI.isFileLoaded());
+    const placeholderText = isLoaded ? 'No channel selected' : 'Open a file to show data';
 
     const buttonStyle = {
       marginLeft: 4
@@ -105,8 +97,7 @@ class LineChart extends Component {
   componentDidMount() {
     const { chartController } = this.props;
 
-    const isCsdMode = import.meta.env.VITE_USE_CSD === 'true';
-    if (isCsdMode && TestAPI.onFileLoaded) {
+    if (TestAPI.onFileLoaded) {
       this.fileLoadedUnsubscribe = TestAPI.onFileLoaded(() => {
         this.setState({ fileLoaded: true });
       });

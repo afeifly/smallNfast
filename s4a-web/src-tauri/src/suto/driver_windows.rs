@@ -421,6 +421,8 @@ impl SutoTransport for WindowsUsbTransport {
                     Ok(written as usize)
                 } else {
                     CancelIo(self.pipe_out);
+                    let mut dummy = 0;
+                    GetOverlappedResult(self.pipe_out, &mut ov, &mut dummy, 1);
                     let msg = format!("Write pipe timeout ({}ms)", timeout_ms);
                     log_event("WARN", "USB_TX", &msg, None);
                     Err(msg)
@@ -483,6 +485,8 @@ impl SutoTransport for WindowsUsbTransport {
                     Ok(buf)
                 } else {
                     CancelIo(self.pipe_in);
+                    let mut dummy = 0;
+                    GetOverlappedResult(self.pipe_in, &mut ov, &mut dummy, 1);
                     Ok(Vec::new())
                 }
             } else if r != 0 {
@@ -513,14 +517,17 @@ impl SutoTransport for WindowsUsbTransport {
         log_event("INFO", "USB_CLOSE", "Closing SUTO USB device handles...", None);
         unsafe {
             if self.pipe_in != INVALID_HANDLE_VALUE {
+                CancelIo(self.pipe_in);
                 CloseHandle(self.pipe_in);
                 self.pipe_in = INVALID_HANDLE_VALUE;
             }
             if self.pipe_out != INVALID_HANDLE_VALUE {
+                CancelIo(self.pipe_out);
                 CloseHandle(self.pipe_out);
                 self.pipe_out = INVALID_HANDLE_VALUE;
             }
             if self.main_handle != INVALID_HANDLE_VALUE {
+                CancelIo(self.main_handle);
                 CloseHandle(self.main_handle);
                 self.main_handle = INVALID_HANDLE_VALUE;
             }

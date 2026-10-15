@@ -62,13 +62,17 @@ export default function OnlineView({ onDisconnect }) {
 
   const loadInitialData = useCallback(async () => {
     try {
-      const [chs, info] = await Promise.all([
-        TauriSutoAPI.getChannels(),
-        TauriSutoAPI.getSystemInfo(),
-      ]);
+      const chs = await TauriSutoAPI.getChannels();
       setChannels(chs || []);
-      setSysInfo(info || null);
       setLastUpdate(new Date());
+
+      // Query system info as non-blocking enhancement
+      try {
+        const info = await TauriSutoAPI.getSystemInfo();
+        setSysInfo(info || null);
+      } catch (e) {
+        console.warn('[OnlineView] System info not available:', e);
+      }
     } catch (err) {
       setError(err?.message || 'Failed to load device information');
     }

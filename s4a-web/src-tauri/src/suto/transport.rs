@@ -34,8 +34,8 @@ pub trait SutoTransport: Send + Sync {
         let mut acc = Vec::new();
         let mut idle_count = 0;
 
-        while start.elapsed() < timeout && idle_count < 10 {
-            match self.read(8192, 200) {
+        while start.elapsed() < timeout && idle_count < 15 {
+            match self.read(8192, 100) {
                 Ok(chunk) if !chunk.is_empty() => {
                     log_event(
                         "DEBUG",
@@ -45,8 +45,7 @@ pub trait SutoTransport: Send + Sync {
                     );
                     acc.extend_from_slice(&chunk);
                     idle_count = 0;
-                    // If we received at least header and full frame length
-                    if acc.len() >= 2 && acc.len() >= acc[1] as usize {
+                    if is_response_complete(&acc) {
                         break;
                     }
                 }
@@ -54,7 +53,7 @@ pub trait SutoTransport: Send + Sync {
                     idle_count += 1;
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(15));
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
         let elapsed = start.elapsed().as_millis();
@@ -72,4 +71,32 @@ pub trait SutoTransport: Send + Sync {
             Ok(acc)
         }
     }
+}
+
+/// Helper to determine if a single-frame or multi-frame CS-Bus / DS310 response is fully received.
+fn is_response_complete(acc: &[u8]) -> bool {
+    if acc.len() < 4 {
+        return false;
+    }
+    let mut offset = 0;
+    while offset < acc.len() {
+        if offset + 2 > acc.len() {
+            return false;
+        }
+        let frame_len = acc[offset + 1] as usize;
+        if frame_len < 4 {
+            return false;
+        }
+        let next_offset = offset + frame_len;
+        if acc.len() < next_offset {
+            return false;
+        }
+        // In the SUTO DS310 protocol, full intermediate frames are always 192 bytes (0xC0).
+        // The final (or only) frame is strictly less than 192 bytes.
+        if frame_len < 192 {
+            return true;
+        }
+        offset = next_offset;
+    }
+    false
 }

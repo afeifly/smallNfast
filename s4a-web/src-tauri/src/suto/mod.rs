@@ -72,28 +72,30 @@ pub async fn suto_connect_usb(
     // Perform discovery by sending 'A' with address 0
     log_event("INFO", "SUTO_DISC", "Sending Address 0 Discovery Query (command 'A' / 0x41)...", None);
     let disc_pkt = pack_packet(0, &[CMD_DISCOVERY_ASCII]);
-    let reply = native.write_and_read(&disc_pkt, 3000)?;
+    let reply = native.write_and_read(&disc_pkt, 2000)?;
 
-    let deframed = deframe_multi_frame(&reply)?;
-    let discovered_addr = if !deframed.is_empty() {
-        deframed[0]
+    // As per specification §5.1:
+    // "Send ASCII 'A' framed with address 0 (broadcast).
+    // The reply's byte 0 is the device's real address (observed: 1).
+    // All subsequent commands use that address."
+    let active_addr = if !reply.is_empty() && reply[0] != 0 {
+        reply[0]
     } else {
-        reply[0] // fallback to byte 0 of raw reply
+        1
     };
 
-    let active_addr = if discovered_addr == 0 { 1 } else { discovered_addr };
     log_event(
         "INFO",
         "SUTO_DISC",
-        &format!("Discovery successful! Device assigned active RS485/Bus address: {}", active_addr),
+        &format!("Discovery successful! Device assigned active RS485/Bus address: {} (0x{:02X})", active_addr, active_addr),
         None,
     );
 
     {
-        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
         *t_lock = Some(Box::new(native));
 
-        let mut addr_lock = state.dev_addr.lock().map_err(|e| e.to_string())?;
+        let mut addr_lock = state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
         *addr_lock = active_addr;
     }
 
@@ -103,7 +105,7 @@ pub async fn suto_connect_usb(
 #[tauri::command]
 pub fn suto_disconnect(state: State<'_, SutoState>) -> Result<(), String> {
     log_event("INFO", "SUTO_IPC", "suto_disconnect called", None);
-    let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+    let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(mut t) = t_lock.take() {
         let _ = t.close();
     }
@@ -124,7 +126,7 @@ pub async fn suto_get_channels(
 
         // 1. Get channel count
         let ch_count_pkt = pack_packet(addr, &CMD_GET_CH_COUNT);
-        let ch_count_raw = transport.write_and_read(&ch_count_pkt, 3000).unwrap_or_default();
+        let ch_count_raw = transport.write_and_read(&ch_count_pkt, 1500).unwrap_or_default();
         let count = match deframe_multi_frame(&ch_count_raw) {
             Ok(ref p) if !p.is_empty() && p[0] > 0 && p[0] <= 32 => p[0],
             _ => 8, // fallback to 8 channels
@@ -137,7 +139,7 @@ pub async fn suto_get_channels(
         get_ch_cmd.push(count);
 
         let ch_setting_pkt = pack_packet(addr, &get_ch_cmd);
-        transport.write_and_read(&ch_setting_pkt, 5000)?
+        transport.write_and_read(&ch_setting_pkt, 2500)?
     };
 
     let deframed = deframe_multi_frame(&reply)?;
@@ -160,7 +162,7 @@ pub async fn suto_get_channels(
 
     // Cache channels for value parsing
     {
-        let mut ch_lock = state.cached_channels.lock().map_err(|e| e.to_string())?;
+        let mut ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
         *ch_lock = channels.clone();
     }
 
@@ -172,8 +174,8 @@ pub async fn suto_get_values(
     state: State<'_, SutoState>,
 ) -> Result<Vec<MeasurementValue>, String> {
     let (addr, ch_ids) = {
-        let addr = *state.dev_addr.lock().map_err(|e| e.to_string())?;
-        let ch_lock = state.cached_channels.lock().map_err(|e| e.to_string())?;
+        let addr = *state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
+        let ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
         let ids: Vec<u8> = if ch_lock.is_empty() {
             vec![1, 2, 3, 4]
         } else {
@@ -190,10 +192,10 @@ pub async fn suto_get_values(
     get_val_cmd.push(count);
 
     let reply = {
-        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
         let transport = t_lock.as_mut().ok_or("Device not connected")?;
         let pkt = pack_packet(addr, &get_val_cmd);
-        transport.write_and_read(&pkt, 4000)?
+        transport.write_and_read(&pkt, 2500)?
     };
 
     let deframed = deframe_multi_frame(&reply)?;
@@ -211,55 +213,55 @@ pub async fn suto_get_values(
 pub async fn suto_get_system_info(
     state: State<'_, SutoState>,
 ) -> Result<SystemInfo, String> {
-    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+    let addr = { *state.dev_addr.lock().unwrap_or_else(|p| p.into_inner()) };
     let mut info = SystemInfo::default();
 
     // Helper closure to send command
     let send_sys_cmd = |act: u8| -> Result<Vec<u8>, String> {
-        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
         let transport = t_lock.as_mut().ok_or("Device not connected")?;
         let cmd = [CTY_SYS_INFO, SUB_NONE, act];
         let pkt = pack_packet(addr, &cmd);
-        let raw = transport.write_and_read(&pkt, 2000)?;
+        let raw = transport.write_and_read(&pkt, 1000)?;
         deframe_multi_frame(&raw)
     };
 
-    // Serial number
+    // Serial number - if this fails/times out, device probably doesn't support CTY_SYS_INFO, so skip the rest
     if let Ok(res) = send_sys_cmd(ACT_GET_SERIAL_NUMBER) {
         if res.len() >= 4 {
             let sn = u32::from_le_bytes([res[0], res[1], res[2], res[3]]);
             info.serial_number = Some(sn.to_string());
         }
-    }
 
-    // Device ID
-    if let Ok(res) = send_sys_cmd(ACT_GET_DEVICE_ID) {
-        if res.len() >= 2 {
-            info.device_id = Some(u16::from_le_bytes([res[0], res[1]]));
+        // Device ID
+        if let Ok(res) = send_sys_cmd(ACT_GET_DEVICE_ID) {
+            if res.len() >= 2 {
+                info.device_id = Some(u16::from_le_bytes([res[0], res[1]]));
+            }
         }
-    }
 
-    // Firmware version
-    if let Ok(res) = send_sys_cmd(ACT_GET_FIRMWARE_VERSION) {
-        let ver = String::from_utf8_lossy(&res).trim().to_string();
-        if !ver.is_empty() {
-            info.firmware_version = Some(ver);
+        // Firmware version
+        if let Ok(res) = send_sys_cmd(ACT_GET_FIRMWARE_VERSION) {
+            let ver = String::from_utf8_lossy(&res).trim().to_string();
+            if !ver.is_empty() {
+                info.firmware_version = Some(ver);
+            }
         }
-    }
 
-    // Device Name
-    if let Ok(res) = send_sys_cmd(ACT_GET_DEVICE_NAME) {
-        let name = String::from_utf8_lossy(&res).trim().to_string();
-        if !name.is_empty() {
-            info.device_name = Some(name);
+        // Device Name
+        if let Ok(res) = send_sys_cmd(ACT_GET_DEVICE_NAME) {
+            let name = String::from_utf8_lossy(&res).trim().to_string();
+            if !name.is_empty() {
+                info.device_name = Some(name);
+            }
         }
-    }
 
-    // Calibration date
-    if let Ok(res) = send_sys_cmd(ACT_GET_CALI_DATE) {
-        let cali = String::from_utf8_lossy(&res).trim().to_string();
-        if !cali.is_empty() {
-            info.calibration_date = Some(cali);
+        // Calibration date
+        if let Ok(res) = send_sys_cmd(ACT_GET_CALI_DATE) {
+            let cali = String::from_utf8_lossy(&res).trim().to_string();
+            if !cali.is_empty() {
+                info.calibration_date = Some(cali);
+            }
         }
     }
 

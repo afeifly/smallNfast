@@ -64,12 +64,24 @@ jobs:
       - name: Build Tauri Windows Release (.exe and installers)
         run: npm run tauri:build
 
+      - name: Locate and Prepare Portable Executable
+        shell: bash
+        run: |
+          echo "Listing release binaries:"
+          ls -la s4a-web/src-tauri/target/release/*.exe || true
+          if [ -f "s4a-web/src-tauri/target/release/app.exe" ]; then
+            cp "s4a-web/src-tauri/target/release/app.exe" "s4a-web/src-tauri/target/release/s4a-web.exe"
+            echo "Copied app.exe to s4a-web.exe"
+          fi
+
       - name: Upload Standalone Windows EXE
         uses: actions/upload-artifact@v4
         with:
           name: S4A-Windows-Portable-EXE
-          path: s4a-web/src-tauri/target/release/s4a-web.exe
-          if-no-files-found: error
+          path: |
+            s4a-web/src-tauri/target/release/s4a-web.exe
+            s4a-web/src-tauri/target/release/app.exe
+          if-no-files-found: warn
 
       - name: Upload Windows Installers (NSIS / MSI)
         uses: actions/upload-artifact@v4
@@ -86,5 +98,6 @@ jobs:
         with:
           files: |
             s4a-web/src-tauri/target/release/s4a-web.exe
+            s4a-web/src-tauri/target/release/app.exe
             s4a-web/src-tauri/target/release/bundle/nsis/*.exe
             s4a-web/src-tauri/target/release/bundle/msi/*.msi

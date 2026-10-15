@@ -49,7 +49,7 @@ jobs:
           workspaces: s4a-web/src-tauri
 
       - name: Install Frontend Dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Run Frontend Tests
         run: npm test -- --run

@@ -55,17 +55,9 @@ impl SutoTransport for StubUsbTransport {
         let payload = &data[COMM_HEADER_LENGTH..data.len() - COMM_TAIL_LENGTH];
         let resp_payload = self.handle_command(payload);
 
-        let mut resp_frame = Vec::new();
-        resp_frame.push(self.device_addr);
-        resp_frame.push((resp_payload.len() + COMM_HEADER_LENGTH + COMM_TAIL_LENGTH + 1) as u8);
-        resp_frame.push(COMM_SUCCESSFUL_CHAR); // '>'
-        resp_frame.extend_from_slice(&resp_payload);
-
-        let cksum = calculate_checksum(&resp_frame, resp_frame.len());
-        resp_frame.push(cksum);
-        resp_frame.push(0x00);
-
-        self.tx_buffer = resp_frame;
+        // Emit proper 192-byte multi-frame responses (as real DS310 firmware does),
+        // so large payloads such as 204-byte channel settings are framed correctly.
+        self.tx_buffer = pack_frames(self.device_addr, &resp_payload);
         Ok(data.len())
     }
 
@@ -103,6 +95,11 @@ impl StubUsbTransport {
         if payload == CMD_GET_CH_COUNT {
             // Returns 4-byte payload with channel count = 6
             return vec![6, 0, 0, 0];
+        }
+
+        // 2b. GetMaxChannelCount ([0x01, 0xFF, 0x23]) -> first byte is the count
+        if payload == CMD_GET_MAX_CHANNELS {
+            return vec![6];
         }
 
         // 3. GetChSetting ([0x04, 0x02, 0x02, start, count])
@@ -172,12 +169,12 @@ impl StubUsbTransport {
     fn build_mock_channel_settings(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(204 * 6);
         let channels = [
-            (1u8, "SUTO DS310 Main", "Flow", 13u8, 1u8),
-            (2u8, "SUTO DS310 Main", "Pressure", 7u8, 2u8),
-            (3u8, "SUTO DS310 Main", "Dew Point", 1u8, 1u8),
-            (4u8, "TCL Hao / S461 TCP", "Delta T", 0u8, 2u8),
-            (5u8, "TCL Hao / S461 TCP", "Temperature inlet", 0u8, 1u8),
-            (6u8, "TCL Hao / S461 TCP", "Temperature outlet", 0u8, 1u8),
+            (1u8, "SUTO DS310 Main", "Flow", 14u8, 1u8),
+            (2u8, "SUTO DS310 Main", "Pressure", 38u8, 2u8),
+            (3u8, "SUTO DS310 Main", "Dew Point", 4u8, 1u8),
+            (4u8, "TCL Hao / S461 TCP", "Delta T", 1u8, 2u8),
+            (5u8, "TCL Hao / S461 TCP", "Temperature inlet", 1u8, 1u8),
+            (6u8, "TCL Hao / S461 TCP", "Temperature outlet", 1u8, 1u8),
         ];
 
         for (ch_id, dev_desc, ch_desc, unit_idx, res) in channels {
@@ -196,7 +193,21 @@ impl StubUsbTransport {
 
             s[85] = res; // resolution
             s[86] = unit_idx; // unit index
-            s[138] = 0; // mb_output_value_type (f32)
+            s[138] = 8; // mb_output_value_type (f32)
+
+            // Sensor / channel identity: channels 1-3 share sensor 1,
+            // channels 4-6 share sensor 2 (mirrors CSLib grouping).
+            let (sensor_id, channel_id) = if ch_id <= 3 {
+                (1i32, ch_id as i32)
+            } else {
+                (2i32, (ch_id - 3) as i32)
+            };
+            s[99..103].copy_from_slice(&1i32.to_le_bytes()); // device_id
+            s[103..107].copy_from_slice(&0i32.to_le_bytes()); // sub_device_id
+            s[107..111].copy_from_slice(&sensor_id.to_le_bytes());
+            s[111..115].copy_from_slice(&channel_id.to_le_bytes());
+            s[115] = 1; // slaver_type (SDI)
+            s[116] = sensor_id as u8; // slaver_addr
 
             out.extend_from_slice(&s);
         }
@@ -208,12 +219,12 @@ impl StubUsbTransport {
         let mut out = Vec::with_capacity(7 * 6);
         // Realistic simulated values
         let values: [(f32, u8, u8); 6] = [
-            (145.2, 1, 13), // Flow: 145.2 m³/h
-            (6.85, 2, 7),   // Pressure: 6.85 bar
-            (-38.4, 1, 1),  // Dew Point: -38.4 °Ctd
-            (3.84, 2, 0),   // Delta T: 3.84 ℃
-            (28.6, 1, 0),   // Temperature inlet: 28.6 ℃
-            (24.76, 2, 0),  // Temperature outlet: 24.76 ℃
+            (145.2, 1, 14), // Flow: 145.2 m³/h
+            (6.85, 2, 38),  // Pressure: 6.85 bar
+            (-38.4, 1, 4),  // Dew Point: -38.4 °Ctd
+            (3.84, 2, 1),   // Delta T: 3.84 ℃
+            (28.6, 1, 1),   // Temperature inlet: 28.6 ℃
+            (24.76, 2, 1),  // Temperature outlet: 24.76 ℃
         ];
 
         for (val, res, unit_idx) in values {

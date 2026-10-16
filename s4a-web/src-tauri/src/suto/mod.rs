@@ -34,6 +34,7 @@ pub struct SutoState {
     pub transport: Mutex<Option<Box<dyn SutoTransport>>>,
     pub dev_addr: Mutex<u8>,
     pub cached_channels: Mutex<Vec<ChannelInfo>>,
+    pub device_info: Mutex<Option<DeviceInfo>>,
 }
 
 impl SutoState {
@@ -42,6 +43,7 @@ impl SutoState {
             transport: Mutex::new(None),
             dev_addr: Mutex::new(1),
             cached_channels: Mutex::new(Vec::new()),
+            device_info: Mutex::new(None),
         }
     }
 }
@@ -99,6 +101,9 @@ pub async fn suto_connect_usb(
 
         let mut addr_lock = state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
         *addr_lock = active_addr;
+
+        let mut info_lock = state.device_info.lock().unwrap_or_else(|p| p.into_inner());
+        *info_lock = parse_device_info(&reply);
     }
 
     Ok(active_addr)
@@ -139,6 +144,9 @@ pub async fn suto_connect_tcp(
 
         let mut addr_lock = state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
         *addr_lock = active_addr;
+
+        let mut info_lock = state.device_info.lock().unwrap_or_else(|p| p.into_inner());
+        *info_lock = parse_device_info(&reply);
     }
 
     Ok(active_addr)
@@ -162,49 +170,94 @@ pub async fn suto_get_channels(
     let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
     log_event("INFO", "SUTO_CH", &format!("Querying channels for device address {}", addr), None);
 
-    let reply = {
+    // CSLib `getStructChannel` requests channels in batches and scans every
+    // record, skipping empty slots (logical channel 0 / 0xFF) instead of
+    // stopping at the first gap. Ethernet uses a smaller batch (5).
+    const BATCH: usize = 5;
+    // Upper bound of the scan (CSLib scans up to DS310_MAX_CHANNEL_PER_DEVICE);
+    // capped to the range SUTO devices actually expose.
+    const MAX_SCAN: usize = 100;
+
+    let (channels, scanned_to, use_transf) = {
+        let dev_info = { *state.device_info.lock().unwrap_or_else(|p| p.into_inner()) };
+        let use_transf = dev_info.map(|d| d.uses_transformed_channel_settings()).unwrap_or(false);
+        let prefix = if use_transf {
+            CMD_GET_CH_SETTING_TRANSF_PREFIX
+        } else {
+            CMD_GET_CH_SETTING_PREFIX
+        };
+        if let Some(d) = dev_info {
+            log_event(
+                "INFO",
+                "SUTO_CH",
+                &format!(
+                    "Device id=0x{:04X}, bus=v{}, fw={:.2} -> {} channel settings",
+                    d.identification,
+                    d.bus_version,
+                    d.software_version_f32(),
+                    if use_transf { "transformed (0x0B)" } else { "standard (0x02)" }
+                ),
+                None,
+            );
+        }
+
         let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
         let transport = t_lock.as_mut().ok_or("Device not connected")?;
 
-        // 1. Get channel count
-        let ch_count_pkt = pack_packet(addr, &CMD_GET_CH_COUNT);
-        let ch_count_raw = transport.write_and_read(&ch_count_pkt, 1500).unwrap_or_default();
-        let count = match deframe_multi_frame(&ch_count_raw) {
-            Ok(ref p) if !p.is_empty() && p[0] > 0 && p[0] <= 32 => p[0],
-            _ => 8, // fallback to 8 channels
+        // 1. Max channel count (`[01 FF 23]`). Fall back to a full scan when the
+        //    device does not support the command.
+        let max_count = match transport.write_and_read(&pack_packet(addr, &CMD_GET_MAX_CHANNELS), 1500) {
+            Ok(reply) => match deframe_multi_frame(&reply) {
+                Ok(p) if p.first().is_some_and(|c| *c > 0) => p[0] as usize,
+                _ => MAX_SCAN,
+            },
+            Err(_) => MAX_SCAN,
         };
-        log_event("INFO", "SUTO_CH", &format!("Reported channel count: {}", count), None);
+        let max_count = max_count.clamp(1, MAX_SCAN);
+        log_event("INFO", "SUTO_CH", &format!("Reported max channel count: {}", max_count), None);
 
-        // 2. Get channel settings
-        // Attempt Transformed Channel Settings (0x0B) supported by S330/S331 (CSLib CSCOMMExtend.java),
-        // falling back to Standard Channel Settings (0x02).
-        let ch_setting_res = {
-            let ch_transf_pkt = pack_packet(addr, &[0x04, 0x02, 0x0B, 1, count]);
-            match transport.write_and_read(&ch_transf_pkt, 2500) {
-                Ok(reply) if reply.len() > 4 && reply[2] == 0x3E => {
-                    log_event("INFO", "SUTO_CH", "Received transformed channel settings (0x0B)", None);
-                    Ok(reply)
-                }
-                _ => {
-                    log_event("DEBUG", "SUTO_CH", "0x0B not returned, falling back to 0x02 channel settings", None);
-                    let mut get_ch_cmd = Vec::from(CMD_GET_CH_SETTING_PREFIX);
-                    get_ch_cmd.push(1); // start from 1
-                    get_ch_cmd.push(count);
-                    let ch_setting_pkt = pack_packet(addr, &get_ch_cmd);
-                    transport.write_and_read(&ch_setting_pkt, 2500)
+        // 2. Scan channels in batches, collecting valid descriptors keyed by id.
+        let mut channels: Vec<ChannelInfo> = Vec::new();
+        let mut start = 1usize;
+        while start <= max_count {
+            let cnt = BATCH.min(max_count - start + 1);
+            let mut cmd = Vec::from(prefix);
+            cmd.push(start as u8);
+            cmd.push(cnt as u8);
+            match transport.write_and_read(&pack_packet(addr, &cmd), 2500) {
+                Ok(reply) => match deframe_multi_frame(&reply) {
+                    Ok(deframed) => {
+                        for ch in parse_channel_settings(&deframed) {
+                            if !channels.iter().any(|c| c.id == ch.id) {
+                                channels.push(ch);
+                            }
+                        }
+                    }
+                    Err(e) => log_event("WARN", "SUTO_CH", &format!("Deframe failed at start={}: {}", start, e), None),
+                },
+                Err(e) => {
+                    log_event("WARN", "SUTO_CH", &format!("Channel batch start={} failed: {}", start, e), None);
                 }
             }
-        };
-        ch_setting_res?
-    };
+            if channels.len() >= max_count {
+                break;
+            }
+            start += cnt;
+        }
 
-    let deframed = deframe_multi_frame(&reply)?;
-    let channels = parse_channel_settings(&deframed);
+        channels.sort_by_key(|c| c.id);
+        (channels, max_count, use_transf)
+    };
 
     log_event(
         "INFO",
         "SUTO_CH",
-        &format!("Parsed {} channel descriptors successfully:", channels.len()),
+        &format!(
+            "Parsed {} channel descriptors (scanned 1..{} via {}):",
+            channels.len(),
+            scanned_to,
+            if use_transf { "0x0B" } else { "0x02" }
+        ),
         None,
     );
     for ch in &channels {
@@ -229,19 +282,32 @@ pub async fn suto_get_channels(
 pub async fn suto_get_values(
     state: State<'_, SutoState>,
 ) -> Result<Vec<MeasurementValue>, String> {
-    let (addr, ch_ids) = {
+    let (addr, channels) = {
         let addr = *state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
         let ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
-        let ids: Vec<u8> = if ch_lock.is_empty() {
-            vec![1, 2, 3, 4]
-        } else {
-            ch_lock.iter().map(|c| c.id).collect()
-        };
-        (addr, ids)
+        let mut chans = ch_lock.clone();
+        chans.sort_by_key(|c| c.id);
+        (addr, chans)
     };
 
-    let start = ch_ids.first().copied().unwrap_or(1);
-    let count = ch_ids.len() as u8;
+    // Read values sequentially from channel 1..max, mirroring CSLib
+    // `retrieveAllMeasurementValues` (which reads `1..getMaxChannelCount`).
+    // Value index i maps to logical channel id (start + i).
+    let start = 1u8;
+    let max_id = channels.iter().map(|c| c.id).max().unwrap_or(4).max(1);
+    let count = max_id;
+    let ordered: Vec<ChannelInfo> = (start..=max_id)
+        .map(|id| {
+            channels
+                .iter()
+                .find(|c| c.id == id)
+                .cloned()
+                .unwrap_or(ChannelInfo {
+                    id,
+                    ..Default::default()
+                })
+        })
+        .collect();
 
     let mut get_val_cmd = Vec::from(CMD_GET_ONLINE_VAL_PREFIX);
     get_val_cmd.push(start);
@@ -255,7 +321,7 @@ pub async fn suto_get_values(
     };
 
     let deframed = deframe_multi_frame(&reply)?;
-    let values = parse_measurement_values(&deframed, &ch_ids);
+    let values = parse_measurement_values(&deframed, &ordered);
     log_event(
         "DEBUG",
         "SUTO_VAL",

@@ -38,6 +38,51 @@ pub fn pack_packet(address: u8, payload: &[u8]) -> Vec<u8> {
     packet
 }
 
+/// Maximum CS-Bus frame length used by DS310 multi-frame replies (0xC0).
+pub const COMM_FRAME_MAX_LEN: usize = 192;
+
+/// Pack a payload into one or more CS-Bus frames, as the DS310 firmware does.
+///
+/// The first frame is `[addr][len][0x3E][data...][checksum][0x00]`; follow-up
+/// frames omit the status byte. Full frames are exactly `COMM_FRAME_MAX_LEN`
+/// bytes and the final frame is smaller.
+pub fn pack_frames(address: u8, payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut idx = 0usize;
+    let mut first = true;
+    loop {
+        // The first frame reserves one byte for the status byte.
+        let cap = if first {
+            COMM_FRAME_MAX_LEN - COMM_HEADER_LENGTH - COMM_TAIL_LENGTH - 1
+        } else {
+            COMM_FRAME_MAX_LEN - COMM_HEADER_LENGTH - COMM_TAIL_LENGTH
+        };
+        let remaining = payload.len().saturating_sub(idx);
+        let take = remaining.min(cap);
+        let frame_len =
+            COMM_HEADER_LENGTH + COMM_TAIL_LENGTH + take + if first { 1 } else { 0 };
+
+        let mut frame = Vec::with_capacity(frame_len);
+        frame.push(address);
+        frame.push(frame_len as u8);
+        if first {
+            frame.push(COMM_SUCCESSFUL_CHAR);
+        }
+        frame.extend_from_slice(&payload[idx..idx + take]);
+        let cksum = calculate_checksum(&frame, frame.len());
+        frame.push(cksum);
+        frame.push(0x00);
+        out.extend_from_slice(&frame);
+
+        idx += take;
+        first = false;
+        if idx >= payload.len() {
+            break;
+        }
+    }
+    out
+}
+
 /// Unpack a single-frame response.
 /// Verifies length, checksum, and status byte (`0x3E`).
 /// Returns the payload slice without headers, status byte, and checksum trailer.
@@ -192,6 +237,29 @@ mod tests {
         let resp_frame = pack_packet(1, &resp_payload);
         let err = parse_single_frame(&resp_frame).unwrap_err();
         assert!(err.contains("invalid command"));
+    }
+
+    #[test]
+    fn test_pack_frames_multi_roundtrip() {
+        // Payload larger than a single frame (e.g. 6 * 204-byte channel structs).
+        let payload: Vec<u8> = (0..1224u32).map(|i| (i & 0xFF) as u8).collect();
+        let framed = pack_frames(1, &payload);
+
+        // Every frame except the last must be exactly 192 bytes; the last is smaller.
+        let mut offset = 0;
+        while offset < framed.len() {
+            let len = framed[offset + 1] as usize;
+            let is_last = offset + len >= framed.len();
+            if is_last {
+                assert!(len < COMM_FRAME_MAX_LEN, "last frame should be < 192 bytes");
+            } else {
+                assert_eq!(len, COMM_FRAME_MAX_LEN);
+            }
+            offset += len;
+        }
+
+        let deframed = deframe_multi_frame(&framed).expect("should deframe multi-frame");
+        assert_eq!(deframed, payload);
     }
 
     #[test]

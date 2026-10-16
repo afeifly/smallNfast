@@ -145,23 +145,37 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
     await fetchLiveMeasurements();
   };
 
-  // Group channels by device / sensor unit (e.g. "TCL Hao / S461 TCP", "SUTO DS310 Main Unit")
-  const deviceGroups = useMemo(() => {
+  // One card per SENSOR. Channels sharing a `sensor_key` (SensorID) belong to
+  // the same sensor, mirroring cs_monitor `CommonValue.intVailableChannels` /
+  // `setSingleSensor`.
+  const sensorCards = useMemo(() => {
     if (!channels || channels.length === 0) return [];
-    const map = new Map();
+    const cardMap = new Map();
     for (const ch of channels) {
-      const devName = ch.device_description?.trim() 
-        || sysInfo?.device_name 
+      const devName = ch.device_description?.trim()
+        || sysInfo?.device_name
         || 'SUTO DS310 Main Unit';
-      if (!map.has(devName)) {
-        map.set(devName, []);
+      const sensorKey = ch.sensor_key
+        || `${ch.slaver_type ?? ''}&${ch.slaver_addr ?? ''}&${ch.sub_device_id ?? ''}&${ch.sensor_id ?? ''}`;
+      const cardKey = `${devName}__${sensorKey}`;
+      if (!cardMap.has(cardKey)) {
+        cardMap.set(cardKey, {
+          key: cardKey,
+          deviceName: devName,
+          sensorId: ch.sensor_id,
+          sensorName: ch.sensor_name || ch.sensor_description?.trim() || '',
+          channels: [],
+        });
       }
-      map.get(devName).push(ch);
+      cardMap.get(cardKey).channels.push(ch);
     }
-    return Array.from(map.entries()).map(([deviceName, chList]) => ({
-      deviceName,
-      channels: chList,
-    }));
+    const cards = Array.from(cardMap.values());
+    let idx = 1;
+    for (const c of cards) {
+      if (!c.sensorName) c.sensorName = `Sensor ${idx}`;
+      idx += 1;
+    }
+    return cards;
   }, [channels, sysInfo]);
 
   return (
@@ -226,31 +240,37 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
         </div>
       )}
 
-      {/* Grid of Device Telemetry Cards */}
+      {/* Grid of Sensor Telemetry Cards */}
       <div className="suto-devices-grid">
-        {deviceGroups.map((group) => (
-          <div key={group.deviceName} className="suto-device-card">
-            {/* Device Header Bar */}
+        {sensorCards.map((sensor) => (
+          <div key={sensor.key} className="suto-device-card">
+            {/* Sensor Header Bar */}
             <div className="suto-device-header">
               <div className="suto-device-title-box">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" className="suto-device-header-icon">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                </svg>
-                <span className="suto-device-name" title={group.deviceName}>
-                  {group.deviceName}
+                <span className="suto-sensor-icon" />
+                <span className="suto-device-name" title={sensor.sensorName}>
+                  {sensor.sensorName}
                 </span>
+                {sensor.sensorId !== undefined && sensor.sensorId !== null && (
+                  <span className="suto-sensor-chip">sensor #{sensor.sensorId}</span>
+                )}
               </div>
               <div className="suto-device-header-meta">
                 <span className="suto-ch-count-badge">
-                  {group.channels.length} {group.channels.length === 1 ? 'Channel' : 'Channels'}
+                  {sensor.channels.length} {sensor.channels.length === 1 ? 'Channel' : 'Channels'}
                 </span>
                 <span className="suto-live-dot" />
               </div>
             </div>
 
+            {/* Device name subheader */}
+            <div className="suto-device-subheader" title={sensor.deviceName}>
+              {sensor.deviceName}
+            </div>
+
             {/* Channels List */}
             <div className="suto-channel-list">
-              {group.channels.map((ch) => {
+              {sensor.channels.map((ch) => {
                 const isBlank = ch.current_value === null || ch.current_value === undefined;
                 return (
                   <div key={ch.channel_id} className="suto-channel-row">
@@ -281,16 +301,6 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
                   </div>
                 );
               })}
-            </div>
-
-            {/* Card Footer */}
-            <div className="suto-device-footer">
-              <span className="suto-footer-info">
-                Active Telemetry • Interval 1.0s
-              </span>
-              <span className="suto-footer-status">
-                Normal
-              </span>
             </div>
           </div>
         ))}

@@ -107,14 +107,14 @@ export const TauriSutoAPI = {
 
     if (!hasTauri()) {
       const mockChannels = [
-        // Device 1: SUTO DS310 Main Unit
-        { channel_id: 1, channel_name: 'Flow', unit: 'm³/h', unit_index: 3, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Flow Sensor', active: true, selected: true },
-        { channel_id: 2, channel_name: 'Pressure', unit: 'bar', unit_index: 7, resolution: 2, device_description: 'SUTO DS310 Main', sensor_description: 'Pressure Sensor', active: true, selected: true },
-        { channel_id: 3, channel_name: 'Dew Point', unit: '°C Td', unit_index: 1, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Dew Point Sensor', active: true, selected: true },
-        // Device 2: TCL Hao / S461 TCP
-        { channel_id: 4, channel_name: 'Delta T', unit: '℃', unit_index: 0, resolution: 2, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Differential Temp', active: true, selected: true },
-        { channel_id: 5, channel_name: 'Temperature inlet', unit: '℃', unit_index: 0, resolution: 1, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Inlet Temperature', active: true, selected: true },
-        { channel_id: 6, channel_name: 'Temperature outlet', unit: '℃', unit_index: 0, resolution: 1, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Outlet Temperature', active: true, selected: true },
+        // Sensor 1 (logical channels 1-3)
+        { channel_id: 1, sensor_channel_id: 1, sensor_id: 1, sensor_key: '1&1&0&1', sensor_name: 'SUTO DS310 Main', channel_name: 'Flow', unit: 'm³/h', unit_index: 3, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Flow Sensor', active: true, selected: true },
+        { channel_id: 2, sensor_channel_id: 2, sensor_id: 1, sensor_key: '1&1&0&1', sensor_name: 'SUTO DS310 Main', channel_name: 'Pressure', unit: 'bar', unit_index: 7, resolution: 2, device_description: 'SUTO DS310 Main', sensor_description: 'Pressure Sensor', active: true, selected: true },
+        { channel_id: 3, sensor_channel_id: 3, sensor_id: 1, sensor_key: '1&1&0&1', sensor_name: 'SUTO DS310 Main', channel_name: 'Dew Point', unit: '°C Td', unit_index: 1, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Dew Point Sensor', active: true, selected: true },
+        // Sensor 2 (logical channels 4-6)
+        { channel_id: 4, sensor_channel_id: 1, sensor_id: 2, sensor_key: '1&2&0&2', sensor_name: 'TCL Hao / S461 TCP', channel_name: 'Delta T', unit: '℃', unit_index: 0, resolution: 2, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Differential Temp', active: true, selected: true },
+        { channel_id: 5, sensor_channel_id: 2, sensor_id: 2, sensor_key: '1&2&0&2', sensor_name: 'TCL Hao / S461 TCP', channel_name: 'Temperature inlet', unit: '℃', unit_index: 0, resolution: 1, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Inlet Temperature', active: true, selected: true },
+        { channel_id: 6, sensor_channel_id: 3, sensor_id: 2, sensor_key: '1&2&0&2', sensor_name: 'TCL Hao / S461 TCP', channel_name: 'Temperature outlet', unit: '℃', unit_index: 0, resolution: 1, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Outlet Temperature', active: true, selected: true },
       ];
       if (callback) callback(mockChannels);
       return mockChannels;
@@ -122,7 +122,9 @@ export const TauriSutoAPI = {
 
     try {
       const rawChannels = await invoke('suto_get_channels');
-      // Format channels to match S4A view schema
+      // Format channels to match S4A view schema. `channel_id` stays the
+      // logical channel number (used for value lookup); `sensor_id` groups
+      // channels that belong to the same physical sensor.
       const formatted = rawChannels.map((ch, idx) => ({
         channel_id: ch.id,
         channel_name: ch.description,
@@ -131,6 +133,13 @@ export const TauriSutoAPI = {
         resolution: ch.resolution,
         device_description: ch.device_desc,
         sensor_description: ch.sensor_desc,
+        sensor_id: ch.sensor_id,
+        sensor_channel_id: ch.channel_id,
+        sensor_key: ch.sensor_key,
+        device_id: ch.device_id,
+        sub_device_id: ch.sub_device_id,
+        slaver_type: ch.slaver_type,
+        slaver_addr: ch.slaver_addr,
         active: true,
         selected: idx === 0,
       }));

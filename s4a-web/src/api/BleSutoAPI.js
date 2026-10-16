@@ -91,14 +91,35 @@ export const SUTO_DEVICE_MODELS = {
   0x0006: 'SUTO DS 300 Portable',
 };
 
-// SUTO DS310 Units Map
+// SUTO DS310 Units Map.
+// Mirrors CSLib `CommConst.UNIT_STRING`: index 0 is the custom unit (use the
+// ASCII supplied by the device); index 1 is °C, etc.
 const SUTO_UNITS = [
-  '°C', '°F', 'K', '%rH', '°C Td', '°F Td', 'K Td', 'bar', 'psi', 'MPa',
-  'kPa', 'Pa', 'mbar', 'm³/h', 'm³/min', 'l/min', 'l/s', 'cfm', 'kg/h', 'kg/min',
-  'kg/s', 'm/s', 'ft/min', 'A', 'V', 'kW', 'kWh', 'Hz', '°', '%',
-  'ppm', 'mg/m³', 'g/m³', 'g/kg', 'g/m³ Td', 'm', 'mm', 'inch', 'h', 'min',
-  's', 'ms', 'mg', 'g', 'kg', 't', 'count', 'm³', 'l', 'gal',
+  '', '°C', '°F', '%RH', '°Ctd', '°Ftd', 'mg/Kg', 'mg/m³', 'g/Kg', 'g/m³',
+  'm/s', 'ft/min', 'Nm/s', 'Nft/min', 'm³/h', 'm³/min', 'l/min', 'l/s',
+  'cfm', 'Nm³/h', 'Nm³/min', 'Nl/min', 'Nl/s', 'Ncfm', 'm³', 'l', 'cf',
+  'Nm³', 'Nl', 'Ncf', 'ppm[v]', '°Ctd atm', '°Ftd atm', 'Pa', 'hPa',
+  'KPa', 'MPa', 'mbar', 'bar', 'PSI', 'mV', 'V', 'uV', 'KV', 'mA', 'A',
+  'kg/s', 'kg',
 ];
+
+// Consumption / counter channels store their value as an integer, not a float
+// (CSLib `CommConst.CSCOMM_CONSUMPTION_UNIT_INDEX`).
+const CONSUMPTION_UNIT_INDEX = [24, 25, 26, 27, 28, 47];
+
+function decodeValue(view, mbType, unitIndex) {
+  if (CONSUMPTION_UNIT_INDEX.includes(unitIndex)) {
+    return view.getUint32(0, true);
+  }
+  switch (mbType) {
+    case 4:
+      return view.getInt32(0, true);
+    case 6:
+      return view.getUint32(0, true);
+    default:
+      return view.getFloat32(0, true);
+  }
+}
 
 export class BleSutoManager {
   constructor() {
@@ -568,20 +589,24 @@ export class BleSutoManager {
       const deframed = this._deframeMultiFrame(rawSetting);
 
       const STRUCT_SIZE = 204;
-      const totalChannels = Math.floor(deframed.length / STRUCT_SIZE);
+      const totalChannels = Math.min(count, Math.floor(deframed.length / STRUCT_SIZE));
 
       for (let i = 0; i < totalChannels; i++) {
         const off = i * STRUCT_SIZE;
         const logChNo = deframed[off];
-        const chId = (logChNo > 0 && logChNo < 0xff) ? logChNo : (i + 1);
+        // Reject unconfigured/empty structs (logical channel 0 or 0xFF),
+        // mirroring CSLib `CSCOMM_DS310_CHANNEL_SETTING.parseByteArray`.
+        if (logChNo === 0 || logChNo === 0xff) continue;
+        const chId = logChNo;
 
-        const devDesc = this._readLatin1String(deframed, off + 1, 21);
-        const sensorDesc = this._readLatin1String(deframed, off + 43, 21);
-        const chDesc = this._readLatin1String(deframed, off + 64, 21);
+        const devDesc = this._readUtf8String(deframed, off + 1, 21);
+        const sensorDesc = this._readUtf8String(deframed, off + 43, 21);
+        const chDesc = this._readUtf8String(deframed, off + 64, 21);
         const resolution = deframed[off + 85];
         const unitIndex = deframed[off + 86];
-        const unitAscii = this._readLatin1String(deframed, off + 87, 12);
-        const unit = unitIndex === 0 ? unitAscii || '?' : SUTO_UNITS[unitIndex] || `u${unitIndex}`;
+        const unitAscii = this._readUtf8String(deframed, off + 87, 12);
+        const mbType = deframed[off + 138];
+        const unit = unitIndex === 0 ? unitAscii : (SUTO_UNITS[unitIndex] || `u${unitIndex}`);
         const chName = chDesc || sensorDesc || (devDesc ? `${devDesc} CH${chId}` : `Channel ${chId}`);
 
         channels.push({
@@ -590,6 +615,7 @@ export class BleSutoManager {
           unit,
           unit_index: unitIndex,
           resolution,
+          mb_output_value_type: mbType,
           device_description: devDesc || this.getDeviceName(),
           sensor_description: sensorDesc,
           active: true,
@@ -604,9 +630,9 @@ export class BleSutoManager {
     if (channels.length === 0) {
       const devName = this.systemInfo?.device_name || this.getDeviceName();
       channels.push(
-        { channel_id: 1, channel_name: 'Flow', unit: 'm³/h', unit_index: 13, resolution: 1, device_description: devName, sensor_description: 'Flow Sensor', active: true, selected: true },
-        { channel_id: 2, channel_name: 'Consumption', unit: 'm³', unit_index: 47, resolution: 0, device_description: devName, sensor_description: 'Consumption Counter', active: true, selected: true },
-        { channel_id: 3, channel_name: 'Temperature', unit: '°C', unit_index: 0, resolution: 1, device_description: devName, sensor_description: 'Temp Sensor', active: true, selected: true }
+        { channel_id: 1, channel_name: 'Flow', unit: 'm³/h', unit_index: 14, resolution: 1, device_description: devName, sensor_description: 'Flow Sensor', active: true, selected: true },
+        { channel_id: 2, channel_name: 'Consumption', unit: 'm³', unit_index: 24, resolution: 0, device_description: devName, sensor_description: 'Consumption Counter', active: true, selected: true },
+        { channel_id: 3, channel_name: 'Temperature', unit: '°C', unit_index: 1, resolution: 1, device_description: devName, sensor_description: 'Temp Sensor', active: true, selected: true }
       );
     }
 
@@ -640,12 +666,14 @@ export class BleSutoManager {
         if (off + VALUE_SIZE > deframed.length) break;
 
         const view = new DataView(new Uint8Array(deframed.slice(off, off + 4)).buffer);
-        const fVal = view.getFloat32(0, true);
+        const unitIndex = deframed[off + 5];
+        const mbType = this.cachedChannels[i]?.mb_output_value_type ?? 0;
+        const numeric = decodeValue(view, mbType, unitIndex);
         const statusByte = deframed[off + 6];
 
         let status = 'normal';
-        let val = fVal;
-        if (statusByte & 0x04 || isNaN(fVal) || !isFinite(fVal)) {
+        let val = numeric;
+        if (statusByte & 0x04 || !isFinite(numeric)) {
           status = 'invalid';
           val = null;
         } else if (statusByte & 0x08) {
@@ -682,13 +710,14 @@ export class BleSutoManager {
     }
   }
 
-  _readLatin1String(buf, start, len) {
-    let s = '';
-    for (let i = start; i < start + len && i < buf.length; i++) {
-      if (buf[i] === 0) break;
-      s += String.fromCharCode(buf[i]);
-    }
-    return s.trim();
+  // Decode a NUL-terminated description field as UTF-8, matching CSLib
+  // `CSCOMMExtend.byteArrayToUTFStringStopAt0` (`new String(tmp, "UTF-8")`).
+  _readUtf8String(buf, start, len) {
+    const end = Math.min(start + len, buf.length);
+    let stop = start;
+    while (stop < end && buf[stop] !== 0) stop++;
+    const bytes = Uint8Array.from(buf.slice(start, stop));
+    return new TextDecoder('utf-8').decode(bytes).trim();
   }
 }
 

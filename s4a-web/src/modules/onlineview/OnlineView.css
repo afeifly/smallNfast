@@ -230,6 +230,37 @@
   box-shadow: 0 0 6px #a7f3d0;
 }
 
+/* ── Sensor Cards (one card per sensor) ── */
+.suto-device-subheader {
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  background: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suto-sensor-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #6366f1;
+  box-shadow: 0 0 5px rgba(99, 102, 241, 0.5);
+  flex-shrink: 0;
+}
+
+.suto-sensor-chip {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
 /* ── Channel Rows List ── */
 .suto-channel-list {
   display: flex;
@@ -328,27 +359,4 @@
   color: #64748b;
   margin-left: 8px;
   flex-shrink: 0;
-}
-
-/* ── Card Footer ── */
-.suto-device-footer {
-  height: 32px;
-  background: #fafafa;
-  border-top: 1px solid #f1f5f9;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.suto-footer-info {
-  letter-spacing: 0.01em;
-}
-
-.suto-footer-status {
-  color: #10b981;
-  font-weight: 600;
 }

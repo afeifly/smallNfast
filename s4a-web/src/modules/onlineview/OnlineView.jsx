@@ -13,7 +13,7 @@ function formatValue(val, resolution = 2) {
 
 import { resolveDeviceTypeName } from '../../util/platform';
 
-export default function OnlineView({ onDisconnect, deviceInfo }) {
+export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false }) {
   const [channels, setChannels] = useState([]);
   const [sysInfo, setSysInfo] = useState(null);
   const [isLive, setIsLive] = useState(true);
@@ -103,8 +103,10 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
     loadInitialData();
   }, [loadInitialData]);
 
+  const shouldPoll = isLive && !isPaused;
+
   useEffect(() => {
-    if (!isLive) {
+    if (!shouldPoll) {
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -112,6 +114,7 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
       return;
     }
 
+    fetchLiveMeasurements();
     pollTimerRef.current = setInterval(() => {
       fetchLiveMeasurements();
     }, POLL_INTERVAL_MS);
@@ -122,7 +125,7 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
         pollTimerRef.current = null;
       }
     };
-  }, [isLive, fetchLiveMeasurements]);
+  }, [shouldPoll, fetchLiveMeasurements]);
 
   const toggleLive = () => {
     setIsLive((prev) => !prev);

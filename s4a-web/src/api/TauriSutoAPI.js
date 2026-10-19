@@ -36,7 +36,7 @@ export const TauriSutoAPI = {
   /** List available USB devices */
   async listUsbDevices() {
     if (!hasTauri()) {
-      return [{ path: 'USB\\VID_04D8&PID_0001\\SIMULATED', description: 'SUTO S331 / DS310 (Simulated Demo)' }];
+      return [];
     }
     return await invoke('suto_list_usb_devices');
   },
@@ -46,8 +46,7 @@ export const TauriSutoAPI = {
     activeTransport = 'USB';
     await this.logClientEvent('INFO', 'SUTO_IPC', `Connecting via Direct USB (path: ${devicePath || 'auto'})...`);
     if (!hasTauri()) {
-      await this.logClientEvent('INFO', 'SUTO_DISC', 'Web simulation mode: connected to SUTO DS310 demo');
-      return { address: 1, channels_count: 4, device: 'SUTO DS310 (Simulated Demo)', transport: 'USB' };
+      throw new Error('Direct USB connection requires running in the S4A Desktop App with SUTO hardware connected via USB.');
     }
     const res = await invoke('suto_connect_usb', { path: devicePath });
     return { address: res, transport: 'USB' };
@@ -58,8 +57,7 @@ export const TauriSutoAPI = {
     activeTransport = 'TCP';
     await this.logClientEvent('INFO', 'TCP_OPEN', `Initiating Ethernet TCP connection to ${host}:${port}...`);
     if (!hasTauri()) {
-      await this.logClientEvent('INFO', 'TCP_OPEN', `Web mode: connected to SUTO Ethernet at ${host}:${port} (Demo)`);
-      return { address: 1, host, port, transport: 'TCP', device: `SUTO S461 TCP (${host}:${port})` };
+      throw new Error('Ethernet TCP connection requires running in the S4A Desktop App.');
     }
     const res = await invoke('suto_connect_tcp', { host, port: parseInt(port, 10) });
     return { address: res, host, port, transport: 'TCP' };
@@ -106,18 +104,8 @@ export const TauriSutoAPI = {
     }
 
     if (!hasTauri()) {
-      const mockChannels = [
-        // Sensor 1 (logical channels 1-3)
-        { channel_id: 1, sensor_channel_id: 1, sensor_id: 1, sensor_key: '1&1&0&1', sensor_name: 'SUTO DS310 Main', channel_name: 'Flow', unit: 'm³/h', unit_index: 3, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Flow Sensor', active: true, selected: true },
-        { channel_id: 2, sensor_channel_id: 2, sensor_id: 1, sensor_key: '1&1&0&1', sensor_name: 'SUTO DS310 Main', channel_name: 'Pressure', unit: 'bar', unit_index: 7, resolution: 2, device_description: 'SUTO DS310 Main', sensor_description: 'Pressure Sensor', active: true, selected: true },
-        { channel_id: 3, sensor_channel_id: 3, sensor_id: 1, sensor_key: '1&1&0&1', sensor_name: 'SUTO DS310 Main', channel_name: 'Dew Point', unit: '°C Td', unit_index: 1, resolution: 1, device_description: 'SUTO DS310 Main', sensor_description: 'Dew Point Sensor', active: true, selected: true },
-        // Sensor 2 (logical channels 4-6)
-        { channel_id: 4, sensor_channel_id: 1, sensor_id: 2, sensor_key: '1&2&0&2', sensor_name: 'TCL Hao / S461 TCP', channel_name: 'Delta T', unit: '℃', unit_index: 0, resolution: 2, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Differential Temp', active: true, selected: true },
-        { channel_id: 5, sensor_channel_id: 2, sensor_id: 2, sensor_key: '1&2&0&2', sensor_name: 'TCL Hao / S461 TCP', channel_name: 'Temperature inlet', unit: '℃', unit_index: 0, resolution: 1, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Inlet Temperature', active: true, selected: true },
-        { channel_id: 6, sensor_channel_id: 3, sensor_id: 2, sensor_key: '1&2&0&2', sensor_name: 'TCL Hao / S461 TCP', channel_name: 'Temperature outlet', unit: '℃', unit_index: 0, resolution: 1, device_description: 'TCL Hao / S461 TCP', sensor_description: 'Outlet Temperature', active: true, selected: true },
-      ];
-      if (callback) callback(mockChannels);
-      return mockChannels;
+      if (callback) callback([]);
+      return [];
     }
 
     try {
@@ -191,21 +179,12 @@ export const TauriSutoAPI = {
     try {
       let values;
       if (!hasTauri()) {
-        const now = Date.now();
-        values = [
-          { id: 1, unit: 'm³/h', resolution: 1, status: 'normal', value: +(145.2 + Math.sin(now / 5000) * 12.5).toFixed(1) },
-          { id: 2, unit: 'bar', resolution: 2, status: 'normal', value: +(6.85 + Math.cos(now / 4000) * 0.4).toFixed(2) },
-          { id: 3, unit: '°C Td', resolution: 1, status: 'normal', value: +(-38.4 + Math.sin(now / 8000) * 1.5).toFixed(1) },
-          { id: 4, unit: '℃', resolution: 2, status: 'normal', value: +(3.84 + Math.sin(now / 6000) * 0.35).toFixed(2) },
-          { id: 5, unit: '℃', resolution: 1, status: 'normal', value: +(28.6 + Math.cos(now / 7000) * 0.8).toFixed(1) },
-          { id: 6, unit: '℃', resolution: 1, status: 'normal', value: +(24.76 + Math.sin(now / 7000) * 0.7).toFixed(1) },
-        ];
+        values = [];
       } else {
         values = await invoke('suto_get_values');
       }
-      const now = Date.now();
-
-      const result = values.map((val) => {
+      const valArray = Array.isArray(values) ? values : [];
+      const result = valArray.map((val) => {
         let history = historyBuffer.get(val.id);
         if (!history) {
           history = [];
@@ -298,14 +277,7 @@ export const TauriSutoAPI = {
       return await BleSutoAPI.getSystemInfo();
     }
     if (!hasTauri()) {
-      return {
-        serial_number: 'SIM-SUTO-2026-99',
-        device_id: 310,
-        firmware_version: 'v3.2.1-sim',
-        hardware_version: 'v1.4',
-        calibration_date: '2026-01-15',
-        device_name: 'SUTO DS310 (Simulated Demo)',
-      };
+      return null;
     }
     return await invoke('suto_get_system_info');
   },
@@ -315,15 +287,34 @@ export const TauriSutoAPI = {
    */
   async getLoggerStatus() {
     if (!hasTauri()) {
-      return {
-        logging_active: true,
-        records_count: 14200,
-        start_time: Math.floor(Date.now() / 1000) - 14200,
-        end_time: Math.floor(Date.now() / 1000),
-        interval_sec: 1,
-      };
+      return null;
     }
     return await invoke('suto_get_logger_status');
+  },
+
+  /**
+   * Query device for list of screenshot images stored in device memory
+   * @returns {Promise<Array<{name: string, size: number, index: number}>>}
+   */
+  async getScreenshots() {
+    if (!hasTauri()) {
+      return [];
+    }
+    return await invoke('suto_get_screenshots');
+  },
+
+  /**
+   * Read screenshot binary image bytes (BMP) from device
+   * @param {string} name
+   * @param {number} size
+   * @returns {Promise<Uint8Array>}
+   */
+  async readScreenshot(name, size) {
+    if (!hasTauri()) {
+      throw new Error('readScreenshot requires Tauri desktop runtime with connected hardware.');
+    }
+    const bytes = await invoke('suto_read_screenshot', { name, size });
+    return new Uint8Array(bytes);
   },
 
   /**
@@ -457,6 +448,32 @@ export const TauriSutoAPI = {
       return [];
     }
     return await invoke('suto_remove_recent_file', { path });
+  },
+
+  /** Save binary data using native OS Save File dialog */
+  async saveBinaryFile(filename, data) {
+    if (!hasTauri()) {
+      return null;
+    }
+    const byteArr = data instanceof Uint8Array ? Array.from(data) : Array.from(new Uint8Array(data));
+    return await invoke('suto_save_binary_file', { filename, data: byteArr });
+  },
+
+  /** Open native OS folder selection dialog */
+  async pickFolder() {
+    if (!hasTauri()) {
+      return null;
+    }
+    return await invoke('suto_pick_folder');
+  },
+
+  /** Save binary data to a specific folder on disk */
+  async saveFileToPath(folder, filename, data) {
+    if (!hasTauri()) {
+      return null;
+    }
+    const byteArr = data instanceof Uint8Array ? Array.from(data) : Array.from(new Uint8Array(data));
+    return await invoke('suto_save_file_to_path', { folder, filename, data: byteArr });
   },
 };
 

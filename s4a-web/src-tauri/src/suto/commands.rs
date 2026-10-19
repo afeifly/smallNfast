@@ -21,6 +21,20 @@ pub const SCTY_LOG: u8 = 0x01;
 pub const SCTY_LOG_RTC: u8 = 0x02;
 pub const SCTY_MEA_COMMON: u8 = 0x01;
 pub const SCTY_VA_PRIVATE: u8 = 0x03;
+pub const SCTY_COLOR_DISPLAY_PRIVATE: u8 = 0x08;
+
+// ---- Device-Related Actions (Screenshots & Images) ----
+pub const ACT_GET_IMG_FILE_COUNT: u8 = 0x0D;
+pub const ACT_GET_IMG_FILE_INFO: u8 = 0x0E;
+pub const ACT_READ_IMG_FILE: u8 = 0x0F;
+pub const ACT_CLOSE_IMG_FILE: u8 = 0x11;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenshotEntry {
+    pub name: String,
+    pub size: u32,
+    pub index: u32,
+}
 
 // ---- System Actions ----
 pub const ACT_GET_SERIAL_NUMBER: u8 = 0x03;

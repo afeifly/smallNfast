@@ -13,7 +13,8 @@ pub mod files;
 
 pub use files::{
     suto_add_recent_file, suto_get_file_stats, suto_get_recent_files, suto_pick_file,
-    suto_read_file, suto_read_file_slice, suto_remove_recent_file, RecentFileEntry,
+    suto_read_file, suto_read_file_slice, suto_remove_recent_file, suto_save_binary_file,
+    suto_pick_folder, suto_save_file_to_path, RecentFileEntry,
 };
 
 #[cfg(target_os = "windows")]
@@ -442,6 +443,125 @@ pub async fn suto_get_logger_status(
     }
 
     Ok(status)
+}
+
+#[tauri::command]
+pub async fn suto_get_screenshots(
+    state: State<'_, SutoState>,
+) -> Result<Vec<ScreenshotEntry>, String> {
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+
+    log_event("INFO", "SUTO_SCREENSHOT", "Querying device screenshot count (0x09/0x08/0x0D)...", None);
+
+    // 1. Get image file count
+    let count_res = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let cmd = [CTY_DEVICE_RELATED, SCTY_COLOR_DISPLAY_PRIVATE, ACT_GET_IMG_FILE_COUNT];
+        let pkt = pack_packet(addr, &cmd);
+        let raw = transport.write_and_read(&pkt, 3000)?;
+        deframe_multi_frame(&raw)?
+    };
+
+    if count_res.len() < 4 {
+        log_event("WARN", "SUTO_SCREENSHOT", &format!("Unexpected screenshot count response length: {} bytes", count_res.len()), None);
+        return Ok(Vec::new());
+    }
+
+    let count = u32::from_le_bytes([count_res[0], count_res[1], count_res[2], count_res[3]]);
+    log_event("INFO", "SUTO_SCREENSHOT", &format!("Device reported {} screenshot file(s)", count), None);
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+
+    // 2. Query file info list (start=0, count=count, in batches of at most 10)
+    let mut list = Vec::new();
+    let mut current_idx = 0u32;
+
+    while current_idx < count {
+        let batch_num = (count - current_idx).min(10);
+        let info_res = {
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let mut cmd = vec![CTY_DEVICE_RELATED, SCTY_COLOR_DISPLAY_PRIVATE, ACT_GET_IMG_FILE_INFO];
+            cmd.extend_from_slice(&current_idx.to_le_bytes());
+            cmd.extend_from_slice(&batch_num.to_le_bytes());
+            let pkt = pack_packet(addr, &cmd);
+            let raw = transport.write_and_read(&pkt, 4000)?;
+            deframe_multi_frame(&raw)?
+        };
+
+        let one_len = 59usize; // 4 bytes size + 55 bytes name
+        let mut offset = 0;
+        let mut i = 0u32;
+        while offset + one_len <= info_res.len() && i < batch_num {
+            let chunk = &info_res[offset..offset + one_len];
+            let size = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let name_raw = &chunk[4..59];
+            let zero_pos = name_raw.iter().position(|&b| b == 0).unwrap_or(name_raw.len());
+            let mut name = String::from_utf8_lossy(&name_raw[..zero_pos]).trim().to_string();
+            if name.to_lowercase().ends_with(".png.bmp") {
+                name.truncate(name.len() - 4);
+            }
+            if !name.is_empty() {
+                list.push(ScreenshotEntry {
+                    name,
+                    size,
+                    index: current_idx + i,
+                });
+            }
+            i += 1;
+            offset += one_len;
+        }
+
+        current_idx += batch_num;
+    }
+
+    log_event("INFO", "SUTO_SCREENSHOT", &format!("Successfully parsed {} screenshot entries from device", list.len()), None);
+    Ok(list)
+}
+
+#[tauri::command]
+pub async fn suto_read_screenshot(
+    name: String,
+    size: u32,
+    state: State<'_, SutoState>,
+) -> Result<tauri::ipc::Response, String> {
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+
+    log_event("INFO", "SUTO_SCREENSHOT", &format!("Reading screenshot '{}' (size: {} bytes)...", name, size), None);
+
+    let data_res = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let mut cmd = vec![CTY_DEVICE_RELATED, SCTY_COLOR_DISPLAY_PRIVATE, ACT_READ_IMG_FILE];
+        cmd.extend_from_slice(&0u32.to_le_bytes()); // offset = 0
+        cmd.extend_from_slice(&size.to_le_bytes()); // file size
+
+        let mut name_bytes = [0u8; 55];
+        let bytes = name.as_bytes();
+        let copy_len = bytes.len().min(55);
+        name_bytes[..copy_len].copy_from_slice(&bytes[..copy_len]);
+        cmd.extend_from_slice(&name_bytes);
+
+        let pkt = pack_packet(addr, &cmd);
+        let timeout = (size / 80).max(10000);
+        let raw = transport.write_and_read(&pkt, timeout)?;
+        deframe_multi_frame(&raw)?
+    };
+
+    log_event("INFO", "SUTO_SCREENSHOT", &format!("Screenshot '{}' downloaded ({} bytes payload)", name, data_res.len()), None);
+
+    // Optional close notification
+    if let Ok(mut t_lock) = state.transport.lock() {
+        if let Some(transport) = t_lock.as_mut() {
+            let cmd = [CTY_DEVICE_RELATED, SCTY_COLOR_DISPLAY_PRIVATE, ACT_CLOSE_IMG_FILE];
+            let pkt = pack_packet(addr, &cmd);
+            let _ = transport.write_and_read(&pkt, 1500);
+        }
+    }
+
+    Ok(tauri::ipc::Response::new(data_res))
 }
 
 #[tauri::command]

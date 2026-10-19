@@ -25,6 +25,8 @@ pub fn run() {
             suto::suto_get_values,
             suto::suto_get_system_info,
             suto::suto_get_logger_status,
+            suto::suto_get_screenshots,
+            suto::suto_read_screenshot,
             suto::suto_send_command,
             suto::suto_send_raw,
             suto::suto_get_logs,
@@ -38,6 +40,9 @@ pub fn run() {
             suto::files::suto_read_file,
             suto::files::suto_read_file_slice,
             suto::files::suto_get_file_stats,
+            suto::files::suto_save_binary_file,
+            suto::files::suto_pick_folder,
+            suto::files::suto_save_file_to_path,
         ])
         .setup(|app| {
             use tauri::Manager;

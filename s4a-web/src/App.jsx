@@ -11,6 +11,7 @@ import Loading from './components/loading/Loading';
 import DataModifierModal from './modules/modifier/DataModifierModal';
 import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
+import ReadLoggerModal from './components/ReadLoggerModal';
 import './App.css';
 import { isDesktop, getRuntimePlatform } from './util/platform';
 
@@ -123,6 +124,7 @@ function App() {
   const [deviceInfo, setDeviceInfo] = React.useState(null);
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
+  const [showReadLoggerModal, setShowReadLoggerModal] = React.useState(false);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -312,6 +314,16 @@ function App() {
     TestAPI.setMode('analyze');
     setAppMode(null);
     setActiveTab('graphic');
+  };
+
+  const handleAnalyzeLoggerCsv = async (csvFile) => {
+    TauriSutoAPI.logClientEvent('INFO', 'APP', `Analyzing read logger CSV: ${csvFile.name}`);
+    TestAPI.setMode('analyze');
+    setAppMode('analyze');
+    setActiveTab('graphic');
+    if (TestAPI.loadFile) {
+      await TestAPI.loadFile(csvFile);
+    }
   };
 
   const handleReturnHome = () => {
@@ -550,16 +562,23 @@ function App() {
               Online View
             </button>
             <button
-              className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
-              onClick={() => setActiveTab('graphic')}
+              className="tab-btn readout-tab-btn"
+              onClick={() => setShowReadLoggerModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(37, 99, 235, 0.08)',
+                color: '#2563eb',
+                borderColor: '#93c5fd',
+                fontWeight: 600,
+              }}
+              title="Readout"
             >
-              Graphic View
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
-              onClick={() => setActiveTab('table')}
-            >
-              Table View
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Readout
             </button>
           </div>
         ) : (appMode === 'analyze' && fileLoaded) ? (
@@ -755,7 +774,7 @@ function App() {
                   </div>
                   <h2 className="mode-card-title">Device Monitor Mode</h2>
                   <p className="mode-card-desc">
-                    Connect to SUTO DS310 / S331 flow, pressure, dew point, or multi-channel sensors via direct USB driver for real-time monitoring and graphing.
+                    Connect to devices via direct USB driver or other communication for real-time monitoring and graphing.
                   </p>
 
                   <button
@@ -787,15 +806,13 @@ function App() {
             </div>
           </div>
         ) : appMode === 'monitor' ? (
-          /* Monitor Mode Views: Online View, Graphic View, Table View */
+          /* Monitor Mode: Online View (polling automatically stops during Readout) */
           <div className="view-content-wrapper">
-            {activeTab === 'online' ? (
-              <OnlineView onDisconnect={handleDisconnectMonitor} deviceInfo={deviceInfo} />
-            ) : activeTab === 'graphic' ? (
-              <GraphicView />
-            ) : (
-              <TableView />
-            )}
+            <OnlineView
+              onDisconnect={handleDisconnectMonitor}
+              deviceInfo={deviceInfo}
+              isPaused={showReadLoggerModal}
+            />
           </div>
         ) : !fileLoaded ? (
           /* File Analyze Mode with no file loaded yet */
@@ -1422,6 +1439,14 @@ function App() {
         isOpen={showConnectModal}
         onClose={() => setShowConnectModal(false)}
         onConnected={handleDeviceConnected}
+      />
+
+      {/* SUTO Read Logger Dialog (CSV Export for DS310, S418, S461) */}
+      <ReadLoggerModal
+        isOpen={showReadLoggerModal}
+        onClose={() => setShowReadLoggerModal(false)}
+        deviceInfo={deviceInfo}
+        onAnalyzeCsv={handleAnalyzeLoggerCsv}
       />
     </div>
   );

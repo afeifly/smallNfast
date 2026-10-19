@@ -23,17 +23,13 @@ impl StubUsbTransport {
     }
 
     pub fn list_devices() -> Vec<String> {
-        let devs = vec![r"\\?\usb#vid_16c0&pid_0640#simulated_suto_ds300".to_string()];
-        log_event("INFO", "USB_ENUM", &format!("(Stub) Found {} simulated device(s)", devs.len()), None);
-        devs
+        log_event("INFO", "USB_ENUM", "Direct USB enumeration: No SUTO USB hardware detected on this platform", None);
+        Vec::new()
     }
 
     pub fn open(&mut self, path: Option<&str>) -> Result<(), String> {
-        self.is_open = true;
-        self.device_addr = 1;
-        self.tx_buffer.clear();
-        log_event("INFO", "USB_OPEN", &format!("(Stub) Opened simulated SUTO transport (path: {:?})", path), None);
-        Ok(())
+        log_event("WARN", "USB_OPEN", &format!("Direct USB connection failed: No SUTO hardware detected (path: {:?})", path), None);
+        Err("No SUTO USB device detected. Please verify that your SUTO hardware is connected via USB and drivers are installed.".into())
     }
 }
 
@@ -158,6 +154,15 @@ impl StubUsbTransport {
                 }
                 (SCTY_LOG, ACT_GET_LOG_PACKAGES_INTERVAL) => return 60u32.to_le_bytes().to_vec(), // 60s
                 (SCTY_LOG_RTC, ACT_RTC_GET_TIME) => return vec![26, 10, 15, 11, 0, 0],
+                _ => return vec![0x00],
+            }
+        }
+
+        // 7. Device Related Commands (Screenshots: CTY_DEVICE_RELATED = 0x09)
+        if payload[0] == CTY_DEVICE_RELATED {
+            let act = payload.get(2).copied().unwrap_or(0);
+            match act {
+                ACT_GET_IMG_FILE_COUNT => return 0u32.to_le_bytes().to_vec(),
                 _ => return vec![0x00],
             }
         }

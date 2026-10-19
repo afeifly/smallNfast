@@ -826,8 +826,15 @@ async function _loadFromFile(file) {
         slice(start, end) {
           const sliced = fullBuffer.slice(start, end);
           return {
-            arrayBuffer: async () => sliced
+            arrayBuffer: async () => sliced,
+            text: async () => new TextDecoder().decode(sliced),
           };
+        },
+        async arrayBuffer() {
+          return fullBuffer;
+        },
+        async text() {
+          return new TextDecoder().decode(fullBuffer);
         }
       };
     } catch (e) {
@@ -1137,12 +1144,20 @@ async function _createFileWrapperFromPath(filePath) {
           arrayBuffer: async () => {
             const u8 = await TauriSutoAPI.readFileSlice(filePath, start, length);
             return _toCleanArrayBuffer(u8);
+          },
+          text: async () => {
+            const u8 = await TauriSutoAPI.readFileSlice(filePath, start, length);
+            return new TextDecoder().decode(u8);
           }
         };
       },
       async arrayBuffer() {
         const u8 = await TauriSutoAPI.readFile(filePath);
         return _toCleanArrayBuffer(u8);
+      },
+      async text() {
+        const u8 = await TauriSutoAPI.readFile(filePath);
+        return new TextDecoder().decode(u8);
       }
     };
   }
@@ -1165,12 +1180,16 @@ async function _createFileWrapperFromPath(filePath) {
         fs.readSync(fd, buf, 0, length, start);
         fs.closeSync(fd);
         return {
-          arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+          arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+          text: async () => buf.toString('utf8'),
         };
       },
       async arrayBuffer() {
         const buffer = fs.readFileSync(filePath);
         return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      },
+      async text() {
+        return fs.readFileSync(filePath, 'utf8');
       }
     };
   }

@@ -472,6 +472,64 @@ No.,Date Time,CH1 - mV,CH2 - mV
     expect(success).toBe(false);
   });
 
+  it('successfully loads tabular CSV files (such as Data Studio export format) without requiring SUTO metadata headers', async () => {
+    const tabularCsvContent = `Record ID,Timestamp,"Flow [m³/h]","Pressure [bar]"\r
+1,2026-05-14 10:14:00,15.50,6.20\r
+2,2026-05-14 10:14:10,16.00,6.25\r
+3,2026-05-14 10:14:20,16.50,6.30\r
+`;
+    const encoded = new TextEncoder().encode(tabularCsvContent);
+    const mockFile = {
+      name: 'data_studio_export.csv',
+      size: encoded.length,
+      slice(start, end) {
+        const slicedBytes = encoded.slice(start, end);
+        return {
+          async text() { return new TextDecoder().decode(slicedBytes); },
+          async arrayBuffer() { return slicedBytes.buffer.slice(slicedBytes.byteOffset, slicedBytes.byteOffset + slicedBytes.byteLength); }
+        };
+      },
+      async text() { return tabularCsvContent; }
+    };
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+
+    const success = await CsdAPI.loadFileFromHandle(mockHandle);
+    expect(success).toBe(true);
+    expect(CsdAPI.isFileLoaded()).toBe(true);
+
+    const timeRange = CsdAPI.getFileTimeRange();
+    expect(timeRange.start).toBe(new Date(2026, 4, 14, 10, 14, 0).getTime());
+    expect(timeRange.stop).toBe(new Date(2026, 4, 14, 10, 14, 20).getTime());
+    expect(CsdAPI.getNumOfSamples()).toBe(3);
+
+    // Verify channels extracted from "Flow [m³/h]" and "Pressure [bar]"
+    let channelsResult = null;
+    CsdAPI.getChannels(res => {
+      channelsResult = res.logging_chs;
+    });
+    await new Promise(r => setTimeout(r, 60));
+    expect(channelsResult).toHaveLength(2);
+    expect(channelsResult[0].logic_channel_description).toBe('Flow');
+    expect(channelsResult[0].unit_in_ascii).toBe('m³/h');
+    expect(channelsResult[1].logic_channel_description).toBe('Pressure');
+    expect(channelsResult[1].unit_in_ascii).toBe('bar');
+
+    // Verify measurement data
+    let tablePage = null;
+    CsdAPI.getTablePage(0, 10, null, res => {
+      tablePage = res;
+    });
+    await new Promise(r => setTimeout(r, 60));
+    expect(tablePage.total).toBe(3);
+    expect(tablePage.rows[0].values[0]).toBe(15.5);
+    expect(tablePage.rows[0].values[1]).toBe(6.2);
+    expect(tablePage.rows[2].values[0]).toBe(16.5);
+  });
+
   it('correctly analyzes gaps and exports to single/split CSD files with correct min/max', async () => {
     const csvContent = `S332 Raw Data
 

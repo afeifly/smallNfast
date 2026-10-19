@@ -74,8 +74,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   };
 
   return (
-    <div className="device-connect-overlay" onClick={onClose}>
-      <div className="device-connect-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="device-connect-overlay">
+      <div className="device-connect-modal">
         {/* Header */}
         <div className="device-connect-header">
           <div>
@@ -119,7 +119,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
         <div className="platform-diff-note">
           {isDesk ? (
             <p>
-              🖥️ <strong>Desktop App Mode:</strong> Direct Win32 USB (<code>cscdc.sys</code>) and low-level Ethernet TCP sockets communicate natively with SUTO hardware. Web Bluetooth is hidden in desktop mode.
+              🖥️ <strong>Desktop App Mode:</strong> Direct Win32 US and low-level Ethernet TCP sockets communicate natively with hardware. Web Bluetooth is hidden in desktop mode.
             </p>
           ) : (
             <p>
@@ -133,7 +133,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
           {tab === 'usb' && (
             <>
               <p className="tab-desc">
-                Direct Win32 driver connection via <strong>cscdc.sys</strong>. Automatically scans for connected SUTO DS310 / S331 / S401 USB interfaces.
+                Direct Win32 driver connection. Automatically scans for connected sensor.
               </p>
               <button
                 className="connect-action-btn"
@@ -148,7 +148,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
           {tab === 'tcp' && (
             <>
               <p className="tab-desc">
-                Connect to SUTO displays, sensors, or loggers over Ethernet / Wi-Fi via standard <strong>CS-Bus over TCP</strong> (Cross-platform on macOS, Windows, Linux).
+                Connect to sensors, or display devices over Ethernet / Wi-Fi via standard SUTO portocol (Cross-platform on macOS, Windows, Linux).
               </p>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div className="form-group" style={{ flex: 3 }}>

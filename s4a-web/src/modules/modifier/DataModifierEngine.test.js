@@ -495,4 +495,40 @@ describe('integral() formula', () => {
     const res = DataModifierEngine.tokenizeFormula('integral(ch99)', channels);
     expect(res.valid).toBe(false);
   });
+
+  it('exports CSV with valid S4A metadata header including Start Date Time', async () => {
+    const origGetTable = TestAPI.getTablePage;
+    TestAPI.getTablePage = (idx, size, ids, cb) => {
+      cb({
+        rows: [
+          { timestampMs: 1716380000000, values: { 1: 10, 2: 20 } },
+          { timestampMs: 1716380001000, values: { 1: 11, 2: 21 } },
+        ],
+      });
+    };
+
+    try {
+      const baseMeta = {
+        fileName: 'test_device.csv',
+        startTimeMs: 1716380000000,
+        stopTimeMs: 1716380001000,
+        numSamples: 2,
+        sampleRate: 1,
+        channels: [
+          { channel_id: 1, name: 'Flow', unit: 'm³/h', resolution: 2 },
+          { channel_id: 2, name: 'Pressure', unit: 'bar', resolution: 2 },
+        ],
+      };
+
+      const res = await DataModifierEngine.exportModifiedFile(baseMeta, {}, 'csv');
+      expect(res.success).toBe(true);
+      expect(res.file).toBeDefined();
+
+      const text = await res.file.text();
+      expect(text).toContain('Record ID,Timestamp,"Flow [m³/h]","Pressure [bar]"');
+      expect(text).toContain('1,');
+    } finally {
+      TestAPI.getTablePage = origGetTable;
+    }
+  });
 });

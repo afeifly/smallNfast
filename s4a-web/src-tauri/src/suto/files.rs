@@ -157,3 +157,64 @@ pub fn suto_get_file_stats(path: String) -> Result<RecentFileEntry, String> {
         last_opened: now,
     })
 }
+
+#[tauri::command]
+pub fn suto_save_binary_file(filename: String, data: Vec<u8>) -> Result<Option<String>, String> {
+    let mut clean = filename.replace(':', "_");
+    if clean.to_lowercase().ends_with(".png.bmp") {
+        clean.truncate(clean.len() - 4);
+    }
+    let ext = std::path::Path::new(&clean)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("png");
+
+    let res = rfd::FileDialog::new()
+        .set_file_name(&clean)
+        .add_filter(&format!("Image (.{})", ext), &[ext])
+        .set_title("Save Screenshot Image")
+        .save_file();
+
+    if let Some(path) = res {
+        std::fs::write(&path, &data).map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
+        Ok(Some(path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub fn suto_pick_folder() -> Result<Option<String>, String> {
+    let res = rfd::FileDialog::new()
+        .set_title("Select Folder to Save Screenshots")
+        .pick_folder();
+
+    Ok(res.map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub fn suto_save_file_to_path(folder: String, filename: String, data: Vec<u8>) -> Result<String, String> {
+    let mut clean = filename.replace(':', "_");
+    if clean.to_lowercase().ends_with(".png.bmp") {
+        clean.truncate(clean.len() - 4);
+    }
+    let mut p = PathBuf::from(&folder);
+    p.push(&clean);
+
+    let mut counter = 1;
+    let base_name = clean.clone();
+    let (stem, ext) = match base_name.rfind('.') {
+        Some(idx) => (&base_name[..idx], &base_name[idx..]),
+        None => (base_name.as_str(), ""),
+    };
+
+    while p.exists() {
+        let new_name = format!("{}_{}{}", stem, counter, ext);
+        p = PathBuf::from(&folder);
+        p.push(new_name);
+        counter += 1;
+    }
+
+    std::fs::write(&p, &data).map_err(|e| format!("Failed to write file '{}': {}", p.display(), e))?;
+    Ok(p.to_string_lossy().to_string())
+}

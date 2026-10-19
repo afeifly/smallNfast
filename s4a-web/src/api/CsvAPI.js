@@ -67,10 +67,18 @@ function parseCsvLine(line) {
 }
 
 /** Parses date strings into timestamps (supports both hyphen and dot notations). */
+/** Parses date strings into timestamps (supports hyphen, slash, dot notations, and ISO format). */
 function parseDateTimeString(str) {
   if (!str) return 0;
-  const parts = str.trim().split(/\s+/);
-  if (parts.length < 2) return 0;
+  let cleanStr = str.trim();
+  if (cleanStr.includes('T') && !cleanStr.includes(' ')) {
+    cleanStr = cleanStr.replace('T', ' ');
+  }
+  const parts = cleanStr.split(/\s+/);
+  if (parts.length < 2) {
+    const fallback = Date.parse(str);
+    return (!isNaN(fallback) && fallback > 0) ? fallback : 0;
+  }
   
   const dateStr = parts[0];
   let day = 1, month = 0, year = 2026;
@@ -127,7 +135,10 @@ function parseDateTimeString(str) {
     }
   }
   
-  if (!hasValidDate) return 0;
+  if (!hasValidDate) {
+    const fallback = Date.parse(str);
+    return (!isNaN(fallback) && fallback > 0) ? fallback : 0;
+  }
   
   const tParts = parts[parts.length - 1].split(':');
   if (tParts.length < 2) return 0;
@@ -141,7 +152,44 @@ function parseDateTimeString(str) {
   return new Date(year, month, day, hour, min, sec).getTime();
 }
 
+/**
+ * Detects whether the lines represent a tabular CSV format (e.g. Record ID, Timestamp, Ch1, Ch2...)
+ * without the multi-line SUTO metadata header table.
+ */
+function detectTabularHeader(lines) {
+  for (let i = 0; i < Math.min(lines.length, 25); i++) {
+    const line = lines[i].replace(/\r/g, '').trim();
+    if (!line) continue;
+    const lower = line.toLowerCase();
+    // If it has SUTO metadata key, it's NOT a standalone tabular CSV
+    if (lower.startsWith('no.,channel,sensor,unit,resolution') ||
+        lower.startsWith('start date time,') ||
+        lower.startsWith('start date time') ||
+        lower.startsWith('description,')) {
+      return null;
+    }
+    const parts = parseCsvLine(line);
+    const lowerParts = parts.map(p => p.toLowerCase().trim());
+    const timeIdx = lowerParts.findIndex(p => 
+      p === 'timestamp' || p === 'date time' || p === 'datetime' || p === 'date' || p === 'time'
+    );
+    if (timeIdx !== -1 && parts.length > timeIdx + 1) {
+      return { headerLineIdx: i, headerLine: line, timeColIdx: timeIdx, parts };
+    }
+  }
+  return null;
+}
+
 function validateCsvHeader(lines) {
+  const tabular = detectTabularHeader(lines);
+  if (tabular) {
+    const channelHeaders = tabular.parts.slice(tabular.timeColIdx + 1);
+    if (channelHeaders.length === 0) {
+      throw new Error("No data channels found in tabular CSV header");
+    }
+    return true;
+  }
+
   let hasStartDateTime = false;
   let hasEndDateTime = false;
   let hasSampleRate = false;
@@ -154,24 +202,32 @@ function validateCsvHeader(lines) {
   let sampleRateVal = null;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = lines[i].replace(/\r/g, '').trim();
     if (!line) continue;
 
-    if (line.startsWith('Start Date Time,')) {
-      hasStartDateTime = true;
-      startVal = line.slice('Start Date Time,'.length).trim();
-    } else if (line.startsWith('End Date Time,')) {
-      hasEndDateTime = true;
-      endVal = line.slice('End Date Time,'.length).trim();
-    } else if (line.startsWith('Sample Rate(sec),')) {
-      hasSampleRate = true;
-      sampleRateVal = line.slice('Sample Rate(sec),'.length).trim();
-    } else if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
+    const commaIdx = line.indexOf(',');
+    if (commaIdx !== -1) {
+      const key = line.slice(0, commaIdx).trim().toLowerCase();
+      const val = line.slice(commaIdx + 1).trim();
+
+      if (key === 'start date time') {
+        hasStartDateTime = true;
+        startVal = val;
+      } else if (key === 'end date time') {
+        hasEndDateTime = true;
+        endVal = val;
+      } else if (key === 'sample rate(sec)' || key === 'sample rate (sec)') {
+        hasSampleRate = true;
+        sampleRateVal = val;
+      }
+    }
+
+    if (line.toLowerCase().startsWith('no.,channel,sensor,unit,resolution')) {
       hasMetadataTable = true;
       // Count channels right after the header
       let idx = i + 1;
       while (idx < lines.length) {
-        const chanLine = lines[idx].trim();
+        const chanLine = lines[idx].replace(/\r/g, '').trim();
         if (!chanLine) break; // empty line terminates channels section
         const parts = parseCsvLine(chanLine);
         if (parts.length >= 5) {
@@ -179,7 +235,7 @@ function validateCsvHeader(lines) {
         }
         idx++;
       }
-    } else if (line.startsWith('Date Time,') || line.startsWith('No.,Date Time,')) {
+    } else if (line.toLowerCase().startsWith('date time,') || line.toLowerCase().startsWith('no.,date time,')) {
       hasDataHeader = true;
     }
   }
@@ -231,92 +287,124 @@ async function _parseAndIndexCsvFile(file) {
   let stopTimeMs = 0;
   let sampleIntervalSec = 1;
   let channels = [];
-  
   let dataHeaderLineIdx = -1;
-  let lineIdx = 0;
-  
-  if (lines[0]) {
-    deviceName = lines[0].trim();
-  }
-  
-  lineIdx = 2; // skip empty line
-  
-  while (lineIdx < lines.length) {
-    const line = lines[lineIdx].trim();
-    if (!line) {
-      lineIdx++;
-      continue;
+
+  const tabular = detectTabularHeader(lines);
+  if (tabular) {
+    dataHeaderLineIdx = tabular.headerLineIdx;
+    if (tabular.headerLineIdx > 0 && lines[0] && lines[0].trim()) {
+      deviceName = lines[0].trim();
+    } else if (file.name) {
+      deviceName = file.name.replace(/\.[^/.]+$/, '');
+    }
+
+    const channelHeaders = tabular.parts.slice(tabular.timeColIdx + 1);
+    channels = channelHeaders.map((colHeader, idx) => {
+      let name = colHeader.trim();
+      let unit = '';
+      const unitMatch = name.match(/^(.*?)\s*\[(.*?)\]$/);
+      if (unitMatch) {
+        name = unitMatch[1].trim();
+        unit = unitMatch[2].trim();
+      }
+      return {
+        channel_id: idx,
+        location_id: 1,
+        sensor_id: idx,
+        logic_channel_description: name || `Channel ${idx + 1}`,
+        physical_channel_description: name || `Channel ${idx + 1}`,
+        sensor_description: 'CSV',
+        unit_in_ascii: unit,
+        resolution: 2,
+        _min: 0,
+        _max: 100,
+      };
+    });
+  } else {
+    let lineIdx = 0;
+    if (lines[0]) {
+      deviceName = lines[0].trim();
     }
     
-    // Metadata Table
-    if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
-      lineIdx++;
-      while (lineIdx < lines.length) {
-        const chanLine = lines[lineIdx].trim();
-        if (!chanLine) {
-          lineIdx++;
-          break;
-        }
-        const parts = parseCsvLine(chanLine);
-        if (parts.length >= 6) {
-          const idx = parseInt(parts[0], 10) - 1;
-          const name = parts[1];
-          const sensor = parts[2];
-          const unit = parts[3];
-          const resStr = parts[4];
-          
-          let resolution = 2;
-          if (resStr.includes('.')) {
-            resolution = resStr.split('.')[1].length;
-          } else if (resStr === '1') {
-            resolution = 0;
-          } else {
-            const parsedRes = parseInt(resStr, 10);
-            if (!isNaN(parsedRes)) resolution = parsedRes;
-          }
-          
-          channels.push({
-            channel_id: idx,
-            location_id: 1,
-            sensor_id: idx,
-            logic_channel_description: name,
-            physical_channel_description: name,
-            sensor_description: sensor,
-            unit_in_ascii: unit,
-            resolution: resolution,
-            _min: 0,
-            _max: 100,
-          });
-        }
+    lineIdx = 2; // skip empty line
+    
+    while (lineIdx < lines.length) {
+      const line = lines[lineIdx].trim();
+      if (!line) {
         lineIdx++;
+        continue;
       }
-      continue;
-    }
-    
-    // Key-value metadata
-    const commaIdx = line.indexOf(',');
-    if (commaIdx !== -1) {
-      const key = line.slice(0, commaIdx).trim();
-      const val = line.slice(commaIdx + 1).trim();
       
-      if (key === 'Start Date Time') {
-        startTimeMs = parseDateTimeString(val);
-      } else if (key === 'End Date Time') {
-        stopTimeMs = parseDateTimeString(val);
-      } else if (key === 'Sample Rate(sec)') {
-        sampleIntervalSec = parseFloat(val) || 1;
+      // Metadata Table
+      if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
+        lineIdx++;
+        while (lineIdx < lines.length) {
+          const chanLine = lines[lineIdx].trim();
+          if (!chanLine) {
+            lineIdx++;
+            break;
+          }
+          const parts = parseCsvLine(chanLine);
+          if (parts.length >= 6) {
+            const idx = parseInt(parts[0], 10) - 1;
+            const name = parts[1];
+            const sensor = parts[2];
+            const unit = parts[3];
+            const resStr = parts[4];
+            
+            let resolution = 2;
+            if (resStr.includes('.')) {
+              resolution = resStr.split('.')[1].length;
+            } else if (resStr === '1') {
+              resolution = 0;
+            } else {
+              const parsedRes = parseInt(resStr, 10);
+              if (!isNaN(parsedRes)) resolution = parsedRes;
+            }
+            
+            channels.push({
+              channel_id: idx,
+              location_id: 1,
+              sensor_id: idx,
+              logic_channel_description: name,
+              physical_channel_description: name,
+              sensor_description: sensor,
+              unit_in_ascii: unit,
+              resolution: resolution,
+              _min: 0,
+              _max: 100,
+            });
+          }
+          lineIdx++;
+        }
+        continue;
       }
+      
+      // Key-value metadata
+      const commaIdx = line.indexOf(',');
+      if (commaIdx !== -1) {
+        const key = line.slice(0, commaIdx).trim().toLowerCase();
+        const val = line.slice(commaIdx + 1).trim();
+        
+        if (key === 'start date time') {
+          startTimeMs = parseDateTimeString(val);
+        } else if (key === 'end date time') {
+          stopTimeMs = parseDateTimeString(val);
+        } else if (key === 'sample rate(sec)' || key === 'sample rate (sec)') {
+          sampleIntervalSec = parseFloat(val) || 1;
+        }
+      }
+      
+      // Data row header check
+      if (line.toLowerCase().startsWith('date time,') || line.toLowerCase().startsWith('no.,date time,')) {
+        dataHeaderLineIdx = lineIdx;
+        break;
+      }
+      
+      lineIdx++;
     }
-    
-    // Data row header check
-    if (line.startsWith('Date Time,') || line.startsWith('No.,Date Time,')) {
-      dataHeaderLineIdx = lineIdx;
-      break;
-    }
-    
-    lineIdx++;
   }
-  
+
   if (dataHeaderLineIdx === -1) {
     throw new Error("Could not find CSV data header start line");
   }

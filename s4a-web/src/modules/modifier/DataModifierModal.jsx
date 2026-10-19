@@ -802,7 +802,11 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
         // Open newly created file in S4A-Web if requested
         if (autoOpenAfterExport) {
-          if (res.file && TestAPI.loadFile) {
+          if (res.filePath && TestAPI.loadFileFromPath) {
+            await TestAPI.loadFileFromPath(res.filePath);
+            if (onFileReloaded) onFileReloaded(res.fileName);
+            onClose();
+          } else if (res.file && TestAPI.loadFile) {
             await TestAPI.loadFile(res.file);
             if (onFileReloaded) onFileReloaded(res.file.name);
             onClose();

@@ -6,6 +6,7 @@
  */
 
 import TestAPI from '../../api/TestAPI';
+import TauriSutoAPI from '../../api/TauriSutoAPI';
 
 const FILE_HEADER_LEN = 34;
 const PROTOCOL_HEADER_LEN = 3552;
@@ -1284,6 +1285,16 @@ export class DataModifierEngine {
         await writableStream.close();
         if (onProgress) onProgress(1.0);
         return { success: true, fileName: `${cleanBaseName}.csv`, fileHandle };
+      } else if (TauriSutoAPI.isAvailable()) {
+        const fullCsv = csvChunks.join('');
+        const dataBytes = textEncoder.encode(fullCsv);
+        const savedPath = await TauriSutoAPI.saveBinaryFile(`${cleanBaseName}.csv`, dataBytes);
+        if (!savedPath) {
+          return { aborted: true };
+        }
+        const fileObj = new File([dataBytes], `${cleanBaseName}.csv`, { type: 'text/csv' });
+        if (onProgress) onProgress(1.0);
+        return { success: true, fileName: `${cleanBaseName}.csv`, filePath: savedPath, file: fileObj };
       } else {
         const blob = new Blob(csvChunks, { type: 'text/csv;charset=utf-8;' });
         this._downloadBlob(blob, `${cleanBaseName}.csv`);
@@ -1459,6 +1470,17 @@ export class DataModifierEngine {
       await writableStream.close();
       if (onProgress) onProgress(1.0);
       return { success: true, fileName: `${cleanBaseName}.csd`, fileHandle };
+    } else if (TauriSutoAPI.isAvailable()) {
+      const blob = new Blob(allParts, { type: 'application/octet-stream' });
+      const arrayBuf = await blob.arrayBuffer();
+      const dataBytes = new Uint8Array(arrayBuf);
+      const savedPath = await TauriSutoAPI.saveBinaryFile(`${cleanBaseName}.csd`, dataBytes);
+      if (!savedPath) {
+        return { aborted: true };
+      }
+      const fileObj = new File([blob], `${cleanBaseName}.csd`, { type: 'application/octet-stream' });
+      if (onProgress) onProgress(1.0);
+      return { success: true, fileName: `${cleanBaseName}.csd`, filePath: savedPath, file: fileObj };
     } else {
       const blob = new Blob(allParts, { type: 'application/octet-stream' });
       this._downloadBlob(blob, `${cleanBaseName}.csd`);

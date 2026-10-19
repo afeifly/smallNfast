@@ -12,6 +12,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [showAllBle, setShowAllBle] = useState(false);
+
   useEffect(() => {
     if (isDesk && tab === 'ble') {
       setTab('usb');
@@ -60,7 +62,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
     setLoading(true);
     setError(null);
     try {
-      const conn = await TauriSutoAPI.connectBle();
+      const conn = await TauriSutoAPI.connectBle({ acceptAll: showAllBle });
       onConnected(conn);
       onClose();
     } catch (err) {
@@ -192,15 +194,31 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
                 <span>
                   {BleSutoAPI.isSupported()
                     ? 'Web Bluetooth is supported in your current browser.'
-                    : 'Web Bluetooth requires Chrome or a Chromium-based browser.'}
+                    : (BleSutoAPI.getSupportIssue() || 'Web Bluetooth requires Chrome or a Chromium-based browser.')}
                 </span>
+              </div>
+              <div style={{ marginTop: '12px', marginBottom: '14px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={showAllBle}
+                    onChange={(e) => setShowAllBle(e.target.checked)}
+                    disabled={loading}
+                  />
+                  <span>Show all nearby Bluetooth devices (unfiltered)</span>
+                </label>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', marginLeft: '24px' }}>
+                  {showAllBle
+                    ? 'Scanning all nearby Bluetooth devices.'
+                    : 'Default: Filtered by SUTO hardware services for quick selection.'}
+                </div>
               </div>
               <button
                 className="connect-action-btn"
                 onClick={handleConnectBle}
                 disabled={loading || !BleSutoAPI.isSupported()}
               >
-                {loading ? 'Pairing Bluetooth...' : '📶 Scan & Connect BLE Sensor'}
+                {loading ? 'Pairing Bluetooth...' : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan SUTO BLE Sensors')}
               </button>
             </>
           )}

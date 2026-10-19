@@ -31,7 +31,22 @@ pub fn run() {
             suto::suto_clear_logs,
             suto::suto_get_log_file_path,
             suto::suto_log_client_event,
+            suto::files::suto_get_recent_files,
+            suto::files::suto_add_recent_file,
+            suto::files::suto_remove_recent_file,
+            suto::files::suto_pick_file,
+            suto::files::suto_read_file,
+            suto::files::suto_read_file_slice,
+            suto::files::suto_get_file_stats,
         ])
+        .setup(|app| {
+            use tauri::Manager;
+            let icon = tauri::include_image!("icons/128x128@2x.png");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_icon(icon);
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

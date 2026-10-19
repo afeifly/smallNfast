@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background Yellow Gradient -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff04d" />
+      <stop offset="30%" stop-color="#ffe000" />
+      <stop offset="100%" stop-color="#f2cf00" />
+    </linearGradient>
+
+    <!-- Subtle Bevel / Rim Gradient -->
+    <linearGradient id="rim-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#d4b200" stop-opacity="0.5" />
+    </linearGradient>
+
+    <!-- Teal Waveform Stroke Gradient -->
+    <linearGradient id="wave-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#008a6b" />
+      <stop offset="50%" stop-color="#00ac86" />
+      <stop offset="100%" stop-color="#00d8a7" />
+    </linearGradient>
+
+    <!-- Area Fill Under Waveform -->
+    <linearGradient id="area-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00ac86" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#00ac86" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Shadow for Waveform -->
+    <filter id="wave-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#0b382c" flood-opacity="0.25" />
+    </filter>
+
+    <!-- Subtle Inner Shadow for Card -->
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="32" flood-color="#000000" flood-opacity="0.22" />
+    </filter>
+  </defs>
+
+  <!-- Squircle Base with Shadow -->
+  <rect x="64" y="64" width="896" height="896" rx="200" ry="200" fill="url(#bg-grad)" filter="url(#card-shadow)" />
+  <rect x="64" y="64" width="896" height="896" rx="200" ry="200" fill="none" stroke="url(#rim-grad)" stroke-width="12" />
+
+  <!-- Graph Coordinate Grid Lines (Soft Contrast) -->
+  <line x1="160" y1="320" x2="864" y2="320" stroke="#0f172a" stroke-opacity="0.08" stroke-width="6" stroke-dasharray="16 16" />
+  <line x1="160" y1="480" x2="864" y2="480" stroke="#0f172a" stroke-opacity="0.08" stroke-width="6" stroke-dasharray="16 16" />
+  <line x1="160" y1="640" x2="864" y2="640" stroke="#0f172a" stroke-opacity="0.08" stroke-width="6" stroke-dasharray="16 16" />
+  <line x1="160" y1="800" x2="864" y2="800" stroke="#0f172a" stroke-opacity="0.14" stroke-width="8" />
+  <line x1="160" y1="200" x2="160" y2="800" stroke="#0f172a" stroke-opacity="0.14" stroke-width="8" />
+
+  <!-- S4A Header Label (Clean Industrial Typography) -->
+  <text x="210" y="270" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="76" font-weight="900" fill="#0f172a" letter-spacing="-2">S4A</text>
+
+  <!-- Area Under Trendline -->
+  <path d="M 180 720 L 390 510 L 530 620 L 830 290 L 830 800 L 180 800 Z" fill="url(#area-grad)" />
+
+  <!-- Website's Signature Rising Data Line: M3 17 L9 11 L13 15 L21 7 -->
+  <!-- Scaled & Centered to 1024 Canvas: (180, 720) -> (390, 510) -> (530, 620) -> (830, 290) -->
+  <path
+    d="M 180 720 L 390 510 L 530 620 L 830 290"
+    fill="none"
+    stroke="url(#wave-grad)"
+    stroke-width="68"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#wave-shadow)"
+  />
+
+  <!-- High-Tech Data Point Nodes -->
+  <circle cx="180" cy="720" r="22" fill="#ffffff" stroke="#008a6b" stroke-width="12" />
+  <circle cx="390" cy="510" r="22" fill="#ffffff" stroke="#00ac86" stroke-width="12" />
+  <circle cx="530" cy="620" r="22" fill="#ffffff" stroke="#00ac86" stroke-width="12" />
+  <circle cx="830" cy="290" r="28" fill="#ffffff" stroke="#00d8a7" stroke-width="14" />
+</svg>

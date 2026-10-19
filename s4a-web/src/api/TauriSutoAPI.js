@@ -66,10 +66,10 @@ export const TauriSutoAPI = {
   },
 
   /** Connect to SUTO device via Web Bluetooth (BLE) */
-  async connectBle() {
+  async connectBle(options = {}) {
     activeTransport = 'BLE';
     await this.logClientEvent('INFO', 'BLE_CONN', 'Initiating Web Bluetooth (BLE) connection...');
-    const conn = await BleSutoAPI.connectBle();
+    const conn = await BleSutoAPI.connectBle(options);
     return { ...conn, transport: 'BLE' };
   },
 
@@ -125,7 +125,7 @@ export const TauriSutoAPI = {
       // Format channels to match S4A view schema. `channel_id` stays the
       // logical channel number (used for value lookup); `sensor_id` groups
       // channels that belong to the same physical sensor.
-      const formatted = rawChannels.map((ch, idx) => ({
+      const formatted = (Array.isArray(rawChannels) ? rawChannels : []).map((ch, idx) => ({
         channel_id: ch.id,
         channel_name: ch.description,
         unit: ch.unit,
@@ -400,6 +400,63 @@ export const TauriSutoAPI = {
       return;
     }
     return await invoke('suto_log_client_event', { level, tag, message });
+  },
+  /** Open native OS file picker to select a CSD or CSV file */
+  async pickFile() {
+    if (!hasTauri()) {
+      return null;
+    }
+    return await invoke('suto_pick_file');
+  },
+
+  /** Read an entire file as Uint8Array via Tauri */
+  async readFile(path) {
+    if (!hasTauri()) {
+      throw new Error('readFile is only available in Tauri desktop environment');
+    }
+    const bytes = await invoke('suto_read_file', { path });
+    return new Uint8Array(bytes);
+  },
+
+  /** Read a slice of a file via Tauri */
+  async readFileSlice(path, offset, length) {
+    if (!hasTauri()) {
+      throw new Error('readFileSlice is only available in Tauri desktop environment');
+    }
+    const bytes = await invoke('suto_read_file_slice', { path, offset, length });
+    return new Uint8Array(bytes);
+  },
+
+  /** Get metadata and file size for a path */
+  async getFileStats(path) {
+    if (!hasTauri()) {
+      return { name: path.split(/[/\\]/).pop(), path, size: 0, last_opened: Date.now() };
+    }
+    return await invoke('suto_get_file_stats', { path });
+  },
+
+  /** Get recent files list from persistent config beside app */
+  async getRecentFiles() {
+    if (!hasTauri()) {
+      return [];
+    }
+    return await invoke('suto_get_recent_files');
+  },
+
+  /** Add or touch a recent file in the config file */
+  async addRecentFile(path) {
+    if (!hasTauri()) {
+      return [];
+    }
+    return await invoke('suto_add_recent_file', { path });
+  },
+
+  /** Remove a recent file from the config file */
+  async removeRecentFile(path) {
+    if (!hasTauri()) {
+      return [];
+    }
+    return await invoke('suto_remove_recent_file', { path });
   },
 };
 

@@ -28,6 +28,7 @@ import ChannelSetting from '../channel/ChannelSetting';
 import TestAPI from '../../api/TestAPI';
 import DataUtil from '../../util/DataUtil';
 import Loading from '../../components/loading/Loading';
+import TauriSutoAPI from '../../api/TauriSutoAPI';
 
 import './css/GraphicView.css';
 
@@ -645,13 +646,27 @@ class GraphicView extends Component {
     this.setState({ recentFilesOpen: false });
     this.loadingRef.current.show();
     let success = false;
-    if (file.path && TestAPI.loadFileFromPath) {
-      success = await TestAPI.loadFileFromPath(file.path);
+    let filePath = file.path;
+    if (!filePath && TauriSutoAPI.isAvailable()) {
+      try {
+        const desktopList = await TauriSutoAPI.getRecentFiles();
+        const found = desktopList.find(d => d.name === file.name || d.path?.endsWith(file.name));
+        if (found?.path) filePath = found.path;
+      } catch (e) {
+        console.warn('Error querying desktop recent files in graphicview:', e);
+      }
+    }
+    if (filePath && TestAPI.loadFileFromPath) {
+      success = await TestAPI.loadFileFromPath(filePath);
     } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
       const handle = await TestAPI.getHandleForFile(file.name);
       if (handle) {
         success = await TestAPI.loadFileFromHandle(handle);
+      } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
+        TestAPI.openFile();
       }
+    } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
+      TestAPI.openFile();
     }
     if (!success) {
       this.loadingRef.current.hide();

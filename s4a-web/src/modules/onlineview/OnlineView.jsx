@@ -10,18 +10,6 @@ function formatValue(val, resolution = 2) {
   return Number(val).toFixed(resolution);
 }
 
-function getStatusColor(status) {
-  switch (status) {
-    case 'normal':
-      return '#10b981';
-    case 'overrange':
-      return '#f59e0b';
-    case 'invalid':
-      return '#ef4444';
-    default:
-      return '#10b981';
-  }
-}
 
 import { resolveDeviceTypeName } from '../../util/platform';
 
@@ -263,29 +251,16 @@ export default function OnlineView({ onDisconnect, deviceInfo }) {
               </div>
             </div>
 
-            {/* Device name subheader */}
-            <div className="suto-device-subheader" title={sensor.deviceName}>
-              {sensor.deviceName}
-            </div>
-
             {/* Channels List */}
             <div className="suto-channel-list">
               {sensor.channels.map((ch) => {
                 const isBlank = ch.current_value === null || ch.current_value === undefined;
                 return (
                   <div key={ch.channel_id} className="suto-channel-row">
-                    {/* Left: Channel Name & Tag */}
+                    {/* Left: Channel Name */}
                     <div className="suto-channel-left">
-                      <span
-                        className="suto-channel-status-dot"
-                        style={{ backgroundColor: getStatusColor(ch.status || 'normal') }}
-                        title={`Status: ${ch.status || 'normal'}`}
-                      />
                       <span className="suto-channel-name" title={ch.channel_name || `Channel ${ch.channel_id}`}>
                         {ch.channel_name || ch.sensor_description || `Channel ${ch.channel_id}`}
-                      </span>
-                      <span className="suto-channel-chip">
-                        #{ch.channel_id}
                       </span>
                     </div>
 

@@ -64,24 +64,60 @@ jobs:
       - name: Build Tauri Windows Release (.exe and installers)
         run: npm run tauri:build
 
-      - name: Locate and Prepare Portable Executable
+      - name: Locate and Package Portable s4a-app.zip
         shell: bash
         run: |
-          echo "Listing release binaries:"
-          ls -la s4a-web/src-tauri/target/release/*.exe || true
-          if [ -f "s4a-web/src-tauri/target/release/app.exe" ]; then
-            cp "s4a-web/src-tauri/target/release/app.exe" "s4a-web/src-tauri/target/release/s4a-web.exe"
-            echo "Copied app.exe to s4a-web.exe"
+          echo "Listing release directory contents:"
+          ls -la src-tauri/target/release/*.exe || true
+
+          # Locate the built executable (s4a-app.exe, app.exe, or s4a-web.exe)
+          EXE_PATH=""
+          if [ -f "src-tauri/target/release/s4a-app.exe" ]; then
+            EXE_PATH="src-tauri/target/release/s4a-app.exe"
+          elif [ -f "src-tauri/target/release/app.exe" ]; then
+            EXE_PATH="src-tauri/target/release/app.exe"
+          elif [ -f "src-tauri/target/release/s4a-web.exe" ]; then
+            EXE_PATH="src-tauri/target/release/s4a-web.exe"
+          else
+            EXE_PATH=$(ls src-tauri/target/release/*.exe 2>/dev/null | grep -v -i "installer" | grep -v -i "setup" | head -n 1)
           fi
 
-      - name: Upload Standalone Windows EXE
+          echo "Found release binary: $EXE_PATH"
+          if [ -z "$EXE_PATH" ] || [ ! -f "$EXE_PATH" ]; then
+            echo "ERROR: Executable not found in src-tauri/target/release/"
+            exit 1
+          fi
+
+          # Prepare portable folder with the requested executable name s4a-app.exe
+          mkdir -p portable-dist
+          cp "$EXE_PATH" portable-dist/s4a-app.exe
+          echo "Created portable-dist/s4a-app.exe"
+
+          # Create portable ZIP archive: s4a-app.zip containing s4a-app.exe
+          cd portable-dist
+          if command -v 7z &>/dev/null; then
+            7z a -tzip ../s4a-app.zip s4a-app.exe
+          else
+            powershell.exe -Command "Compress-Archive -Path 's4a-app.exe' -DestinationPath '../s4a-app.zip' -Force"
+          fi
+          cd ..
+
+          echo "Successfully generated s4a-app.zip:"
+          ls -lh s4a-app.zip
+
+      - name: Upload Portable ZIP Package (s4a-app.zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: S4A-Windows-Portable-ZIP
+          path: s4a-web/s4a-app.zip
+          if-no-files-found: error
+
+      - name: Upload Standalone Windows EXE (s4a-app.exe)
         uses: actions/upload-artifact@v4
         with:
           name: S4A-Windows-Portable-EXE
-          path: |
-            s4a-web/src-tauri/target/release/s4a-web.exe
-            s4a-web/src-tauri/target/release/app.exe
-          if-no-files-found: warn
+          path: s4a-web/portable-dist/s4a-app.exe
+          if-no-files-found: error
 
       - name: Upload Windows Installers (NSIS / MSI)
         uses: actions/upload-artifact@v4
@@ -97,7 +133,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            s4a-web/src-tauri/target/release/s4a-web.exe
-            s4a-web/src-tauri/target/release/app.exe
+            s4a-web/s4a-app.zip
+            s4a-web/portable-dist/s4a-app.exe
             s4a-web/src-tauri/target/release/bundle/nsis/*.exe
             s4a-web/src-tauri/target/release/bundle/msi/*.msi

@@ -9,6 +9,12 @@ pub mod protocol;
 pub mod transport;
 
 pub mod driver_tcp;
+pub mod files;
+
+pub use files::{
+    suto_add_recent_file, suto_get_file_stats, suto_get_recent_files, suto_pick_file,
+    suto_read_file, suto_read_file_slice, suto_remove_recent_file, RecentFileEntry,
+};
 
 #[cfg(target_os = "windows")]
 pub mod driver_windows;

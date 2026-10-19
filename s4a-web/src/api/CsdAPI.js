@@ -686,7 +686,16 @@ async function _readFileChannelsPage(fileRec, chans, s0, s1) {
 // Helper to load large files chunk-by-chunk and report real progress
 async function _readArrayBufferWithProgress(file, onProgress) {
   const size = file.size;
-  const chunkSize = 4 * 1024 * 1024; // 4MB chunks
+
+  // In desktop mode, if the file is moderate size (<= 250 MB), load in one shot for maximum speed
+  if (file.path && TauriSutoAPI.isAvailable() && size <= 250 * 1024 * 1024 && typeof file.arrayBuffer === 'function') {
+    if (onProgress) onProgress(0.4);
+    const buf = await file.arrayBuffer();
+    if (onProgress) onProgress(1.0);
+    return buf;
+  }
+
+  const chunkSize = (file.path && TauriSutoAPI.isAvailable()) ? 16 * 1024 * 1024 : 4 * 1024 * 1024;
   let offset = 0;
   const chunks = [];
   
@@ -1017,8 +1026,13 @@ function _saveRecentMeta(name, size, path = null) {
     let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
     list = list.filter(f => f.name !== name && (!path || f.path !== path));
     list.unshift({ name, size, path, lastOpened: Date.now() });
-    list = list.slice(0, 5);
+    list = list.slice(0, 10);
     localStorage.setItem('recentCsdFiles', JSON.stringify(list));
+    if (path && TauriSutoAPI.isAvailable()) {
+      TauriSutoAPI.addRecentFile(path).catch(err => {
+        console.warn('[CsdAPI] Failed to add recent file to desktop config:', err);
+      });
+    }
   } catch { /* ignore */ }
 }
 
@@ -1098,17 +1112,95 @@ function _ensureFileInput() {
 
 // ── Public CsdAPI object ──────────────────────────────────────────────────────
 
+function _toCleanArrayBuffer(u8) {
+  if (u8 instanceof ArrayBuffer) return u8;
+  if (!u8 || !u8.buffer) return new ArrayBuffer(0);
+  if (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength) {
+    return u8.buffer;
+  }
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+}
+
+async function _createFileWrapperFromPath(filePath) {
+  if (TauriSutoAPI.isAvailable()) {
+    const stats = await TauriSutoAPI.getFileStats(filePath);
+    const name = stats.name || filePath.split(/[/\\]/).pop();
+    const size = stats.size || 0;
+
+    return {
+      name,
+      path: filePath,
+      size,
+      slice(start, end) {
+        const length = Math.max(0, end - start);
+        return {
+          arrayBuffer: async () => {
+            const u8 = await TauriSutoAPI.readFileSlice(filePath, start, length);
+            return _toCleanArrayBuffer(u8);
+          }
+        };
+      },
+      async arrayBuffer() {
+        const u8 = await TauriSutoAPI.readFile(filePath);
+        return _toCleanArrayBuffer(u8);
+      }
+    };
+  }
+
+  // Legacy Node/Electron fallback
+  if (typeof window !== 'undefined' && typeof window.require === 'function') {
+    const fs = window.require('fs');
+    const pathModule = window.require('path');
+    const stats = fs.statSync(filePath);
+    const name = pathModule.basename(filePath);
+
+    return {
+      name,
+      path: filePath,
+      size: stats.size,
+      slice(start, end) {
+        const length = Math.max(0, end - start);
+        const buf = Buffer.alloc(length);
+        const fd = fs.openSync(filePath, 'r');
+        fs.readSync(fd, buf, 0, length, start);
+        fs.closeSync(fd);
+        return {
+          arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+        };
+      },
+      async arrayBuffer() {
+        const buffer = fs.readFileSync(filePath);
+        return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+      }
+    };
+  }
+
+  throw new Error('Neither Tauri nor Node.js environment is available to read from path');
+}
+
 const CsdAPI = {
 
   /** Returns true if the File System Access API is available (Chrome/Edge). */
   get hasFSA() { return _fsaSupported; },
 
   /**
-   * Open a .csd file.
+   * Open a .csd or .csv file.
+   * - Desktop (Tauri): uses native OS file picker and loads via path.
    * - Chrome/Edge: uses showOpenFilePicker and persists the handle.
    * - Safari/Firefox: falls back to <input type="file">.
    */
-  openFile() {
+  async openFile() {
+    if (TauriSutoAPI.isAvailable()) {
+      try {
+        const filePath = await TauriSutoAPI.pickFile();
+        if (filePath) {
+          await this.loadFileFromPath(filePath);
+        }
+      } catch (err) {
+        console.error('[CsdAPI] Tauri pickFile error:', err);
+      }
+      return;
+    }
     if (_fsaSupported) {
       _openWithFSA(false);
     } else {
@@ -1122,7 +1214,22 @@ const CsdAPI = {
    * The appended file must share an overlapping time window with the session.
    * Returns { ok, reason?, numFiles? }.
    */
-  openAppend() {
+  async openAppend() {
+    if (TauriSutoAPI.isAvailable()) {
+      try {
+        const filePath = await TauriSutoAPI.pickFile();
+        if (filePath) {
+          const fileWrapper = await _createFileWrapperFromPath(filePath);
+          const res = await this.appendFile(fileWrapper);
+          if (!res.ok && window.showAppNotification) {
+            window.showAppNotification('Append Failed', res.reason, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('[CsdAPI] Tauri append pickFile error:', err);
+      }
+      return;
+    }
     if (_fsaSupported) {
       _openWithFSA(true);
     } else {
@@ -1210,35 +1317,12 @@ const CsdAPI = {
   },
 
   /**
-   * Load a file from an absolute path (Node/Electron environment only).
+   * Load a file from an absolute path (Desktop Tauri / Node environment).
    */
   async loadFileFromPath(filePath) {
     try {
-      const fs = window.require('fs');
-      const pathModule = window.require('path');
-      const stats = fs.statSync(filePath);
-      const name = pathModule.basename(filePath);
-
-      const fileWrapper = {
-        name: name,
-        size: stats.size,
-        slice(start, end) {
-          const length = Math.max(0, end - start);
-          const buf = Buffer.alloc(length);
-          const fd = fs.openSync(filePath, 'r');
-          fs.readSync(fd, buf, 0, length, start);
-          fs.closeSync(fd);
-          return {
-            arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
-          };
-        },
-        async arrayBuffer() {
-          const buffer = fs.readFileSync(filePath);
-          return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-        }
-      };
-
-      _saveRecentMeta(name, stats.size, filePath);
+      const fileWrapper = await _createFileWrapperFromPath(filePath);
+      _saveRecentMeta(fileWrapper.name, fileWrapper.size, filePath);
       return await _loadFromFile(fileWrapper);
     } catch (err) {
       console.error('[CsdAPI] loadFileFromPath error:', err);
@@ -1263,16 +1347,54 @@ const CsdAPI = {
     }
   },
 
+  /**
+   * Remove a file from recent list (both in localStorage and desktop config).
+   */
   async removeRecentFile(name) {
     try {
       let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
+      const target = list.find(f => f.name === name);
       list = list.filter(f => f.name !== name);
       localStorage.setItem('recentCsdFiles', JSON.stringify(list));
       await _idbDelete(name);
+      if (TauriSutoAPI.isAvailable() && target?.path) {
+        await TauriSutoAPI.removeRecentFile(target.path);
+      }
       return list;
     } catch {
       return [];
     }
+  },
+
+  /**
+   * Sync desktop persistent recent_files.json into localStorage cache.
+   */
+  async syncDesktopRecentFiles() {
+    if (!TauriSutoAPI.isAvailable()) return this.getRecentFiles();
+    try {
+      const desktopList = await TauriSutoAPI.getRecentFiles();
+      if (Array.isArray(desktopList) && desktopList.length > 0) {
+        let localList = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
+        const mapped = desktopList.map(entry => ({
+          name: entry.name,
+          path: entry.path,
+          size: entry.size,
+          lastOpened: entry.last_opened || Date.now(),
+        }));
+
+        const merged = [...mapped];
+        for (const local of localList) {
+          if (!merged.some(m => m.path === local.path || m.name === local.name)) {
+            merged.push(local);
+          }
+        }
+        localStorage.setItem('recentCsdFiles', JSON.stringify(merged.slice(0, 10)));
+        return merged.slice(0, 10);
+      }
+    } catch (e) {
+      console.warn('[CsdAPI] syncDesktopRecentFiles error:', e);
+    }
+    return this.getRecentFiles();
   },
 
   /**
@@ -2617,5 +2739,11 @@ const CsdAPI = {
     return allRows;
   }
 };
+
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    CsdAPI.syncDesktopRecentFiles().catch(() => {});
+  }, 100);
+}
 
 export default CsdAPI;

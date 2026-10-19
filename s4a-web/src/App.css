@@ -125,6 +125,78 @@
   align-items: center;
 }
 
+/* Try Desktop App Link */
+.try-desktop-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #035446; /* Rich brand teal on yellow */
+  text-decoration: none !important;
+  cursor: pointer;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(0, 172, 134, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.try-desktop-link:hover {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: #00ac86;
+  color: #007d61;
+  box-shadow: 0 2px 8px rgba(0, 172, 134, 0.15);
+}
+
+.try-desktop-icon {
+  color: #00ac86;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.try-desktop-link:hover .try-desktop-icon {
+  transform: translateY(1px);
+}
+
+.try-desktop-text {
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.try-desktop-link:hover .try-desktop-text {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.try-desktop-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #00ac86;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none !important; /* Never underline badge */
+  box-shadow: 0 1px 3px rgba(0, 172, 134, 0.35);
+  user-select: none;
+  animation: pulse-badge 2.4s infinite ease-in-out;
+}
+
+@keyframes pulse-badge {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
 .btn-primary {
   background: #00ac86; /* Company Active Teal */
   color: #ffffff;

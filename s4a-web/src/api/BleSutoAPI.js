@@ -32,6 +32,19 @@ export const SUTO_BLE_CONFIG = {
     'device_information',
   ],
 
+  // Specific hardware communication services for Web Bluetooth requestDevice({ filters })
+  // Note: 'generic_access' is restricted on Chrome's filter blocklist, so it remains only in OPTIONAL_SERVICES.
+  FILTER_SERVICES: [
+    '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Microchip ISSC Transparent UART
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART Service (NUS)
+    0xffe0,                                  // TI / HM-10 UART
+    0xffe5,
+    '0000ffe0-0000-1000-8000-00805f9b34fb',
+    '0000ffe5-0000-1000-8000-00805f9b34fb',
+    '0000ffe4-0000-1000-8000-00805f9b34fb',
+    '0000ffe9-0000-1000-8000-00805f9b34fb',
+  ],
+
   // Read / Notify characteristic UUID prefixes (Sensor -> Host)
   READ_NOTIFY_PREFIXES: [
     '49535343-1e4d-4bd9', // Microchip ISSC Transparent UART RX
@@ -140,6 +153,16 @@ export class BleSutoManager {
     return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
   }
 
+  getSupportIssue() {
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      return 'Web Bluetooth requires a Secure Context (HTTPS or localhost). Accessing via plain HTTP over LAN (e.g. http://192.168.x.x) disables Bluetooth in the browser. Use HTTPS or localhost.';
+    }
+    if (typeof navigator === 'undefined' || !('bluetooth' in navigator)) {
+      return 'Web Bluetooth is not supported in this browser. Please use Chrome, Edge, or a Chromium-based browser.';
+    }
+    return null;
+  }
+
   isConnected() {
     return !!(this.server && this.server.connected && this.rxChar);
   }
@@ -149,9 +172,22 @@ export class BleSutoManager {
   }
 
   /**
-   * Request Bluetooth device via Chrome native picker and establish connection
+   * Build Web Bluetooth filters for SUTO hardware services.
+   * Each service is placed in its own filter object to achieve logical OR matching.
    */
-  async connectBle() {
+  buildDeviceFilters() {
+    return SUTO_BLE_CONFIG.FILTER_SERVICES.map(service => ({ services: [service] }));
+  }
+
+  /**
+   * Request Bluetooth device via Chrome native picker and establish connection.
+   * By default, filters the device list by SUTO hardware services first.
+   * If `options.acceptAll` is true, falls back to unfiltered scan (acceptAllDevices: true).
+   *
+   * @param {Object} [options]
+   * @param {boolean} [options.acceptAll=false] - Whether to show all nearby Bluetooth devices without filter
+   */
+  async connectBle(options = {}) {
     if (!this.isSupported()) {
       const msg = 'Web Bluetooth is not supported in this browser environment. Please use Google Chrome or a Chromium-based browser.';
       TauriSutoAPI.logClientEvent('ERROR', 'BLE_CONN', msg);
@@ -159,12 +195,26 @@ export class BleSutoManager {
     }
 
     try {
-      TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', 'Opening Bluetooth device scanner dialog...');
+      const useFilter = !options.acceptAll;
+      TauriSutoAPI.logClientEvent(
+        'INFO',
+        'BLE_CONN',
+        useFilter
+          ? 'Opening Bluetooth device scanner dialog (filtered by SUTO hardware services)...'
+          : 'Opening Bluetooth device scanner dialog (unfiltered: showing all nearby devices)...'
+      );
 
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: SUTO_BLE_CONFIG.OPTIONAL_SERVICES,
-      });
+      const requestOptions = useFilter
+        ? {
+            filters: this.buildDeviceFilters(),
+            optionalServices: SUTO_BLE_CONFIG.OPTIONAL_SERVICES,
+          }
+        : {
+            acceptAllDevices: true,
+            optionalServices: SUTO_BLE_CONFIG.OPTIONAL_SERVICES,
+          };
+
+      const device = await navigator.bluetooth.requestDevice(requestOptions);
 
       this.device = device;
       TauriSutoAPI.logClientEvent(
@@ -463,22 +513,42 @@ export class BleSutoManager {
             lastLen = this.rxBuffer.length;
             lastChunkTime = Date.now();
           }
+
+          // Full multi-frame response complete verification:
+          // Returns true only when all chained frames are fully received
+          // and the final frame has frameLen < 192 (0xC0).
           if (this._isResponseComplete(this.rxBuffer)) {
             const buf = [...this.rxBuffer];
             cleanup();
-            const resHex = buf.map(b => b.toString(16).padStart(2, '0')).join(' ');
+            const resHex = this._formatHex(buf);
             TauriSutoAPI.logClientEvent('INFO', 'BLE_RX', `<< Complete response received (${buf.length} bytes): ${resHex}`);
             resolve(buf);
             return;
           }
-          // Quiet period check: stopped arriving for >120ms and matches expected length
-          if (lastChunkTime > 0 && Date.now() - lastChunkTime > 120 && this.rxBuffer.length >= 4) {
-            const expectedLen = this.rxBuffer[1];
-            if (this.rxBuffer.length >= expectedLen) {
+
+          // Quiet period checks (only when packet stopped growing):
+          if (lastChunkTime > 0 && this.rxBuffer.length >= 4) {
+            const elapsed = Date.now() - lastChunkTime;
+            const firstFrameLen = this.rxBuffer[1];
+            const isSingleFrame = firstFrameLen < 192;
+
+            // Single frame complete: rxBuffer matches frameLen and no new chunk for >150ms
+            if (isSingleFrame && this.rxBuffer.length >= firstFrameLen && elapsed > 150) {
               const buf = [...this.rxBuffer];
               cleanup();
-              const resHex = buf.map(b => b.toString(16).padStart(2, '0')).join(' ');
-              TauriSutoAPI.logClientEvent('INFO', 'BLE_RX', `<< Complete response received (${buf.length} bytes): ${resHex}`);
+              const resHex = this._formatHex(buf);
+              TauriSutoAPI.logClientEvent('INFO', 'BLE_RX', `<< Complete single frame received (${buf.length} bytes): ${resHex}`);
+              resolve(buf);
+              return;
+            }
+
+            // Multi-frame quiet fallback: if device finished sending all frames
+            // but no more chunks arrived for >450ms
+            if (!isSingleFrame && elapsed > 450) {
+              const buf = [...this.rxBuffer];
+              cleanup();
+              const resHex = this._formatHex(buf);
+              TauriSutoAPI.logClientEvent('INFO', 'BLE_RX', `<< Multi-frame transfer complete (${buf.length} bytes): ${resHex}`);
               resolve(buf);
               return;
             }
@@ -521,6 +591,15 @@ export class BleSutoManager {
     return false;
   }
 
+  _formatHex(bytes, maxBytes = 48) {
+    if (!bytes || !bytes.length) return '';
+    if (bytes.length <= maxBytes) {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    }
+    const preview = Array.from(bytes.slice(0, maxBytes)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    return `${preview} ... (${bytes.length} bytes total)`;
+  }
+
   _packPacket(addr, cmdBytes) {
     const totalLen = 2 + cmdBytes.length + 2;
     const pkt = [addr, totalLen, ...cmdBytes];
@@ -557,81 +636,116 @@ export class BleSutoManager {
     return payload;
   }
 
-  async getChannels() {
-    TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Querying channel count for address ${this.devAddr}...`);
-    let count = 2; // Default for standard SUTO sensors
-    try {
-      // CMD_GET_CH_COUNT: [0x04, 0x02, 0x03]
-      const countPkt = this._packPacket(this.devAddr, [0x04, 0x02, 0x03]);
-      const rawCount = await this.writeAndRead(countPkt, 1500);
-      const deframedCount = this._deframeMultiFrame(rawCount);
-      if (deframedCount.length > 0 && deframedCount[0] > 0 && deframedCount[0] <= 32) {
-        count = deframedCount[0];
-      }
-    } catch {
-      // Keep fallback count
-    }
-
-    TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Querying settings for ${count} channel(s)...`);
+  _parseChannelStructs(deframed) {
+    const STRUCT_SIZE = 204;
     const channels = [];
+    const numStructs = Math.floor(deframed.length / STRUCT_SIZE);
 
-    try {
-      // Try Transformed Channel Settings (0x0B) supported by S330/S331,
-      // then fall back to Standard Channel Settings (0x02).
-      let rawSetting;
+    for (let i = 0; i < numStructs; i++) {
+      const off = i * STRUCT_SIZE;
+      const logChNo = deframed[off];
+      // Reject unconfigured/empty structs (logical channel 0 or 0xFF),
+      // mirroring CSLib `CSCOMM_DS310_CHANNEL_SETTING.parseByteArray`.
+      if (logChNo === 0 || logChNo === 0xff) continue;
+      const chId = logChNo;
+
+      // Channels with bit 3 of ChOptionalConfig set are hidden/disabled (cs_monitor: & 0x08)
+      const chOptionalConfig = deframed[off + 196];
+      if ((chOptionalConfig & 0x08) === 0x08) continue;
+
+      const devDesc = this._readUtf8String(deframed, off + 1, 21);
+      const sensorDesc = this._readUtf8String(deframed, off + 43, 21);
+      const chDesc = this._readUtf8String(deframed, off + 64, 21);
+      const resolution = deframed[off + 85];
+      const unitIndex = deframed[off + 86];
+      const unitAscii = this._readUtf8String(deframed, off + 87, 12);
+      const mbType = deframed[off + 138];
+
+      // Custom unit fallback: if unitIndex is 0 or unit not in standard table, use unitAscii
+      let unit = SUTO_UNITS[unitIndex];
+      if (!unit || unitIndex === 0) {
+        unit = (unitAscii && unitAscii.trim()) ? unitAscii.trim() : `u${unitIndex}`;
+      }
+
+      const chName = chDesc || sensorDesc || (devDesc ? `${devDesc} CH${chId}` : `Channel ${chId}`);
+
+      channels.push({
+        channel_id: chId,
+        channel_name: chName,
+        unit,
+        unit_index: unitIndex,
+        resolution,
+        mb_output_value_type: mbType,
+        device_description: devDesc || this.getDeviceName(),
+        sensor_description: sensorDesc,
+        active: true,
+        selected: true,
+      });
+    }
+    return channels;
+  }
+
+  async getChannels() {
+    TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Querying channel configuration for address ${this.devAddr}...`);
+
+    // Check device model & firmware version
+    const devId = this.systemInfo?.device_id || 0;
+    const swVer = parseFloat((this.systemInfo?.firmware_version || '1.0').replace(/[^\d.]/g, '') || '1.0');
+    // Only S330/S331 with FW >= 1.54 use transformed channels (0x0B) as primary
+    const isS330orS331 = (devId === 0x1064 || devId === 0x1065);
+    const useTransfOnly = isS330orS331 && swVer >= 1.54;
+    const primaryPrefix = useTransfOnly ? 0x0B : 0x02;
+
+    // Scan channels in batches of 2 to avoid overwhelming BLE UART buffers
+    const BATCH = 2;
+    const MAX_SCAN = 16;
+    const channels = [];
+    let start = 1;
+    let consecutiveEmpty = 0;
+
+    while (start <= MAX_SCAN && consecutiveEmpty < 2) {
+      const cnt = Math.min(BATCH, MAX_SCAN - start + 1);
+      const pkt = this._packPacket(this.devAddr, [0x04, 0x02, primaryPrefix, start, cnt]);
       try {
-        const transfPkt = this._packPacket(this.devAddr, [0x04, 0x02, 0x0B, 0x01, count]);
-        rawSetting = await this.writeAndRead(transfPkt, 2500);
-      } catch {
-        const settingPkt = this._packPacket(this.devAddr, [0x04, 0x02, 0x02, 0x01, count]);
-        rawSetting = await this.writeAndRead(settingPkt, 2500);
+        const rawSetting = await this.writeAndRead(pkt, 3000);
+        const deframed = this._deframeMultiFrame(rawSetting);
+        const parsed = this._parseChannelStructs(deframed);
+        if (parsed.length > 0) {
+          consecutiveEmpty = 0;
+          for (const ch of parsed) {
+            if (!channels.some(c => c.channel_id === ch.channel_id)) {
+              channels.push(ch);
+            }
+          }
+          // If device returned all configured channel structs in a single multi-frame response
+          // (such as S461 responding with all 9-10 channels in one shot)
+          if (parsed.length > cnt) {
+            TauriSutoAPI.logClientEvent(
+              'INFO',
+              'BLE_CH',
+              `Device returned all ${parsed.length} channel structs in one batch.`
+            );
+            break;
+          }
+        } else {
+          consecutiveEmpty++;
+        }
+      } catch (err) {
+        TauriSutoAPI.logClientEvent('WARN', 'BLE_CH', `Batch start=${start} query note: ${err.message}`);
+        consecutiveEmpty++;
       }
-      const deframed = this._deframeMultiFrame(rawSetting);
-
-      const STRUCT_SIZE = 204;
-      const totalChannels = Math.min(count, Math.floor(deframed.length / STRUCT_SIZE));
-
-      for (let i = 0; i < totalChannels; i++) {
-        const off = i * STRUCT_SIZE;
-        const logChNo = deframed[off];
-        // Reject unconfigured/empty structs (logical channel 0 or 0xFF),
-        // mirroring CSLib `CSCOMM_DS310_CHANNEL_SETTING.parseByteArray`.
-        if (logChNo === 0 || logChNo === 0xff) continue;
-        const chId = logChNo;
-
-        const devDesc = this._readUtf8String(deframed, off + 1, 21);
-        const sensorDesc = this._readUtf8String(deframed, off + 43, 21);
-        const chDesc = this._readUtf8String(deframed, off + 64, 21);
-        const resolution = deframed[off + 85];
-        const unitIndex = deframed[off + 86];
-        const unitAscii = this._readUtf8String(deframed, off + 87, 12);
-        const mbType = deframed[off + 138];
-        const unit = unitIndex === 0 ? unitAscii : (SUTO_UNITS[unitIndex] || `u${unitIndex}`);
-        const chName = chDesc || sensorDesc || (devDesc ? `${devDesc} CH${chId}` : `Channel ${chId}`);
-
-        channels.push({
-          channel_id: chId,
-          channel_name: chName,
-          unit,
-          unit_index: unitIndex,
-          resolution,
-          mb_output_value_type: mbType,
-          device_description: devDesc || this.getDeviceName(),
-          sensor_description: sensorDesc,
-          active: true,
-          selected: true,
-        });
-      }
-    } catch (chErr) {
-      TauriSutoAPI.logClientEvent('WARN', 'BLE_CH', `DS310 channel settings query note: ${chErr.message}`);
+      start += cnt;
     }
 
-    // Fallback: If sensor doesn't implement DS310 multi-frame channels, synthesize channels based on model
+    // Sort by logical channel id
+    channels.sort((a, b) => a.channel_id - b.channel_id);
+
+    // Fallback: If sensor didn't return channel descriptors, synthesize standard channels
     if (channels.length === 0) {
       const devName = this.systemInfo?.device_name || this.getDeviceName();
       channels.push(
         { channel_id: 1, channel_name: 'Flow', unit: 'm³/h', unit_index: 14, resolution: 1, device_description: devName, sensor_description: 'Flow Sensor', active: true, selected: true },
-        { channel_id: 2, channel_name: 'Consumption', unit: 'm³', unit_index: 24, resolution: 0, device_description: devName, sensor_description: 'Consumption Counter', active: true, selected: true },
+        { channel_id: 2, channel_name: 'Velocity', unit: 'm/s', unit_index: 10, resolution: 2, device_description: devName, sensor_description: 'Velocity Sensor', active: true, selected: true },
         { channel_id: 3, channel_name: 'Temperature', unit: '°C', unit_index: 1, resolution: 1, device_description: devName, sensor_description: 'Temp Sensor', active: true, selected: true }
       );
     }
@@ -640,7 +754,7 @@ export class BleSutoManager {
     TauriSutoAPI.logClientEvent(
       'INFO',
       'BLE_CH',
-      `Active ${channels.length} BLE channels: ${channels.map(c => `${c.channel_id}:${c.channel_name}(${c.unit})`).join(', ')}`
+      `Active ${channels.length} BLE channels: ${channels.map(c => `#${c.channel_id} ${c.channel_name} (${c.unit})`).join(', ')}`
     );
     return channels;
   }
@@ -649,7 +763,8 @@ export class BleSutoManager {
     if (!this.cachedChannels.length) return [];
     const chIds = this.cachedChannels.map(c => c.channel_id);
     const start = chIds[0];
-    const count = chIds.length;
+    const end = chIds[chIds.length - 1];
+    const count = end - start + 1;
 
     try {
       // CMD_GET_ONLINE_VAL: [0x04, 0x01, 0x01, start, count]
@@ -661,13 +776,17 @@ export class BleSutoManager {
       const VALUE_SIZE = 7;
       const now = Date.now();
 
-      for (let i = 0; i < chIds.length; i++) {
+      for (let i = 0; i < count; i++) {
+        const chId = start + i;
+        const chConfig = this.cachedChannels.find(c => c.channel_id === chId);
+        if (!chConfig) continue; // Skip unconfigured channels in gaps
+
         const off = i * VALUE_SIZE;
         if (off + VALUE_SIZE > deframed.length) break;
 
         const view = new DataView(new Uint8Array(deframed.slice(off, off + 4)).buffer);
         const unitIndex = deframed[off + 5];
-        const mbType = this.cachedChannels[i]?.mb_output_value_type ?? 0;
+        const mbType = chConfig.mb_output_value_type ?? 0;
         const numeric = decodeValue(view, mbType, unitIndex);
         const statusByte = deframed[off + 6];
 
@@ -680,7 +799,6 @@ export class BleSutoManager {
           status = 'overrange';
         }
 
-        const chId = chIds[i];
         if (!this.historyBuffer.has(chId)) {
           this.historyBuffer.set(chId, []);
         }
@@ -694,7 +812,7 @@ export class BleSutoManager {
           channel_id: chId,
           current_value: val,
           status,
-          unit: this.cachedChannels[i]?.unit || '',
+          unit: chConfig.unit || '',
           resolution: deframed[off + 4],
           realStartTime: [now - (hist.length * 1000)],
           pointInterval: [1000],

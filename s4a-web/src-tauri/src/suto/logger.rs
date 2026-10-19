@@ -94,10 +94,19 @@ fn civil_from_days(days: i64) -> (i64, u8, u8) {
 }
 
 pub fn format_hex(data: &[u8]) -> String {
-    data.iter()
-        .map(|b| format!("{:02X}", b))
-        .collect::<Vec<_>>()
-        .join(" ")
+    if data.len() <= 64 {
+        data.iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        let preview = data[..48]
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("{} ... ({} bytes total)", preview, data.len())
+    }
 }
 
 pub fn log_event(level: &str, tag: &str, message: &str, hex_bytes: Option<&[u8]>) {

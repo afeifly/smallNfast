@@ -12,7 +12,7 @@ import DataModifierModal from './modules/modifier/DataModifierModal';
 import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
 import './App.css';
-import { isDesktop, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
+import { isDesktop, getRuntimePlatform } from './util/platform';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -198,6 +198,13 @@ function App() {
     if (TestAPI.getRecentFiles) {
       setRecentFiles(TestAPI.getRecentFiles());
     }
+    if (TestAPI.syncDesktopRecentFiles) {
+      TestAPI.syncDesktopRecentFiles().then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          setRecentFiles(list);
+        }
+      }).catch(() => {});
+    }
   }, [initDone]);
 
   const handleCsdExportConfirmed = async () => {
@@ -369,13 +376,32 @@ function App() {
     localStorage.removeItem('selectedChannels');
     TestAPI.setMode('analyze');
     setAppMode('analyze');
-    if (file.path && TestAPI.loadFileFromPath) {
-      await TestAPI.loadFileFromPath(file.path);
+
+    let filePath = file.path;
+    if (!filePath && TauriSutoAPI.isAvailable()) {
+      try {
+        const desktopList = await TauriSutoAPI.getRecentFiles();
+        const found = desktopList.find(d => d.name === file.name || d.path?.endsWith(file.name));
+        if (found?.path) filePath = found.path;
+      } catch (e) {
+        console.warn('Error querying desktop recent files:', e);
+      }
+    }
+
+    if (filePath && TestAPI.loadFileFromPath) {
+      const ok = await TestAPI.loadFileFromPath(filePath);
+      if (!ok && window.showAppNotification) {
+        window.showAppNotification("File Not Found", `Could not open file at: ${filePath}`, "error");
+      }
     } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
       const handle = await TestAPI.getHandleForFile(file.name);
       if (handle) {
         await TestAPI.loadFileFromHandle(handle);
+      } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
+        TestAPI.openFile();
       }
+    } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
+      TestAPI.openFile();
     }
   };
 
@@ -582,14 +608,6 @@ function App() {
         ) : null}
 
         <div className="header-right" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {appMode === 'monitor' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', fontWeight: '600', color: '#047857', background: 'rgba(5, 150, 105, 0.15)', padding: '4px 10px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                {resolveDeviceTypeName(null, deviceInfo)}
-              </span>
-            </div>
-          )}
 
           {appMode === 'analyze' && fileLoaded && (
             <>
@@ -633,18 +651,35 @@ function App() {
             </>
           )}
 
-          <Tooltip title="System Diagnostic Logs">
-            <IconButton
-              className="header-icon-btn"
-              onClick={() => setShowDebugLogs(true)}
-              style={{ color: '#334155', padding: '6px' }}
-              aria-label="System Diagnostic Logs"
-            >
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-              </svg>
-            </IconButton>
-          </Tooltip>
+          {!appMode ? (
+            !isDesktop && (
+              <a
+                href="/s4a-app.zip"
+                download="s4a-app.zip"
+                className="try-desktop-link"
+                title="Download S4A Desktop App"
+              >
+                <svg className="try-desktop-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span className="try-desktop-text">Try the desktop App</span>
+                <span className="try-desktop-badge">New</span>
+              </a>
+            )
+          ) : (
+            <Tooltip title="System Diagnostic Logs">
+              <IconButton
+                className="header-icon-btn"
+                onClick={() => setShowDebugLogs(true)}
+                style={{ color: '#334155', padding: '6px' }}
+                aria-label="System Diagnostic Logs"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+              </IconButton>
+            </Tooltip>
+          )}
         </div>
       </header>
 

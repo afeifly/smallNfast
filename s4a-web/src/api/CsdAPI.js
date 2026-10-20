@@ -787,7 +787,6 @@ async function _loadFromFile(file) {
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.1, filename: file.name } }));
     try {
       const success = await CsvAPI.loadFromFile(file);
-      window.dispatchEvent(new CustomEvent('fileLoadProgress', { detail: { progress: 0.8, filename: file.name } }));
       if (success) {
         _file = file;
         _fileLoaded = true;

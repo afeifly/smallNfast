@@ -336,7 +336,7 @@ async function _parseAndIndexCsvFile(file) {
       }
       
       // Metadata Table
-      if (line.startsWith('No.,Channel,Sensor,Unit,Resolution')) {
+      if (line.toLowerCase().startsWith('no.,channel,sensor,unit,resolution')) {
         lineIdx++;
         while (lineIdx < lines.length) {
           const chanLine = lines[lineIdx].trim();
@@ -345,19 +345,20 @@ async function _parseAndIndexCsvFile(file) {
             break;
           }
           const parts = parseCsvLine(chanLine);
-          if (parts.length >= 6) {
+          if (parts.length >= 5) {
             const idx = parseInt(parts[0], 10) - 1;
             const name = parts[1];
             const sensor = parts[2];
             const unit = parts[3];
             const resStr = parts[4];
+            const location = parts[5] || '';
             
             let resolution = 2;
-            if (resStr.includes('.')) {
+            if (resStr && resStr.includes('.')) {
               resolution = resStr.split('.')[1].length;
             } else if (resStr === '1') {
               resolution = 0;
-            } else {
+            } else if (resStr) {
               const parsedRes = parseInt(resStr, 10);
               if (!isNaN(parsedRes)) resolution = parsedRes;
             }
@@ -371,6 +372,7 @@ async function _parseAndIndexCsvFile(file) {
               sensor_description: sensor,
               unit_in_ascii: unit,
               resolution: resolution,
+              location: location,
               _min: 0,
               _max: 100,
             });
@@ -439,6 +441,41 @@ async function _parseAndIndexCsvFile(file) {
   const chMin = Array(channels.length).fill(Infinity);
   const chMax = Array(channels.length).fill(-Infinity);
   
+  const processLine = (line, lineStartByte) => {
+    if (!line) return;
+    const parts = parseCsvLine(line);
+    if (parts.length === 0) return;
+
+    let dateStr = parts[0];
+    let valuesStartIndex = 1;
+    let recordId = 0;
+    
+    if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
+      recordId = parseInt(parts[0], 10);
+      dateStr = parts[1];
+      valuesStartIndex = 2;
+    }
+    
+    const timestampMs = parseDateTimeString(dateStr);
+    if (timestampMs > 0) {
+      tempOffsets.push(lineStartByte);
+      tempTimestamps.push(timestampMs);
+      tempRecordIds.push(recordId || (tempRecordIds.length + 1));
+      
+      // On-the-fly min/max
+      for (let c = 0; c < channels.length; c++) {
+        const valStr = parts[valuesStartIndex + c];
+        if (valStr !== undefined && valStr !== '') {
+          const v = parseFloat(valStr);
+          if (!isNaN(v)) {
+            if (v < chMin[c]) chMin[c] = v;
+            if (v > chMax[c]) chMax[c] = v;
+          }
+        }
+      }
+    }
+  };
+
   while (currentByteOffset < fileSize) {
     const endByte = Math.min(currentByteOffset + CHUNK_SIZE, fileSize);
     const slice = file.slice(currentByteOffset, endByte);
@@ -448,51 +485,30 @@ async function _parseAndIndexCsvFile(file) {
     while (searchIdx < chunkText.length) {
       const newlineIdx = chunkText.indexOf('\n', searchIdx);
       if (newlineIdx === -1) {
+        // If this chunk reached the end of the file, process the remainder as the last line
+        if (endByte >= fileSize) {
+          const lineStartByte = currentByteOffset + searchIdx;
+          const line = chunkText.slice(searchIdx).trim();
+          processLine(line, lineStartByte);
+          searchIdx = chunkText.length;
+        }
         break; // end of chunk
       }
       
       const lineStartByte = currentByteOffset + searchIdx;
       const line = chunkText.slice(searchIdx, newlineIdx).trim();
+      processLine(line, lineStartByte);
       
-      if (line) {
-        const parts = parseCsvLine(line);
-        if (parts.length > 0) {
-          let dateStr = parts[0];
-          let valuesStartIndex = 1;
-          let recordId = 0;
-          
-          if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
-            recordId = parseInt(parts[0], 10);
-            dateStr = parts[1];
-            valuesStartIndex = 2;
-          }
-          
-          const timestampMs = parseDateTimeString(dateStr);
-          if (timestampMs > 0) {
-            tempOffsets.push(lineStartByte);
-            tempTimestamps.push(timestampMs);
-            tempRecordIds.push(recordId || (tempRecordIds.length + 1));
-            
-            // On-the-fly min/max
-            for (let c = 0; c < channels.length; c++) {
-              const valStr = parts[valuesStartIndex + c];
-              if (valStr !== undefined && valStr !== '') {
-                const v = parseFloat(valStr);
-                if (!isNaN(v)) {
-                  if (v < chMin[c]) chMin[c] = v;
-                  if (v > chMax[c]) chMax[c] = v;
-                }
-              }
-            }
-          }
-        }
-      }
       searchIdx = newlineIdx + 1;
     }
     
-    currentByteOffset += searchIdx;
+    if (searchIdx === 0) {
+      currentByteOffset = endByte;
+    } else {
+      currentByteOffset += searchIdx;
+    }
     
-    const progress = currentByteOffset / fileSize;
+    const progress = Math.min(1.0, currentByteOffset / fileSize);
     window.dispatchEvent(new CustomEvent('fileLoadProgress', { 
       detail: { progress: 0.1 + progress * 0.7, filename: file.name } 
     }));

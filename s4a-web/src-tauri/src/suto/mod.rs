@@ -445,6 +445,251 @@ pub async fn suto_get_logger_status(
     Ok(status)
 }
 
+fn format_unix_time_str(sec: i64) -> String {
+    if sec <= 0 {
+        return "---".to_string();
+    }
+    let s = sec as u64;
+    let days = s / 86400;
+    let rem_sec = s % 86400;
+    let hours = rem_sec / 3600;
+    let mins = (rem_sec % 3600) / 60;
+    let secs = rem_sec % 60;
+
+    let mut year = 1970u32;
+    let mut d = days;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        let days_in_year = if leap { 366 } else { 365 };
+        if d < days_in_year {
+            break;
+        }
+        d -= days_in_year;
+        year += 1;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let days_in_month = [
+        31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    let mut month = 1u32;
+    for &dim in &days_in_month {
+        if d < dim {
+            break;
+        }
+        d -= dim;
+        month += 1;
+    }
+    let day = d + 1;
+
+    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, month, day, hours, mins, secs)
+}
+
+#[tauri::command]
+pub async fn suto_get_logger_files(
+    state: State<'_, SutoState>,
+) -> Result<Vec<LoggerFileInfo>, String> {
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+
+    log_event("INFO", "SUTO_LOGGER", "Querying device recorded logger files...", None);
+
+    // 1. Request access code (CTY_LOGGER=0x03, SUB=0xFF, ACT_LOGGER_REQUEST_ACCESS_CODE=0x04)
+    let access_code: [u8; 2] = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let cmd = [CTY_LOGGER, 0xFF, ACT_LOGGER_REQUEST_ACCESS_CODE];
+        let pkt = pack_packet(addr, &cmd);
+        match transport.write_and_read(&pkt, 2500) {
+            Ok(raw) => {
+                let deframed = deframe_multi_frame(&raw).unwrap_or_default();
+                if deframed.len() >= 2 {
+                    [deframed[0], deframed[1]]
+                } else {
+                    [0, 0]
+                }
+            }
+            Err(e) => {
+                log_event("WARN", "SUTO_LOGGER", &format!("Request access code warning: {}", e), None);
+                [0, 0]
+            }
+        }
+    };
+
+    // 2. Query file count:
+    // First try ACT_LOGGER_GET_FILE_NUMBER (0x03, 0xFF, 0x12) for DS310 / S330 / S331
+    let mut file_count = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let cmd = [CTY_LOGGER, 0xFF, ACT_LOGGER_GET_FILE_NUMBER];
+        let pkt = pack_packet(addr, &cmd);
+        match transport.write_and_read(&pkt, 3000) {
+            Ok(raw) => {
+                let deframed = deframe_multi_frame(&raw).unwrap_or_default();
+                if deframed.len() >= 4 {
+                    u32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]])
+                } else if deframed.len() >= 2 {
+                    u16::from_le_bytes([deframed[0], deframed[1]]) as u32
+                } else {
+                    0
+                }
+            }
+            Err(_) => 0,
+        }
+    };
+
+    // Fallback: If 0 or error, also check S600 ACT_LOGGER_GET_CSD_FILE_NUMBER (0x03, 0xFF, 0x24)
+    if file_count == 0 {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        if let Some(transport) = t_lock.as_mut() {
+            let cmd = [CTY_LOGGER, 0xFF, ACT_LOGGER_GET_CSD_FILE_NUMBER];
+            let pkt = pack_packet(addr, &cmd);
+            if let Ok(raw) = transport.write_and_read(&pkt, 2500) {
+                if let Ok(deframed) = deframe_multi_frame(&raw) {
+                    if deframed.len() >= 4 {
+                        file_count = u32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]]);
+                    } else if deframed.len() >= 2 {
+                        file_count = u16::from_le_bytes([deframed[0], deframed[1]]) as u32;
+                    }
+                }
+            }
+        }
+    }
+
+    log_event("INFO", "SUTO_LOGGER", &format!("Device reported {} logger session file(s)", file_count), None);
+
+    if file_count == 0 {
+        return Ok(Vec::new());
+    }
+
+    // 3. Query file info entries
+    let mut list: Vec<LoggerFileInfo> = Vec::new();
+    let mut current_idx = 0u32;
+    let batch_size = 10u32;
+
+    while current_idx < file_count {
+        let batch_num = (file_count - current_idx).min(batch_size);
+        let control = if current_idx == 0 { 0u8 } else { 1u8 };
+        let length = (161 * batch_num + 1) as u16;
+        let len_bytes = length.to_le_bytes();
+
+        let info_res = {
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let cmd = [
+                CTY_LOGGER, 0xFF, ACT_LOGGER_GET_FILE_LIST,
+                len_bytes[0], len_bytes[1],
+                control,
+                access_code[0], access_code[1],
+            ];
+            let pkt = pack_packet(addr, &cmd);
+            let raw = transport.write_and_read(&pkt, 5000)?;
+            deframe_multi_frame(&raw)?
+        };
+
+        if info_res.is_empty() {
+            break;
+        }
+
+        let resp_num_of_files = info_res[0] as usize;
+        let one_len = 161usize;
+        let mut offset = 1usize;
+        let count_to_read = resp_num_of_files.min(batch_num as usize);
+
+        for _ in 0..count_to_read {
+            if offset + one_len > info_res.len() {
+                break;
+            }
+            let chunk = &info_res[offset..offset + one_len];
+
+            // fileName: bytes 0..12
+            let name_raw = &chunk[0..12];
+            let zero_pos = name_raw.iter().position(|&b| b == 0).unwrap_or(name_raw.len());
+            let file_name = String::from_utf8_lossy(&name_raw[..zero_pos]).trim().to_string();
+
+            // timeFirstSample: bytes 12..20 (i64, little endian)
+            let time_first_sample = i64::from_le_bytes([
+                chunk[12], chunk[13], chunk[14], chunk[15],
+                chunk[16], chunk[17], chunk[18], chunk[19],
+            ]);
+
+            // numOfSample: bytes 20..24 (u32, little endian)
+            let num_of_sample = u32::from_le_bytes([chunk[20], chunk[21], chunk[22], chunk[23]]);
+
+            // numOfChannel: byte 24 (u8)
+            let num_of_channel = chunk[24] as u32;
+
+            // status: bytes 25..29 (u32, little endian)
+            let status_val = u32::from_le_bytes([chunk[25], chunk[26], chunk[27], chunk[28]]);
+            let is_recording = (status_val & 1) != 0;
+
+            // sampleRate: bytes 29..33 (u32, little endian)
+            let sample_rate = u32::from_le_bytes([chunk[29], chunk[30], chunk[31], chunk[32]]);
+
+            // description: bytes 33..161 (128 bytes)
+            let desc_raw = &chunk[33..161];
+            let desc_zero = desc_raw.iter().position(|&b| b == 0).unwrap_or(desc_raw.len());
+            let description = String::from_utf8_lossy(&desc_raw[..desc_zero]).trim().to_string();
+
+            // Calculate formatted start and end time
+            let start_sec = if time_first_sample > 1_000_000_000_000 {
+                time_first_sample / 1000
+            } else {
+                time_first_sample
+            };
+            let rate_sec = if sample_rate == 0 { 1 } else { sample_rate as i64 };
+            let total_dur = (num_of_sample.saturating_sub(1) as i64) * rate_sec;
+            let end_sec = start_sec + total_dur;
+
+            let start_time_str = format_unix_time_str(start_sec);
+            let end_time_str = format_unix_time_str(end_sec);
+
+            if !file_name.is_empty() {
+                let entry = LoggerFileInfo {
+                    file_name: file_name.clone(),
+                    start_time: start_time_str,
+                    end_time: end_time_str,
+                    channels_count: num_of_channel,
+                    samples_per_channel: num_of_sample,
+                    sample_rate,
+                    description,
+                    status: status_val,
+                    is_recording,
+                };
+
+                if let Some(existing) = list.iter_mut().find(|f| f.file_name == file_name) {
+                    if entry.samples_per_channel >= existing.samples_per_channel {
+                        *existing = entry;
+                    }
+                } else {
+                    list.push(entry);
+                }
+            }
+
+            offset += one_len;
+        }
+
+        if count_to_read == 0 {
+            break;
+        }
+        current_idx += count_to_read as u32;
+    }
+
+    // 4. Release access right / finish reading
+    {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        if let Some(transport) = t_lock.as_mut() {
+            let cmd = [CTY_LOGGER, 0xFF, ACT_LOGGER_READING_FINISHED, access_code[0], access_code[1]];
+            let pkt = pack_packet(addr, &cmd);
+            let _ = transport.write_and_read(&pkt, 1500);
+        }
+    }
+
+    // Sort by start_time descending (latest time on top)
+    list.sort_by(|a, b| b.start_time.cmp(&a.start_time));
+
+    log_event("INFO", "SUTO_LOGGER", &format!("Successfully parsed {} logger file(s) from device", list.len()), None);
+    Ok(list)
+}
+
 #[tauri::command]
 pub async fn suto_get_screenshots(
     state: State<'_, SutoState>,

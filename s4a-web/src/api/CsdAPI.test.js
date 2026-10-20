@@ -1451,4 +1451,80 @@ Date Time,Flow,Pressure
     expect(meas3[0].measurementData[0]).toEqual([503, 513, 523, 533, 543]);
   });
 
+  it('loads CSV without trailing newline without hanging and indexes all samples', async () => {
+    const csvContent = [
+      'Start Date Time, 14-05-2026 10:14:00',
+      'End Date Time, 14-05-2026 10:14:02',
+      'Sample Rate(sec), 1',
+      'Device Name, SUTO Device',
+      '',
+      'No.,Channel,Sensor,Unit,Resolution',
+      '1,Flow,SensorA,m³/h,2',
+      '',
+      'No.,Date Time,Flow',
+      '1,14-05-2026 10:14:00,10.5',
+      '2,14-05-2026 10:14:01,11.5',
+      '3,14-05-2026 10:14:02,12.5'
+    ].join('\r\n'); // Note: no trailing newline
+
+    const encoded = new TextEncoder().encode(csvContent);
+    const mockFile = {
+      name: 'test_no_trailing_nl.csv',
+      size: encoded.length,
+      slice(start, end) {
+        const slicedBytes = encoded.slice(start, end);
+        return {
+          arrayBuffer: async () => slicedBytes.buffer,
+          text: async () => new TextDecoder().decode(slicedBytes)
+        };
+      }
+    };
+
+    const progressValues = [];
+    const onProgress = (e) => {
+      progressValues.push(e.detail.progress);
+    };
+    window.addEventListener('fileLoadProgress', onProgress);
+
+    const success = await CsdAPI.loadFile(mockFile);
+    window.removeEventListener('fileLoadProgress', onProgress);
+
+    expect(success).toBe(true);
+    expect(CsdAPI.isFileLoaded()).toBe(true);
+    expect(CsdAPI.getNumOfSamples()).toBe(3);
+    expect(progressValues[progressValues.length - 1]).toBe(1.0);
+  });
+
+  it('loads reference/eg_format.csv and correctly parses all 50 channels and data rows', async () => {
+    const egPath = path.resolve(__dirname, '../../../reference/eg_format.csv');
+    if (!fs.existsSync(egPath)) return;
+    const content = fs.readFileSync(egPath, 'utf8');
+    const encoded = new TextEncoder().encode(content);
+    const mockFile = {
+      name: 'eg_format.csv',
+      size: encoded.length,
+      slice(start, end) {
+        const slicedBytes = encoded.slice(start, end);
+        return {
+          arrayBuffer: async () => slicedBytes.buffer,
+          text: async () => new TextDecoder().decode(slicedBytes)
+        };
+      }
+    };
+
+    const success = await CsdAPI.loadFile(mockFile);
+    expect(success).toBe(true);
+    expect(CsdAPI.isFileLoaded()).toBe(true);
+    expect(CsdAPI.getNumOfSamples()).toBe(3);
+
+    let parsedChannels = [];
+    CsdAPI.getChannels(res => {
+      parsedChannels = res.logging_chs || [];
+    });
+    await new Promise(r => setTimeout(r, 60));
+    expect(parsedChannels.length).toBe(50);
+    expect(parsedChannels[0].logic_channel_description).toBe('CH1');
+    expect(parsedChannels[49].logic_channel_description).toBe('CH50');
+  });
+
 });

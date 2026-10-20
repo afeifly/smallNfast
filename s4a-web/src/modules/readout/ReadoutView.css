@@ -5,12 +5,16 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
   background-color: #f8fafc;
-  padding: 24px;
+  padding: 16px 20px;
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: #1e293b;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* ── Top Header / Status Panel (Combined with Tabs) ── */
@@ -20,32 +24,36 @@
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 12px 20px;
-  margin-bottom: 16px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .readout-top-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .readout-device-info {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  min-width: 0;
 }
 
 .readout-avatar-icon {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
   border-radius: 10px;
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   display: flex;
@@ -58,39 +66,45 @@
 .readout-device-texts {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .readout-device-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 3px;
+  min-width: 0;
 }
 
 .readout-device-title {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   color: #0f172a;
+  white-space: nowrap;
 }
 
 .readout-meta-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  font-size: 0.8rem;
+  gap: 8px;
+  font-size: 0.78rem;
   color: #64748b;
+  min-width: 0;
 }
 
 .readout-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 6px;
-  font-size: 0.74rem;
+  font-size: 0.73rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .readout-badge.badge-usb {
@@ -120,7 +134,8 @@
 .readout-top-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* ── Navigation Tabs Bar (Combined inside top panel, borderless) ── */
@@ -131,10 +146,12 @@
   background: transparent;
   border: none;
   padding: 0;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 0;
   box-shadow: none;
   box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .readout-tab-button {
@@ -143,12 +160,12 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 14px;
-  height: 34px;
-  min-height: 34px;
+  padding: 5px 12px;
+  height: 32px;
+  min-height: 32px;
   box-sizing: border-box;
-  border-radius: 8px;
-  font-size: 0.85rem;
+  border-radius: 7px;
+  font-size: 0.82rem;
   font-weight: 500;
   color: #475569;
   background: #f8fafc;
@@ -195,34 +212,60 @@
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 24px;
+  padding: 18px 20px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 480px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Sub-view containers inside content card */
+.readout-tab-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.readout-tab-pane.readout-tab-scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 /* Section Header */
 .readout-section-header {
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.readout-section-title-group {
+  min-width: 0;
 }
 
 .readout-section-title-group h3 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #0f172a;
 }
 
 .readout-section-title-group p {
-  margin: 3px 0 0 0;
-  font-size: 0.82rem;
+  margin: 2px 0 0 0;
+  font-size: 0.8rem;
   color: #64748b;
 }
 
@@ -230,6 +273,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 /* ── Tables ── */
@@ -239,33 +283,47 @@
   overflow-y: auto;
   overflow-x: auto;
   background: #ffffff;
-  margin-bottom: 20px;
-  max-height: 460px;
+  margin-bottom: 12px;
+  flex: 1;
+  min-height: 120px;
+  max-height: none;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .readout-data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
+  min-width: 680px;
 }
 
 .readout-data-table th {
   background: #f8fafc;
   color: #475569;
   text-align: left;
-  padding: 11px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid #e2e8f0;
   font-weight: 600;
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
+  white-space: nowrap;
 }
 
 .readout-data-table td {
-  padding: 11px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid #f1f5f9;
   color: #334155;
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.readout-col-desc {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .readout-table-row {
@@ -646,4 +704,163 @@
   padding: 12px 20px;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
+}
+
+/* ── Bottom Action & Tip Bar ── */
+.readout-bottom-bar {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.readout-bottom-tip {
+  font-size: 0.82rem;
+  color: #64748b;
+  flex: 1;
+  min-width: 220px;
+  line-height: 1.4;
+}
+
+/* ── Modern Sleek Scrollbars ── */
+.readout-view-container::-webkit-scrollbar,
+.readout-table-wrapper::-webkit-scrollbar,
+.readout-tab-scrollable::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.readout-view-container::-webkit-scrollbar-track,
+.readout-table-wrapper::-webkit-scrollbar-track,
+.readout-tab-scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.readout-view-container::-webkit-scrollbar-thumb,
+.readout-table-wrapper::-webkit-scrollbar-thumb,
+.readout-tab-scrollable::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.readout-view-container::-webkit-scrollbar-thumb:hover,
+.readout-table-wrapper::-webkit-scrollbar-thumb:hover,
+.readout-tab-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.readout-view-container,
+.readout-table-wrapper,
+.readout-tab-scrollable {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* ── Responsive Rules for Small / Resized Windows ── */
+@media (max-width: 900px), (max-height: 720px) {
+  .readout-view-container {
+    padding: 10px 12px;
+  }
+
+  .readout-top-panel {
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+
+  .readout-avatar-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .readout-avatar-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .readout-device-title {
+    font-size: 14px;
+  }
+
+  .readout-meta-row {
+    font-size: 0.72rem;
+    gap: 6px;
+  }
+
+  .readout-tab-button {
+    height: 28px;
+    min-height: 28px;
+    padding: 4px 10px;
+    font-size: 0.76rem;
+  }
+
+  .readout-content-card {
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+
+  .readout-section-header {
+    margin-bottom: 8px;
+    gap: 6px;
+  }
+
+  .readout-section-title-group h3 {
+    font-size: 0.92rem;
+  }
+
+  .readout-section-title-group p {
+    font-size: 0.74rem;
+  }
+
+  .readout-table-wrapper {
+    margin-bottom: 8px;
+    min-height: 100px;
+  }
+
+  .readout-data-table th,
+  .readout-data-table td {
+    padding: 7px 10px;
+    font-size: 0.78rem;
+  }
+
+  .readout-bottom-bar {
+    gap: 8px;
+  }
+
+  .readout-bottom-tip {
+    font-size: 0.76rem;
+    min-width: 180px;
+  }
+
+  .readout-stat-grid {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .readout-stat-card {
+    padding: 10px 12px;
+  }
+
+  .readout-stat-value {
+    font-size: 1.25rem;
+  }
+
+  .readout-range-card {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+
+  .readout-range-title {
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+  }
+
+  .readout-preset-btn {
+    padding: 5px 10px;
+    font-size: 0.76rem;
+  }
 }

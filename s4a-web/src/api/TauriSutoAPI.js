@@ -294,6 +294,42 @@ export const TauriSutoAPI = {
   },
 
   /**
+   * Query device for list of recorded measurement session files stored in device memory
+   * @returns {Promise<Array<{fileName: string, startTime: string, endTime: string, channelsCount: number, samplesPerChannel: number, sampleRate: number, description: string, status: number}>>}
+   */
+  async getLoggerFiles() {
+    if (!hasTauri()) {
+      return [];
+    }
+    try {
+      const res = await invoke('suto_get_logger_files');
+      if (!Array.isArray(res)) return [];
+      const map = new Map();
+      res.forEach((f) => {
+        const item = {
+          fileName: f.file_name,
+          startTime: f.start_time,
+          endTime: f.end_time,
+          channelsCount: f.channels_count,
+          samplesPerChannel: f.samples_per_channel,
+          sampleRate: f.sample_rate,
+          description: f.description,
+          status: f.status,
+          isRecording: Boolean((f.status & 1) !== 0 || f.is_recording),
+        };
+        const existing = map.get(item.fileName);
+        if (!existing || (item.samplesPerChannel || 0) >= (existing.samplesPerChannel || 0)) {
+          map.set(item.fileName, item);
+        }
+      });
+      return Array.from(map.values());
+    } catch (e) {
+      console.warn('[TauriSutoAPI] getLoggerFiles failed:', e);
+      return [];
+    }
+  },
+
+  /**
    * Query device for list of screenshot images stored in device memory
    * @returns {Promise<Array<{name: string, size: number, index: number}>>}
    */

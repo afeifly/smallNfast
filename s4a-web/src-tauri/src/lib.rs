@@ -25,6 +25,7 @@ pub fn run() {
             suto::suto_get_values,
             suto::suto_get_system_info,
             suto::suto_get_logger_status,
+            suto::suto_get_logger_files,
             suto::suto_get_screenshots,
             suto::suto_read_screenshot,
             suto::suto_send_command,

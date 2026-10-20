@@ -56,9 +56,27 @@ pub const ACT_GET_ANALYZED_MEASUREMENT_VALUE: u8 = 0x01;
 pub const ACT_GSET_LOG_EN: u8 = 0x01;
 pub const ACT_GET_LOG_RECORDED_NUM: u8 = 0x02;
 pub const ACT_GET_LOG_START_END_TIME: u8 = 0x03;
+pub const ACT_LOGGER_REQUEST_ACCESS_CODE: u8 = 0x04;
 pub const ACT_GET_LOG_CONTINUALLY: u8 = 0x05;
+pub const ACT_LOGGER_GET_FILE_LIST: u8 = 0x07;
+pub const ACT_LOGGER_READING_FINISHED: u8 = 0x0C;
 pub const ACT_GET_LOG_PACKAGES_INTERVAL: u8 = 0x0C;
+pub const ACT_LOGGER_GET_FILE_NUMBER: u8 = 0x12;
+pub const ACT_LOGGER_GET_CSD_FILE_NUMBER: u8 = 0x24;
 pub const ACT_RTC_GET_TIME: u8 = 0x02;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggerFileInfo {
+    pub file_name: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub channels_count: u32,
+    pub samples_per_channel: u32,
+    pub sample_rate: u32,
+    pub description: String,
+    pub status: u32,
+    pub is_recording: bool,
+}
 
 // ---- DS310 New Protocol Command Bytes ----
 pub const CMD_DISCOVERY_ASCII: u8 = 0x41; // 'A'

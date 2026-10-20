@@ -233,6 +233,11 @@
   height: 100%;
   width: 100%;
   position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Landing Welcome Page styling */

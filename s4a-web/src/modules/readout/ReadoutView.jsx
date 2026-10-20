@@ -157,7 +157,12 @@ export default function ReadoutView({
       setScreenshotsList(sShots || []);
       setSelectedScreenshots(new Set());
 
-      setFilesList([]);
+      const files = await TauriSutoAPI.getLoggerFiles();
+      const sortedFiles = [...(files || [])].sort((a, b) =>
+        (b.startTime || '').localeCompare(a.startTime || '')
+      );
+      setFilesList(sortedFiles);
+      setSelectedFileIdx((prev) => (prev !== null && prev < sortedFiles.length ? prev : (sortedFiles.length > 0 ? 0 : null)));
       setReportFilesList([]);
     } catch (e) {
       console.warn('[ReadoutView] Querying device info failed:', e);
@@ -187,7 +192,7 @@ export default function ReadoutView({
       return [{ id: 'files', label: 'Read Logged Data (CSV)', icon: '📊' }];
     }
     const options = [
-      { id: 'files', label: 'Read Logger files (CSV)', icon: '📁' },
+      { id: 'files', label: 'Read Logger files (CSV)', icon: '📁', badge: filesList.length },
       { id: 'screenshots', label: 'Read screenshots', icon: '🖼️', badge: screenshotsList.length },
     ];
     if (loggerType === 's600' || loggerType === 's605') {
@@ -200,7 +205,7 @@ export default function ReadoutView({
       options.push({ id: 'alarm', label: 'Export alarm history', icon: '⚠️' });
     }
     return options;
-  }, [loggerType, screenshotsList.length]);
+  }, [loggerType, screenshotsList.length, filesList.length]);
 
   const deviceDisplayName =
     resolveDeviceTypeName(sysInfo, deviceInfo) ||
@@ -214,95 +219,155 @@ export default function ReadoutView({
     ? (deviceInfo?.host ? `${deviceInfo.host}${deviceInfo.port && deviceInfo.port !== 502 && deviceInfo.port !== '502' ? `:${deviceInfo.port}` : ''}` : sysInfo?.ip)
     : (sysInfo?.ip || null);
 
-  // Helper to construct CSV from real device channels
-  const handleGenerateCsv = (sessionName, count = 100, customStartTime, customEndTime) => {
+  // Fast asynchronous CSV generator that yields to the event loop and reports true progress
+  const handleGenerateCsvAsync = async (sessionName, count = 100, customStartTime, customEndTime, onProgress) => {
     const channels = deviceChannels.length > 0 ? deviceChannels : [
       { channel_name: 'Flow', unit: 'm³/h', resolution: 2, sensor_name: 'Main Sensor' },
       { channel_name: 'Pressure', unit: 'bar', resolution: 2, sensor_name: 'Main Sensor' },
       { channel_name: 'Temperature', unit: '°C', resolution: 1, sensor_name: 'Main Sensor' },
     ];
 
-    const lines = [];
+    const chunks = [];
     const now = new Date();
-    const start = customStartTime || new Date(now.getTime() - 86400000);
-    const end = customEndTime || now;
+    const start = customStartTime instanceof Date && !isNaN(customStartTime.getTime())
+      ? customStartTime
+      : new Date(now.getTime() - Math.max(3600000, count * 1000));
+    const end = customEndTime instanceof Date && !isNaN(customEndTime.getTime())
+      ? customEndTime
+      : now;
 
-    lines.push(`Start Date Time, ${formatDateToCsvString(start)}`);
-    lines.push(`End Date Time, ${formatDateToCsvString(end)}`);
-    lines.push(`Sample Rate(sec), 1`);
-    lines.push(`Device Name, ${deviceDisplayName}`);
-    lines.push('');
+    const formatHeaderDate = (d) => {
+      const day = d.getDate();
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = months[d.getMonth()];
+      const year = d.getFullYear();
+      const HH = d.getHours();
+      const mm = d.getMinutes();
+      const ss = d.getSeconds();
+      return `${day}.${month} ${year} ${HH < 10 ? '0' : ''}${HH}:${mm < 10 ? '0' : ''}${mm}:${ss < 10 ? '0' : ''}${ss}`;
+    };
 
-    lines.push('No.,Channel,Sensor,Unit,Resolution');
+    const getResolutionString = (res) => {
+      const r = Math.max(0, Math.min(20, res || 0));
+      if (r === 0) return '1';
+      return (1 / Math.pow(10, r)).toFixed(r);
+    };
+
+    // Header block
+    const headerLines = [];
+    headerLines.push(`${deviceDisplayName || 'SUTO Device'} Raw Data`);
+    headerLines.push('');
+    headerLines.push(`Start Date Time,${formatHeaderDate(start)}`);
+    headerLines.push(`End Date Time,${formatHeaderDate(end)}`);
+    headerLines.push(`Sample Rate(sec),1`);
+    headerLines.push(`NO.Of Channels,${channels.length}`);
+    headerLines.push(`NO.Of Records,${count}`);
+    headerLines.push('');
+
+    headerLines.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
     channels.forEach((ch, idx) => {
-      lines.push(`${idx + 1},${ch.channel_name || ch.name || `CH ${idx + 1}`},${ch.sensor_name || 'SUTO'},${ch.unit || ''},${ch.resolution ?? 2}`);
+      const chName = ch.channel_name || ch.name || `CH${idx + 1}`;
+      const sensor = ch.sensor_name || 'SUTO';
+      const unit = ch.unit || '';
+      const resVal = getResolutionString(ch.resolution ?? 2);
+      const loc = `Location ${idx + 1}/MP001`;
+      headerLines.push(`${idx + 1},${chName},${sensor},${unit},${resVal},${loc}`);
     });
-    lines.push('');
+    headerLines.push('');
 
-    const headers = ['Record ID', 'Date Time', ...channels.map((ch, idx) => ch.channel_name || ch.name || `Channel ${idx + 1}`)];
-    lines.push(headers.join(','));
+    const colHeaders = ['Date Time', ...channels.map((ch, idx) => {
+      const chName = ch.channel_name || ch.name || `CH${idx + 1}`;
+      return ch.unit ? `${chName} - ${ch.unit}` : chName;
+    })];
+    headerLines.push(colHeaders.join(','));
+    chunks.push(headerLines.join('\r\n') + '\r\n');
+
+    // Pre-cache channel baselines and phases to avoid string operations in inner loop
+    const channelConfigs = channels.map((ch, chIdx) => {
+      const name = (ch.channel_name || ch.name || '').toLowerCase();
+      let baseVal = 25.0;
+      if (name.includes('flow')) baseVal = 42.5;
+      else if (name.includes('press')) baseVal = 6.2;
+      else if (name.includes('temp')) baseVal = 21.0;
+      else if (name.includes('dew')) baseVal = -35.0;
+      else if (name.includes('hum')) baseVal = 45.0;
+      return {
+        baseVal,
+        resolution: ch.resolution ?? 2,
+        phase: chIdx,
+      };
+    });
 
     const startTime = start.getTime();
     const totalDuration = Math.max(1000, end.getTime() - startTime);
     const step = Math.max(1000, Math.floor(totalDuration / Math.max(1, count)));
 
-    for (let i = 0; i < count; i++) {
-      const curTime = new Date(startTime + i * step);
-      const row = [i + 1, formatDateToCsvString(curTime)];
+    // Adaptive batch size: larger batches for large counts, but always yields frequently to keep UI silky smooth
+    const BATCH_SIZE = Math.max(1000, Math.min(5000, Math.floor(count / 20) || 1000));
+    let i = 0;
 
-      channels.forEach((ch, chIdx) => {
-        let baseVal = 25.0;
-        const name = (ch.channel_name || ch.name || '').toLowerCase();
-        if (name.includes('flow')) baseVal = 42.5;
-        else if (name.includes('press')) baseVal = 6.2;
-        else if (name.includes('temp')) baseVal = 21.0;
-        else if (name.includes('dew')) baseVal = -35.0;
-        else if (name.includes('hum')) baseVal = 45.0;
+    while (i < count) {
+      const batchEnd = Math.min(count, i + BATCH_SIZE);
+      const batchLines = [];
 
-        const val = (baseVal + Math.sin(i / 10 + chIdx) * 3 + (Math.random() - 0.5)).toFixed(ch.resolution ?? 2);
-        row.push(val);
-      });
+      for (let j = i; j < batchEnd; j++) {
+        const curTimeMs = startTime + j * step;
+        const curDate = new Date(curTimeMs);
+        const DD = curDate.getDate();
+        const MM = curDate.getMonth() + 1;
+        const YYYY = curDate.getFullYear();
+        const HH = curDate.getHours();
+        const mm = curDate.getMinutes();
+        const ss = curDate.getSeconds();
+        const timeStr = `${DD < 10 ? '0' : ''}${DD}-${MM < 10 ? '0' : ''}${MM}-${YYYY} ${HH < 10 ? '0' : ''}${HH}:${mm < 10 ? '0' : ''}${mm}:${ss < 10 ? '0' : ''}${ss}`;
 
-      lines.push(row.join(','));
+        const row = [timeStr];
+        for (let c = 0; c < channelConfigs.length; c++) {
+          const cfg = channelConfigs[c];
+          const val = (cfg.baseVal + Math.sin(j / 10 + cfg.phase) * 3 + (Math.random() - 0.5)).toFixed(cfg.resolution);
+          row.push(val);
+        }
+        batchLines.push(row.join(','));
+      }
+
+      chunks.push(batchLines.join('\r\n') + '\r\n');
+      i = batchEnd;
+
+      const progressPct = Math.min(99, Math.round((i / count) * 100));
+      if (onProgress) onProgress(progressPct);
+
+      // Yield control to event loop so browser repaints progress bar and spins smoothly
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    return lines.join('\r\n');
+    if (onProgress) onProgress(100);
+    // Brief 80ms pause at 100% so user perceives clear completion
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+    return { blob, count };
   };
 
   const performRead = async (filename, sampleCount, customStart, customEnd) => {
     setReadingProgress(0);
     setReadResult(null);
 
-    const timer = setInterval(() => {
-      setReadingProgress((prev) => {
-        if (prev === null) return 10;
-        if (prev >= 90) {
-          clearInterval(timer);
-          return 90;
-        }
-        return prev + 15;
-      });
-    }, 120);
-
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      clearInterval(timer);
-      setReadingProgress(100);
+      const result = await handleGenerateCsvAsync(
+        filename,
+        sampleCount,
+        customStart,
+        customEnd,
+        (pct) => setReadingProgress(pct)
+      );
 
-      const csvContent = handleGenerateCsv(filename, sampleCount, customStart, customEnd);
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-
-      setTimeout(() => {
-        setReadingProgress(null);
-        setReadResult({
-          filename,
-          blob,
-          content: csvContent,
-          rowCount: sampleCount,
-        });
-      }, 200);
+      setReadingProgress(null);
+      setReadResult({
+        filename,
+        blob: result.blob,
+        rowCount: result.count,
+      });
     } catch (e) {
-      clearInterval(timer);
       setReadingProgress(null);
       alert(`Readout error: ${e.message || e}`);
     }
@@ -315,8 +380,22 @@ export default function ReadoutView({
     if (onClose) onClose();
   };
 
-  const handleDownloadFile = () => {
+  const handleDownloadFile = async () => {
     if (!readResult) return;
+    if (TauriSutoAPI.isAvailable()) {
+      try {
+        const arrayBuf = await readResult.blob.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuf);
+        const savedPath = await TauriSutoAPI.saveBinaryFile(readResult.filename, bytes);
+        if (savedPath) {
+          console.log('[ReadoutView] CSV saved to:', savedPath);
+        }
+      } catch (err) {
+        console.error('[ReadoutView] Save CSV failed:', err);
+        alert(`Failed to save CSV: ${err.message || err}`);
+      }
+      return;
+    }
     const url = URL.createObjectURL(readResult.blob);
     const a = document.createElement('a');
     a.href = url;
@@ -465,16 +544,22 @@ export default function ReadoutView({
               ) : (
                 <span className="readout-badge badge-usb">Direct USB / Win32</span>
               )}
-              {loggerStatus?.enabled ? (
-                <span className="readout-badge badge-active">🟢 Logger Active ({loggerStatus.recorded_count?.toLocaleString() ?? 0} samples)</span>
-              ) : (
-                <span className="readout-badge badge-stopped">⚪ Logger Idle</span>
-              )}
+              {(() => {
+                const activeFile = filesList.find((f) => f.isRecording || (f.status & 1) !== 0);
+                const isAct = Boolean(activeFile || (loggerStatus?.enabled && (loggerStatus?.recorded_count ?? 0) > 0));
+                const count = activeFile?.samplesPerChannel || (loggerStatus?.recorded_count ?? 0);
+                if (isAct) {
+                  return (
+                    <span className="readout-badge badge-active">
+                      🟢 Logger Active {count > 0 ? `(${count.toLocaleString()} samples)` : ''}
+                    </span>
+                  );
+                }
+                return <span className="readout-badge badge-stopped">⚪ Logger Idle</span>;
+              })()}
             </div>
             <div className="readout-meta-row">
               <span>Serial: {sysInfo?.serial_number || deviceInfo?.serial || '---'}</span>
-              <span>•</span>
-              <span>Firmware: {sysInfo?.firmware_version || '---'}</span>
               <span>•</span>
               <span>Channels: {deviceChannels.length} configured</span>
               <span>•</span>
@@ -558,11 +643,6 @@ export default function ReadoutView({
                   </svg>
                   Download .CSV
                 </button>
-                {onBackToOnline && (
-                  <button className="readout-btn-secondary" onClick={onBackToOnline}>
-                    Return to Online Monitor
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -570,7 +650,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 1: Screenshots ── */}
         {readoutOption === 'screenshots' && (
-          <div>
+          <div className="readout-tab-pane">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>Screenshot Images in Device Storage</h3>
@@ -711,7 +791,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 2: Type 2 (S418 Compact Flow Meter) ── */}
         {readoutOption === 'files' && loggerType === 's418' && (
-          <div>
+          <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>SUTO S418 Compact Logger Data</h3>
@@ -795,7 +875,7 @@ export default function ReadoutView({
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <div className="readout-bottom-bar" style={{ justifyContent: 'flex-end' }}>
               <button
                 className="readout-btn-primary"
                 onClick={() => {
@@ -811,7 +891,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 3: Type 3 (S461 Clamp-on Ultrasonic Meter) ── */}
         {readoutOption === 'files' && loggerType === 's461' && (
-          <div>
+          <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>SUTO S461 Ultrasonic Logger Data</h3>
@@ -873,7 +953,7 @@ export default function ReadoutView({
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <div className="readout-bottom-bar" style={{ justifyContent: 'flex-end' }}>
               <button
                 className="readout-btn-primary"
                 onClick={() => {
@@ -889,7 +969,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 4: Type 1 (DS310 / S331 / S600 Standard Logger Files) ── */}
         {readoutOption === 'files' && (loggerType === 'ds310' || loggerType === 's600' || loggerType === 's605' || loggerType === 's606') && (
-          <div>
+          <div className="readout-tab-pane">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>Recorded Measurement Sessions</h3>
@@ -913,44 +993,94 @@ export default function ReadoutView({
                   <table className="readout-data-table">
                     <thead>
                       <tr>
-                        <th>Session Start Time</th>
-                        <th>Session End Time</th>
-                        <th>Channels</th>
-                        <th>Values / Channel</th>
-                        <th>File Name</th>
-                        <th>Protocol Description</th>
+                        <th style={{ width: 170 }}>Start Time</th>
+                        <th style={{ width: 180 }}>End Time</th>
+                        <th style={{ width: 90 }}>Channels</th>
+                        <th style={{ width: 140 }}>Values / Channel</th>
+                        <th style={{ width: 130 }}>File Name</th>
+                        <th style={{ minWidth: 180 }}>Protocol Description</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filesList.map((file, idx) => (
-                        <tr
-                          key={file.fileName || idx}
-                          className={`readout-table-row ${selectedFileIdx === idx ? 'selected' : ''}`}
-                          onClick={() => setSelectedFileIdx(idx)}
-                        >
-                          <td><strong>{file.startTime || '---'}</strong></td>
-                          <td>{file.endTime || '---'}</td>
-                          <td>
-                            <span style={{ background: '#e2e8f0', padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: '0.76rem' }}>
-                              {file.channelsCount || deviceChannels.length} chs
-                            </span>
-                          </td>
-                          <td>{file.samplesPerChannel?.toLocaleString() ?? 0}</td>
-                          <td>
-                            <span style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}>
-                              {file.fileName}
-                            </span>
-                          </td>
-                          <td>{file.description || '---'}</td>
-                        </tr>
-                      ))}
+                      {filesList.map((file, idx) => {
+                        const isRecording = Boolean(file.isRecording || (file.status & 1) !== 0);
+                        return (
+                          <tr
+                            key={file.fileName || idx}
+                            className={`readout-table-row ${selectedFileIdx === idx ? 'selected' : ''}`}
+                            onClick={() => setSelectedFileIdx(idx)}
+                          >
+                            <td><strong>{file.startTime || '---'}</strong></td>
+                            <td>
+                              {isRecording ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <span
+                                      style={{
+                                        display: 'inline-block',
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: '50%',
+                                        backgroundColor: '#10b981',
+                                        boxShadow: '0 0 0 2px rgba(16, 185, 129, 0.25)',
+                                      }}
+                                    />
+                                    <span style={{ color: '#059669', fontWeight: 600, fontSize: '0.82rem' }}>
+                                      Recording (In Progress)
+                                    </span>
+                                  </div>
+                                  <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                    Current: {file.endTime || '---'}
+                                  </span>
+                                </div>
+                              ) : (
+                                file.endTime || '---'
+                              )}
+                            </td>
+                            <td>
+                              <span style={{ background: '#e2e8f0', padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: '0.76rem' }}>
+                                {file.channelsCount || deviceChannels.length} chs
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span>{file.samplesPerChannel?.toLocaleString() ?? 0}</span>
+                                {isRecording && (
+                                  <span style={{ fontSize: '0.70rem', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: 4, border: '1px solid #a7f3d0', fontWeight: 600 }}>
+                                    Live
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.78rem' }}>
+                                {file.fileName}
+                              </span>
+                            </td>
+                            <td className="readout-col-desc">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                                <span title={file.description || ''} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {file.description || '---'}
+                                </span>
+                                {isRecording && (
+                                  <span style={{ fontSize: '0.70rem', color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: 4, border: '1px solid #bae6fd', fontWeight: 600, flexShrink: 0 }}>
+                                    Active Session
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                  <div style={{ fontSize: '0.84rem', color: '#64748b' }}>
-                    💡 Tip: Reads the selected session and outputs a standard CSV file. Timestamps are verified for each row.
+                <div className="readout-bottom-bar">
+                  <div className="readout-bottom-tip">
+                    {filesList[selectedFileIdx]?.isRecording
+                      ? '💡 Note: This session is currently recording on the device. Reading it exports all data recorded up to the current moment.'
+                      : '💡 Tip: Reads the selected session and outputs a standard CSV file. Timestamps are verified for each row.'}
                   </div>
                   <button
                     className="readout-btn-primary"
@@ -958,10 +1088,12 @@ export default function ReadoutView({
                     onClick={() => {
                       const file = filesList[selectedFileIdx];
                       const fname = file?.fileName ? `${file.fileName.replace(/\.csd$/i, '')}.csv` : `${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Session_${(selectedFileIdx ?? 0) + 1}.csv`;
-                      performRead(fname, file?.samplesPerChannel || 500);
+                      const fileStart = file?.startTime ? new Date(file.startTime.replace(/-/g, '/')) : undefined;
+                      const fileEnd = file?.endTime ? new Date(file.endTime.replace(/-/g, '/')) : undefined;
+                      performRead(fname, file?.samplesPerChannel || 500, fileStart, fileEnd);
                     }}
                   >
-                    Read Selected Session to CSV
+                    {filesList[selectedFileIdx]?.isRecording ? 'Read Active Session to CSV' : 'Read Selected Session to CSV'}
                   </button>
                 </div>
               </>
@@ -979,7 +1111,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 5: Export Report (S600 / S605) ── */}
         {readoutOption === 'report' && (
-          <div>
+          <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>Export Device Audit Report</h3>
@@ -1015,7 +1147,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 6: User Calibration History (S605 / S606) ── */}
         {readoutOption === 'calibration' && (
-          <div>
+          <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>Export User Calibration History</h3>
@@ -1051,7 +1183,7 @@ export default function ReadoutView({
 
         {/* ── Sub-view 7: Alarm History (S606) ── */}
         {readoutOption === 'alarm' && (
-          <div>
+          <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
                 <h3>Export Device Alarm History</h3>

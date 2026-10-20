@@ -1,6 +1,6 @@
 //! SUTO Diagnostic & Communication Logger
 //!
-//! Provides in-memory ring-buffer logging, dedicated file logging (suto_usb.log),
+//! Provides in-memory ring-buffer logging, dedicated file logging (app_log.log),
 //! and bridge to standard Rust `log` crate. Exposes log entries to the UI via Tauri IPC.
 
 use serde::{Deserialize, Serialize};
@@ -33,24 +33,24 @@ static LOG_FILE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     let candidate = match std::env::current_exe() {
         Ok(mut p) => {
             p.pop();
-            p.push("suto_usb.log");
+            p.push("app_log.log");
             p
         }
-        Err(_) => PathBuf::from("suto_usb.log"),
+        Err(_) => PathBuf::from("app_log.log"),
     };
 
     // Test write permission, otherwise fall back to temp dir
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&candidate) {
-        let _ = writeln!(f, "\n=== SUTO USB LOG SESSION STARTED {} ===", get_iso_timestamp());
+        let _ = writeln!(f, "\n=== APP LOG SESSION STARTED {} ===", get_iso_timestamp());
         candidate
     } else {
         let mut tmp = std::env::temp_dir();
-        tmp.push("suto_usb.log");
+        tmp.push("app_log.log");
         let _ = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&tmp)
-            .and_then(|mut f| writeln!(f, "\n=== SUTO USB LOG SESSION STARTED {} ===", get_iso_timestamp()));
+            .and_then(|mut f| writeln!(f, "\n=== APP LOG SESSION STARTED {} ===", get_iso_timestamp()));
         tmp
     }
 });

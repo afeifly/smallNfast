@@ -43,7 +43,7 @@ describe('App', () => {
     });
   });
 
-  it('opens Readout modal and verifies pausing polling and navigation', async () => {
+  it('switches to dedicated Readout page and verifies navigation', async () => {
     render(<App />);
 
     await waitFor(() => {
@@ -58,18 +58,23 @@ describe('App', () => {
       expect(screen.getByText('Online View')).toBeDefined();
     });
 
-    // Click Readout button in header
-    const readoutBtn = screen.getByText('Readout');
-    fireEvent.click(readoutBtn);
+    // Click Readout tab in header
+    const readoutTab = screen.getAllByText('Readout').find((el) => el.classList.contains('tab-btn'));
+    fireEvent.click(readoutTab);
 
-    // Modal should be open (Readout)
+    // Dedicated Readout page is now displayed
     await waitFor(() => {
+      expect(document.querySelector('.readout-view-container')).toBeDefined();
       expect(document.querySelector('.read-logger-title')?.textContent).toBe('Readout');
     });
 
-    // Close modal
-    const closeBtn = screen.getByTitle('Close');
-    fireEvent.click(closeBtn);
+    // Return to Online View via the top header tab
+    const onlineTab = screen.getByText('Online View');
+    fireEvent.click(onlineTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('Disconnect')).toBeDefined();
+    });
 
     // Return to Welcome page
     const backBtn = screen.getByTitle('Back to Home');

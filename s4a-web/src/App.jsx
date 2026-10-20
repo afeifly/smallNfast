@@ -11,7 +11,7 @@ import Loading from './components/loading/Loading';
 import DataModifierModal from './modules/modifier/DataModifierModal';
 import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
-import ReadLoggerModal from './components/ReadLoggerModal';
+import ReadoutView from './modules/readout/ReadoutView';
 import './App.css';
 import { isDesktop, getRuntimePlatform } from './util/platform';
 
@@ -124,7 +124,6 @@ function App() {
   const [deviceInfo, setDeviceInfo] = React.useState(null);
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
-  const [showReadLoggerModal, setShowReadLoggerModal] = React.useState(false);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -562,22 +561,9 @@ function App() {
               Online View
             </button>
             <button
-              className="tab-btn readout-tab-btn"
-              onClick={() => setShowReadLoggerModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'rgba(37, 99, 235, 0.08)',
-                color: '#2563eb',
-                borderColor: '#93c5fd',
-                fontWeight: 600,
-              }}
-              title="Readout"
+              className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
+              onClick={() => setActiveTab('readout')}
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
               Readout
             </button>
           </div>
@@ -806,13 +792,21 @@ function App() {
             </div>
           </div>
         ) : appMode === 'monitor' ? (
-          /* Monitor Mode: Online View (polling automatically stops during Readout) */
+          /* Monitor Mode: Online View or dedicated Readout View */
           <div className="view-content-wrapper">
-            <OnlineView
-              onDisconnect={handleDisconnectMonitor}
-              deviceInfo={deviceInfo}
-              isPaused={showReadLoggerModal}
-            />
+            {activeTab === 'readout' ? (
+              <ReadoutView
+                deviceInfo={deviceInfo}
+                onAnalyzeCsv={handleAnalyzeLoggerCsv}
+                onBackToOnline={() => setActiveTab('online')}
+              />
+            ) : (
+              <OnlineView
+                onDisconnect={handleDisconnectMonitor}
+                deviceInfo={deviceInfo}
+                isPaused={false}
+              />
+            )}
           </div>
         ) : !fileLoaded ? (
           /* File Analyze Mode with no file loaded yet */
@@ -1439,14 +1433,6 @@ function App() {
         isOpen={showConnectModal}
         onClose={() => setShowConnectModal(false)}
         onConnected={handleDeviceConnected}
-      />
-
-      {/* SUTO Read Logger Dialog (CSV Export for DS310, S418, S461) */}
-      <ReadLoggerModal
-        isOpen={showReadLoggerModal}
-        onClose={() => setShowReadLoggerModal(false)}
-        deviceInfo={deviceInfo}
-        onAnalyzeCsv={handleAnalyzeLoggerCsv}
       />
     </div>
   );

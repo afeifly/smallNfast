@@ -184,6 +184,7 @@ export const TauriSutoAPI = {
         values = await invoke('suto_get_values');
       }
       const valArray = Array.isArray(values) ? values : [];
+      const now = Date.now();
       const result = valArray.map((val) => {
         let history = historyBuffer.get(val.id);
         if (!history) {
@@ -368,10 +369,10 @@ export const TauriSutoAPI = {
     return await invoke('suto_clear_logs');
   },
 
-  /** Get disk path to the suto_usb.log file */
+  /** Get disk path to the app_log.log file */
   async getLogFilePath() {
     if (!hasTauri()) {
-      return './suto_usb.log (Browser Mock)';
+      return './app_log.log (Browser Mock)';
     }
     return await invoke('suto_get_log_file_path');
   },

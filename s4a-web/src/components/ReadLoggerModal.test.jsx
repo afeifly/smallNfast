@@ -169,13 +169,12 @@ describe('ReadLoggerModal', () => {
     await waitFor(() => {
       expect(screen.getByText(/12_30_05\.BMP/)).toBeDefined();
       expect(screen.getByText(/14_15_22\.BMP/)).toBeDefined();
-      expect(screen.getAllByText('Preview').length).toBe(2);
-      expect(screen.getAllByText('Download').length).toBe(2);
+      expect(screen.getAllByText('Preview & download').length).toBe(2);
     });
 
-    // Click download on first item
-    const downloadBtns = screen.getAllByText('Download');
-    fireEvent.click(downloadBtns[0]);
+    // Click preview & download on first item
+    const actionBtns = screen.getAllByText('Preview & download');
+    fireEvent.click(actionBtns[0]);
     expect(readSpy).toHaveBeenCalledWith('12_30_05.BMP', 153600);
   });
 });

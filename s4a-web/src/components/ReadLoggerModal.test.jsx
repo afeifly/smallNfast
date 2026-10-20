@@ -172,9 +172,10 @@ describe('ReadLoggerModal', () => {
       expect(screen.getAllByText('Preview & download').length).toBe(2);
     });
 
-    // Click preview & download on first item
-    const actionBtns = screen.getAllByText('Preview & download');
-    fireEvent.click(actionBtns[0]);
+    // Click preview & download on 12_30_05.BMP item
+    const row = screen.getByText(/12_30_05\.BMP/).closest('tr');
+    const previewBtn = row.querySelector('button');
+    fireEvent.click(previewBtn);
     expect(readSpy).toHaveBeenCalledWith('12_30_05.BMP', 153600);
   });
 });

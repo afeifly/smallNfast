@@ -49,7 +49,19 @@ export const TauriSutoAPI = {
       throw new Error('Direct USB connection requires running in the S4A Desktop App with SUTO hardware connected via USB.');
     }
     const res = await invoke('suto_connect_usb', { path: devicePath });
-    return { address: res, transport: 'USB' };
+    let sInfo = null;
+    try {
+      sInfo = await invoke('suto_get_system_info');
+    } catch (_) {}
+    return {
+      address: res,
+      transport: 'USB',
+      deviceId: sInfo?.device_id,
+      device_id: sInfo?.device_id,
+      name: sInfo?.device_name,
+      device: sInfo?.device_name,
+      serial: sInfo?.serial_number,
+    };
   },
 
   /** Connect to SUTO device via Ethernet TCP Socket */
@@ -60,7 +72,21 @@ export const TauriSutoAPI = {
       throw new Error('Ethernet TCP connection requires running in the S4A Desktop App.');
     }
     const res = await invoke('suto_connect_tcp', { host, port: parseInt(port, 10) });
-    return { address: res, host, port, transport: 'TCP' };
+    let sInfo = null;
+    try {
+      sInfo = await invoke('suto_get_system_info');
+    } catch (_) {}
+    return {
+      address: res,
+      host,
+      port,
+      transport: 'TCP',
+      deviceId: sInfo?.device_id,
+      device_id: sInfo?.device_id,
+      name: sInfo?.device_name,
+      device: sInfo?.device_name,
+      serial: sInfo?.serial_number,
+    };
   },
 
   /** Connect to SUTO device via Web Bluetooth (BLE) */
@@ -352,6 +378,32 @@ export const TauriSutoAPI = {
     }
     const bytes = await invoke('suto_read_screenshot', { name, size });
     return new Uint8Array(bytes);
+  },
+
+  /**
+   * Query S600 CSD sessions for report generation
+   * @returns {Promise<Array<{id: number, name: string, size: number, date: number, date_str: string}>>}
+   */
+  async get600CsdFiles() {
+    if (!hasTauri()) {
+      return [];
+    }
+    return await invoke('suto_get_600_csd_files');
+  },
+
+  /**
+   * Generate and download ISO 8573 PDF report from an S600 CSD session
+   * @param {number} id
+   * @param {string} name
+   * @param {number} size
+   * @param {number} date
+   * @returns {Promise<{file_name: string, file_size: number, file_date: number, pdf_bytes: Array<number>}>}
+   */
+  async generate600Report(id, name, size, date) {
+    if (!hasTauri()) {
+      throw new Error('generate600Report requires Tauri desktop runtime with connected hardware.');
+    }
+    return await invoke('suto_generate_600_report', { id, name, size, date });
   },
 
   /**

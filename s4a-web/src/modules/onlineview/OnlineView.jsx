@@ -13,9 +13,36 @@ function formatValue(val, resolution = 2) {
 
 import { resolveDeviceTypeName } from '../../util/platform';
 
+// Session cache for preserving sensor-channel structure across view navigation
+let _onlineSessionCache = {
+  deviceKey: null,
+  hasFetched: false,
+  channels: [],
+  sysInfo: null,
+};
+
+export function clearOnlineCache() {
+  _onlineSessionCache = {
+    deviceKey: null,
+    hasFetched: false,
+    channels: [],
+    sysInfo: null,
+  };
+}
+
+export function getOnlineCache() {
+  return _onlineSessionCache;
+}
+
 export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false }) {
-  const [channels, setChannels] = useState([]);
-  const [sysInfo, setSysInfo] = useState(null);
+  const deviceKey = deviceInfo
+    ? `${deviceInfo.transport || ''}_${deviceInfo.device || ''}_${deviceInfo.host || ''}_${deviceInfo.port || ''}_${deviceInfo.address ?? ''}`
+    : 'default_device';
+
+  const hasCachedData = _onlineSessionCache.deviceKey === deviceKey && _onlineSessionCache.hasFetched;
+
+  const [channels, setChannels] = useState(() => (hasCachedData ? _onlineSessionCache.channels : []));
+  const [sysInfo, setSysInfo] = useState(() => (hasCachedData ? _onlineSessionCache.sysInfo : null));
   const [isLive, setIsLive] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
@@ -50,7 +77,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
       if (data && data.length) {
         setChannels((prevChannels) => {
           const valMap = new Map(data.map((d) => [d.channel_id, d]));
-          return prevChannels.map((ch) => {
+          const updated = prevChannels.map((ch) => {
             const v = valMap.get(ch.channel_id);
             if (v) {
               return {
@@ -63,6 +90,10 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
             }
             return ch;
           });
+          if (_onlineSessionCache.deviceKey === deviceKey) {
+            _onlineSessionCache.channels = updated;
+          }
+          return updated;
         });
         setLastUpdate(new Date());
         setError(null);
@@ -74,30 +105,49 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     } finally {
       isFetchingRef.current = false;
     }
-  }, []);
+  }, [deviceKey]);
 
-  const loadInitialData = useCallback(async () => {
+  const loadInitialData = useCallback(async (force = false) => {
+    // If we already have the sensor-channel structure cached for this device, keep it and do not re-query
+    if (!force && _onlineSessionCache.deviceKey === deviceKey && _onlineSessionCache.hasFetched) {
+      setChannels(_onlineSessionCache.channels);
+      if (_onlineSessionCache.sysInfo) {
+        setSysInfo(_onlineSessionCache.sysInfo);
+      }
+      return;
+    }
+
     try {
       const chs = await TauriSutoAPI.getChannels();
       if (!isMountedRef.current) return;
-      setChannels(chs || []);
+      const safeChs = Array.isArray(chs) ? chs : [];
+      setChannels(safeChs);
       setLastUpdate(new Date());
 
       // Query system info as non-blocking enhancement
+      let fetchedSysInfo = null;
       try {
-        const info = await TauriSutoAPI.getSystemInfo();
+        fetchedSysInfo = await TauriSutoAPI.getSystemInfo();
         if (isMountedRef.current) {
-          setSysInfo(info || null);
+          setSysInfo(fetchedSysInfo || null);
         }
       } catch (e) {
         console.warn('[OnlineView] System info not available:', e);
       }
+
+      // Store in session cache
+      _onlineSessionCache = {
+        deviceKey,
+        hasFetched: true,
+        channels: safeChs,
+        sysInfo: fetchedSysInfo || null,
+      };
     } catch (err) {
       if (isMountedRef.current) {
         setError(err?.message || 'Failed to load device information');
       }
     }
-  }, []);
+  }, [deviceKey]);
 
   useEffect(() => {
     loadInitialData();
@@ -132,7 +182,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
   };
 
   const handleRescan = async () => {
-    await loadInitialData();
+    await loadInitialData(true);
     await fetchLiveMeasurements();
   };
 

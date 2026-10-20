@@ -16,8 +16,13 @@ describe('ReadoutView Dedicated Page Component', () => {
     expect(resolveLoggerType({ device: 'S461 Flow Meter' }, null)).toBe('s461');
     expect(resolveLoggerType({ device: 'S463 Ultrasonic' }, null)).toBe('s461');
     expect(resolveLoggerType({ device: 'SUTO S600' }, null)).toBe('s600');
+    expect(resolveLoggerType(null, { device_id: 0x1068 })).toBe('s600');
+    expect(resolveLoggerType({ deviceId: 0x1069 }, null)).toBe('s600');
+    expect(resolveLoggerType(null, { device_id: 0x106f })).toBe('s600');
     expect(resolveLoggerType({ device: 'SUTO S605' }, null)).toBe('s605');
+    expect(resolveLoggerType(null, { device_id: 0x121e })).toBe('s605');
     expect(resolveLoggerType({ device: 'SUTO S606' }, null)).toBe('s606');
+    expect(resolveLoggerType(null, { device_id: 0x1220 })).toBe('s606');
     expect(resolveLoggerType({ device: 'DS310 Chart Recorder' }, null)).toBe('ds310');
     expect(resolveLoggerType({ device: 'SUTO S331 Main' }, null)).toBe('ds310');
   });
@@ -83,10 +88,18 @@ describe('ReadoutView Dedicated Page Component', () => {
     });
   });
 
-  it('shows report export tab with sub-tab refresh for S600 devices', async () => {
+  it('shows report export tab with sub-tab refresh for S600 devices by name or device_id', async () => {
+    vi.spyOn(TauriSutoAPI, 'getSystemInfo').mockResolvedValue({
+      device_id: 0x1068,
+      serial_number: '12345678',
+    });
+    vi.spyOn(TauriSutoAPI, 'get600CsdFiles').mockResolvedValue([
+      { id: 1, name: 'LOG00001.CSD', size: 2048, date: 1710489600, date_str: '2026-03-15 10:00:00' },
+    ]);
+
     render(
       <ReadoutView
-        deviceInfo={{ device: 'SUTO S600 Compressed Air Purity Analyzer' }}
+        deviceInfo={{ transport: 'USB' }}
       />
     );
 
@@ -97,7 +110,38 @@ describe('ReadoutView Dedicated Page Component', () => {
 
     fireEvent.click(screen.getByText(/Export report/));
     await waitFor(() => {
-      expect(screen.getByText('🔄 Refresh')).toBeDefined();
+      expect(screen.getByText('🔄 Refresh Sessions')).toBeDefined();
+      expect(screen.getByText(/Export Device Audit Report \(PDF\)/)).toBeDefined();
+      expect(screen.getByText(/LOG00001\.CSD/)).toBeDefined();
+      expect(screen.getByText('Generate & Download PDF Report')).toBeDefined();
+    });
+  });
+
+  it('ensures active logger badge and static tip are removed', async () => {
+    vi.spyOn(TauriSutoAPI, 'getLoggerFiles').mockResolvedValue([
+      {
+        fileName: 'LOG00085.CSD',
+        startTime: '2026-10-18 10:00:00',
+        endTime: '2026-10-18 11:00:00',
+        samplesPerChannel: 194,
+        isRecording: false,
+        status: 0,
+      },
+    ]);
+
+    render(
+      <ReadoutView
+        deviceInfo={{ device: 'DS310 Chart Recorder' }}
+      />
+    );
+
+    await waitFor(() => {
+      // Badge is completely removed
+      expect(screen.queryByText(/Logger Active/)).toBeNull();
+      expect(screen.queryByText(/Logger Idle/)).toBeNull();
+      // Static tip is removed
+      expect(screen.queryByText(/Tip: Reads the selected session and outputs a standard CSV file/)).toBeNull();
     });
   });
 });
+

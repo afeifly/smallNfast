@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 import { resolveDeviceTypeName } from '../../util/platform';
+import { getOnlineCache } from '../onlineview/OnlineView';
 import './ReadoutView.css';
 
 /**
@@ -14,30 +15,56 @@ import './ReadoutView.css';
  */
 export function resolveLoggerType(deviceInfo, sysInfo) {
   const devId = Number(sysInfo?.device_id ?? deviceInfo?.deviceId ?? deviceInfo?.device_id);
-  const name = `${deviceInfo?.device || ''} ${deviceInfo?.name || ''} ${sysInfo?.device_name || ''} ${deviceInfo?.device_description || ''}`.toLowerCase();
+  const resolvedName = resolveDeviceTypeName(sysInfo, deviceInfo) || '';
+  const name = `${deviceInfo?.device || ''} ${deviceInfo?.name || ''} ${sysInfo?.device_name || ''} ${deviceInfo?.device_description || ''} ${resolvedName}`.toLowerCase();
 
   // S418 / S419
-  if (name.includes('418') || name.includes('419') || name.includes('415') || devId === 418 || devId === 419) {
+  if (
+    name.includes('418') ||
+    name.includes('419') ||
+    name.includes('415') ||
+    devId === 418 ||
+    devId === 419 ||
+    (devId >= 0x120e && devId <= 0x1219) ||
+    (devId >= 0x122b && devId <= 0x122e)
+  ) {
     return 's418';
   }
 
   // S461 / S463
-  if (name.includes('461') || name.includes('463') || devId === 461 || devId === 463) {
+  if (
+    name.includes('461') ||
+    name.includes('463') ||
+    devId === 461 ||
+    devId === 463 ||
+    devId === 0x1300 ||
+    devId === 0x1302
+  ) {
     return 's461';
   }
 
   // S606
-  if (name.includes('606') || devId === 606) {
+  if (name.includes('606') || devId === 606 || devId === 0x1220 || devId === 0x1221) {
     return 's606';
   }
 
   // S605
-  if (name.includes('605') || devId === 605) {
+  if (name.includes('605') || devId === 605 || devId === 0x121e || devId === 0x121f) {
     return 's605';
   }
 
   // S600
-  if (name.includes('600') || name.includes('601') || name.includes('602') || name.includes('132') || devId === 600) {
+  if (
+    name.includes('600') ||
+    name.includes('601') ||
+    name.includes('602') ||
+    name.includes('132') ||
+    devId === 600 ||
+    devId === 0x1068 ||
+    devId === 0x1069 ||
+    devId === 0x106f ||
+    devId === 0x1049
+  ) {
     return 's600';
   }
 
@@ -84,6 +111,101 @@ function normalizeScreenshotFilename(rawName, bytes = null) {
   return name;
 }
 
+export function getRelativeTimeString(date) {
+  if (!date || isNaN(date.getTime())) return '';
+  const now = Date.now();
+  const diffSec = Math.floor((now - date.getTime()) / 1000);
+  if (diffSec < 0) return 'Just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  const diffMonth = Math.floor(diffDay / 30);
+  if (diffMonth < 12) return `${diffMonth}mo ago`;
+  return `${Math.floor(diffDay / 365)}y ago`;
+}
+
+export function parseScreenshotTime(item) {
+  if (!item) return { timestamp: 0, formatted: '---', relative: '' };
+
+  if (item.date && typeof item.date === 'number') {
+    const d = new Date(item.date > 1e11 ? item.date : item.date * 1000);
+    return {
+      timestamp: d.getTime(),
+      formatted: formatUnixTimestamp(d.getTime() / 1000),
+      relative: getRelativeTimeString(d),
+    };
+  }
+
+  const name = item.name || '';
+
+  // Pattern 1: YYYY-MM-DD[_ ]HH-MM-SS or YYYY-MM-DD[_ ]HH:MM:SS
+  const match1 = name.match(/(\d{4})[-_.](\d{2})[-_.](\d{2})[-_ T](\d{2})[-_:.](\d{2})(?:[-_:.](\d{2}))?/);
+  if (match1) {
+    const year = parseInt(match1[1], 10);
+    const month = parseInt(match1[2], 10) - 1;
+    const day = parseInt(match1[3], 10);
+    const hour = parseInt(match1[4], 10);
+    const min = parseInt(match1[5], 10);
+    const sec = match1[6] ? parseInt(match1[6], 10) : 0;
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) {
+      return {
+        timestamp: d.getTime(),
+        formatted: formatUnixTimestamp(d.getTime() / 1000),
+        relative: getRelativeTimeString(d),
+      };
+    }
+  }
+
+  // Pattern 2: YYYYMMDD[_ ]HHMMSS
+  const match2 = name.match(/(\d{4})(\d{2})(\d{2})[-_ T](\d{2})(\d{2})(\d{2})/);
+  if (match2) {
+    const year = parseInt(match2[1], 10);
+    const month = parseInt(match2[2], 10) - 1;
+    const day = parseInt(match2[3], 10);
+    const hour = parseInt(match2[4], 10);
+    const min = parseInt(match2[5], 10);
+    const sec = parseInt(match2[6], 10);
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) {
+      return {
+        timestamp: d.getTime(),
+        formatted: formatUnixTimestamp(d.getTime() / 1000),
+        relative: getRelativeTimeString(d),
+      };
+    }
+  }
+
+  // Pattern 3: YYYY-MM-DD or YYYYMMDD
+  const match3 = name.match(/(\d{4})[-_.]?(\d{2})[-_.]?(\d{2})/);
+  if (match3 && parseInt(match3[1], 10) >= 2000 && parseInt(match3[1], 10) <= 2099) {
+    const year = parseInt(match3[1], 10);
+    const month = parseInt(match3[2], 10) - 1;
+    const day = parseInt(match3[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      return {
+        timestamp: d.getTime(),
+        formatted: `${match3[1]}-${match3[2]}-${match3[3]}`,
+        relative: getRelativeTimeString(d),
+      };
+    }
+  }
+
+  // Fallback: If sequential index exists
+  const numMatch = name.match(/(\d+)/);
+  const seq = typeof item.index === 'number' ? item.index : (numMatch ? parseInt(numMatch[1], 10) : 0);
+  return {
+    timestamp: seq,
+    formatted: `Index #${seq + 1}`,
+    relative: '',
+  };
+}
+
 // Session cache for preserving readout data across component mount/unmount while connected
 let _readoutSessionCache = {
   deviceKey: null,
@@ -117,7 +239,7 @@ export default function ReadoutView({
   onClose = null,
 }) {
   const deviceKey = deviceInfo
-    ? `${deviceInfo.transport || ''}_${deviceInfo.device || ''}_${deviceInfo.host || ''}_${deviceInfo.port || ''}`
+    ? `${deviceInfo.transport || ''}_${deviceInfo.device || ''}_${deviceInfo.host || ''}_${deviceInfo.port || ''}_${deviceInfo.address ?? ''}`
     : 'default_device';
 
   const hasCachedData = _readoutSessionCache.deviceKey === deviceKey && _readoutSessionCache.hasFetched;
@@ -154,20 +276,32 @@ export default function ReadoutView({
   const [readResult, setReadResult] = useState(null);
 
   // Screenshots state
-  const [screenshotsList, setScreenshotsList] = useState(() => (hasCachedData ? _readoutSessionCache.screenshotsList : []));
+  const [screenshotsList, setScreenshotsList] = useState(() => (
+    hasCachedData && Array.isArray(_readoutSessionCache?.screenshotsList)
+      ? _readoutSessionCache.screenshotsList
+      : []
+  ));
   const [selectedScreenshots, setSelectedScreenshots] = useState(new Set());
   const [downloadingScreenshot, setDownloadingScreenshot] = useState(null);
   const [previewImage, setPreviewImage] = useState(null); // { name, url }
+
+  // Report state
   const [reportFilesList, setReportFilesList] = useState([]);
+  const [selectedReportIdx, setSelectedReportIdx] = useState(0);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportStatusMsg, setReportStatusMsg] = useState('');
+  const [reportSortKey, setReportSortKey] = useState('time');
+  const [reportSortDir, setReportSortDir] = useState('desc');
 
   // Fetch screenshots from device memory
   const fetchScreenshots = useCallback(async () => {
     setLoadingDeviceData(true);
     try {
       const list = await TauriSutoAPI.getScreenshots();
-      setScreenshotsList(list || []);
+      const safeList = Array.isArray(list) ? list : [];
+      setScreenshotsList(safeList);
       setSelectedScreenshots(new Set());
-      _readoutSessionCache.screenshotsList = list || [];
+      _readoutSessionCache.screenshotsList = safeList;
     } catch (e) {
       console.warn('[ReadoutView] Querying screenshots failed:', e);
       setScreenshotsList([]);
@@ -176,18 +310,170 @@ export default function ReadoutView({
     }
   }, []);
 
+  // Fetch S600 CSD sessions for report generation
+  const fetchReportFiles = useCallback(async () => {
+    setLoadingDeviceData(true);
+    setReportStatusMsg('');
+    try {
+      const csdList = await TauriSutoAPI.get600CsdFiles();
+      let list = [];
+      if (Array.isArray(csdList) && csdList.length > 0) {
+        list = [...csdList];
+      } else if (Array.isArray(filesList) && filesList.length > 0) {
+        list = filesList.map((f, idx) => ({
+          id: idx,
+          name: f.fileName,
+          size: (f.samplesPerChannel || 0) * (f.channelsCount || 1) * 4,
+          date: f.startTime ? Math.floor(new Date(f.startTime.replace(/-/g, '/')).getTime() / 1000) : 0,
+          date_str: f.startTime || '',
+        }));
+      }
+
+      // Order by start time desc (newest first)
+      list.sort((a, b) => {
+        const timeA = a.date || (a.date_str ? new Date(a.date_str.replace(/-/g, '/')).getTime() : 0);
+        const timeB = b.date || (b.date_str ? new Date(b.date_str.replace(/-/g, '/')).getTime() : 0);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.id ?? 0) - (a.id ?? 0);
+      });
+
+      setReportFilesList(list);
+      setSelectedReportIdx(0);
+    } catch (e) {
+      console.warn('[ReadoutView] Querying S600 CSD report files failed:', e);
+      setReportFilesList([]);
+    } finally {
+      setLoadingDeviceData(false);
+    }
+  }, [filesList]);
+
+  // Memoized screenshots ordered by time desc (newest first) as default and only order
+  const sortedScreenshots = useMemo(() => {
+    if (!Array.isArray(screenshotsList)) return [];
+    const list = [...screenshotsList];
+    list.sort((a, b) => {
+      const timeA = parseScreenshotTime(a).timestamp;
+      const timeB = parseScreenshotTime(b).timestamp;
+      return timeB - timeA;
+    });
+    return list;
+  }, [screenshotsList]);
+
+  // Keyboard navigation for screenshot preview modal (Escape, ArrowLeft, ArrowRight)
+  useEffect(() => {
+    if (!previewImage) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setPreviewImage(null);
+      } else if (e.key === 'ArrowLeft') {
+        const idx = sortedScreenshots.findIndex(
+          (s) => s.name === previewImage.originalName || s.name === previewImage.name
+        );
+        if (idx > 0 && downloadingScreenshot === null) {
+          handlePreviewScreenshot(sortedScreenshots[idx - 1]);
+        }
+      } else if (e.key === 'ArrowRight') {
+        const idx = sortedScreenshots.findIndex(
+          (s) => s.name === previewImage.originalName || s.name === previewImage.name
+        );
+        if (idx >= 0 && idx < sortedScreenshots.length - 1 && downloadingScreenshot === null) {
+          handlePreviewScreenshot(sortedScreenshots[idx + 1]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewImage, sortedScreenshots, downloadingScreenshot]);
+
+  // Memoized sorted report files
+  const sortedReportFiles = useMemo(() => {
+    if (!Array.isArray(reportFilesList)) return [];
+    const list = [...reportFilesList];
+    list.sort((a, b) => {
+      const timeA = a.date || (a.date_str ? new Date(a.date_str.replace(/-/g, '/')).getTime() : 0);
+      const timeB = b.date || (b.date_str ? new Date(b.date_str.replace(/-/g, '/')).getTime() : 0);
+      if (reportSortKey === 'time') {
+        return reportSortDir === 'desc' ? timeB - timeA : timeA - timeB;
+      }
+      if (reportSortKey === 'name') {
+        return reportSortDir === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
+      }
+      if (reportSortKey === 'size') {
+        return reportSortDir === 'desc' ? (b.size || 0) - (a.size || 0) : (a.size || 0) - (b.size || 0);
+      }
+      return timeB - timeA;
+    });
+    return list;
+  }, [reportFilesList, reportSortKey, reportSortDir]);
+
+  // Handle on-device PDF report generation
+  const handleGenerateReport = async () => {
+    const target = sortedReportFiles[selectedReportIdx] || reportFilesList[selectedReportIdx];
+    if (!target) return;
+    setGeneratingReport(true);
+    setReportStatusMsg('Commanding S600 to compile PDF report...');
+    try {
+      const res = await TauriSutoAPI.generate600Report(
+        target.id ?? selectedReportIdx,
+        target.name || `LOG${String(selectedReportIdx + 1).padStart(5, '0')}.CSD`,
+        target.size || 1024,
+        target.date || Math.floor(Date.now() / 1000)
+      );
+
+      const byteArr = new Uint8Array(res.pdf_bytes);
+      const filename = res.file_name || `${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Audit_Report.pdf`;
+
+      if (TauriSutoAPI.isAvailable()) {
+        const savedPath = await TauriSutoAPI.saveBinaryFile(filename, byteArr);
+        if (savedPath) {
+          setReportStatusMsg(`Report successfully saved to: ${savedPath} (${(byteArr.length / 1024).toFixed(1)} KB)`);
+        } else {
+          setReportStatusMsg('Save cancelled by user.');
+        }
+      } else {
+        const blob = new Blob([byteArr], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        setReportStatusMsg(`Report '${filename}' generated and downloaded successfully! (${(byteArr.length / 1024).toFixed(1)} KB)`);
+      }
+    } catch (e) {
+      console.error('[ReadoutView] Generate report error:', e);
+      setReportStatusMsg(`Failed to generate report: ${e?.message || e}`);
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   // Fetch real device data
   const refreshDeviceState = useCallback(async () => {
     setLoadingDeviceData(true);
     setReadResult(null);
     try {
-      const sInfo = await TauriSutoAPI.getSystemInfo();
+      const onlineCache = getOnlineCache();
+      const isOnlineCached = onlineCache.hasFetched && (!deviceInfo || onlineCache.deviceKey === deviceKey);
+
+      const sInfo = isOnlineCached && onlineCache.sysInfo
+        ? onlineCache.sysInfo
+        : await TauriSutoAPI.getSystemInfo();
       setSysInfo(sInfo || null);
 
-      const lStatus = await TauriSutoAPI.getLoggerStatus();
-      setLoggerStatus(lStatus || null);
+      const dType = resolveLoggerType(deviceInfo, sInfo);
+      let lStatus = null;
+      if (dType === 's418' || dType === 's461') {
+        lStatus = await TauriSutoAPI.getLoggerStatus();
+      }
+      setLoggerStatus(lStatus);
 
-      const chs = await TauriSutoAPI.getChannels();
+      const chs = isOnlineCached && onlineCache.channels
+        ? onlineCache.channels
+        : await TauriSutoAPI.getChannels();
       setDeviceChannels(chs || []);
 
       const sShots = await TauriSutoAPI.getScreenshots();
@@ -232,8 +518,10 @@ export default function ReadoutView({
   useEffect(() => {
     if (readoutOption === 'screenshots') {
       fetchScreenshots();
+    } else if (readoutOption === 'report') {
+      fetchReportFiles();
     }
-  }, [readoutOption, fetchScreenshots]);
+  }, [readoutOption, fetchScreenshots, fetchReportFiles]);
 
   // Determine the device family strictly from current connected hardware
   const loggerType = useMemo(() => {
@@ -598,19 +886,6 @@ export default function ReadoutView({
               ) : (
                 <span className="readout-badge badge-usb">Direct USB / Win32</span>
               )}
-              {(() => {
-                const activeFile = filesList.find((f) => f.isRecording || (f.status & 1) !== 0);
-                const isAct = Boolean(activeFile || (loggerStatus?.enabled && (loggerStatus?.recorded_count ?? 0) > 0));
-                const count = activeFile?.samplesPerChannel || (loggerStatus?.recorded_count ?? 0);
-                if (isAct) {
-                  return (
-                    <span className="readout-badge badge-active">
-                      🟢 Logger Active {count > 0 ? `(${count.toLocaleString()} samples)` : ''}
-                    </span>
-                  );
-                }
-                return <span className="readout-badge badge-stopped">⚪ Logger Idle</span>;
-              })()}
             </div>
             <div className="readout-meta-row">
               <span>Serial: {sysInfo?.serial_number || deviceInfo?.serial || '---'}</span>
@@ -732,7 +1007,7 @@ export default function ReadoutView({
               </div>
             </div>
 
-            {screenshotsList.length > 0 ? (
+            {sortedScreenshots.length > 0 ? (
               <div className="readout-table-wrapper">
                 <table className="readout-data-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                   <thead>
@@ -757,19 +1032,21 @@ export default function ReadoutView({
                               cursor: 'pointer',
                               accentColor: '#2563eb',
                             }}
-                            checked={screenshotsList.length > 0 && selectedScreenshots.size === screenshotsList.length}
+                            checked={sortedScreenshots.length > 0 && selectedScreenshots.size === sortedScreenshots.length}
                             onChange={toggleSelectAllScreenshots}
                           />
                         </label>
                       </th>
-                      <th style={{ minWidth: 260 }}>Screenshot File Name</th>
+                      <th style={{ minWidth: 240 }}>Screenshot File Name</th>
+                      <th style={{ width: 190 }}>Captured Time</th>
                       <th style={{ width: 120 }}>Size</th>
                       <th style={{ width: 170, textAlign: 'right', paddingRight: '28px' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {screenshotsList.map((s, idx) => {
+                    {sortedScreenshots.map((s, idx) => {
                       const isSelected = selectedScreenshots.has(s.name);
+                      const timeInfo = parseScreenshotTime(s);
                       return (
                         <tr
                           key={s.name || idx}
@@ -806,6 +1083,28 @@ export default function ReadoutView({
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
                               🖼️ {normalizeScreenshotFilename(s.name)}
                             </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ color: '#1e293b', fontSize: '0.82rem', fontWeight: 500 }}>
+                                {timeInfo.formatted}
+                              </span>
+                              {timeInfo.relative && timeInfo.relative.includes('ago') && (
+                                <span
+                                  style={{
+                                    fontSize: '0.70rem',
+                                    color: '#2563eb',
+                                    background: '#eff6ff',
+                                    padding: '1px 6px',
+                                    borderRadius: 4,
+                                    border: '1px solid #bfdbfe',
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  {timeInfo.relative}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td>
                             <span style={{ color: '#64748b' }}>
@@ -1139,11 +1438,13 @@ export default function ReadoutView({
                 </div>
 
                 <div className="readout-bottom-bar">
-                  <div className="readout-bottom-tip">
-                    {filesList[selectedFileIdx]?.isRecording
-                      ? '💡 Note: This session is currently recording on the device. Reading it exports all data recorded up to the current moment.'
-                      : '💡 Tip: Reads the selected session and outputs a standard CSV file. Timestamps are verified for each row.'}
-                  </div>
+                  {filesList[selectedFileIdx]?.isRecording ? (
+                    <div className="readout-bottom-tip">
+                      💡 Note: This session is currently recording on the device. Reading it exports all data recorded up to the current moment.
+                    </div>
+                  ) : (
+                    <div className="readout-bottom-tip" style={{ visibility: 'hidden' }} aria-hidden="true">&nbsp;</div>
+                  )}
                   <button
                     className="readout-btn-primary"
                     disabled={selectedFileIdx === null}
@@ -1184,34 +1485,200 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Export Device Audit Report</h3>
-                <p>Generate or export an ISO 8573 compressed air purity audit report directly from the on-board analyzer.</p>
+                <h3>Export Device Audit Report (PDF)</h3>
               </div>
               <div className="readout-section-actions">
                 <button
                   className="readout-btn-secondary"
-                  onClick={refreshDeviceState}
-                  disabled={loadingDeviceData}
-                  title="Refresh report state"
+                  onClick={fetchReportFiles}
+                  disabled={loadingDeviceData || generatingReport}
+                  title="Refresh report session files"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh'}
+                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Sessions'}
                 </button>
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>📑</div>
-              <h4 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>Compressed Air Purity Audit Report</h4>
-              <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b', maxWidth: 480, marginInline: 'auto' }}>
-                Generate or export an ISO 8573 compressed air purity audit report directly from the on-board analyzer.
-              </p>
-              <button
-                className="readout-btn-primary"
-                onClick={() => performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Audit_Report.csv`, 300)}
-              >
-                Generate & Export Report (CSV)
-              </button>
-            </div>
+            {sortedReportFiles.length > 0 ? (
+              <>
+                <div className="readout-table-wrapper">
+                  <table className="readout-data-table">
+                    <thead>
+                      <tr>
+                        <th
+                          style={{ width: 180, cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            if (reportSortKey === 'time') {
+                              setReportSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                            } else {
+                              setReportSortKey('time');
+                              setReportSortDir('desc');
+                            }
+                          }}
+                          title="Click to sort by start time"
+                        >
+                          Start Time {reportSortKey === 'time' ? (reportSortDir === 'desc' ? '▼' : '▲') : ''}
+                        </th>
+                        <th style={{ width: 180 }}>End Time</th>
+                        <th
+                          style={{ width: 160, cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            if (reportSortKey === 'name') {
+                              setReportSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            } else {
+                              setReportSortKey('name');
+                              setReportSortDir('asc');
+                            }
+                          }}
+                          title="Click to sort by file name"
+                        >
+                          Session File {reportSortKey === 'name' ? (reportSortDir === 'asc' ? '▲' : '▼') : ''}
+                        </th>
+                        <th
+                          style={{ width: 130, cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            if (reportSortKey === 'size') {
+                              setReportSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                            } else {
+                              setReportSortKey('size');
+                              setReportSortDir('desc');
+                            }
+                          }}
+                          title="Click to sort by file size"
+                        >
+                          File Size {reportSortKey === 'size' ? (reportSortDir === 'desc' ? '▼' : '▲') : ''}
+                        </th>
+                        <th style={{ minWidth: 200 }}>Protocol / Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedReportFiles.map((item, idx) => {
+                        const isSelected = selectedReportIdx === idx;
+                        const matchedFile = filesList.find(
+                          (f) =>
+                            f.fileName &&
+                            (f.fileName === item.name ||
+                              f.fileName.replace(/\.csd$/i, '') === item.name.replace(/\.csd$/i, ''))
+                        );
+                        const startTime = item.date_str || matchedFile?.startTime || formatUnixTimestamp(item.date);
+                        const endTime = matchedFile?.endTime || '---';
+                        const desc = matchedFile?.description || 'Compressed Air Purity Audit Session';
+
+                        return (
+                          <tr
+                            key={item.id ?? idx}
+                            className={`readout-table-row ${isSelected ? 'selected' : ''}`}
+                            onClick={() => setSelectedReportIdx(idx)}
+                          >
+                            <td><strong>{startTime || '---'}</strong></td>
+                            <td>{endTime}</td>
+                            <td>
+                              <span style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 8px', borderRadius: 4, border: '1px solid #cbd5e1', fontSize: '0.80rem', fontWeight: 600 }}>
+                                {item.name}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ background: '#e2e8f0', padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: '0.76rem', color: '#334155' }}>
+                                {item.size ? `${(item.size / 1024).toFixed(1)} KB` : '---'}
+                              </span>
+                            </td>
+                            <td className="readout-col-desc">
+                              <span title={desc} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {desc}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {reportStatusMsg && (
+                  <div
+                    style={{
+                      marginBottom: 12,
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      fontSize: '0.86rem',
+                      background: reportStatusMsg.includes('Failed')
+                        ? '#fef2f2'
+                        : reportStatusMsg.includes('cancelled')
+                        ? '#f8fafc'
+                        : '#f0fdf4',
+                      color: reportStatusMsg.includes('Failed')
+                        ? '#b91c1c'
+                        : reportStatusMsg.includes('cancelled')
+                        ? '#64748b'
+                        : '#15803d',
+                      border: `1px solid ${
+                        reportStatusMsg.includes('Failed')
+                          ? '#fecaca'
+                          : reportStatusMsg.includes('cancelled')
+                          ? '#e2e8f0'
+                          : '#bbf7d0'
+                      }`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    {generatingReport ? (
+                      <span className="readout-spinner" style={{ width: 14, height: 14 }} />
+                    ) : (
+                      <span>{reportStatusMsg.includes('Failed') ? '❌' : reportStatusMsg.includes('cancelled') ? 'ℹ️' : '✅'}</span>
+                    )}
+                    <span>{reportStatusMsg}</span>
+                  </div>
+                )}
+
+                <div className="readout-bottom-bar">
+                  <div className="readout-bottom-tip">
+                    💡 Compliance report directly into a standard PDF document.
+                  </div>
+                  <button
+                    className="readout-btn-primary"
+                    disabled={generatingReport || sortedReportFiles.length === 0 || selectedReportIdx === null}
+                    onClick={handleGenerateReport}
+                  >
+                    {generatingReport ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          className="readout-spinner"
+                          style={{
+                            width: 14,
+                            height: 14,
+                            border: '2px solid rgba(255,255,255,0.3)',
+                            borderTopColor: '#ffffff',
+                            borderRadius: '50%',
+                            animation: 'spin 0.8s linear infinite',
+                          }}
+                        />
+                        Compiling on Device...
+                      </span>
+                    ) : (
+                      'Generate & Download PDF Report'
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : loadingDeviceData ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <div className="readout-progress-spin" style={{ margin: '0 auto 16px auto' }} />
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>Loading Report Sessions...</h4>
+                <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
+                  Querying device memory for ISO 8573 audit sessions...
+                </p>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <div style={{ fontSize: '40px', marginBottom: '12px' }}>📑</div>
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Recorded Sessions Found on Device</h4>
+                <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
+                  The connected S600 has no recorded measurement sessions in memory to compile an audit report from.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1289,40 +1756,94 @@ export default function ReadoutView({
       </div>
 
       {/* ── Lightbox Preview Modal for Screenshots ── */}
-      {previewImage && (
-        <div className="readout-lightbox-overlay" onClick={() => setPreviewImage(null)}>
-          <div className="readout-lightbox-card" onClick={(e) => e.stopPropagation()}>
-            <div className="readout-lightbox-header">
-              <h4>{previewImage.name}</h4>
-              <button
-                style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
-                onClick={() => setPreviewImage(null)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="readout-lightbox-body">
-              <img src={previewImage.url} alt={previewImage.name} />
-            </div>
-            <div className="readout-lightbox-footer">
-              <button
-                className="readout-btn-secondary"
-                onClick={() => setPreviewImage(null)}
-              >
-                Close
-              </button>
-              <button
-                className="readout-btn-primary"
-                onClick={() => {
-                  handleDownloadScreenshot({ name: previewImage.originalName, size: previewImage.size });
+      {previewImage && (() => {
+        const previewIndex = sortedScreenshots.findIndex(
+          (s) => s.name === previewImage.originalName || s.name === previewImage.name
+        );
+        const hasPrev = previewIndex > 0;
+        const hasNext = previewIndex >= 0 && previewIndex < sortedScreenshots.length - 1;
+
+        return (
+          <div className="readout-lightbox-overlay" onClick={() => setPreviewImage(null)}>
+            <div className="readout-lightbox-card" onClick={(e) => e.stopPropagation()}>
+              <div className="readout-lightbox-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h4>{previewImage.name}</h4>
+                  {previewIndex !== -1 && (
+                    <span
+                      style={{
+                        fontSize: '0.78rem',
+                        color: '#64748b',
+                        background: '#f1f5f9',
+                        padding: '2px 8px',
+                        borderRadius: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {previewIndex + 1} of {sortedScreenshots.length}
+                    </span>
+                  )}
+                </div>
+                <button
+                  style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+                  onClick={() => setPreviewImage(null)}
+                  title="Close preview (Esc)"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="readout-lightbox-body">
+                <img src={previewImage.url} alt={previewImage.name} />
+              </div>
+              <div
+                className="readout-lightbox-footer"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                 }}
               >
-                Download Screenshot
-              </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="readout-btn-secondary"
+                    disabled={!hasPrev || downloadingScreenshot !== null}
+                    onClick={() => handlePreviewScreenshot(sortedScreenshots[previewIndex - 1])}
+                    title="Previous screenshot (Left Arrow)"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    ◀ Previous
+                  </button>
+                  <button
+                    className="readout-btn-secondary"
+                    disabled={!hasNext || downloadingScreenshot !== null}
+                    onClick={() => handlePreviewScreenshot(sortedScreenshots[previewIndex + 1])}
+                    title="Next screenshot (Right Arrow)"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    Next ▶
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    className="readout-btn-secondary"
+                    onClick={() => setPreviewImage(null)}
+                  >
+                    Close
+                  </button>
+                  <button
+                    className="readout-btn-primary"
+                    onClick={() => {
+                      handleDownloadScreenshot({ name: previewImage.originalName, size: previewImage.size });
+                    }}
+                  >
+                    Download Screenshot
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

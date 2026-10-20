@@ -26,6 +26,8 @@ pub fn run() {
             suto::suto_get_system_info,
             suto::suto_get_logger_status,
             suto::suto_get_logger_files,
+            suto::suto_get_600_csd_files,
+            suto::suto_generate_600_report,
             suto::suto_get_screenshots,
             suto::suto_read_screenshot,
             suto::suto_send_command,

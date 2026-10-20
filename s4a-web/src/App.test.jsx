@@ -5,10 +5,12 @@ import App from './App';
 import TestAPI from './api/TestAPI';
 import TauriSutoAPI from './api/TauriSutoAPI';
 import { clearReadoutCache } from './modules/readout/ReadoutView';
+import { clearOnlineCache } from './modules/onlineview/OnlineView';
 
 describe('App', () => {
   beforeEach(() => {
     clearReadoutCache();
+    clearOnlineCache();
     if (TestAPI.reset) TestAPI.reset();
     if (TestAPI.setMode) TestAPI.setMode('analyze');
   });
@@ -232,4 +234,44 @@ describe('App', () => {
       expect(screen.getByText('File Analyze Mode')).toBeDefined();
     });
   });
+
+  it('remembers sensor-channel structure and does not rearrange when toggling between Online View and Readout', async () => {
+    const getChannelsSpy = vi.spyOn(TauriSutoAPI, 'getChannels');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Detect & Connect Device')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('Detect & Connect Device'));
+    const usbBtn = await screen.findByText(/Detect & Connect USB/);
+    fireEvent.click(usbBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Online View')).toBeDefined();
+    });
+
+    const initialChannelCalls = getChannelsSpy.mock.calls.length;
+    expect(initialChannelCalls).toBeGreaterThanOrEqual(1);
+
+    // Switch to Readout tab
+    const readoutTab = screen.getAllByText('Readout').find((el) => el.classList.contains('tab-btn'));
+    fireEvent.click(readoutTab);
+
+    await waitFor(() => {
+      expect(document.querySelector('.readout-view-container')).toBeDefined();
+    });
+
+    // Switch back to Online View
+    const onlineTab = screen.getByText('Online View');
+    fireEvent.click(onlineTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('Disconnect')).toBeDefined();
+    });
+
+    // getChannels should NOT be called again because the structure was preserved
+    expect(getChannelsSpy.mock.calls.length).toBe(initialChannelCalls);
+  });
 });
+

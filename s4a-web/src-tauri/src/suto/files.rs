@@ -169,10 +169,18 @@ pub fn suto_save_binary_file(filename: String, data: Vec<u8>) -> Result<Option<S
         .and_then(|s| s.to_str())
         .unwrap_or("png");
 
+    let (filter_name, dialog_title) = if ext.eq_ignore_ascii_case("pdf") {
+        ("PDF Document (.pdf)", "Save PDF Report")
+    } else if ["png", "jpg", "jpeg", "bmp", "gif"].contains(&ext.to_lowercase().as_str()) {
+        ("Image File", "Save Screenshot Image")
+    } else {
+        ("Document File", "Save File")
+    };
+
     let res = rfd::FileDialog::new()
         .set_file_name(&clean)
-        .add_filter(&format!("Image (.{})", ext), &[ext])
-        .set_title("Save Screenshot Image")
+        .add_filter(filter_name, &[ext])
+        .set_title(dialog_title)
         .save_file();
 
     if let Some(path) = res {

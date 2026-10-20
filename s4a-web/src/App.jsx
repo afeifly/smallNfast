@@ -4,7 +4,7 @@ import TableView from './modules/tableview/TableView';
 import ConsumptionReport from './modules/consumption/ConsumptionReport';
 import FileInfoView from './modules/fileinfo/FileInfoView';
 import CompressorAnalyze from './modules/analyze/CompressorAnalyze';
-import OnlineView from './modules/onlineview/OnlineView';
+import OnlineView, { clearOnlineCache } from './modules/onlineview/OnlineView';
 import TestAPI from './api/TestAPI';
 import TauriSutoAPI from './api/TauriSutoAPI';
 import Loading from './components/loading/Loading';
@@ -299,6 +299,7 @@ function App() {
 
   const handleDeviceConnected = (conn) => {
     clearReadoutCache();
+    clearOnlineCache();
     setAnalyzingFromReadout(false);
     setDeviceInfo(conn);
     TestAPI.setMode('monitor');
@@ -310,7 +311,7 @@ function App() {
   const handleDisconnectMonitor = async () => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Disconnecting monitor session');
     clearReadoutCache();
-    setAnalyzingFromReadout(false);
+    clearOnlineCache();
     try {
       await TauriSutoAPI.disconnect();
     } catch (e) {
@@ -350,6 +351,7 @@ function App() {
     setAnalyzingFromReadout(false);
     if (appMode === 'monitor') {
       clearReadoutCache();
+      clearOnlineCache();
       TauriSutoAPI.disconnect().catch(console.warn);
       TestAPI.setMode('analyze');
       setDeviceInfo(null);
@@ -821,17 +823,18 @@ function App() {
         ) : appMode === 'monitor' ? (
           /* Monitor Mode: Online View or dedicated Readout View */
           <div className="view-content-wrapper">
-            {activeTab === 'readout' ? (
+            <div style={{ display: activeTab === 'online' ? 'contents' : 'none' }}>
+              <OnlineView
+                onDisconnect={handleDisconnectMonitor}
+                deviceInfo={deviceInfo}
+                isPaused={activeTab !== 'online'}
+              />
+            </div>
+            {activeTab === 'readout' && (
               <ReadoutView
                 deviceInfo={deviceInfo}
                 onAnalyzeCsv={handleAnalyzeLoggerCsv}
                 onBackToOnline={() => setActiveTab('online')}
-              />
-            ) : (
-              <OnlineView
-                onDisconnect={handleDisconnectMonitor}
-                deviceInfo={deviceInfo}
-                isPaused={false}
               />
             )}
           </div>

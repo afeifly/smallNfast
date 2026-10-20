@@ -438,6 +438,33 @@ pub async fn suto_get_system_info(
         }
     }
 
+    // Fallback to discovery identification and model name if device_id or device_name was not populated
+    let dev_info = { *state.device_info.lock().unwrap_or_else(|p| p.into_inner()) };
+    if let Some(d) = dev_info {
+        if info.device_id.is_none() {
+            info.device_id = Some(d.identification);
+        }
+    }
+    if info.device_name.is_none() {
+        if let Some(id) = info.device_id {
+            match id {
+                0x1068 => info.device_name = Some("SUTO S600".to_string()),
+                0x1069 => info.device_name = Some("SUTO S600-1".to_string()),
+                0x106f => info.device_name = Some("SUTO S600-AC".to_string()),
+                0x1049 => info.device_name = Some("SUTO S132".to_string()),
+                0x121e => info.device_name = Some("SUTO S605I".to_string()),
+                0x121f => info.device_name = Some("SUTO S605C".to_string()),
+                0x1220 => info.device_name = Some("SUTO S606I".to_string()),
+                0x1221 => info.device_name = Some("SUTO S606C".to_string()),
+                0x1064 => info.device_name = Some("SUTO S330".to_string()),
+                0x1065 => info.device_name = Some("SUTO S331".to_string()),
+                0x1066 => info.device_name = Some("SUTO S551-P4".to_string()),
+                0x1067 => info.device_name = Some("SUTO S551-P6".to_string()),
+                _ => {}
+            }
+        }
+    }
+
     Ok(info)
 }
 
@@ -921,3 +948,236 @@ pub fn suto_log_client_event(level: String, tag: String, message: String) -> Res
     logger::log_event(&level, &tag, &message, None);
     Ok(())
 }
+
+#[tauri::command]
+pub async fn suto_get_600_csd_files(
+    state: State<'_, SutoState>,
+) -> Result<Vec<S600CsdEntry>, String> {
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+    log_event("INFO", "SUTO_S600", "Querying S600 CSD sessions for report generation...", None);
+
+    let file_count = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let cmd = [CTY_LOGGER, 0xFF, ACT_LOGGER_GET_CSD_FILE_NUMBER];
+        let pkt = pack_packet(addr, &cmd);
+        match transport.write_and_read(&pkt, 3000) {
+            Ok(raw) => {
+                let deframed = deframe_multi_frame(&raw).unwrap_or_default();
+                if deframed.len() >= 4 {
+                    u32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]])
+                } else if deframed.len() >= 2 {
+                    u16::from_le_bytes([deframed[0], deframed[1]]) as u32
+                } else {
+                    0
+                }
+            }
+            Err(_) => 0,
+        }
+    };
+
+    if file_count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut list = Vec::new();
+    let mut current_idx = 0u32;
+    let batch_size = 10u32;
+
+    while current_idx < file_count {
+        let batch_num = (file_count - current_idx).min(batch_size);
+        let mut cmd = vec![CTY_LOGGER, 0xFF, ACT_GET_CSD_FILE_INFO];
+        cmd.extend_from_slice(&current_idx.to_le_bytes());
+        cmd.extend_from_slice(&batch_num.to_le_bytes());
+
+        let res = {
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let pkt = pack_packet(addr, &cmd);
+            let raw = transport.write_and_read(&pkt, 4000)?;
+            deframe_multi_frame(&raw)?
+        };
+
+        let one_len = 42usize;
+        let mut offset = 0usize;
+        let mut i = 0u32;
+        while offset + one_len <= res.len() && i < batch_num {
+            let chunk = &res[offset..offset + one_len];
+            let id = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let name_raw = &chunk[4..34];
+            let zero_pos = name_raw.iter().position(|&b| b == 0).unwrap_or(name_raw.len());
+            let name = String::from_utf8_lossy(&name_raw[..zero_pos]).trim().to_string();
+            let size = u32::from_le_bytes([chunk[34], chunk[35], chunk[36], chunk[37]]);
+            let date = u32::from_le_bytes([chunk[38], chunk[39], chunk[40], chunk[41]]);
+            let date_str = format_unix_time_str(date as i64);
+
+            if !name.is_empty() {
+                list.push(S600CsdEntry {
+                    id,
+                    name,
+                    size,
+                    date,
+                    date_str,
+                });
+            }
+            i += 1;
+            offset += one_len;
+        }
+
+        current_idx += batch_num;
+    }
+
+    log_event("INFO", "SUTO_S600", &format!("Retrieved {} S600 CSD session files for report", list.len()), None);
+    Ok(list)
+}
+
+#[tauri::command]
+pub async fn suto_generate_600_report(
+    id: u32,
+    name: String,
+    size: u32,
+    date: u32,
+    state: State<'_, SutoState>,
+) -> Result<S600ReportDownloadResult, String> {
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+    log_event("INFO", "SUTO_S600", &format!("Triggering S600 report generation for file '{}' (ID: {})...", name, id), None);
+
+    // Build 42-byte CSCOMM_600CSD_FILE_INFO struct
+    let mut csd_struct = Vec::with_capacity(42);
+    csd_struct.extend_from_slice(&id.to_le_bytes());
+    let mut name_buf = [0u8; 30];
+    let nb = name.as_bytes();
+    let copy_len = nb.len().min(30);
+    name_buf[..copy_len].copy_from_slice(&nb[..copy_len]);
+    csd_struct.extend_from_slice(&name_buf);
+    csd_struct.extend_from_slice(&size.to_le_bytes());
+    csd_struct.extend_from_slice(&date.to_le_bytes());
+
+    // 1. Send ACT_CSD_TO_REPORT (0x03, 0xFF, 0x26)
+    let reply = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let mut cmd = vec![CTY_LOGGER, 0xFF, ACT_CSD_TO_REPORT];
+        cmd.extend_from_slice(&csd_struct);
+        let pkt = pack_packet(addr, &cmd);
+        let raw = transport.write_and_read(&pkt, 4000)?;
+        let deframed = deframe_multi_frame(&raw)?;
+        if deframed.len() >= 4 {
+            i32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]])
+        } else {
+            0
+        }
+    };
+
+    if reply < 0 {
+        if reply == -100663362 {
+            log_event("WARN", "SUTO_S600", "Device reported CSD repair needed (-100663362). Attempting repair...", None);
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let mut cmd = vec![CTY_LOGGER, 0xFF, ACT_CSD_FILE_REPAIR];
+            cmd.extend_from_slice(&csd_struct);
+            let pkt = pack_packet(addr, &cmd);
+            let _ = transport.write_and_read(&pkt, 4000);
+
+            // Retry generate after repair
+            let mut cmd_retry = vec![CTY_LOGGER, 0xFF, ACT_CSD_TO_REPORT];
+            cmd_retry.extend_from_slice(&csd_struct);
+            let pkt_retry = pack_packet(addr, &cmd_retry);
+            let raw = transport.write_and_read(&pkt_retry, 4000)?;
+            let deframed = deframe_multi_frame(&raw)?;
+            let rep2 = if deframed.len() >= 4 {
+                i32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]])
+            } else {
+                0
+            };
+            if rep2 < 0 {
+                return Err(format!("Report generation failed after repair (code {})", rep2));
+            }
+        } else {
+            return Err(format!("Report generation failed (code {})", reply));
+        }
+    }
+
+    // 2. Poll ACT_CSD_TO_REPORT_STATUS (0x03, 0xFF, 0x27) until status == 0
+    let mut finished = false;
+    for attempt in 1..=45 {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+        let status = {
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let cmd = [CTY_LOGGER, 0xFF, ACT_CSD_TO_REPORT_STATUS];
+            let pkt = pack_packet(addr, &cmd);
+            match transport.write_and_read(&pkt, 3000) {
+                Ok(raw) => {
+                    let deframed = deframe_multi_frame(&raw).unwrap_or_default();
+                    if deframed.len() >= 4 {
+                        i32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]])
+                    } else {
+                        1
+                    }
+                }
+                Err(_) => 1,
+            }
+        };
+
+        log_event("INFO", "SUTO_S600", &format!("Polling S600 report status (attempt {}/45): {}", attempt, status), None);
+        if status == 0 {
+            finished = true;
+            break;
+        }
+    }
+
+    if !finished {
+        return Err("Report generation timed out on device after 45 seconds.".into());
+    }
+
+    // 3. Query report info ACT_CSD_TO_REPORT_INFO (0x03, 0xFF, 0x28)
+    let (rep_name, rep_size, rep_date) = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let cmd = [CTY_LOGGER, 0xFF, ACT_CSD_TO_REPORT_INFO];
+        let pkt = pack_packet(addr, &cmd);
+        let raw = transport.write_and_read(&pkt, 3000)?;
+        let deframed = deframe_multi_frame(&raw)?;
+        if deframed.len() < 58 {
+            return Err("Invalid report info received from device".into());
+        }
+        let name_raw = &deframed[0..50];
+        let zero_pos = name_raw.iter().position(|&b| b == 0).unwrap_or(name_raw.len());
+        let name_str = String::from_utf8_lossy(&name_raw[..zero_pos]).trim().to_string();
+        let f_size = u32::from_le_bytes([deframed[50], deframed[51], deframed[52], deframed[53]]);
+        let f_date = u32::from_le_bytes([deframed[54], deframed[55], deframed[56], deframed[57]]);
+        (name_str, f_size, f_date)
+    };
+
+    log_event("INFO", "SUTO_S600", &format!("Report generated: '{}' (size: {} bytes). Downloading...", rep_name, rep_size), None);
+
+    // 4. Download report file ACT_CSD_TO_REPORT_FILE (0x03, 0xFF, 0x29)
+    let pdf_bytes = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let cmd = [CTY_LOGGER, 0xFF, ACT_CSD_TO_REPORT_FILE];
+        let pkt = pack_packet(addr, &cmd);
+        let timeout = (rep_size / 80).max(15000);
+        let raw = transport.write_and_read(&pkt, timeout)?;
+        deframe_multi_frame(&raw)?
+    };
+
+    let final_name = if rep_name.is_empty() {
+        format!("{}_Audit_Report.pdf", name.replace(".csd", "").replace(".CSD", ""))
+    } else if !rep_name.to_lowercase().ends_with(".pdf") {
+        format!("{}.pdf", rep_name)
+    } else {
+        rep_name
+    };
+
+    log_event("INFO", "SUTO_S600", &format!("Report PDF downloaded successfully ({} bytes payload)", pdf_bytes.len()), None);
+
+    Ok(S600ReportDownloadResult {
+        file_name: final_name,
+        file_size: pdf_bytes.len() as u32,
+        file_date: rep_date,
+        pdf_bytes,
+    })
+}
+

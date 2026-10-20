@@ -63,6 +63,12 @@ pub const ACT_LOGGER_READING_FINISHED: u8 = 0x0C;
 pub const ACT_GET_LOG_PACKAGES_INTERVAL: u8 = 0x0C;
 pub const ACT_LOGGER_GET_FILE_NUMBER: u8 = 0x12;
 pub const ACT_LOGGER_GET_CSD_FILE_NUMBER: u8 = 0x24;
+pub const ACT_GET_CSD_FILE_INFO: u8 = 0x25;
+pub const ACT_CSD_TO_REPORT: u8 = 0x26;
+pub const ACT_CSD_TO_REPORT_STATUS: u8 = 0x27;
+pub const ACT_CSD_TO_REPORT_INFO: u8 = 0x28;
+pub const ACT_CSD_TO_REPORT_FILE: u8 = 0x29;
+pub const ACT_CSD_FILE_REPAIR: u8 = 0x30;
 pub const ACT_RTC_GET_TIME: u8 = 0x02;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +82,23 @@ pub struct LoggerFileInfo {
     pub description: String,
     pub status: u32,
     pub is_recording: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct S600CsdEntry {
+    pub id: u32,
+    pub name: String,
+    pub size: u32,
+    pub date: u32,
+    pub date_str: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct S600ReportDownloadResult {
+    pub file_name: String,
+    pub file_size: u32,
+    pub file_date: u32,
+    pub pdf_bytes: Vec<u8>,
 }
 
 // ---- DS310 New Protocol Command Bytes ----

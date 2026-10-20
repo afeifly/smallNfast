@@ -3,15 +3,14 @@ import TauriSutoAPI from '../../api/TauriSutoAPI';
 import DebugLogModal from '../../components/DebugLogModal';
 import './OnlineView.css';
 
+import { resolveChannelResolution, formatChannelValue } from '../../util/resolution';
+import { resolveDeviceTypeName } from '../../util/platform';
+
 const POLL_INTERVAL_MS = 1500;
 
 function formatValue(val, resolution = 2) {
-  if (val === null || val === undefined || isNaN(val)) return '---';
-  return Number(val).toFixed(resolution);
+  return formatChannelValue(val, resolution);
 }
-
-
-import { resolveDeviceTypeName } from '../../util/platform';
 
 // Session cache for preserving sensor-channel structure across view navigation
 let _onlineSessionCache = {
@@ -80,12 +79,15 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
           const updated = prevChannels.map((ch) => {
             const v = valMap.get(ch.channel_id);
             if (v) {
+              const effRes = (typeof v.resolution === 'number' && v.resolution > 0)
+                ? v.resolution
+                : resolveChannelResolution(ch);
               return {
                 ...ch,
                 current_value: v.current_value,
                 status: v.status,
                 unit: v.unit || ch.unit,
-                resolution: v.resolution ?? ch.resolution,
+                resolution: effRes,
               };
             }
             return ch;
@@ -120,7 +122,10 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     try {
       const chs = await TauriSutoAPI.getChannels();
       if (!isMountedRef.current) return;
-      const safeChs = Array.isArray(chs) ? chs : [];
+      const safeChs = (Array.isArray(chs) ? chs : []).map((ch) => ({
+        ...ch,
+        resolution: resolveChannelResolution(ch),
+      }));
       setChannels(safeChs);
       setLastUpdate(new Date());
 
@@ -320,7 +325,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
                     {/* Right: Value & Unit */}
                     <div className="suto-channel-right">
                       <span className={`suto-channel-value ${isBlank ? 'is-blank' : ''}`}>
-                        {formatValue(ch.current_value, ch.resolution ?? 2)}
+                        {formatValue(ch.current_value, resolveChannelResolution(ch))}
                       </span>
                       <span className="suto-channel-unit">
                         {ch.unit || ''}

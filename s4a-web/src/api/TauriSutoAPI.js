@@ -13,6 +13,7 @@
 import { isTauri, checkIsTauri } from '../util/platform';
 import { invoke } from '@tauri-apps/api/core';
 import BleSutoAPI from './BleSutoAPI';
+import { resolveChannelResolution } from '../util/resolution';
 
 const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke);
 
@@ -190,7 +191,9 @@ export const TauriSutoAPI = {
         channel_name: ch.description,
         unit: ch.unit,
         unit_index: ch.unit_index,
-        resolution: ch.resolution,
+        resolution: (typeof ch.resolution === 'number' && ch.resolution > 0)
+          ? ch.resolution
+          : resolveChannelResolution({ unit: ch.unit, unit_index: ch.unit_index, resolution: ch.resolution }),
         device_description: ch.device_desc,
         sensor_description: ch.sensor_desc,
         sensor_id: ch.sensor_id,

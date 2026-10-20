@@ -240,6 +240,33 @@ pub fn lookup_unit(unit_index: u8, ascii_custom: &str) -> String {
     }
 }
 
+/// Fallback standard display decimal places for SUTO units matching CSLib & S4ABase.java.
+pub fn default_unit_resolution(unit_index: u8, unit: &str) -> u8 {
+    if is_consumption_unit(unit_index) {
+        return 0;
+    }
+    match unit_index {
+        36 => 3, // MPa
+        10 | 12 | 15 | 17 | 20 | 22 | 37 | 38 => 2, // m/s, m³/min, l/s, Nm³/min, Nl/s, mbar, bar
+        1 | 2 | 3 | 4 | 5 | 14 | 16 | 18 | 19 | 21 | 23 | 31 | 32 | 35 | 39 | 41 | 44 => 1, // °C, °F, %RH, °Ctd, °Ftd, m³/h, l/min, cfm, Nm³/h, Nl/min, Ncfm, °Ctd atm, °Ftd atm, KPa, PSI, V, mA
+        11 | 13 | 33 | 34 => 0, // ft/min, Nft/min, Pa, hPa
+        _ => {
+            let u = unit.to_lowercase();
+            if u.contains("°c") || u.contains("°f") || u.contains("ctd") || u.contains("ftd") {
+                1
+            } else if u.contains("bar") || u.contains("m/s") {
+                2
+            } else if u.contains("mpa") {
+                3
+            } else if u.contains("m³") || u.contains("m3") || u.contains("cfm") || u.contains("l/min") {
+                1
+            } else {
+                2
+            }
+        }
+    }
+}
+
 // ---- Data Models ----
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -361,6 +388,15 @@ pub fn parse_channel_settings(payload: &[u8]) -> Vec<ChannelInfo> {
         }
 
         let unit = lookup_unit(unit_index, &unit_ascii);
+        let default_res = default_unit_resolution(unit_index, &unit);
+        let final_resolution = if resolution > 0 {
+            resolution
+        } else if resolution == 0 && default_res == 0 {
+            0
+        } else {
+            default_res
+        };
+
         let display_desc = if !ch_desc.is_empty() {
             ch_desc
         } else if !sensor_desc.is_empty() {
@@ -380,7 +416,7 @@ pub fn parse_channel_settings(payload: &[u8]) -> Vec<ChannelInfo> {
             description: display_desc,
             unit,
             unit_index,
-            resolution,
+            resolution: final_resolution,
             device_desc: dev_desc,
             sensor_desc,
             mb_output_value_type: mb_type,
@@ -456,12 +492,19 @@ pub fn parse_measurement_values(payload: &[u8], channels: &[ChannelInfo]) -> Vec
             .filter(|u| !u.is_empty())
             .unwrap_or_else(|| lookup_unit(unit_index, ""));
 
+        let final_resolution = if resolution > 0 {
+            resolution
+        } else {
+            ch.map(|c| c.resolution)
+                .unwrap_or_else(|| default_unit_resolution(unit_index, &unit))
+        };
+
         values.push(MeasurementValue {
             id: ch_id,
             value: if is_invalid { None } else { Some(numeric) },
             unit,
             unit_index,
-            resolution,
+            resolution: final_resolution,
             status: status_str,
         });
     }

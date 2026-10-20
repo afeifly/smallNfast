@@ -574,10 +574,17 @@ export default function ReadoutView({
     deviceInfo?.name ||
     'SUTO Device';
 
-  const isEthernet = deviceInfo?.transport === 'TCP' || TauriSutoAPI.getActiveTransport() === 'TCP' || Boolean(deviceInfo?.host);
+  const activeTransport = TauriSutoAPI.getActiveTransport() || deviceInfo?.transport;
+  const isBle = activeTransport === 'BLE' || Boolean(deviceInfo?.isBle);
+  const isEthernet = !isBle && (deviceInfo?.transport === 'TCP' || activeTransport === 'TCP' || Boolean(deviceInfo?.host));
+  const isUsb = !isBle && !isEthernet;
   const ethernetIp = isEthernet
     ? (deviceInfo?.host ? `${deviceInfo.host}${deviceInfo.port && deviceInfo.port !== 502 && deviceInfo.port !== '502' ? `:${deviceInfo.port}` : ''}` : sysInfo?.ip)
     : (sysInfo?.ip || null);
+
+  const rawSerial = sysInfo?.serial_number || deviceInfo?.serial;
+  const serialNumber = typeof rawSerial === 'string' ? rawSerial.trim() : (rawSerial ? String(rawSerial).trim() : '');
+  const hasSerialNumber = Boolean(serialNumber && serialNumber !== '---');
 
   // Fast asynchronous CSV generator that yields to the event loop and reports true progress
   const handleGenerateCsvAsync = async (sessionName, count = 100, customStartTime, customEndTime, onProgress) => {
@@ -984,13 +991,19 @@ export default function ReadoutView({
               <span className="readout-badge read-logger-title" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>Readout</span>
               {isEthernet ? (
                 <span className="readout-badge badge-tcp">Ethernet {ethernetIp ? `(${ethernetIp})` : ''}</span>
-              ) : (
+              ) : isBle ? (
+                <span className="readout-badge badge-ble">Bluetooth (BLE)</span>
+              ) : isUsb ? (
                 <span className="readout-badge badge-usb">Direct USB / Win32</span>
-              )}
+              ) : null}
             </div>
             <div className="readout-meta-row">
-              <span>Serial: {sysInfo?.serial_number || deviceInfo?.serial || '---'}</span>
-              <span>•</span>
+              {hasSerialNumber && (
+                <>
+                  <span>Serial: {serialNumber}</span>
+                  <span>•</span>
+                </>
+              )}
               <span>Channels: {deviceChannels.length} configured</span>
               <span>•</span>
               <span>Live polling automatically pauses while reading logger files</span>

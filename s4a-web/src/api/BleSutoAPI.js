@@ -10,6 +10,7 @@
  */
 
 import TauriSutoAPI from './TauriSutoAPI';
+import { resolveChannelResolution } from '../util/resolution';
 
 // SUTO Official Hardware Bluetooth Low Energy (BLE) UUID Configurations
 // Reference: /Users/ex/project/suto_flutter_series/suto_lib/lib/communication/ble/ble_device.dart
@@ -659,7 +660,10 @@ export class BleSutoManager {
       const devDesc = this._readUtf8String(deframed, off + 1, 21);
       const sensorDesc = this._readUtf8String(deframed, off + 43, 21);
       const chDesc = this._readUtf8String(deframed, off + 64, 21);
-      const resolution = deframed[off + 85];
+      const rawRes = deframed[off + 85];
+      const resolution = (typeof rawRes === 'number' && rawRes > 0)
+        ? rawRes
+        : resolveChannelResolution({ unit, unit_index: unitIndex, resolution: rawRes });
       const unitIndex = deframed[off + 86];
       const unitAscii = this._readUtf8String(deframed, off + 87, 12);
       const mbType = deframed[off + 138];
@@ -811,12 +815,17 @@ export class BleSutoManager {
           if (hist.length > 3600) hist.shift();
         }
 
+        const rawValRes = deframed[off + 4];
+        const valRes = (typeof rawValRes === 'number' && rawValRes > 0)
+          ? rawValRes
+          : resolveChannelResolution(chConfig);
+
         result.push({
           channel_id: chId,
           current_value: val,
           status,
           unit: chConfig.unit || '',
-          resolution: deframed[off + 4],
+          resolution: valRes,
           realStartTime: [now - (hist.length * 1000)],
           pointInterval: [1000],
           measurementData: [hist.slice()],

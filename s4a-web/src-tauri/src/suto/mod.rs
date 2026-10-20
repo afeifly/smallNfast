@@ -297,45 +297,89 @@ pub async fn suto_get_values(
         (addr, chans)
     };
 
-    // Read values sequentially from channel 1..max, mirroring CSLib
-    // `retrieveAllMeasurementValues` (which reads `1..getMaxChannelCount`).
-    // Value index i maps to logical channel id (start + i).
-    let start = 1u8;
-    let max_id = channels.iter().map(|c| c.id).max().unwrap_or(4).max(1);
-    let count = max_id;
-    let ordered: Vec<ChannelInfo> = (start..=max_id)
-        .map(|id| {
-            channels
-                .iter()
-                .find(|c| c.id == id)
-                .cloned()
-                .unwrap_or(ChannelInfo {
-                    id,
-                    ..Default::default()
-                })
-        })
-        .collect();
+    // Determine target channel ranges to query.
+    // Group configured channels into contiguous or near-contiguous clusters (gap <= 3)
+    // so we only query the channels that actually exist on the device, avoiding
+    // transferring dozens of unused channels across the wire.
+    let ranges: Vec<(u8, u8)> = if channels.is_empty() {
+        vec![(1u8, 4u8)]
+    } else {
+        let mut list: Vec<(u8, u8)> = Vec::new();
+        let mut r_start = channels[0].id;
+        let mut r_end = channels[0].id;
 
-    let mut get_val_cmd = Vec::from(CMD_GET_ONLINE_VAL_PREFIX);
-    get_val_cmd.push(start);
-    get_val_cmd.push(count);
-
-    let reply = {
-        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
-        let transport = t_lock.as_mut().ok_or("Device not connected")?;
-        let pkt = pack_packet(addr, &get_val_cmd);
-        transport.write_and_read(&pkt, 2500)?
+        for ch in channels.iter().skip(1) {
+            if ch.id <= r_end.saturating_add(3) {
+                r_end = ch.id;
+            } else {
+                list.push((r_start, r_end - r_start + 1));
+                r_start = ch.id;
+                r_end = ch.id;
+            }
+        }
+        list.push((r_start, r_end - r_start + 1));
+        list
     };
 
-    let deframed = deframe_multi_frame(&reply)?;
-    let values = parse_measurement_values(&deframed, &ordered);
+    let mut all_values = Vec::new();
+    {
+        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+
+        for (start, count) in ranges {
+            let ordered: Vec<ChannelInfo> = (start..start + count)
+                .map(|id| {
+                    channels
+                        .iter()
+                        .find(|c| c.id == id)
+                        .cloned()
+                        .unwrap_or(ChannelInfo {
+                            id,
+                            ..Default::default()
+                        })
+                })
+                .collect();
+
+            let mut get_val_cmd = Vec::from(CMD_GET_ONLINE_VAL_PREFIX);
+            get_val_cmd.push(start);
+            get_val_cmd.push(count);
+
+            let pkt = pack_packet(addr, &get_val_cmd);
+            match transport.write_and_read(&pkt, 2500) {
+                Ok(reply) => {
+                    if let Ok(deframed) = deframe_multi_frame(&reply) {
+                        let mut vals = parse_measurement_values(&deframed, &ordered);
+                        all_values.append(&mut vals);
+                    }
+                }
+                Err(e) => {
+                    log_event(
+                        "WARN",
+                        "SUTO_VAL",
+                        &format!("Poll failed for channel range {}..={}: {}", start, start + count - 1, e),
+                        None,
+                    );
+                }
+            }
+        }
+    }
+
+    // Retain only channels that correspond to real configured channels on the device
+    if !channels.is_empty() {
+        all_values.retain(|v| channels.iter().any(|c| c.id == v.id));
+    }
+
     log_event(
         "DEBUG",
         "SUTO_VAL",
-        &format!("Poll returned {} values: {:?}", values.len(), values.iter().map(|v| (v.id, v.value)).collect::<Vec<_>>()),
+        &format!(
+            "Poll returned {} values: {:?}",
+            all_values.len(),
+            all_values.iter().map(|v| (v.id, v.value)).collect::<Vec<_>>()
+        ),
         None,
     );
-    Ok(values)
+    Ok(all_values)
 }
 
 #[tauri::command]

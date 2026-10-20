@@ -267,9 +267,19 @@ export default function ReadoutView({
   const [s418CustomEnd, setS418CustomEnd] = useState('');
 
   // Type 3 (S461) state
-  const [s461Period, setS461Period] = useState('last_day');
-  const [s461CustomStart, setS461CustomStart] = useState('');
-  const [s461CustomEnd, setS461CustomEnd] = useState('');
+  const [s461Period, setS461Period] = useState('last_hour');
+  const [s461StartDate, setS461StartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [s461StartHour, setS461StartHour] = useState('0');
+  const [s461EndDate, setS461EndDate] = useState(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
+  const [s461EndHour, setS461EndHour] = useState(() => {
+    return String(new Date().getHours());
+  });
 
   // Read progress and results
   const [readingProgress, setReadingProgress] = useState(null);
@@ -468,6 +478,14 @@ export default function ReadoutView({
       let lStatus = null;
       if (dType === 's418' || dType === 's461') {
         lStatus = await TauriSutoAPI.getLoggerStatus();
+        if (lStatus?.start_time && lStatus?.end_time) {
+          const sDate = new Date(lStatus.start_time * 1000);
+          const eDate = new Date(lStatus.end_time * 1000);
+          setS461StartDate(sDate.toISOString().slice(0, 10));
+          setS461StartHour(String(sDate.getHours()));
+          setS461EndDate(eDate.toISOString().slice(0, 10));
+          setS461EndHour(String(eDate.getHours()));
+        }
       }
       setLoggerStatus(lStatus);
 
@@ -712,6 +730,89 @@ export default function ReadoutView({
     } catch (e) {
       setReadingProgress(null);
       alert(`Readout error: ${e.message || e}`);
+    }
+  };
+
+  const handleReadS461Log = async () => {
+    if (!TauriSutoAPI.isAvailable()) {
+      alert('Real S461 logger readout is available in desktop application mode with an active device connection.');
+      return;
+    }
+
+    setReadingProgress(5);
+    setReadResult(null);
+
+    try {
+      const stopTimeMs = loggerStatus?.end_time ? loggerStatus.end_time * 1000 : Date.now();
+      let tryStartTimeMs = stopTimeMs - 3600 * 1000;
+      let stopTimeL = stopTimeMs;
+
+      if (s461Period === 'last_hour') {
+        tryStartTimeMs = stopTimeMs - 3600 * 1000;
+        stopTimeL = stopTimeMs;
+      } else if (s461Period === 'last_day') {
+        tryStartTimeMs = stopTimeMs - 24 * 3600 * 1000;
+        stopTimeL = stopTimeMs;
+      } else if (s461Period === 'last_week') {
+        const d = new Date(stopTimeMs);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff));
+        monday.setHours(0, 0, 0, 0);
+        monday.setMilliseconds(0);
+        tryStartTimeMs = monday.getTime();
+        stopTimeL = stopTimeMs;
+      } else if (s461Period === 'last_month') {
+        const d = new Date(stopTimeMs);
+        const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+        tryStartTimeMs = firstOfMonth.getTime();
+        stopTimeL = stopTimeMs;
+      } else if (s461Period === 'period') {
+        if (!s461StartDate || !s461EndDate) {
+          alert('Please select both start and end dates.');
+          setReadingProgress(null);
+          return;
+        }
+        const [sy, sm, sd] = s461StartDate.split('-').map(Number);
+        const [ey, em, ed] = s461EndDate.split('-').map(Number);
+        const startCal = new Date(sy, sm - 1, sd, parseInt(s461StartHour || '0', 10), 0, 0, 0);
+        const endCal = new Date(ey, em - 1, ed, parseInt(s461EndHour || '0', 10), 0, 0, 0);
+
+        if (startCal.getTime() >= endCal.getTime()) {
+          alert('Please select a reasonable time period! Start date/hour must be earlier than End date/hour.');
+          setReadingProgress(null);
+          return;
+        }
+        tryStartTimeMs = startCal.getTime();
+        stopTimeL = endCal.getTime();
+      }
+
+      if (loggerStatus?.start_time && tryStartTimeMs < loggerStatus.start_time * 1000) {
+        tryStartTimeMs = loggerStatus.start_time * 1000;
+      }
+
+      const startSec = Math.floor(tryStartTimeMs / 1000);
+      const stopSec = Math.floor(stopTimeL / 1000);
+
+      setReadingProgress(20);
+      const res = await TauriSutoAPI.readS461Log(startSec, stopSec);
+
+      setReadingProgress(90);
+      const blob = new Blob([res.csv_text], { type: 'text/csv;charset=utf-8;' });
+      const filename = res.filename || `${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Logger_Data.csv`;
+
+      setReadingProgress(100);
+      await new Promise((r) => setTimeout(r, 60));
+      setReadingProgress(null);
+
+      setReadResult({
+        filename,
+        blob,
+        rowCount: res.row_count,
+      });
+    } catch (err) {
+      setReadingProgress(null);
+      alert(`Readout error: ${err.message || err}`);
     }
   };
 
@@ -1255,7 +1356,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>SUTO S461 Ultrasonic Logger Data</h3>
+                <h3>Logger data</h3>
                 <p>Read volumetric flow, energy rate, and thermal sensor history from internal logger storage.</p>
               </div>
               <div className="readout-section-actions">
@@ -1263,34 +1364,10 @@ export default function ReadoutView({
                   className="readout-btn-secondary"
                   onClick={refreshDeviceState}
                   disabled={loadingDeviceData}
-                  title="Refresh ultrasonic status from device"
+                  title="Refresh logger status from device"
                 >
                   {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Status'}
                 </button>
-              </div>
-            </div>
-
-            <div className="readout-stat-grid">
-              <div className="readout-stat-card">
-                <span className="readout-stat-label">Total Logged Samples</span>
-                <span className="readout-stat-value">
-                  {loggerStatus?.recorded_count !== undefined ? loggerStatus.recorded_count.toLocaleString() : '---'}
-                </span>
-                <span className="readout-stat-sub">Ultrasonic & energy records</span>
-              </div>
-              <div className="readout-stat-card">
-                <span className="readout-stat-label">Memory Interval</span>
-                <span className="readout-stat-value">
-                  {loggerStatus?.package_interval !== undefined ? `${loggerStatus.package_interval} sec` : '---'}
-                </span>
-                <span className="readout-stat-sub">Recording sample interval</span>
-              </div>
-              <div className="readout-stat-card">
-                <span className="readout-stat-label">Buffer Capacity</span>
-                <span className="readout-stat-value" style={{ color: loggerStatus?.buffer_capacity ? '#16a34a' : '#64748b' }}>
-                  {loggerStatus?.buffer_capacity || '---'}
-                </span>
-                <span className="readout-stat-sub">Available logger memory</span>
               </div>
             </div>
 
@@ -1298,10 +1375,11 @@ export default function ReadoutView({
               <div className="readout-range-title">Choose Extraction Interval:</div>
               <div className="readout-preset-buttons">
                 {[
-                  { id: 'last_hour', label: 'Last 1 Hour' },
-                  { id: 'last_day', label: 'Last 24 Hours' },
-                  { id: 'last_week', label: 'Last 7 Days' },
-                  { id: 'all', label: 'Full Log Memory' },
+                  { id: 'last_hour', label: 'Last hour' },
+                  { id: 'last_day', label: 'Last day' },
+                  { id: 'last_week', label: 'Last week' },
+                  { id: 'last_month', label: 'Last month' },
+                  { id: 'period', label: 'Time period' },
                 ].map((p) => (
                   <button
                     key={p.id}
@@ -1312,17 +1390,68 @@ export default function ReadoutView({
                   </button>
                 ))}
               </div>
+
+              {s461Period === 'period' && (
+                <div className="readout-custom-inputs" style={{ marginTop: '16px' }}>
+                  <div className="readout-input-group">
+                    <label>From Date:</label>
+                    <input
+                      type="date"
+                      value={s461StartDate}
+                      onChange={(e) => setS461StartDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="readout-input-group">
+                    <label>Start Hour:</label>
+                    <select
+                      value={s461StartHour}
+                      onChange={(e) => setS461StartHour(e.target.value)}
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i < 10 ? `0${i}` : i}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="readout-input-group">
+                    <label>To Date:</label>
+                    <input
+                      type="date"
+                      value={s461EndDate}
+                      onChange={(e) => setS461EndDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="readout-input-group">
+                    <label>End Hour:</label>
+                    <select
+                      value={s461EndHour}
+                      onChange={(e) => setS461EndHour(e.target.value)}
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i < 10 ? `0${i}` : i}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {loggerStatus?.start_time && loggerStatus?.end_time && (
+                <div style={{ marginTop: '12px', fontSize: '0.8rem', color: '#64748b' }}>
+                  Logger memory range: {new Date(loggerStatus.start_time * 1000).toLocaleString()} — {new Date(loggerStatus.end_time * 1000).toLocaleString()}
+                </div>
+              )}
             </div>
 
             <div className="readout-bottom-bar" style={{ justifyContent: 'flex-end' }}>
               <button
                 className="readout-btn-primary"
-                onClick={() => {
-                  const count = s461Period === 'last_hour' ? 120 : s461Period === 'last_day' ? 1440 : 3600;
-                  performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Ultrasonic_Log.csv`, count);
-                }}
+                onClick={handleReadS461Log}
+                disabled={Boolean(readingProgress)}
               >
-                Extract Ultrasonic Log to CSV
+                {readingProgress ? 'Reading from device...' : 'Read to CSV'}
               </button>
             </div>
           </div>

@@ -30,6 +30,9 @@ export const TauriSutoAPI = {
   },
 
   getActiveTransport() {
+    if (activeTransport === 'BLE_WEB' || activeTransport === 'BLE_NATIVE') {
+      return 'BLE';
+    }
     return activeTransport;
   },
 
@@ -89,9 +92,52 @@ export const TauriSutoAPI = {
     };
   },
 
-  /** Connect to SUTO device via Web Bluetooth (BLE) */
+  /** List available BLE devices in Desktop mode */
+  async listBleDevices(options = {}) {
+    if (!hasTauri()) {
+      return [];
+    }
+    const timeoutMs = options.timeoutMs || 3000;
+    const sutoOnly = !options.acceptAll;
+    return await invoke('suto_list_ble_devices', { timeoutMs, sutoOnly });
+  },
+
+  /** Connect to SUTO device via BLE (Native in desktop, Web Bluetooth in browser) */
   async connectBle(options = {}) {
-    activeTransport = 'BLE';
+    if (hasTauri()) {
+      activeTransport = 'BLE_NATIVE';
+      await this.logClientEvent('INFO', 'BLE_CONN', `Initiating native desktop BLE connection (ID: ${options.deviceId || 'auto'})...`);
+
+      let targetDeviceId = options.deviceId;
+      let targetName = options.name;
+
+      if (!targetDeviceId) {
+        const devs = await this.listBleDevices({ acceptAll: options.acceptAll, timeoutMs: 3000 });
+        if (!devs || devs.length === 0) {
+          throw new Error('No Bluetooth Low Energy devices detected. Make sure the SUTO device Bluetooth is active and in range.');
+        }
+        targetDeviceId = devs[0].id;
+        targetName = devs[0].name;
+      }
+
+      const res = await invoke('suto_connect_ble', { deviceId: targetDeviceId });
+      let sInfo = null;
+      try {
+        sInfo = await invoke('suto_get_system_info');
+      } catch (_) {}
+
+      return {
+        address: res,
+        transport: 'BLE',
+        deviceId: sInfo?.device_id,
+        device_id: sInfo?.device_id,
+        name: targetName || sInfo?.device_name || 'SUTO BLE Device',
+        device: targetName || sInfo?.device_name || 'SUTO BLE Device',
+        serial: sInfo?.serial_number,
+      };
+    }
+
+    activeTransport = 'BLE_WEB';
     await this.logClientEvent('INFO', 'BLE_CONN', 'Initiating Web Bluetooth (BLE) connection...');
     const conn = await BleSutoAPI.connectBle(options);
     return { ...conn, transport: 'BLE' };
@@ -103,7 +149,7 @@ export const TauriSutoAPI = {
     activeMeasurementPromise = null;
     lastMeasurementResult = null;
     lastMeasurementTime = 0;
-    if (activeTransport === 'BLE') {
+    if (activeTransport === 'BLE_WEB') {
       await BleSutoAPI.disconnect();
     } else if (hasTauri()) {
       await invoke('suto_disconnect');
@@ -117,7 +163,7 @@ export const TauriSutoAPI = {
    * @param {Function} [callback]
    */
   async getChannels(callback) {
-    if (activeTransport === 'BLE') {
+    if (activeTransport === 'BLE_WEB') {
       try {
         const chs = await BleSutoAPI.getChannels();
         if (callback) callback(chs);
@@ -172,7 +218,7 @@ export const TauriSutoAPI = {
    * @param {Function} [callback]
    */
   async getMeasurementData(callback) {
-    if (activeTransport === 'BLE') {
+    if (activeTransport === 'BLE_WEB') {
       const now = Date.now();
       // Reuse recent fresh measurement within 750ms
       if (lastMeasurementResult && (now - lastMeasurementTime < 750)) {
@@ -300,7 +346,7 @@ export const TauriSutoAPI = {
    * Get device system information (serial number, firmware version, device name, etc.)
    */
   async getSystemInfo() {
-    if (activeTransport === 'BLE') {
+    if (activeTransport === 'BLE_WEB') {
       return await BleSutoAPI.getSystemInfo();
     }
     if (!hasTauri()) {
@@ -317,6 +363,22 @@ export const TauriSutoAPI = {
       return null;
     }
     return await invoke('suto_get_logger_status');
+  },
+
+  /**
+   * Read logged data from S461 device memory for a given time period
+   * @param {number} startTime Unix timestamp in seconds
+   * @param {number} stopTime Unix timestamp in seconds
+   * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
+   */
+  async readS461Log(startTime, stopTime) {
+    if (!hasTauri()) {
+      throw new Error('Device communication is only available in desktop application mode.');
+    }
+    return await invoke('suto_read_s461_log', {
+      startTime: Math.floor(startTime),
+      stopTime: Math.floor(stopTime),
+    });
   },
 
   /**

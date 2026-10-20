@@ -109,7 +109,12 @@ describe('App', () => {
     expect(overlay).not.toBeNull();
     fireEvent.click(overlay);
 
-    expect(screen.getByText('Connect SUTO Hardware')).toBeDefined();
+    // Direct USB, Ethernet TCP, and Bluetooth (BLE) should all be available in desktop mode
+    const modal = document.querySelector('.device-connect-modal');
+    expect(modal).not.toBeNull();
+    expect(modal.textContent).toContain('Direct USB');
+    expect(modal.textContent).toContain('Ethernet TCP');
+    expect(modal.textContent).toContain('Bluetooth (BLE)');
 
     // Clicking device-connect-close button closes it
     const closeBtn = document.querySelector('.device-connect-close');

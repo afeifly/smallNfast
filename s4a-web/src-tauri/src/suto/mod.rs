@@ -9,6 +9,7 @@ pub mod protocol;
 pub mod transport;
 
 pub mod driver_tcp;
+pub mod driver_ble;
 pub mod files;
 
 pub use files::{
@@ -154,6 +155,68 @@ pub async fn suto_connect_tcp(
 
         let mut info_lock = state.device_info.lock().unwrap_or_else(|p| p.into_inner());
         *info_lock = parse_device_info(&reply);
+    }
+
+    Ok(active_addr)
+}
+
+#[tauri::command]
+pub async fn suto_list_ble_devices(
+    timeout_ms: Option<u64>,
+    suto_only: Option<bool>,
+) -> Result<Vec<driver_ble::BleDeviceInfo>, String> {
+    log_event("INFO", "SUTO_IPC", "suto_list_ble_devices called", None);
+    let scan_duration = timeout_ms.unwrap_or(3000).max(1000).min(10000);
+    let filter = suto_only.unwrap_or(false);
+    driver_ble::BleTransport::list_devices(scan_duration, filter).await
+}
+
+#[tauri::command]
+pub async fn suto_connect_ble(
+    device_id: String,
+    state: State<'_, SutoState>,
+) -> Result<u8, String> {
+    log_event("INFO", "SUTO_IPC", &format!("suto_connect_ble called with device_id: {}", device_id), None);
+
+    let mut ble = driver_ble::BleTransport::connect(&device_id).await?;
+    let dev_name = ble.device_name().to_string();
+
+    // SUTO BLE sensors operate on Address 1 by default; query discovery with 'A'
+    log_event("INFO", "SUTO_DISC", "Sending Address 1 Discovery Query over BLE...", None);
+    let disc_pkt1 = pack_packet(1, &[CMD_DISCOVERY_ASCII]);
+    let mut reply = ble.write_and_read(&disc_pkt1, 2000).unwrap_or_default();
+
+    let mut active_addr = 1;
+    if reply.is_empty() {
+        log_event("INFO", "SUTO_DISC", "Address 1 query empty, falling back to Address 0 broadcast...", None);
+        let disc_pkt0 = pack_packet(0, &[CMD_DISCOVERY_ASCII]);
+        if let Ok(r0) = ble.write_and_read(&disc_pkt0, 2000) {
+            reply = r0;
+        }
+    }
+
+    if !reply.is_empty() && reply[0] != 0 {
+        active_addr = reply[0];
+    }
+
+    log_event(
+        "INFO",
+        "SUTO_DISC",
+        &format!("BLE discovery successful! Device '{}' assigned active address: {} (0x{:02X})", dev_name, active_addr, active_addr),
+        None,
+    );
+
+    let parsed_info = parse_device_info(&reply);
+
+    {
+        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
+        *t_lock = Some(Box::new(ble));
+
+        let mut addr_lock = state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
+        *addr_lock = active_addr;
+
+        let mut info_lock = state.device_info.lock().unwrap_or_else(|p| p.into_inner());
+        *info_lock = parsed_info;
     }
 
     Ok(active_addr)
@@ -759,6 +822,360 @@ pub async fn suto_get_logger_files(
 
     log_event("INFO", "SUTO_LOGGER", &format!("Successfully parsed {} logger file(s) from device", list.len()), None);
     Ok(list)
+}
+
+fn format_s4a_time_str(sec: i64) -> String {
+    if sec <= 0 {
+        return "01-01-1970 00:00:00".to_string();
+    }
+    let s = sec as u64;
+    let days = s / 86400;
+    let rem_sec = s % 86400;
+    let hours = rem_sec / 3600;
+    let mins = (rem_sec % 3600) / 60;
+    let secs = rem_sec % 60;
+
+    let mut year = 1970u32;
+    let mut d = days;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        let days_in_year = if leap { 366 } else { 365 };
+        if d < days_in_year {
+            break;
+        }
+        d -= days_in_year;
+        year += 1;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let days_in_month = [
+        31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    let mut month = 1u32;
+    for &dim in &days_in_month {
+        if d < dim {
+            break;
+        }
+        d -= dim;
+        month += 1;
+    }
+    let day = d + 1;
+
+    format!("{:02}-{:02}-{:04} {:02}:{:02}:{:02}", day, month, year, hours, mins, secs)
+}
+
+#[tauri::command]
+pub async fn suto_read_s461_log(
+    state: State<'_, SutoState>,
+    start_time: u32,
+    stop_time: u32,
+) -> Result<S461ReadoutResult, String> {
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+    let dev_name = {
+        let info = state.device_info.lock().map_err(|e| e.to_string())?;
+        info.map(|i| format!("SUTO_{:04X}", i.identification))
+            .unwrap_or_else(|| "S461".into())
+    };
+
+    log_event(
+        "INFO",
+        "SUTO_LOGGER",
+        &format!("Querying S461 log position for range: {} .. {}", start_time, stop_time),
+        None,
+    );
+
+    // 1. Get Log Time Position
+    let (start_pos, end_pos) = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_S418_TIME_POSITION];
+        cmd.extend_from_slice(&start_time.to_le_bytes());
+        cmd.extend_from_slice(&stop_time.to_le_bytes());
+
+        let pkt = pack_packet(addr, &cmd);
+        let raw = transport.write_and_read(&pkt, 3000)?;
+        let payload = deframe_multi_frame(&raw)?;
+        if payload.len() < 8 {
+            return Err("Invalid time position response from S461 device".into());
+        }
+        let p_start = i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+        let p_end = i32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
+        (p_start, p_end)
+    };
+
+    log_event(
+        "INFO",
+        "SUTO_LOGGER",
+        &format!("S461 log positions: start = {}, end = {}", start_pos, end_pos),
+        None,
+    );
+
+    if end_pos <= start_pos || start_pos < 0 {
+        return Err("No recorded log data found in the selected time range on the device.".into());
+    }
+
+    let size_to_read = (end_pos - start_pos) as usize;
+
+    // 2. Timestamp compensation
+    let now_sec = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as u32;
+    {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        if let Some(transport) = t_lock.as_mut() {
+            let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_S418_TIMESTAMP_COMPENSATION, 0x01];
+            cmd.extend_from_slice(&now_sec.to_le_bytes());
+            let pkt = pack_packet(addr, &cmd);
+            let _ = transport.write_and_read(&pkt, 1500);
+        }
+    }
+
+    // 3. Set Continually Start Line
+    {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_S418_SET_LOG_CONTINUALLY_START_LINE];
+        cmd.extend_from_slice(&(start_pos as u32).to_le_bytes());
+        let pkt = pack_packet(addr, &cmd);
+        let _ = transport.write_and_read(&pkt, 2000)?;
+    }
+
+    // 4. Query Meter Type (0 = Flow meter, 1 = Energy meter)
+    let meter_type = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        if let Some(transport) = t_lock.as_mut() {
+            let cmd = [CTY_S461, 0x00, 0x00, 0x00];
+            let pkt = pack_packet(addr, &cmd);
+            if let Ok(raw) = transport.write_and_read(&pkt, 1500) {
+                if let Ok(payload) = deframe_multi_frame(&raw) {
+                    payload.first().copied().unwrap_or(0)
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    };
+
+    // 5. Query Units
+    let mut flow_unit = "m³/h".to_string();
+    let mut velocity_unit = "m/s".to_string();
+    let mut consumption_unit = "m³".to_string();
+
+    {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        if let Some(transport) = t_lock.as_mut() {
+            // Flow unit
+            let cmd_f = [CTY_S461, 0x00, 0x08, 0x00];
+            let pkt_f = pack_packet(addr, &cmd_f);
+            if let Ok(raw) = transport.write_and_read(&pkt_f, 1200) {
+                if let Ok(payload) = deframe_multi_frame(&raw) {
+                    if let Some(&u_idx) = payload.first() {
+                        let u = lookup_unit(u_idx, "");
+                        if !u.is_empty() {
+                            flow_unit = u;
+                        }
+                    }
+                }
+            }
+            // Velocity unit
+            let cmd_v = [CTY_S461, 0x01, 0x1F, 0x00];
+            let pkt_v = pack_packet(addr, &cmd_v);
+            if let Ok(raw) = transport.write_and_read(&pkt_v, 1200) {
+                if let Ok(payload) = deframe_multi_frame(&raw) {
+                    if let Some(&u_idx) = payload.first() {
+                        let u = lookup_unit(u_idx, "");
+                        if !u.is_empty() {
+                            velocity_unit = u;
+                        }
+                    }
+                }
+            }
+            // Consumption unit
+            let cmd_c = [CTY_S461, 0x00, 0x0B, 0x00];
+            let pkt_c = pack_packet(addr, &cmd_c);
+            if let Ok(raw) = transport.write_and_read(&pkt_c, 1200) {
+                if let Ok(payload) = deframe_multi_frame(&raw) {
+                    if let Some(&u_idx) = payload.first() {
+                        let u = lookup_unit(u_idx, "");
+                        if !u.is_empty() {
+                            consumption_unit = u;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 6. Continually read records
+    let is_flow_meter = meter_type == 0;
+    let record_len = if is_flow_meter { 20 } else { 28 };
+    let batch_size = 50usize;
+
+    struct S461Record {
+        timestamp: u32,
+        val1: f32, // flow
+        val2: f32, // velocity
+        val3: f32, // consumption or energy flow
+        val4: f32, // consumption reverse or delta
+        val5: Option<f32>, // heat energy
+        val6: Option<f32>, // cold energy
+    }
+
+    let mut records: Vec<S461Record> = Vec::with_capacity(size_to_read);
+    let mut offset = 0usize;
+
+    while offset < size_to_read {
+        let chunk_size = (size_to_read - offset).min(batch_size);
+        let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_GET_LOG_CONTINUALLY];
+        cmd.extend_from_slice(&(chunk_size as u32).to_le_bytes());
+
+        let raw = {
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let pkt = pack_packet(addr, &cmd);
+            transport.write_and_read(&pkt, 4000)?
+        };
+
+        let payload = deframe_multi_frame(&raw)?;
+        if payload.len() < record_len {
+            log_event(
+                "WARN",
+                "SUTO_LOGGER",
+                &format!("Received short payload during S461 readout: {} bytes", payload.len()),
+                None,
+            );
+            break;
+        }
+
+        let chunk_count = payload.len() / record_len;
+        for item in payload.chunks_exact(record_len) {
+            let ts = u32::from_le_bytes([item[0], item[1], item[2], item[3]]);
+            let v1 = f32::from_le_bytes([item[4], item[5], item[6], item[7]]);
+            let v2 = f32::from_le_bytes([item[8], item[9], item[10], item[11]]);
+            let v3 = f32::from_le_bytes([item[12], item[13], item[14], item[15]]);
+            let v4 = f32::from_le_bytes([item[16], item[17], item[18], item[19]]);
+
+            if is_flow_meter {
+                records.push(S461Record {
+                    timestamp: ts,
+                    val1: if v1.is_nan() || v1 < -8000.0 { -9999.0 } else { v1 },
+                    val2: if v2.is_nan() || v2 < -8000.0 { -9999.0 } else { v2 },
+                    val3: if v3.is_nan() || v3 < -8000.0 { -9999.0 } else { v3 },
+                    val4: if v4.is_nan() || v4 < -8000.0 { -9999.0 } else { v4 },
+                    val5: None,
+                    val6: None,
+                });
+            } else if item.len() >= 28 {
+                let v5 = f32::from_le_bytes([item[20], item[21], item[22], item[23]]);
+                let v6 = f32::from_le_bytes([item[24], item[25], item[26], item[27]]);
+                records.push(S461Record {
+                    timestamp: ts,
+                    val1: if v1.is_nan() || v1 < -8000.0 { -9999.0 } else { v1 },
+                    val2: if v2.is_nan() || v2 < -8000.0 { -9999.0 } else { v2 },
+                    val3: if v3.is_nan() || v3 < -8000.0 { -9999.0 } else { v3 },
+                    val4: if v4.is_nan() || v4 < -8000.0 { -9999.0 } else { v4 },
+                    val5: Some(if v5.is_nan() || v5 < -8000.0 { -9999.0 } else { v5 }),
+                    val6: Some(if v6.is_nan() || v6 < -8000.0 { -9999.0 } else { v6 }),
+                });
+            }
+        }
+
+        offset += chunk_count;
+        if chunk_count < chunk_size {
+            break;
+        }
+    }
+
+    if records.is_empty() {
+        return Err("No logger records retrieved from device".into());
+    }
+
+    // 7. Format CSV in standard S4A format
+    let first_ts = records.first().map(|r| r.timestamp as i64).unwrap_or(start_time as i64);
+    let last_ts = records.last().map(|r| r.timestamp as i64).unwrap_or(stop_time as i64);
+    let interval = if records.len() > 1 {
+        let diff = records[1].timestamp.saturating_sub(records[0].timestamp);
+        if diff > 0 { diff } else { 1 }
+    } else {
+        1
+    };
+
+    let start_date_str = format_s4a_time_str(first_ts);
+    let end_date_str = format_s4a_time_str(last_ts);
+
+    let mut csv_lines = Vec::new();
+    csv_lines.push(format!("{} Raw Data", dev_name));
+    csv_lines.push("".to_string());
+    csv_lines.push(format!("Start Date Time,{}", start_date_str));
+    csv_lines.push(format!("End Date Time,{}", end_date_str));
+    csv_lines.push(format!("Sample Rate(sec),{}", interval));
+
+    if is_flow_meter {
+        csv_lines.push("NO.Of Channels,4".to_string());
+        csv_lines.push(format!("NO.Of Records,{}", records.len()));
+        csv_lines.push("".to_string());
+        csv_lines.push("No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point".to_string());
+        csv_lines.push(format!("1,Flow,S461,{},0.1,Location 1/Flow", flow_unit));
+        csv_lines.push(format!("2,Velocity,S461,{},0.01,Location 1/Velocity", velocity_unit));
+        csv_lines.push(format!("3,Consumption,S461,{},0.1,Location 1/Consumption", consumption_unit));
+        csv_lines.push(format!("4,Consumption Reverse,S461,{},0.1,Location 1/Consumption Reverse", consumption_unit));
+        csv_lines.push("".to_string());
+        csv_lines.push(format!("Date Time,Flow - {},Velocity - {},Consumption - {},Consumption Reverse - {}", flow_unit, velocity_unit, consumption_unit, consumption_unit));
+
+        for r in &records {
+            let dt = format_s4a_time_str(r.timestamp as i64);
+            let s1 = if r.val1 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val1) };
+            let s2 = if r.val2 <= -8000.0 { "".to_string() } else { format!("{:.2}", r.val2) };
+            let s3 = if r.val3 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val3) };
+            let s4 = if r.val4 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val4) };
+            csv_lines.push(format!("{},{},{},{},{}", dt, s1, s2, s3, s4));
+        }
+    } else {
+        csv_lines.push("NO.Of Channels,6".to_string());
+        csv_lines.push(format!("NO.Of Records,{}", records.len()));
+        csv_lines.push("".to_string());
+        csv_lines.push("No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point".to_string());
+        csv_lines.push(format!("1,Flow,S461,{},0.1,Location 1/Flow", flow_unit));
+        csv_lines.push(format!("2,Velocity,S461,{},0.01,Location 1/Velocity", velocity_unit));
+        csv_lines.push("3,Energy Flow,S461,kW,0.1,Location 1/Energy Flow".to_string());
+        csv_lines.push("4,Delta,S461,°C,0.1,Location 1/Delta".to_string());
+        csv_lines.push("5,Heat Energy,S461,kWh,0.1,Location 1/Heat Energy".to_string());
+        csv_lines.push("6,Cold Energy,S461,kWh,0.1,Location 1/Cold Energy".to_string());
+        csv_lines.push("".to_string());
+        csv_lines.push(format!("Date Time,Flow - {},Velocity - {},Energy Flow - kW,Delta - °C,Heat Energy - kWh,Cold Energy - kWh", flow_unit, velocity_unit));
+
+        for r in &records {
+            let dt = format_s4a_time_str(r.timestamp as i64);
+            let s1 = if r.val1 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val1) };
+            let s2 = if r.val2 <= -8000.0 { "".to_string() } else { format!("{:.2}", r.val2) };
+            let s3 = if r.val3 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val3) };
+            let s4 = if r.val4 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val4) };
+            let s5 = r.val5.map(|v| if v <= -8000.0 { "".to_string() } else { format!("{:.1}", v) }).unwrap_or_default();
+            let s6 = r.val6.map(|v| if v <= -8000.0 { "".to_string() } else { format!("{:.1}", v) }).unwrap_or_default();
+            csv_lines.push(format!("{},{},{},{},{},{},{}", dt, s1, s2, s3, s4, s5, s6));
+        }
+    }
+
+    let csv_text = csv_lines.join("\r\n") + "\r\n";
+    let safe_dev = dev_name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
+    let filename = format!("{}_Logger_Data.csv", safe_dev);
+
+    log_event(
+        "INFO",
+        "SUTO_LOGGER",
+        &format!("Successfully extracted {} real records from S461 logger", records.len()),
+        None,
+    );
+
+    Ok(S461ReadoutResult {
+        csv_text,
+        row_count: records.len(),
+        filename,
+    })
 }
 
 #[tauri::command]

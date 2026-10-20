@@ -629,7 +629,8 @@
   color: #475569;
 }
 
-.readout-input-group input {
+.readout-input-group input,
+.readout-input-group select {
   padding: 7px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;

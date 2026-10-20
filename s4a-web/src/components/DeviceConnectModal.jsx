@@ -13,11 +13,12 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   const [error, setError] = useState(null);
 
   const [showAllBle, setShowAllBle] = useState(false);
+  const [bleDevices, setBleDevices] = useState([]);
+  const [scanningBle, setScanningBle] = useState(false);
+  const [hasScannedBle, setHasScannedBle] = useState(false);
 
   useEffect(() => {
-    if (isDesk && tab === 'ble') {
-      setTab('usb');
-    } else if (!isDesk && tab !== 'ble') {
+    if (!isDesk && tab !== 'ble') {
       setTab('ble');
     }
   }, [isDesk, tab]);
@@ -53,6 +54,36 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
     } catch (err) {
       console.error('[DeviceConnectModal] TCP connect error:', err);
       setError(err?.message || 'Failed to connect to SUTO Ethernet device. Check IP address and port.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleScanBle = async () => {
+    setScanningBle(true);
+    setError(null);
+    try {
+      const devs = await TauriSutoAPI.listBleDevices({ acceptAll: showAllBle, timeoutMs: 3000 });
+      setBleDevices(devs || []);
+      setHasScannedBle(true);
+    } catch (err) {
+      console.error('[DeviceConnectModal] BLE scan error:', err);
+      setError(err?.message || 'Failed to scan Bluetooth devices. Ensure Bluetooth is enabled.');
+    } finally {
+      setScanningBle(false);
+    }
+  };
+
+  const handleConnectBleDevice = async (dev) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const conn = await TauriSutoAPI.connectBle({ deviceId: dev.id, name: dev.name });
+      onConnected(conn);
+      onClose();
+    } catch (err) {
+      console.error('[DeviceConnectModal] BLE connect error:', err);
+      setError(err?.message || `Failed to connect to ${dev.name}.`);
     } finally {
       setLoading(false);
     }
@@ -103,6 +134,13 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
                 <span>🌐</span>
                 <span>Ethernet TCP</span>
               </button>
+              <button
+                className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
+                onClick={() => { setTab('ble'); setError(null); }}
+              >
+                <span>📶</span>
+                <span>Bluetooth (BLE)</span>
+              </button>
             </>
           ) : (
             <button
@@ -119,7 +157,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
         <div className="platform-diff-note">
           {isDesk ? (
             <p>
-              🖥️ <strong>Desktop App Mode:</strong> Direct Win32 US and low-level Ethernet TCP sockets communicate natively with hardware. Web Bluetooth is hidden in desktop mode.
+              🖥️ <strong>Desktop App Mode:</strong> Direct USB, low-level Ethernet TCP, and native Bluetooth Low Energy (BLE) communicate directly with hardware.
             </p>
           ) : (
             <p>
@@ -187,23 +225,31 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
           {tab === 'ble' && (
             <>
               <p className="tab-desc">
-                Connect wirelessly to SUTO Bluetooth Low Energy sensors (e.g. S401 / S421 / S520) via browser <strong>Web Bluetooth</strong>.
+                {isDesk
+                  ? 'Connect wirelessly to SUTO Bluetooth Low Energy sensors (e.g. S401 / S421 / S520) via native desktop Bluetooth.'
+                  : (
+                    <>Connect wirelessly to SUTO Bluetooth Low Energy sensors (e.g. S401 / S421 / S520) via browser <strong>Web Bluetooth</strong>.</>
+                  )}
               </p>
+
               <div className="ble-badge-hint">
                 <span>ℹ️</span>
                 <span>
-                  {BleSutoAPI.isSupported()
+                  {isDesk
+                    ? 'Native Bluetooth Low Energy (BLE) engine is active and ready in desktop mode.'
+                    : BleSutoAPI.isSupported()
                     ? 'Web Bluetooth is supported in your current browser.'
                     : (BleSutoAPI.getSupportIssue() || 'Web Bluetooth requires Chrome or a Chromium-based browser.')}
                 </span>
               </div>
-              <div style={{ marginTop: '12px', marginBottom: '14px' }}>
+
+              <div style={{ marginTop: '4px', marginBottom: '8px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer', userSelect: 'none' }}>
                   <input
                     type="checkbox"
                     checked={showAllBle}
                     onChange={(e) => setShowAllBle(e.target.checked)}
-                    disabled={loading}
+                    disabled={loading || scanningBle}
                   />
                   <span>Show all nearby Bluetooth devices (unfiltered)</span>
                 </label>
@@ -213,13 +259,67 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
                     : 'Default: Filtered by SUTO hardware services for quick selection.'}
                 </div>
               </div>
-              <button
-                className="connect-action-btn"
-                onClick={handleConnectBle}
-                disabled={loading || !BleSutoAPI.isSupported()}
-              >
-                {loading ? 'Pairing Bluetooth...' : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan SUTO BLE Sensors')}
-              </button>
+
+              {isDesk ? (
+                <>
+                  <button
+                    className="connect-action-btn"
+                    onClick={handleScanBle}
+                    disabled={loading || scanningBle}
+                  >
+                    {scanningBle
+                      ? '📡 Scanning nearby devices (3s)...'
+                      : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan SUTO BLE Sensors')}
+                  </button>
+
+                  {bleDevices.length > 0 && (
+                    <div className="ble-device-list">
+                      <div className="ble-device-list-header">
+                        Discovered BLE Devices ({bleDevices.length}):
+                      </div>
+                      <div className="ble-device-items">
+                        {bleDevices.map((dev) => (
+                          <div key={dev.id} className="ble-device-card">
+                            <div className="ble-card-left">
+                              <div className="ble-card-title">
+                                {dev.name || 'Unnamed Sensor'}
+                                {dev.is_suto && <span className="suto-pill">SUTO</span>}
+                              </div>
+                              <div className="ble-card-id">{dev.id}</div>
+                            </div>
+                            <div className="ble-card-right">
+                              {dev.rssi !== null && dev.rssi !== undefined && (
+                                <span className="ble-rssi-tag">{dev.rssi} dBm</span>
+                              )}
+                              <button
+                                className="ble-card-connect-btn"
+                                onClick={() => handleConnectBleDevice(dev)}
+                                disabled={loading || scanningBle}
+                              >
+                                Connect
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {hasScannedBle && bleDevices.length === 0 && !scanningBle && (
+                    <div className="ble-empty-notice">
+                      No nearby BLE sensors found. Make sure the SUTO sensor is powered on, Bluetooth is broadcasting, and try scanning again.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <button
+                  className="connect-action-btn"
+                  onClick={handleConnectBle}
+                  disabled={loading || !BleSutoAPI.isSupported()}
+                >
+                  {loading ? 'Pairing Bluetooth...' : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan SUTO BLE Sensors')}
+                </button>
+              )}
             </>
           )}
 

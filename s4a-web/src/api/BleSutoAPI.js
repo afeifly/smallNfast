@@ -150,10 +150,13 @@ export class BleSutoManager {
   }
 
   isSupported() {
-    return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+    return (typeof navigator !== 'undefined' && 'bluetooth' in navigator) || TauriSutoAPI.isAvailable();
   }
 
   getSupportIssue() {
+    if (TauriSutoAPI.isAvailable()) {
+      return null;
+    }
     if (typeof window !== 'undefined' && !window.isSecureContext) {
       return 'Web Bluetooth requires a Secure Context (HTTPS or localhost). Accessing via plain HTTP over LAN (e.g. http://192.168.x.x) disables Bluetooth in the browser. Use HTTPS or localhost.';
     }

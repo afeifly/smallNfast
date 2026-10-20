@@ -71,6 +71,18 @@ pub const ACT_CSD_TO_REPORT_FILE: u8 = 0x29;
 pub const ACT_CSD_FILE_REPAIR: u8 = 0x30;
 pub const ACT_RTC_GET_TIME: u8 = 0x02;
 
+// S418 / S461 Specific Logger Actions
+pub const ACT_S418_SET_LOG_CONTINUALLY_START_LINE: u8 = 0x04;
+pub const ACT_S418_TIME_POSITION: u8 = 0x08;
+pub const ACT_S418_TIMESTAMP_COMPENSATION: u8 = 0x09;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct S461ReadoutResult {
+    pub csv_text: String,
+    pub row_count: usize,
+    pub filename: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggerFileInfo {
     pub file_name: String,

@@ -84,6 +84,31 @@ function normalizeScreenshotFilename(rawName, bytes = null) {
   return name;
 }
 
+// Session cache for preserving readout data across component mount/unmount while connected
+let _readoutSessionCache = {
+  deviceKey: null,
+  hasFetched: false,
+  filesList: [],
+  selectedFileIdx: null,
+  sysInfo: null,
+  deviceChannels: [],
+  loggerStatus: null,
+  screenshotsList: [],
+};
+
+export function clearReadoutCache() {
+  _readoutSessionCache = {
+    deviceKey: null,
+    hasFetched: false,
+    filesList: [],
+    selectedFileIdx: null,
+    sysInfo: null,
+    deviceChannels: [],
+    loggerStatus: null,
+    screenshotsList: [],
+  };
+}
+
 export default function ReadoutView({
   deviceInfo,
   onAnalyzeCsv,
@@ -91,17 +116,28 @@ export default function ReadoutView({
   isModal = false,
   onClose = null,
 }) {
-  const [sysInfo, setSysInfo] = useState(null);
-  const [loggerStatus, setLoggerStatus] = useState(null);
-  const [deviceChannels, setDeviceChannels] = useState([]);
-  const [filesList, setFilesList] = useState([]);
-  const [loadingDeviceData, setLoadingDeviceData] = useState(true);
+  const deviceKey = deviceInfo
+    ? `${deviceInfo.transport || ''}_${deviceInfo.device || ''}_${deviceInfo.host || ''}_${deviceInfo.port || ''}`
+    : 'default_device';
+
+  const hasCachedData = _readoutSessionCache.deviceKey === deviceKey && _readoutSessionCache.hasFetched;
+
+  const [sysInfo, setSysInfo] = useState(() => (hasCachedData ? _readoutSessionCache.sysInfo : null));
+  const [loggerStatus, setLoggerStatus] = useState(() => (hasCachedData ? _readoutSessionCache.loggerStatus : null));
+  const [deviceChannels, setDeviceChannels] = useState(() => (hasCachedData ? _readoutSessionCache.deviceChannels : []));
+  const [filesList, setFilesList] = useState(() => (hasCachedData ? _readoutSessionCache.filesList : []));
+  const [loadingDeviceData, setLoadingDeviceData] = useState(() => !hasCachedData);
 
   // Active Readout Action
   const [readoutOption, setReadoutOption] = useState('files'); // 'files' | 'screenshots' | 'report' | 'calibration' | 'alarm'
 
   // Type 1 (DS310) state
-  const [selectedFileIdx, setSelectedFileIdx] = useState(null);
+  const [selectedFileIdx, setSelectedFileIdx] = useState(() => (hasCachedData ? _readoutSessionCache.selectedFileIdx : null));
+
+  const handleSelectFileIdx = (idx) => {
+    setSelectedFileIdx(idx);
+    _readoutSessionCache.selectedFileIdx = idx;
+  };
 
   // Type 2 (S418) state
   const [s418Period, setS418Period] = useState('last_day');
@@ -118,7 +154,7 @@ export default function ReadoutView({
   const [readResult, setReadResult] = useState(null);
 
   // Screenshots state
-  const [screenshotsList, setScreenshotsList] = useState([]);
+  const [screenshotsList, setScreenshotsList] = useState(() => (hasCachedData ? _readoutSessionCache.screenshotsList : []));
   const [selectedScreenshots, setSelectedScreenshots] = useState(new Set());
   const [downloadingScreenshot, setDownloadingScreenshot] = useState(null);
   const [previewImage, setPreviewImage] = useState(null); // { name, url }
@@ -131,6 +167,7 @@ export default function ReadoutView({
       const list = await TauriSutoAPI.getScreenshots();
       setScreenshotsList(list || []);
       setSelectedScreenshots(new Set());
+      _readoutSessionCache.screenshotsList = list || [];
     } catch (e) {
       console.warn('[ReadoutView] Querying screenshots failed:', e);
       setScreenshotsList([]);
@@ -162,18 +199,35 @@ export default function ReadoutView({
         (b.startTime || '').localeCompare(a.startTime || '')
       );
       setFilesList(sortedFiles);
-      setSelectedFileIdx((prev) => (prev !== null && prev < sortedFiles.length ? prev : (sortedFiles.length > 0 ? 0 : null)));
+      setSelectedFileIdx((prev) => {
+        const next = prev !== null && prev < sortedFiles.length ? prev : (sortedFiles.length > 0 ? 0 : null);
+        _readoutSessionCache.selectedFileIdx = next;
+        return next;
+      });
       setReportFilesList([]);
+
+      _readoutSessionCache = {
+        deviceKey,
+        hasFetched: true,
+        filesList: sortedFiles,
+        selectedFileIdx: (selectedFileIdx !== null && selectedFileIdx < sortedFiles.length ? selectedFileIdx : (sortedFiles.length > 0 ? 0 : null)),
+        sysInfo: sInfo || null,
+        deviceChannels: chs || [],
+        loggerStatus: lStatus || null,
+        screenshotsList: sShots || [],
+      };
     } catch (e) {
       console.warn('[ReadoutView] Querying device info failed:', e);
     } finally {
       setLoadingDeviceData(false);
     }
-  }, []);
+  }, [deviceKey, selectedFileIdx]);
 
   useEffect(() => {
-    refreshDeviceState();
-  }, [refreshDeviceState]);
+    if (!hasCachedData) {
+      refreshDeviceState();
+    }
+  }, [hasCachedData, refreshDeviceState]);
 
   useEffect(() => {
     if (readoutOption === 'screenshots') {
@@ -774,12 +828,20 @@ export default function ReadoutView({
                   </tbody>
                 </table>
               </div>
+            ) : loadingDeviceData ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <div className="readout-progress-spin" style={{ margin: '0 auto 16px auto' }} />
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>Loading Screenshots...</h4>
+                <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b' }}>
+                  Querying device screenshot memory...
+                </p>
+              </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>🖼️</div>
                 <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Screenshot Images Found in Device</h4>
                 <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b' }}>
-                  {loadingDeviceData ? 'Querying device screenshot memory...' : 'The connected SUTO unit has no saved screenshot captures.'}
+                  The connected SUTO unit has no saved screenshot captures.
                 </p>
                 <button className="readout-btn-secondary" onClick={fetchScreenshots} disabled={loadingDeviceData}>
                   {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Screenshots'}
@@ -1008,7 +1070,7 @@ export default function ReadoutView({
                           <tr
                             key={file.fileName || idx}
                             className={`readout-table-row ${selectedFileIdx === idx ? 'selected' : ''}`}
-                            onClick={() => setSelectedFileIdx(idx)}
+                            onClick={() => handleSelectFileIdx(idx)}
                           >
                             <td><strong>{file.startTime || '---'}</strong></td>
                             <td>
@@ -1097,12 +1159,20 @@ export default function ReadoutView({
                   </button>
                 </div>
               </>
+            ) : loadingDeviceData ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <div className="readout-progress-spin" style={{ margin: '0 auto 16px auto' }} />
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>Loading Recorded Sessions...</h4>
+                <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
+                  Querying device memory for recorded session files...
+                </p>
+              </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📁</div>
                 <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Recorded Measurement Sessions Found</h4>
                 <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
-                  {loadingDeviceData ? 'Querying device memory for recorded session files...' : 'The connected SUTO unit has no saved measurement session files in memory.'}
+                  The connected SUTO unit has no saved measurement session files in memory.
                 </p>
               </div>
             )}

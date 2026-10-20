@@ -11,7 +11,7 @@ import Loading from './components/loading/Loading';
 import DataModifierModal from './modules/modifier/DataModifierModal';
 import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
-import ReadoutView from './modules/readout/ReadoutView';
+import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
 import { isDesktop, getRuntimePlatform } from './util/platform';
 
@@ -124,6 +124,7 @@ function App() {
   const [deviceInfo, setDeviceInfo] = React.useState(null);
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
+  const [analyzingFromReadout, setAnalyzingFromReadout] = React.useState(false);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -245,11 +246,13 @@ function App() {
       if (e.detail.error) {
         setFileLoading(false);
         const errMsg = e.detail.errorMessage ? e.detail.errorMessage : 'An unknown error occurred while loading the file.';
-        window.showAppNotification(
-          "File Load Failed",
-          `There was a problem loading your file. The file header format verification failed:\n\n${errMsg}`,
-          "error"
-        );
+        if (window.showAppNotification) {
+          window.showAppNotification(
+            "File Load Failed",
+            `There was a problem loading your file. The file header format verification failed:\n\n${errMsg}`,
+            "error"
+          );
+        }
       }
     };
 
@@ -295,6 +298,8 @@ function App() {
   }, []);
 
   const handleDeviceConnected = (conn) => {
+    clearReadoutCache();
+    setAnalyzingFromReadout(false);
     setDeviceInfo(conn);
     TestAPI.setMode('monitor');
     setAppMode('monitor');
@@ -304,6 +309,8 @@ function App() {
 
   const handleDisconnectMonitor = async () => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Disconnecting monitor session');
+    clearReadoutCache();
+    setAnalyzingFromReadout(false);
     try {
       await TauriSutoAPI.disconnect();
     } catch (e) {
@@ -317,6 +324,7 @@ function App() {
 
   const handleAnalyzeLoggerCsv = async (csvFile) => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', `Analyzing read logger CSV: ${csvFile.name}`);
+    setAnalyzingFromReadout(true);
     TestAPI.setMode('analyze');
     setAppMode('analyze');
     setActiveTab('graphic');
@@ -325,9 +333,23 @@ function App() {
     }
   };
 
+  const handleBackToReadout = () => {
+    setAnalyzingFromReadout(false);
+    if (!deviceInfo) {
+      handleReturnHome();
+      return;
+    }
+    TauriSutoAPI.logClientEvent('INFO', 'APP', 'Navigated back to Readout view from analysis');
+    TestAPI.setMode('monitor');
+    setAppMode('monitor');
+    setActiveTab('readout');
+  };
+
   const handleReturnHome = () => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Navigated back to Welcome Home');
+    setAnalyzingFromReadout(false);
     if (appMode === 'monitor') {
+      clearReadoutCache();
       TauriSutoAPI.disconnect().catch(console.warn);
       TestAPI.setMode('analyze');
       setDeviceInfo(null);
@@ -346,6 +368,7 @@ function App() {
 
   const handleOpenFile = () => {
     TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Triggered Open File action');
+    setAnalyzingFromReadout(false);
     TestAPI.setMode('analyze');
     setAppMode('analyze');
     if (TestAPI.openFile) {
@@ -384,6 +407,7 @@ function App() {
   };
 
   const handleLoadRecentFile = async (file) => {
+    setAnalyzingFromReadout(false);
     localStorage.removeItem('selectedChannels');
     TestAPI.setMode('analyze');
     setAppMode('analyze');
@@ -540,9 +564,9 @@ function App() {
           {appMode && (
             <button
               className="header-home-btn"
-              onClick={handleReturnHome}
-              title="Back to Home"
-              aria-label="Back to Home"
+              onClick={analyzingFromReadout ? handleBackToReadout : handleReturnHome}
+              title={analyzingFromReadout ? "Back to Readout" : "Back to Home"}
+              aria-label={analyzingFromReadout ? "Back to Readout" : "Back to Home"}
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -562,7 +586,10 @@ function App() {
             </button>
             <button
               className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
-              onClick={() => setActiveTab('readout')}
+              onClick={() => {
+                clearReadoutCache();
+                setActiveTab('readout');
+              }}
             >
               Readout
             </button>

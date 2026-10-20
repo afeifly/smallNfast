@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import ReadoutView, { resolveLoggerType } from './ReadoutView';
+import ReadoutView, { resolveLoggerType, clearReadoutCache } from './ReadoutView';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 
 describe('ReadoutView Dedicated Page Component', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearReadoutCache();
   });
 
   it('correctly resolves logger type for various SUTO hardware families', () => {

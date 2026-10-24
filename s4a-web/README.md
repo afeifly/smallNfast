@@ -33,6 +33,29 @@ In **CSD mode** an **Open CSD File** prompt is shown (or folder icon in the top 
 
 ---
 
+## Device Simulator (S331)
+
+`scripts/s331-simulator.mjs` emulates a SUTO S331 display / data-logger over Ethernet TCP (SUTO CS-Bus protocol), so the desktop app can be exercised end-to-end without real hardware.
+
+| Simulated | Details |
+|---|---|
+| Discovery & system info | S331 (id 0x1065, fw 1.80), serial number **12344321** |
+| Online values | 5 live channels — Flow, Velocity, Consumption, Temperature, Pressure |
+| Logger | 2 sessions × 7 days @ 60 s interval, 5 channels each |
+| Screenshots | 3 virtual BMP images (list / preview / download) |
+
+```bash
+npm run sim:s331                  # listen on port 502 (the app's default)
+npm run sim:s331 -- --port 1502   # alternative unprivileged port
+npm run sim:s331:test             # 45-check protocol selftest
+```
+
+In the app: Connect → **Ethernet TCP** → host `127.0.0.1` (or the simulator machine's LAN IP from other computers), port as above. macOS 10.14+ and Windows can bind port 502 directly; on Linux use the sudo command the script prints on startup.
+
+Full documentation — protocol command table, signal models, tests (`cargo test --test s331_simulator` drives the real Rust engine against it), and troubleshooting: [scripts/s331-simulator.md](scripts/s331-simulator.md).
+
+---
+
 ## Performance & Memory Optimization
 
 - **Pure JavaScript CSD Parser**: Written in vanilla JS (`CsdAPI.js`), it uses lazy slice-based reading. Only the header and active data windows are loaded into memory, keeping the RAM footprint minimal (typically under 10 KB of RAM at rest, even for files up to 10 GB+).

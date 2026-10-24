@@ -4,7 +4,9 @@ import TableView from './modules/tableview/TableView';
 import ConsumptionReport from './modules/consumption/ConsumptionReport';
 import FileInfoView from './modules/fileinfo/FileInfoView';
 import CompressorAnalyze from './modules/analyze/CompressorAnalyze';
-import OnlineView, { clearOnlineCache } from './modules/onlineview/OnlineView';
+import OnlineView, { clearOnlineCache, getOnlineCache } from './modules/onlineview/OnlineView';
+import LiveGraphicView from './modules/onlineview/LiveGraphicView';
+import LiveTableView from './modules/onlineview/LiveTableView';
 import TestAPI from './api/TestAPI';
 import TauriSutoAPI from './api/TauriSutoAPI';
 import Loading from './components/loading/Loading';
@@ -13,7 +15,8 @@ import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
 import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
-import { isDesktop, getRuntimePlatform } from './util/platform';
+import { isDesktop, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
+import * as liveRecorder from './util/liveRecorder';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -125,6 +128,23 @@ function App() {
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
   const [analyzingFromReadout, setAnalyzingFromReadout] = React.useState(false);
+
+  // Live value recording (status bar REC button)
+  const [recState, setRecState] = React.useState(() => liveRecorder.getRecorderState());
+  const [recNow, setRecNow] = React.useState(0);
+  React.useEffect(
+    () =>
+      liveRecorder.subscribe((s) => {
+        setRecState({ ...s });
+        if (s.recording) setRecNow(Date.now());
+      }),
+    []
+  );
+  React.useEffect(() => {
+    if (!recState.recording) return undefined;
+    const t = setInterval(() => setRecNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [recState.recording]);
 
   // Loading indicator refs
   const globalLoadingRef = React.useRef(null);
@@ -308,7 +328,63 @@ function App() {
     TauriSutoAPI.logClientEvent('INFO', 'APP', `Device connected via ${conn.transport || 'SUTO'} (${conn.device || conn.host || 'active'})`);
   };
 
+  const saveRecordingResult = async (result) => {
+    if (!result) return;
+    try {
+      if (TauriSutoAPI.isAvailable()) {
+        const bytes = new TextEncoder().encode(result.csvText);
+        const savedPath = await TauriSutoAPI.saveBinaryFile(result.filename, bytes);
+        if (savedPath) {
+          TauriSutoAPI.logClientEvent('INFO', 'RECORDER', `Live recording saved (${result.rowCount} rows): ${savedPath}`);
+        }
+      } else {
+        const blob = new Blob([result.csvText], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('[Recorder] Save failed:', err);
+      TauriSutoAPI.logClientEvent('ERROR', 'RECORDER', `Saving live recording failed: ${err?.message || err}`);
+    }
+  };
+
+  const handleToggleRecording = async () => {
+    if (liveRecorder.getRecorderState().recording) {
+      const result = liveRecorder.stop();
+      if (!result) {
+        TauriSutoAPI.logClientEvent('WARN', 'RECORDER', 'Recording stopped but no samples had been captured');
+        return;
+      }
+      await saveRecordingResult(result);
+    } else {
+      const cache = getOnlineCache();
+      const deviceName = resolveDeviceTypeName(cache?.sysInfo, deviceInfo)
+        || deviceInfo?.device
+        || 'SUTO Device';
+      liveRecorder.start({
+        deviceName,
+        getChannels: () => getOnlineCache()?.channels || [],
+      });
+      TauriSutoAPI.logClientEvent('INFO', 'RECORDER', `Live recording started on ${deviceName}`);
+      // Jump straight to the live chart so the curves are visible immediately
+      setActiveTab('livegraphic');
+    }
+  };
+
   const handleDisconnectMonitor = async () => {
+    // A running recording would silently lose its data source — stop & save it
+    if (liveRecorder.getRecorderState().recording) {
+      const result = liveRecorder.stop();
+      if (result) await saveRecordingResult(result);
+    }
+    // Drop the frozen session buffer so the live Graphic/Table tabs disappear
+    liveRecorder.clearSession();
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Disconnecting monitor session');
     clearReadoutCache();
     clearOnlineCache();
@@ -595,6 +671,22 @@ function App() {
             >
               Readout
             </button>
+            {recState.hasSession && (
+              <button
+                className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
+                onClick={() => setActiveTab('livegraphic')}
+              >
+                Graphic View
+              </button>
+            )}
+            {recState.hasSession && (
+              <button
+                className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
+                onClick={() => setActiveTab('livetable')}
+              >
+                Table View
+              </button>
+            )}
           </div>
         ) : (appMode === 'analyze' && fileLoaded) ? (
           <div className="header-tabs">
@@ -642,6 +734,42 @@ function App() {
         ) : null}
 
         <div className="header-right" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+
+          {appMode === 'monitor' && (
+            <Tooltip
+              title={recState.recording
+                ? `Stop recording & save CSV (${recState.samples} samples)`
+                : 'Record live values to CSV'}
+            >
+              <button
+                className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
+                onClick={handleToggleRecording}
+              >
+                {recState.recording ? (
+                  <>
+                    <span className="rec-pulse-dot" />
+                    <span className="rec-btn-time">
+                      REC&nbsp;
+                      {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 60000)).padStart(2, '0')}
+                      :
+                      {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
+                    </span>
+                    <span className="rec-btn-count">{recState.samples}</span>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                      <rect x="5" y="5" width="14" height="14" rx="2" />
+                    </svg>
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Record
+                  </>
+                )}
+              </button>
+            </Tooltip>
+          )}
 
           {appMode === 'analyze' && fileLoaded && (
             <>
@@ -837,6 +965,8 @@ function App() {
                 onBackToOnline={() => setActiveTab('online')}
               />
             )}
+            {recState.hasSession && activeTab === 'livegraphic' && <LiveGraphicView />}
+            {recState.hasSession && activeTab === 'livetable' && <LiveTableView />}
           </div>
         ) : !fileLoaded ? (
           /* File Analyze Mode with no file loaded yet */

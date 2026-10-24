@@ -774,6 +774,64 @@
   letter-spacing: 0.05em;
 }
 
+/* Live recording toggle (top header, monitor mode) */
+.header-rec-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.header-rec-btn:hover {
+  transform: scale(1.04);
+}
+
+.header-rec-btn.is-recording {
+  background: #ef4444;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.45);
+}
+
+.header-rec-btn.is-recording:hover {
+  background: #dc2626;
+}
+
+.rec-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+  animation: recPulse 1.2s ease-in-out infinite;
+}
+
+.rec-btn-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-btn-count {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+
+@keyframes recPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 .status-timestamp {
   font-size: 10px;
   color: #64748b;

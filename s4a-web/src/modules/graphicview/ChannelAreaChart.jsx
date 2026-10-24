@@ -75,7 +75,9 @@ class ChannelAreaChart extends Component {
          .style('fill', this.channel.color)
          .style('stroke', this.channel.color);
     
-    if (chartController.datasourceMode === 'Realtime') {
+    // Realtime and Recording modes draw thin lines; History (file analysis)
+    // keeps the filled area style.
+    if (chartController.datasourceMode !== 'History') {
       container.selectAll('.sub-line')
         .style('fill', 'none')
         .attr('stroke-width', 2);
@@ -160,7 +162,7 @@ class ChannelAreaChart extends Component {
     const { chartController } = this.props;
     const container = d3.select(this.rootRef.current);
 
-    if (chartController.datasourceMode === 'Realtime') {
+    if (chartController.datasourceMode !== 'History') {
       container.selectAll('.sub-line')
         .style('fill', 'none')
         .style('stroke', this.channel.color);

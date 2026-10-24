@@ -145,6 +145,20 @@ class LineChart extends Component {
     this.AxisSeriesRef.current.updateYAxis();
   }
 
+  /**
+   * Live-recording redraw: re-render the x axis and every spline from the
+   * channel.summaryData that the LiveGraphicView maintains directly.
+   * Unlike the 'changeTimePeriod' event this never refetches via TestAPI.
+   */
+  redrawLive = () => {
+    if (this.AxisSeriesRef.current) {
+      this.AxisSeriesRef.current.updateXAxis();
+    }
+    if (this.SplineGroupRef.current) {
+      this.SplineGroupRef.current.updateDisplay();
+    }
+  }
+
   updateTimePeriodActions = () => {
     const { chartController } = this.props;
     const { timePeriods, currentTimePeriodIndex } = chartController;

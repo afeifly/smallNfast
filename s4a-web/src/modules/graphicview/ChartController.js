@@ -2,6 +2,32 @@ import * as d3 from 'd3';
 import DataUtil from '../../util/DataUtil';
 import { SystemEvent } from '../../util/SystemConstant';
 
+/**
+ * Pure sliding-window computation for the live recording chart.
+ *
+ * The x-axis keeps a fixed `rangeMs` window anchored at the recording start.
+ * While the newest sample is inside the window nothing moves. Once it reaches
+ * the right edge, the whole window jumps forward by 3/4 of the range (i.e.
+ * the axis "moves 3/4 to the left"), so a quarter of the old curves stays
+ * visible and the range never changes. Long gaps may require several jumps.
+ *
+ * @returns {{start: number, end: number, shifted: boolean}}
+ */
+export function nextRecordingWindow(latestMs, startMs, endMs, rangeMs) {
+  if (!(rangeMs > 0) || !(endMs > startMs)) {
+    return { start: startMs, end: endMs, shifted: false };
+  }
+  if (latestMs < endMs) {
+    return { start: startMs, end: endMs, shifted: false };
+  }
+  const shift = rangeMs * 0.75;
+  let end = endMs;
+  while (latestMs >= end) {
+    end += shift;
+  }
+  return { start: end - rangeMs, end, shifted: true };
+}
+
 class ChartController {
 
   constructor() {
@@ -368,6 +394,75 @@ class ChartController {
 
     this.startTimer();
   };
+
+  // ---- Live recording window mode ----
+  // Used by the live Graphic View while a recording session is running.
+  // The window is anchored at the first sample and slides in 3/4-range jumps
+  // (see nextRecordingWindow). Data is fed externally by the live view — this
+  // mode never polls TestAPI and never starts a timer.
+
+  initRecordingWindow(anchorMs, rangeMinutes = 30) {
+    this.clearTimer();
+    this.datasourceMode = 'Recording';
+    this.denoising = false;
+    this.resetEnable = false;
+    this.recordingRangeMs = rangeMinutes * 60000;
+    this.timePeriods.length = 0;
+    this.currentTimePeriodIndex = -1;
+    this.timePeriod = {
+      start: new Date(anchorMs),
+      end: new Date(anchorMs + this.recordingRangeMs),
+      now: new Date(anchorMs),
+    };
+    if (this.xScale) {
+      this.xScale.domain([this.timePeriod.start, this.timePeriod.end]);
+    }
+  }
+
+  /** Switch between the 30 / 60 min window without losing the anchor. */
+  setRecordingRange(rangeMinutes, anchorMs, latestMs) {
+    this.recordingRangeMs = rangeMinutes * 60000;
+    if (this.datasourceMode !== 'Recording' || !this.recordingRangeMs) {
+      return;
+    }
+    // Guard against falsy-zero timestamps (a 0 anchor is a legitimate value).
+    const anchor = Number.isFinite(anchorMs) ? anchorMs : this.timePeriod.start.getTime();
+    const latest = Number.isFinite(latestMs) ? latestMs : anchor;
+    const start = Math.max(anchor, latest - this.recordingRangeMs);
+    this.timePeriod.start = new Date(start);
+    this.timePeriod.end = new Date(start + this.recordingRangeMs);
+    this.timePeriod.now = new Date(latest);
+    if (this.xScale) {
+      this.xScale.domain([this.timePeriod.start, this.timePeriod.end]);
+    }
+  }
+
+  /**
+   * Slide the window when the newest sample reaches the right edge.
+   * The caller (LiveGraphicView) owns redrawing — no d3 event is dispatched
+   * here, because the stock 'changeTimePeriod' handler refetches via TestAPI.
+   * @returns {boolean} whether the window shifted
+   */
+  advanceRecordingWindow(latestMs) {
+    if (this.datasourceMode !== 'Recording' || !this.recordingRangeMs) {
+      return false;
+    }
+    this.timePeriod.now = new Date(latestMs);
+    const next = nextRecordingWindow(
+      latestMs,
+      this.timePeriod.start.getTime(),
+      this.timePeriod.end.getTime(),
+      this.recordingRangeMs
+    );
+    if (next.shifted) {
+      this.timePeriod.start = new Date(next.start);
+      this.timePeriod.end = new Date(next.end);
+      if (this.xScale) {
+        this.xScale.domain([this.timePeriod.start, this.timePeriod.end]);
+      }
+    }
+    return next.shifted;
+  }
 
   startTimer = () => {
     this.clearTimer();

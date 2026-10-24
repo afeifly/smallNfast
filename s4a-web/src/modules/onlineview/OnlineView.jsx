@@ -5,8 +5,7 @@ import './OnlineView.css';
 
 import { resolveChannelResolution, formatChannelValue } from '../../util/resolution';
 import { resolveDeviceTypeName } from '../../util/platform';
-
-const POLL_INTERVAL_MS = 1500;
+import { subscribeLive, setViewDemand, pollOnce } from '../../util/liveDataSource';
 
 function formatValue(val, resolution = 2) {
   return formatChannelValue(val, resolution);
@@ -46,9 +45,8 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
   const [showLogs, setShowLogs] = useState(false);
-  const pollTimerRef = useRef(null);
   const isMountedRef = useRef(true);
-  const isFetchingRef = useRef(false);
+  const viewActiveRef = useRef(false);
 
   const deviceDisplayName = resolveDeviceTypeName(sysInfo, deviceInfo);
   const isEthernet = deviceInfo?.transport === 'TCP' || TauriSutoAPI.getActiveTransport() === 'TCP' || Boolean(deviceInfo?.host);
@@ -60,54 +58,50 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
     };
   }, []);
 
-  const fetchLiveMeasurements = useCallback(async () => {
-    if (isFetchingRef.current || !isMountedRef.current) return;
-    isFetchingRef.current = true;
-    try {
-      const data = await TauriSutoAPI.getMeasurementData();
-      if (!isMountedRef.current) return;
-      if (data && data.length) {
-        setChannels((prevChannels) => {
-          const valMap = new Map(data.map((d) => [d.channel_id, d]));
-          const updated = prevChannels.map((ch) => {
-            const v = valMap.get(ch.channel_id);
-            if (v) {
-              const effRes = (typeof v.resolution === 'number' && v.resolution > 0)
-                ? v.resolution
-                : resolveChannelResolution(ch);
-              return {
-                ...ch,
-                current_value: v.current_value,
-                status: v.status,
-                unit: v.unit || ch.unit,
-                resolution: effRes,
-              };
-            }
-            return ch;
-          });
-          if (_onlineSessionCache.deviceKey === deviceKey) {
-            _onlineSessionCache.channels = updated;
+  // Apply one live poll result to the view state. Shared with the Live
+  // Recorder through util/liveDataSource, which owns the single poll loop.
+  const applyLiveResult = useCallback((data) => {
+    if (!isMountedRef.current) return;
+    if (data && data.length) {
+      setChannels((prevChannels) => {
+        const valMap = new Map(data.map((d) => [d.channel_id, d]));
+        const updated = prevChannels.map((ch) => {
+          const v = valMap.get(ch.channel_id);
+          if (v) {
+            const effRes = (typeof v.resolution === 'number' && v.resolution > 0)
+              ? v.resolution
+              : resolveChannelResolution(ch);
+            return {
+              ...ch,
+              current_value: v.current_value,
+              status: v.status,
+              unit: v.unit || ch.unit,
+              resolution: effRes,
+            };
           }
-          return updated;
+          return ch;
         });
-        setLastUpdate(new Date());
-        setError(null);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        console.warn('[OnlineView] Polling warning:', err);
-      }
-    } finally {
-      isFetchingRef.current = false;
+        if (_onlineSessionCache.deviceKey === deviceKey) {
+          _onlineSessionCache.channels = updated;
+        }
+        return updated;
+      });
+      setLastUpdate(new Date());
+      setError(null);
     }
   }, [deviceKey]);
+
+  // Consume the shared data source; ignore samples while this view is paused
+  // (the recorder may legitimately keep the poll loop alive in that case).
+  useEffect(() => {
+    const off = subscribeLive((res) => {
+      if (viewActiveRef.current) applyLiveResult(res);
+    });
+    return off;
+  }, [applyLiveResult]);
 
   const loadInitialData = useCallback(async (force = false) => {
     // If we already have the sensor-channel structure cached for this device, keep it and do not re-query
@@ -160,27 +154,17 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
 
   const shouldPoll = isLive && !isPaused;
 
+  // Declare view demand to the shared data source. While paused / on another
+  // tab this view stops consuming, but the poll loop keeps running whenever
+  // another consumer (e.g. the Live Recorder) still needs data.
   useEffect(() => {
-    if (!shouldPoll) {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-      return;
-    }
-
-    fetchLiveMeasurements();
-    pollTimerRef.current = setInterval(() => {
-      fetchLiveMeasurements();
-    }, POLL_INTERVAL_MS);
-
+    viewActiveRef.current = shouldPoll;
+    setViewDemand(shouldPoll);
     return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
+      viewActiveRef.current = false;
+      setViewDemand(false);
     };
-  }, [shouldPoll, fetchLiveMeasurements]);
+  }, [shouldPoll]);
 
   const toggleLive = () => {
     setIsLive((prev) => !prev);
@@ -188,7 +172,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
 
   const handleRescan = async () => {
     await loadInitialData(true);
-    await fetchLiveMeasurements();
+    await pollOnce();
   };
 
   // One card per SENSOR. Channels sharing a `sensor_key` (SensorID) belong to

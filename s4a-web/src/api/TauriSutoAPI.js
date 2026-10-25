@@ -188,7 +188,15 @@ export const TauriSutoAPI = {
       // channels that belong to the same physical sensor.
       const formatted = (Array.isArray(rawChannels) ? rawChannels : []).map((ch, idx) => ({
         channel_id: ch.id,
+        // Live devices have no server location tree — all channels live in the
+        // single synthetic location exposed by TestAPI's monitor proxy.
+        location_id: 1,
         channel_name: ch.description,
+        // Aliases consumed by the stock Graphic View components
+        // (ChannelList builds channels from these legacy field names).
+        unit_in_ascii: ch.unit,
+        logic_channel_description: ch.description,
+        full_channel_name: ch.description,
         unit: ch.unit,
         unit_index: ch.unit_index,
         resolution: (typeof ch.resolution === 'number' && ch.resolution > 0)

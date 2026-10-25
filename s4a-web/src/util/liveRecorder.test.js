@@ -73,14 +73,14 @@ describe('liveRecorder', () => {
   });
 
   it('returns null when stopping with no samples captured', () => {
-    liveRecorder.start({ deviceName: 'SUTO S331', getChannels: () => CACHE_CHANNELS });
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 0, getChannels: () => CACHE_CHANNELS });
     const result = liveRecorder.stop();
     expect(result).toBeNull();
     expect(liveRecorder.getRecorderState().recording).toBe(false);
   });
 
   it('falls back to feed metadata when no channel cache is provided', () => {
-    liveRecorder.start({ deviceName: 'SUTO S331', getChannels: () => [] });
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 0, getChannels: () => [] });
     liveRecorder.feed([{ channel_id: 7, current_value: 3.14, unit: 'bar', resolution: 2, status: 'normal' }]);
     const result = liveRecorder.stop();
     const lines = result.csvText.split('\r\n');
@@ -90,7 +90,7 @@ describe('liveRecorder', () => {
   });
 
   it('keeps the session buffer after stop for the live views', () => {
-    liveRecorder.start({ deviceName: 'SUTO S331', getChannels: () => CACHE_CHANNELS });
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 0, getChannels: () => CACHE_CHANNELS });
     liveRecorder.feed([{ channel_id: 1, current_value: 1, unit: 'm³/h', resolution: 1, status: 'normal' }]);
     liveRecorder.feed([{ channel_id: 1, current_value: 2, unit: 'm³/h', resolution: 1, status: 'normal' }]);
     const result = liveRecorder.stop();
@@ -107,7 +107,7 @@ describe('liveRecorder', () => {
   });
 
   it('clearSession drops the buffer and hides the tabs', () => {
-    liveRecorder.start({ deviceName: 'SUTO S331', getChannels: () => [] });
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 0, getChannels: () => [] });
     liveRecorder.feed([{ channel_id: 1, current_value: 1, status: 'normal' }]);
     liveRecorder.stop();
 
@@ -117,12 +117,79 @@ describe('liveRecorder', () => {
   });
 
   it('a new recording clears the previous session', () => {
-    liveRecorder.start({ deviceName: 'SUTO S331', getChannels: () => [] });
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 0, getChannels: () => [] });
     liveRecorder.feed([{ channel_id: 1, current_value: 1, status: 'normal' }]);
     liveRecorder.stop();
 
-    liveRecorder.start({ deviceName: 'SUTO S331', getChannels: () => [] });
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 0, getChannels: () => [] });
     expect(liveRecorder.getSessionSnapshot().rows).toHaveLength(0);
     expect(liveRecorder.getRecorderState().hasSession).toBe(true); // recording
+  });
+
+  it('thins samples to the requested interval (first row at once, next after N s)', () => {
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 10, getChannels: () => [] });
+
+    liveRecorder.feed([{ channel_id: 1, current_value: 1, status: 'normal' }]); // 09:00:01
+    expect(liveRecorder.getRecorderState().samples).toBe(1);
+
+    vi.advanceTimersByTime(4000); // 09:00:05 — inside the interval
+    liveRecorder.feed([{ channel_id: 1, current_value: 2, status: 'normal' }]);
+    expect(liveRecorder.getRecorderState().samples).toBe(1);
+
+    vi.advanceTimersByTime(6000); // 09:00:11 — poll arrives 1 s past the boundary
+    liveRecorder.feed([{ channel_id: 1, current_value: 3, status: 'normal' }]);
+    expect(liveRecorder.getRecorderState().samples).toBe(2);
+
+    vi.advanceTimersByTime(11000); // 09:00:22 — another slot, arrival jitter again
+    liveRecorder.feed([{ channel_id: 1, current_value: 4, status: 'normal' }]);
+    expect(liveRecorder.getRecorderState().samples).toBe(3);
+
+    const snap = liveRecorder.getSessionSnapshot();
+    // Timestamps snap to a uniform grid: exact 10 s apart despite arrival jitter
+    expect(snap.rows[1].t - snap.rows[0].t).toBe(10000);
+    expect(snap.rows[2].t - snap.rows[1].t).toBe(10000);
+    expect(snap.rows[0].values[1]).toBe(1);
+    expect(snap.rows[2].values[1]).toBe(4);
+
+    const result = liveRecorder.stop();
+    expect(result.csvText).toContain('Sample Rate(sec),10');
+  });
+
+  it('fills a null marker row for every channel when polls stall (OS sleep)', () => {
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 10, getChannels: () => [] });
+
+    liveRecorder.feed([
+      { channel_id: 1, current_value: 1, unit: 'm³/h', resolution: 1, status: 'normal' },
+      { channel_id: 2, current_value: 11, unit: 'A', resolution: 1, status: 'normal' },
+    ]);
+    expect(liveRecorder.getRecorderState().samples).toBe(1);
+
+    // OS sleeps for ~90 s — several intervals are missed, then a poll lands.
+    vi.advanceTimersByTime(90000);
+    liveRecorder.feed([
+      { channel_id: 1, current_value: 2, unit: 'm³/h', resolution: 1, status: 'normal' },
+      { channel_id: 2, current_value: 12, unit: 'A', resolution: 1, status: 'normal' },
+    ]);
+
+    const snap = liveRecorder.getSessionSnapshot();
+    expect(snap.rows).toHaveLength(3); // real, gap marker, real
+    expect(snap.rows[1].values[1]).toBeNull();
+    expect(snap.rows[1].values[2]).toBeNull();
+    expect(snap.rows[2].values[1]).toBe(2);
+
+    // CSV renders the gap row as empty cells (S4A invalid convention)
+    const result = liveRecorder.stop();
+    const gapLine = result.csvText.split('\r\n').find((l) => l.endsWith(',,'));
+    expect(gapLine).toBeTruthy();
+  });
+
+  it('does not fill gaps for normal inter-sample spacing', () => {
+    liveRecorder.start({ deviceName: 'SUTO S331', intervalSec: 10, getChannels: () => [] });
+    liveRecorder.feed([{ channel_id: 1, current_value: 1, status: 'normal' }]);
+    vi.advanceTimersByTime(11000); // one interval + poll jitter — normal
+    liveRecorder.feed([{ channel_id: 1, current_value: 2, status: 'normal' }]);
+    const snap = liveRecorder.getSessionSnapshot();
+    expect(snap.rows).toHaveLength(2); // no marker inserted
+    expect(snap.rows.every((r) => r.values[1] !== null)).toBe(true);
   });
 });

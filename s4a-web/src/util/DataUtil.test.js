@@ -27,3 +27,21 @@ describe('DataUtil.denoising2', () => {
     expect(denoisedPoints[2].value).toBe(20);
   });
 });
+
+describe('DataUtil.filterDataToPeriod', () => {
+  const pts = (times) => times.map((t, i) => ({ time: new Date(t), value: i }));
+
+  it('keeps only points inside the window and preserves gap markers inside', () => {
+    const data = pts([0, 1000, 3000, 4000, 5000]);
+    data.splice(2, 0, { time: new Date(1500), value: null }); // gap marker
+    const out = DataUtil.filterDataToPeriod(data, 1000, 3500);
+    expect(out.map((d) => d.time.getTime())).toEqual([1000, 1500, 3000]);
+  });
+
+  it('returns the input for an invalid window', () => {
+    const data = pts([0, 1000]);
+    expect(DataUtil.filterDataToPeriod(data, NaN, 5)).toBe(data);
+    expect(DataUtil.filterDataToPeriod(data, 500, 100)).toBe(data);
+    expect(DataUtil.filterDataToPeriod(null, 0, 1)).toEqual([]);
+  });
+});

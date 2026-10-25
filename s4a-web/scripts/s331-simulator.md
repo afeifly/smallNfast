@@ -18,7 +18,7 @@ A zero-dependency Node.js TCP server that emulates a **SUTO S331 display / data-
 | Firmware | 1.80 (`0xB4`; ≥ 1.54 ⇒ app uses the transformed `0x0B` channel-settings command) |
 | Bus address | 1 |
 | **Serial number** | **12344321** |
-| Channels | 5 (see §3) |
+| Channels | 8 (see §3) |
 | Logger sessions | 2 × 7 days @ 60 s (see §4) |
 | Screenshots | 3 virtual BMPs (see §5) |
 
@@ -62,6 +62,12 @@ Online View polls `[04 01 01 start count]`; values are deterministic sine + nois
 | 3 | Consumption | m³ | 0 — **integer** | SUTO SFAB | monotonic counter (~0.033 m³/s) |
 | 4 | Temperature | °C | 1 | SUTO ST550 | 23.5 ± 2.8, slow (~30 min) |
 | 5 | Pressure | bar | 2 | SUTO SP560 | 6.75 ± 0.5, ~10 min |
+| 6 | Current A | A | 1 | SUTO SC3 | three-phase set, 11.5 ± 2.8, ~4 min cycle, 120° apart |
+| 7 | Current B | A | 1 | SUTO SC3 | 11.2 ± 2.6, phase-shifted |
+| 8 | Current C | A | 1 | SUTO SC3 | 11.4 ± 2.7, phase-shifted |
+
+Channels 6–8 share unit **A** (and one sensor) — handy for testing the
+multi-channel-per-y-axis stacking in the live Graphic View.
 
 Consumption uses a consumption-unit index (24) so the app parses it as `u32`, exactly like a real counter channel. Channels 1–3 share `sensor_id` 1 (one physical flow sensor), temperature and pressure have their own — the app groups channels into sensors by that key.
 

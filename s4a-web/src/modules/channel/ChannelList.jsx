@@ -54,6 +54,13 @@ class ChannelList extends Component {
     this.locations = [];
     this.sensorList = [];
     this.newSelectedChannel = null;
+    this.unmounted = false;
+  }
+
+  componentWillUnmount() {
+    // Async request chains (getLocations → getChannels → …) may resolve after
+    // unmount — stop them from issuing further requests or touching state.
+    this.unmounted = true;
   }
 
   render() {
@@ -167,7 +174,7 @@ class ChannelList extends Component {
 
 
   getLocaltionHandler = (responseData) => {
-    if (!responseData) {
+    if (!responseData || this.unmounted) {
       return;
     }
 
@@ -218,13 +225,22 @@ class ChannelList extends Component {
     let color;
     let arr = [];
 
-    // Auto-selection logic if there is no selection in localStorage
-    const localChannelsStr = localStorage.getItem("selectedChannels");
+    // Auto-selection logic if there is no selection in localStorage.
+    // `noStoredSelection` (live recording view) ignores localStorage entirely
+    // so stale picks from previous sessions never leak in; the live view then
+    // drives the default through `defaultSelectedIds`.
+    const localChannelsStr = this.props.noStoredSelection
+      ? null
+      : localStorage.getItem("selectedChannels");
     const hasLocalSelection = localChannelsStr && JSON.parse(localChannelsStr).length > 0;
-    
+
     let autoSelectedIds = [];
     if (!hasLocalSelection && channels && channels.length > 0) {
-      const getUnitRank = (unit) => {
+      const defaults = this.props.defaultSelectedIds;
+      if (defaults && defaults.length > 0) {
+        autoSelectedIds = defaults.filter((id) => channels.some((c) => c && c.channel_id === id));
+      } else {
+        const getUnitRank = (unit) => {
         if (!unit) return 999;
         const u = unit.trim().toLowerCase();
         const priority = ['m³/min', 'm/s', 'm³', 'm3', 'm³/h', 'l/min', 'l/s', 'l'];
@@ -260,6 +276,7 @@ class ChannelList extends Component {
           autoSelectedIds.push(ch.channel_id);
         }
         if (autoSelectedIds.length >= 10) break;
+      }
       }
     }
 
@@ -335,7 +352,7 @@ class ChannelList extends Component {
       arr.push(channel);
     }
 
-    if (!hasLocalSelection && autoSelectedToSave.length > 0) {
+    if (!hasLocalSelection && autoSelectedToSave.length > 0 && !this.props.noStoredSelection) {
       localStorage.setItem('selectedChannels', JSON.stringify(autoSelectedToSave));
     }
 
@@ -589,6 +606,9 @@ class ChannelList extends Component {
 
 
   getcolorFromLocal(channelId) {
+    if (this.props.noStoredSelection) {
+      return null;
+    }
     let localChannels = JSON.parse(localStorage.getItem("selectedChannels"));
     if (!localChannels || localChannels.length === 0) {
       return null;
@@ -606,6 +626,9 @@ class ChannelList extends Component {
   }
 
   saveSelectedChannelToLocal(channel) {
+    if (this.props.noStoredSelection) {
+      return;
+    }
     let localChannels = JSON.parse(localStorage.getItem("selectedChannels"));
     if (!localChannels) {
       localChannels = [];
@@ -642,6 +665,9 @@ class ChannelList extends Component {
   }
 
   deleteSelectedChannelFromLocal(channel) {
+    if (this.props.noStoredSelection) {
+      return;
+    }
     let localChannels = JSON.parse(localStorage.getItem("selectedChannels"));
     if (!localChannels) {
       return;

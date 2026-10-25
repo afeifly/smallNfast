@@ -5,12 +5,16 @@ import App from './App';
 import TestAPI from './api/TestAPI';
 import TauriSutoAPI from './api/TauriSutoAPI';
 import { clearReadoutCache } from './modules/readout/ReadoutView';
-import { clearOnlineCache } from './modules/onlineview/OnlineView';
+import { clearOnlineCache, getOnlineCache } from './modules/onlineview/OnlineView';
 
 describe('App', () => {
   beforeEach(() => {
     clearReadoutCache();
     clearOnlineCache();
+    // Reset the proxy mode — a previous test may leave it as 'monitor', which
+    // makes isFileLoaded() always true and mounts the analyze GraphicView
+    // (its ChannelList then issues a phantom device getChannels).
+    TestAPI.setMode('analyze');
     if (TestAPI.reset) TestAPI.reset();
     if (TestAPI.setMode) TestAPI.setMode('analyze');
   });
@@ -256,6 +260,12 @@ describe('App', () => {
       expect(screen.getByText('Online View')).toBeDefined();
     });
 
+    // Wait until the Online View has actually finished loading the channel
+    // structure (and any device-key transition settled), then snapshot the
+    // call count — toggling tabs must not trigger any NEW fetch.
+    await waitFor(() => {
+      expect(getOnlineCache().hasFetched).toBe(true);
+    });
     const initialChannelCalls = getChannelsSpy.mock.calls.length;
     expect(initialChannelCalls).toBeGreaterThanOrEqual(1);
 

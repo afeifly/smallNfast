@@ -61,8 +61,20 @@ class ChannelAreaChart extends Component {
     
     if(this.needHandleData) {
       let timesPerPix = chartController.computetimesPerPix();
-      this.dataset = DataUtil.handleSegmentData(summaryData, 
-                      chartController.denoising, 
+      // Clip the series to the visible window — the live session keeps every
+      // sample in memory, and unfiltered points would be drawn outside the
+      // plot area, over the y-axes. (File mode data already fits its window,
+      // so this is a no-op there.)
+      let data = summaryData;
+      const startT = chartController.timePeriod.start
+        ? chartController.timePeriod.start.getTime() : null;
+      const endT = chartController.timePeriod.end
+        ? chartController.timePeriod.end.getTime() : null;
+      if (startT !== null && endT !== null && endT > startT) {
+        data = DataUtil.filterDataToPeriod(summaryData, startT, endT);
+      }
+      this.dataset = DataUtil.handleSegmentData(data,
+                      chartController.denoising,
                       timesPerPix);
     }
 
@@ -106,6 +118,15 @@ class ChannelAreaChart extends Component {
    */
   getData = () => {
     const { chartController } = this.props;
+
+    // Live-recording history browsing: data already lives in summaryData —
+    // just redraw against the (already updated) x domain. Never fetch.
+    if (chartController.datasourceMode === 'RecordingHistory') {
+      this.draw();
+      d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA_COMPLETED);
+      return;
+    }
+
     const interval = chartController.computeTableInterval();
 
     let startTime = chartController.timePeriod.start.getTime();

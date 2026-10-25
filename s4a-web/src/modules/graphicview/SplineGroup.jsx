@@ -270,7 +270,7 @@ class SplineGroup extends Component {
               {'--.--'}
             </tspan>
             <tspan className="dtit-unit" alignmentBaseline="before-edge">
-              {d.fullName ? '' : '  ' + d.unit}
+              {(d.unit && !(d.fullName || d.name || '').includes(d.unit)) ? '  ' + d.unit : ''}
             </tspan>
           </text>
         </g>

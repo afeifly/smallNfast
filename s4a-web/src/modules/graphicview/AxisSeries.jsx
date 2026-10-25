@@ -351,7 +351,7 @@ class AxisSeries extends Component {
           formatYear = d3.timeFormat('%Y');
     
     d3.select('#x-axis').attr('transform', `translate(${x}, ${y})`);
-    
+
     setTimeout(() => {
       const xAxis = d3.select('#x-axis');
       xAxis.transition()
@@ -370,12 +370,45 @@ class AxisSeries extends Component {
           xAxis.selectAll('path').style('stroke', '#333333');
           xAxis.selectAll('line').style('stroke', '#333333');
           xAxis.selectAll('text').style('fill', '#333333');
+          this.updateAxisDateLabel(xAxis);
         });
 
       xAxis.selectAll('path').style('stroke', '#333333');
       xAxis.selectAll('line').style('stroke', '#333333');
       xAxis.selectAll('text').style('fill', '#333333');
+      this.updateAxisDateLabel(xAxis);
     }, 0);
+  }
+
+  /**
+   * Live recording charts: the window is short, so the time ticks never show
+   * which day it is. Render the window-start date on its own row BELOW the
+   * time ticks at the plot's left edge — a separate line guarantees no
+   * overlap with the tick labels (prints show the full date).
+   */
+  updateAxisDateLabel = (xAxis) => {
+    const { chartController } = this.props;
+    const isLiveMode =
+      chartController.datasourceMode === 'Recording' ||
+      chartController.datasourceMode === 'RecordingHistory';
+
+    let label = xAxis.select('.axis-date-label');
+    if (!isLiveMode) {
+      label.remove();
+      return;
+    }
+
+    const start = chartController.xScale.domain()[0];
+    if (!label.node()) {
+      label = xAxis.append('text').classed('axis-date-label', true);
+    }
+    label
+      .attr('text-anchor', 'start')
+      .attr('transform', 'translate(2, 32)')
+      .style('fill', '#333333')
+      .style('font-size', '11px')
+      .style('font-weight', '600')
+      .text(d3.timeFormat('%Y-%m-%d')(start));
   }
 
 

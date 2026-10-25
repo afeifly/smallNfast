@@ -80,15 +80,15 @@ fn s331_simulator_end_to_end() {
 
     // ---- Max channel count (suto_get_channels step 1) ----
     let p = xfer(&mut tcp, &CMD_GET_MAX_CHANNELS);
-    assert_eq!(p[0], 5, "max channel count");
+    assert_eq!(p[0], 8, "max channel count");
 
     // ---- Channel settings, transformed prefix (suto_get_channels step 2) ----
     let mut cmd = Vec::from(CMD_GET_CH_SETTING_TRANSF_PREFIX);
-    cmd.extend_from_slice(&[1, 5]);
+    cmd.extend_from_slice(&[1, 8]);
     let deframed = xfer(&mut tcp, &cmd);
-    assert_eq!(deframed.len(), 5 * 204, "five 204-byte channel structs");
+    assert_eq!(deframed.len(), 8 * 204, "eight 204-byte channel structs");
     let mut channels = parse_channel_settings(&deframed);
-    assert_eq!(channels.len(), 5);
+    assert_eq!(channels.len(), 8);
     channels.sort_by_key(|c| c.id);
     let expected = [
         ("Flow", "m³/h"),
@@ -96,6 +96,9 @@ fn s331_simulator_end_to_end() {
         ("Consumption", "m³"),
         ("Temperature", "°C"),
         ("Pressure", "bar"),
+        ("Current A", "A"),
+        ("Current B", "A"),
+        ("Current C", "A"),
     ];
     for (ch, (desc, unit)) in channels.iter().zip(expected.iter()) {
         assert_eq!(ch.description, *desc, "channel {} description", ch.id);
@@ -104,11 +107,11 @@ fn s331_simulator_end_to_end() {
 
     // ---- Online values (suto_get_values path) ----
     let mut cmd = Vec::from(CMD_GET_ONLINE_VAL_PREFIX);
-    cmd.extend_from_slice(&[1, 5]);
+    cmd.extend_from_slice(&[1, 8]);
     let deframed = xfer(&mut tcp, &cmd);
-    assert_eq!(deframed.len(), 5 * 7, "five 7-byte value structs");
+    assert_eq!(deframed.len(), 8 * 7, "eight 7-byte value structs");
     let values = parse_measurement_values(&deframed, &channels);
-    assert_eq!(values.len(), 5);
+    assert_eq!(values.len(), 8);
     assert!(values.iter().all(|v| v.status == "normal"), "all statuses normal");
     let flow = values[0].value.unwrap();
     assert!((60.0..200.0).contains(&flow), "plausible flow, got {flow}");
@@ -117,6 +120,10 @@ fn s331_simulator_end_to_end() {
         consumption.fract() == 0.0 && consumption > 0.0,
         "consumption must be a positive integer (m³), got {consumption}"
     );
+    for (name, v) in [("Current A", values[5].value), ("Current B", values[6].value), ("Current C", values[7].value)] {
+        let v = v.unwrap_or(0.0);
+        assert!((5.0..20.0).contains(&v), "{name} plausible, got {v}");
+    }
 
     // ---- Logger file list (suto_get_logger_files path) ----
     let p = xfer(&mut tcp, &[CTY_LOGGER, SUB_NONE, ACT_LOGGER_GET_FILE_NUMBER]);
@@ -146,7 +153,7 @@ fn s331_simulator_end_to_end() {
     assert_eq!(name, "LOG0000");
     let samples = u32::from_le_bytes([p[21], p[22], p[23], p[24]]);
     assert_eq!(samples, 10080, "7 days @ 60 s");
-    assert_eq!(p[25], 5, "5 channels");
+    assert_eq!(p[25], 8, "8 channels");
 
     // ---- Screenshots (suto_get_screenshots + suto_read_screenshot path) ----
     let p = xfer(&mut tcp, &[CTY_DEVICE_RELATED, SCTY_COLOR_DISPLAY_PRIVATE, ACT_GET_IMG_FILE_COUNT]);

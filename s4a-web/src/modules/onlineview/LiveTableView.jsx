@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as liveRecorder from '../../util/liveRecorder';
+import { getLiveSelection, subscribeLiveSelection } from '../../util/liveSelection';
 import { getOnlineCache } from './OnlineView';
 import { formatChannelValue } from '../../util/resolution';
 import './LiveView.css';
+
+// useMemo retained for visibleRows below.
 
 /** Hard cap on rendered DOM rows (session data itself is never truncated). */
 const MAX_RENDER = 10000;
@@ -17,6 +20,9 @@ const formatTs = (ms) => {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
+
+// SUTO invalid sentinels — exactly these two values, nothing broader
+const isInvalidValue = (v) => typeof v === 'number' && (v === -8888 || v === -9999);
 
 /**
  * Live recording table.
@@ -40,9 +46,13 @@ export default function LiveTableView() {
   const [renderLimit, setRenderLimit] = useState(INITIAL_RENDER);
   const [following, setFollowing] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+  // Columns follow the Graphic View's channel selection (shared store).
+  const [selectedIds, setSelectedIds] = useState(() => getLiveSelection());
 
   const followingRef = useRef(true);
   const displayCountRef = useRef(displayRows.length);
+
+  useEffect(() => subscribeLiveSelection((ids) => setSelectedIds([...ids])), []);
 
   useEffect(() => {
     return liveRecorder.subscribe((snap, event) => {
@@ -100,14 +110,14 @@ export default function LiveTableView() {
   };
 
   const session = liveRecorder.getSessionSnapshot();
-  const channelKey = session.channelIds.join(',');
-  const columns = useMemo(() => {
-    const ids = channelKey ? channelKey.split(',').map(Number) : [];
-    const cache = getOnlineCache()?.channels || [];
-    const meta = session.channelMeta;
-    return ids.map((id) => {
-      const c = cache.find((x) => x && x.channel_id === id);
-      const m = meta[id] || {};
+  // Columns follow the Graphic View selection (selection order = main first);
+  // ids not present in the session (stale) are skipped.
+  const cacheChannels = getOnlineCache()?.channels || [];
+  const columns = selectedIds
+    .filter((id) => session.channelIds.includes(id))
+    .map((id) => {
+      const c = cacheChannels.find((x) => x && x.channel_id === id);
+      const m = session.channelMeta[id] || {};
       return {
         id,
         name: (c && (c.channel_name || c.sensor_description)) || `Channel ${id}`,
@@ -115,8 +125,6 @@ export default function LiveTableView() {
         resolution: (c && typeof c.resolution === 'number' && c.resolution >= 0 ? c.resolution : m.resolution) ?? 2,
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelKey]);
 
   const visibleRows = useMemo(
     () => displayRows.slice(-renderLimit).reverse(),
@@ -137,7 +145,9 @@ export default function LiveTableView() {
           {!following && pendingCount > 0 ? ` · ${pendingCount} new` : ''}
         </span>
         <span className="live-toolbar-spacer" />
-        <span className="live-view-meta">{following ? 'Following live data' : 'Paused — scroll to top to resume'}</span>
+        <span className="live-view-meta">
+          {following ? 'Cols follow Graphic View' : 'Paused — scroll to top to resume'}
+        </span>
       </div>
 
       <div className="live-table-scroll" ref={scrollRef} onScroll={handleScroll}>
@@ -147,7 +157,11 @@ export default function LiveTableView() {
           </button>
         )}
 
-        {visibleRows.length === 0 ? (
+        {columns.length === 0 ? (
+          <div className="live-table-empty">
+            No channels selected — check the channels you want in the Graphic View toolbar.
+          </div>
+        ) : visibleRows.length === 0 ? (
           <div className="live-table-empty">Waiting for the first samples…</div>
         ) : (
           <table className="live-table">
@@ -169,7 +183,9 @@ export default function LiveTableView() {
                     const v = row.values[c.id];
                     return (
                       <td key={c.id}>
-                        {v === null || v === undefined ? '' : formatChannelValue(v, c.resolution)}
+                        {v === null || v === undefined || isInvalidValue(v)
+                          ? '--.-'
+                          : formatChannelValue(v, c.resolution)}
                       </td>
                     );
                   })}

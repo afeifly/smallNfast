@@ -21,7 +21,7 @@ class YAxis extends Component {
   render() {
     return(
       <g className="y-axis" ref={this.rootRef}  visibility="hidden">
-        <rect className="y-axis-background" fill="rgb(25, 118, 210)" onClick={ this.showYAxisSetting }/>
+        <rect className="y-axis-background" fill="rgb(25, 118, 210)" onClick={ this.handleBackgroundClick }/>
       </g>
     );
   }
@@ -204,6 +204,19 @@ class YAxis extends Component {
       .raise();
   }
 
+
+  /**
+   * Left (main) axis click → open the axis setting dialog.
+   * Right axis click → swap it to the left, becoming the main axis.
+   */
+  handleBackgroundClick = () => {
+    const { data } = this.props;
+    if (data.index === 0) {
+      this.showYAxisSetting();
+    } else {
+      this.changePosition();
+    }
+  }
 
   showYAxisSetting = () => {
     const { data } = this.props;

@@ -28,6 +28,69 @@ export function nextRecordingWindow(latestMs, startMs, endMs, rangeMs) {
   return { start: end - rangeMs, end, shifted: true };
 }
 
+/** Max distinct units (= y-axes). Same-unit channels on one axis are unlimited. */
+export const MAX_Y_AXIS_COUNT = 4;
+
+/**
+ * A "reasonable" human y-axis range for [min, max]:
+ *  - non-negative data starts at 0 (4.30–4.45 → 0–5, 156–160 → 0–200)
+ *  - all-negative data ends at 0; mixed data keeps nice ends on both sides
+ *  - the outer ends get ~5% headroom and round to 1/2/2.5/5 × 10ⁿ steps
+ * The range never hugs the data — a handful of early samples still produce
+ * a wide, readable scale.
+ */
+export function niceRange(min, max) {
+  const round6 = (v) => Math.round(v * 1e6) / 1e6;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return [0, 10];
+  }
+  if (min === max) {
+    const pad = Math.max(1, Math.abs(min) * 0.1);
+    min -= pad;
+    max += pad;
+  }
+  const niceStep = (x) => {
+    if (!(x > 0)) return 1;
+    const pow = Math.pow(10, Math.floor(Math.log10(x)));
+    for (const m of [1, 2, 2.5, 5, 10]) {
+      if (x <= m * pow) {
+        return m * pow;
+      }
+    }
+    return 10 * pow;
+  };
+  const step = niceStep(Math.max(Math.abs(min), Math.abs(max)) / 5);
+
+  let lo = 0;
+  let hi = 0;
+  if (min < 0) {
+    lo = Math.floor((min * 1.05) / step) * step;
+  }
+  if (max > 0) {
+    hi = Math.ceil((max * 1.05) / step) * step;
+  }
+  if (hi === lo) {
+    hi = lo + step;
+  }
+  return [round6(lo), round6(hi)];
+}
+
+/**
+ * Top anchors (percent of chart height) for the stacked lanes of channels
+ * sharing one y-axis: the axis' first (main) channel tops out at 70%, the
+ * next at 60%, 50%, … — a clear 10% ladder. The step compresses only when
+ * many channels share one axis and a 10% ladder would fall below the limit.
+ */
+export function laneAnchors(count, topPercent = 70, bottomLimitPercent = 8) {
+  const n = Math.max(1, Math.floor(count));
+  if (n === 1) {
+    return [topPercent];
+  }
+  const step = Math.min(10, (topPercent - bottomLimitPercent) / (n - 1));
+  const round6 = (v) => Math.round(v * 1e6) / 1e6;
+  return Array.from({ length: n }, (_, i) => round6(topPercent - i * step));
+}
+
 class ChartController {
 
   constructor() {
@@ -109,7 +172,7 @@ class ChartController {
   }
 
   setColorFromSetting(channel) {
-    if (!channel || !channel.id) {
+    if (!channel || !channel.id || !this.displayChannels) {
       return;
     }
 
@@ -168,11 +231,22 @@ class ChartController {
 
   addSelectedChannel(channel) {
     if (!channel) {
-      return;
+      return false;
     }
 
     if (this.isSelectedChannel(channel.id)) {
-      return;
+      return false;
+    }
+
+    // Cap distinct units (= y-axes) at the single choke point — this covers
+    // manual selection, init auto-selection and stale localStorage picks.
+    // Same-unit channels keep joining their existing axis without limit.
+    const unitKnown = this.yAxisDataset.some((d) => d && d.unit === channel.unit);
+    if (!unitKnown && this.yAxisDataset.length >= MAX_Y_AXIS_COUNT) {
+      console.warn(
+        `[ChartController] max ${MAX_Y_AXIS_COUNT} y-axes reached — channel ${channel.id} (${channel.unit || 'no unit'}) rejected`
+      );
+      return false;
     }
 
     channel.visible = true;
@@ -181,6 +255,7 @@ class ChartController {
     if (yAxisData) {
       this.yAxisDataset.push(yAxisData);
     }
+    return true;
   }
 
   isSelectedChannel(id) {

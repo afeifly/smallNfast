@@ -463,4 +463,23 @@ let DataUtil = {
 
 };
 
+/**
+ * Keep only the points inside [startT, endT] (ms). Used when one in-memory
+ * series (live recording session) is drawn through a smaller view window —
+ * without it, out-of-window points render outside the plot area, over the
+ * y-axes. Null gap markers inside the range are preserved.
+ */
+DataUtil.filterDataToPeriod = function (arr, startT, endT) {
+  if (!arr || !Number.isFinite(startT) || !Number.isFinite(endT) || endT <= startT) {
+    return arr || [];
+  }
+  return arr.filter((d) => {
+    if (!d || !d.time) {
+      return false;
+    }
+    const t = d.time instanceof Date ? d.time.getTime() : d.time;
+    return t >= startT && t <= endT;
+  });
+};
+
 export default DataUtil;

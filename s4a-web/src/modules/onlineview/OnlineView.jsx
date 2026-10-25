@@ -8,6 +8,10 @@ import { resolveDeviceTypeName } from '../../util/platform';
 import { subscribeLive, setViewDemand, pollOnce } from '../../util/liveDataSource';
 
 function formatValue(val, resolution = 2) {
+  // SUTO invalid sentinels — exactly these two values
+  if (val === -8888 || val === -9999) {
+    return '--.-';
+  }
   return formatChannelValue(val, resolution);
 }
 

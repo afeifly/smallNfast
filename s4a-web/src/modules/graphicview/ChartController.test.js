@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import ChartController, { nextRecordingWindow } from './ChartController';
+import ChartController, { nextRecordingWindow, niceRange, laneAnchors, MAX_Y_AXIS_COUNT } from './ChartController';
 
 const MIN = 60000;
 const R = 30 * MIN;
@@ -62,5 +62,67 @@ describe('ChartController recording window mode', () => {
   it('does nothing outside Recording mode', () => {
     const c = new ChartController();
     expect(c.advanceRecordingWindow(Date.now())).toBe(false);
+  });
+});
+
+describe('niceRange', () => {
+  it('produces wide human ranges, never hugging the data', () => {
+    // the reported bugs: early-session narrow data produced 4.30–4.45 / 156–157
+    expect(niceRange(4.3, 4.45)).toEqual([0, 5]);
+    expect(niceRange(156.0, 157.0)).toEqual([0, 200]);
+    expect(niceRange(3.1, 97)).toEqual([0, 120]);
+    expect(niceRange(76, 160)).toEqual([0, 200]);
+    expect(niceRange(-38, -30)).toEqual([-40, 0]);
+  });
+
+  it('pads a constant series and handles invalid input', () => {
+    expect(niceRange(42, 42)).toEqual([0, 50]);
+    expect(niceRange(NaN, 5)).toEqual([0, 10]);
+  });
+});
+
+describe('laneAnchors', () => {
+  it('anchors the main channel at 70% with a 10% ladder', () => {
+    expect(laneAnchors(1)).toEqual([70]);
+    expect(laneAnchors(3)).toEqual([70, 60, 50]);
+    expect(laneAnchors(5)).toEqual([70, 60, 50, 40, 30]);
+  });
+
+  it('compresses the step when many channels share an axis', () => {
+    const a = laneAnchors(12);
+    expect(a).toHaveLength(12);
+    expect(a[0]).toBe(70);
+    // monotonic descending, never below the bottom limit
+    for (let i = 1; i < a.length; i++) {
+      expect(a[i]).toBeLessThan(a[i - 1]);
+      expect(a[i]).toBeGreaterThanOrEqual(8 - 1e-6);
+    }
+  });
+});
+
+describe('y-axis unit cap', () => {
+  it('rejects a 5th distinct unit but keeps accepting same-unit channels', () => {
+    const c = new ChartController();
+    const mk = (id, unit, lo = 0, hi = 10) => ({ id, unit, minValue: lo, maxValue: hi });
+
+    expect(c.addSelectedChannel(mk(1, 'm³/h'))).toBe(true);
+    expect(c.addSelectedChannel(mk(2, 'm/s'))).toBe(true);
+    expect(c.addSelectedChannel(mk(3, '°C'))).toBe(true);
+    expect(c.addSelectedChannel(mk(4, 'bar'))).toBe(true);
+    expect(c.yAxisDataset).toHaveLength(MAX_Y_AXIS_COUNT);
+
+    // 5th different unit → rejected, nothing added anywhere
+    expect(c.addSelectedChannel(mk(5, 'A'))).toBe(false);
+    expect(c.selectedChannels).toHaveLength(4);
+    expect(c.yAxisDataset).toHaveLength(MAX_Y_AXIS_COUNT);
+
+    // same unit as an existing axis → unlimited channels on that axis
+    expect(c.addSelectedChannel(mk(6, 'bar', 1, 2))).toBe(true);
+    expect(c.addSelectedChannel(mk(7, 'bar', 1, 3))).toBe(true);
+    expect(c.selectedChannels).toHaveLength(6);
+    expect(c.yAxisDataset).toHaveLength(MAX_Y_AXIS_COUNT); // axes unchanged
+
+    // duplicate id → ignored
+    expect(c.addSelectedChannel(mk(1, 'm³/h'))).toBe(false);
   });
 });

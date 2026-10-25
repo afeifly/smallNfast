@@ -17,6 +17,7 @@ import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
 import { isDesktop, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
+import { clearLiveSelection } from './util/liveSelection';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -26,6 +27,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
+import TextField from '@mui/material/TextField';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
@@ -129,9 +131,13 @@ function App() {
   const [showConnectModal, setShowConnectModal] = React.useState(false);
   const [analyzingFromReadout, setAnalyzingFromReadout] = React.useState(false);
 
-  // Live value recording (status bar REC button)
+  // Live value recording (header REC button)
   const [recState, setRecState] = React.useState(() => liveRecorder.getRecorderState());
   const [recNow, setRecNow] = React.useState(0);
+  const [recStartOpen, setRecStartOpen] = React.useState(false);
+  const [recIntervalInput, setRecIntervalInput] = React.useState('10');
+  // { action: 'home' | 'close' } while a recording blocks leaving the app
+  const [exitConfirm, setExitConfirm] = React.useState(null);
   React.useEffect(
     () =>
       liveRecorder.subscribe((s) => {
@@ -142,8 +148,45 @@ function App() {
   );
   React.useEffect(() => {
     if (!recState.recording) return undefined;
-    const t = setInterval(() => setRecNow(Date.now()), 1000);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'hidden') return; // self-corrects on show
+      setRecNow(Date.now());
+    }, 1000);
     return () => clearInterval(t);
+  }, [recState.recording]);
+
+  // Web fallback: browsers ask before leaving while a recording is running.
+  React.useEffect(() => {
+    if (!recState.recording) return undefined;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [recState.recording]);
+
+  // Desktop app: intercept the window close while recording, ask first.
+  React.useEffect(() => {
+    if (!recState.recording || !TauriSutoAPI.isAvailable()) return undefined;
+    let unlisten = null;
+    let disposed = false;
+    import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) =>
+        getCurrentWindow().onCloseRequested((event) => {
+          event.preventDefault();
+          setExitConfirm({ action: 'close' });
+        })
+      )
+      .then((fn) => {
+        if (disposed && typeof fn === 'function') fn();
+        else unlisten = fn;
+      })
+      .catch((e) => console.warn('[Recorder] window close interception unavailable:', e));
+    return () => {
+      disposed = true;
+      if (unlisten) unlisten();
+    };
   }, [recState.recording]);
 
   // Loading indicator refs
@@ -363,18 +406,27 @@ function App() {
       }
       await saveRecordingResult(result);
     } else {
-      const cache = getOnlineCache();
-      const deviceName = resolveDeviceTypeName(cache?.sysInfo, deviceInfo)
-        || deviceInfo?.device
-        || 'SUTO Device';
-      liveRecorder.start({
-        deviceName,
-        getChannels: () => getOnlineCache()?.channels || [],
-      });
-      TauriSutoAPI.logClientEvent('INFO', 'RECORDER', `Live recording started on ${deviceName}`);
-      // Jump straight to the live chart so the curves are visible immediately
-      setActiveTab('livegraphic');
+      // Ask for the sampling interval first (default 10 s).
+      setRecIntervalInput('10');
+      setRecStartOpen(true);
     }
+  };
+
+  const handleStartRecordingFromDialog = async () => {
+    const intervalSec = Math.max(1, Math.min(3600, Math.round(Number(recIntervalInput) || 10)));
+    setRecStartOpen(false);
+    const cache = getOnlineCache();
+    const deviceName = resolveDeviceTypeName(cache?.sysInfo, deviceInfo)
+      || deviceInfo?.device
+      || 'SUTO Device';
+    liveRecorder.start({
+      deviceName,
+      getChannels: () => getOnlineCache()?.channels || [],
+      intervalSec,
+    });
+    TauriSutoAPI.logClientEvent('INFO', 'RECORDER', `Live recording started on ${deviceName} (interval ${intervalSec}s)`);
+    // Jump straight to the live chart so the curves are visible immediately
+    setActiveTab('livegraphic');
   };
 
   const handleDisconnectMonitor = async () => {
@@ -385,6 +437,7 @@ function App() {
     }
     // Drop the frozen session buffer so the live Graphic/Table tabs disappear
     liveRecorder.clearSession();
+    clearLiveSelection();
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Disconnecting monitor session');
     clearReadoutCache();
     clearOnlineCache();
@@ -422,10 +475,18 @@ function App() {
     setActiveTab('readout');
   };
 
-  const handleReturnHome = () => {
+  const performReturnHome = () => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Navigated back to Welcome Home');
     setAnalyzingFromReadout(false);
     if (appMode === 'monitor') {
+      // Same session teardown as the Disconnect button — returning home ends
+      // the monitor session, so the live Graphic/Table views reset fully.
+      if (liveRecorder.getRecorderState().recording) {
+        const result = liveRecorder.stop();
+        if (result) saveRecordingResult(result);
+      }
+      liveRecorder.clearSession();
+      clearLiveSelection();
       clearReadoutCache();
       clearOnlineCache();
       TauriSutoAPI.disconnect().catch(console.warn);
@@ -433,6 +494,35 @@ function App() {
       setDeviceInfo(null);
     }
     setAppMode(null);
+  };
+
+  const handleReturnHome = () => {
+    // Never silently drop a running recording.
+    if (liveRecorder.getRecorderState().recording) {
+      setExitConfirm({ action: 'home' });
+      return;
+    }
+    performReturnHome();
+  };
+
+  /** Stop & save the running recording, then perform the blocked action. */
+  const handleExitConfirmProceed = async () => {
+    const action = exitConfirm ? exitConfirm.action : null;
+    setExitConfirm(null);
+    if (liveRecorder.getRecorderState().recording) {
+      const result = liveRecorder.stop();
+      if (result) await saveRecordingResult(result);
+    }
+    if (action === 'home') {
+      performReturnHome();
+    } else if (action === 'close') {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().destroy();
+      } catch {
+        window.close();
+      }
+    }
   };
 
   const handleRemoveRecentFile = async (file, e) => {
@@ -662,15 +752,6 @@ function App() {
             >
               Online View
             </button>
-            <button
-              className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
-              onClick={() => {
-                clearReadoutCache();
-                setActiveTab('readout');
-              }}
-            >
-              Readout
-            </button>
             {recState.hasSession && (
               <button
                 className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
@@ -685,6 +766,18 @@ function App() {
                 onClick={() => setActiveTab('livetable')}
               >
                 Table View
+              </button>
+            )}
+            {/* Readout hammers the device — never offered while recording */}
+            {appMode === 'monitor' && !recState.recording && (
+              <button
+                className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
+                onClick={() => {
+                  clearReadoutCache();
+                  setActiveTab('readout');
+                }}
+              >
+                Readout
               </button>
             )}
           </div>
@@ -754,7 +847,6 @@ function App() {
                       :
                       {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
                     </span>
-                    <span className="rec-btn-count">{recState.samples}</span>
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
                       <rect x="5" y="5" width="14" height="14" rx="2" />
                     </svg>
@@ -1476,6 +1568,47 @@ function App() {
       </Dialog>
 
       <Loading ref={globalLoadingRef} />
+
+      {/* Recording start: sampling interval */}
+      <Dialog open={recStartOpen} onClose={() => setRecStartOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Start Live Recording</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Sampling interval (seconds)"
+            type="number"
+            fullWidth
+            value={recIntervalInput}
+            onChange={(e) => setRecIntervalInput(e.target.value)}
+            inputProps={{ min: 1, max: 3600 }}
+            helperText="The first sample is taken immediately, the next after each interval — e.g. 10 s: 09:00:01, 09:00:11, 09:00:21…"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRecStartOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleStartRecordingFromDialog}>
+            Start Recording
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* A recording is still running — confirm before leaving */}
+      <Dialog open={Boolean(exitConfirm)} onClose={() => setExitConfirm(null)} maxWidth="xs">
+        <DialogTitle>Recording in progress</DialogTitle>
+        <DialogContent>
+          <div style={{ fontSize: 14, color: '#334155' }}>
+            A live recording is still running. Stop it and save the CSV before{' '}
+            {exitConfirm && exitConfirm.action === 'close' ? 'closing the app' : 'returning to home'}?
+          </div>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExitConfirm(null)}>Keep Recording</Button>
+          <Button variant="contained" onClick={handleExitConfirmProceed}>
+            Stop &amp; Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
       {/* Status Bar */}

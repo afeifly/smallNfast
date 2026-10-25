@@ -343,6 +343,26 @@ const FinalAPI = new Proxy(BaseAPI, {
       return () => currentApiMode;
     }
     if (currentApiMode === 'monitor') {
+      if (prop === 'getLocations') {
+        // The stock ChannelList groups channels under locations; live devices
+        // have no server location tree, so expose a single synthetic one that
+        // matches the location_id stamped on device channels.
+        return async (callback) => {
+          const locations = {
+            locations: [
+              {
+                location_id: 1,
+                description: 'SUTO Live Sensor',
+                location_index: 0,
+                background_img: '',
+                sensors: []
+              }
+            ]
+          };
+          if (callback) callback(locations);
+          return locations;
+        };
+      }
       if (prop === 'getChannels') {
         return async (callback) => {
           const raw = await TauriSutoAPI.getChannels();
@@ -352,8 +372,13 @@ const FinalAPI = new Proxy(BaseAPI, {
         };
       }
       if (prop === 'getMeasurementData') {
-        return (chId, start, stop, pointInterval, callback) => {
-          const cb = typeof chId === 'function' ? chId : callback;
+        // Callers use two conventions: (channelId, start, stop, interval, cb)
+        // and the stock 6-arg (channelId, start, stop, interval, getDataWay, cb)
+        // — pick the last function argument as the callback. Handing the
+        // numeric getDataWay (2) to the device layer would throw inside its
+        // catch block and the callback would never fire (stuck loading).
+        return (chId, start, stop, pointInterval, getDataWayOrCallback, maybeCallback) => {
+          const cb = [chId, getDataWayOrCallback, maybeCallback].find((a) => typeof a === 'function');
           return TauriSutoAPI.getMeasurementData(cb);
         };
       }

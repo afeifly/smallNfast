@@ -8,7 +8,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AxisSeries from './AxisSeries';
 import SplineGroup from './SplineGroup';
 import LegendSvgGroup from './LegendSvgGroup';
-import { saveSvgAsPng } from 'save-svg-as-png';
+import { saveSvgAsPng, svgAsPngUri } from 'save-svg-as-png';
+import TauriSutoAPI from '../../api/TauriSutoAPI';
 import html2canvas from 'html2canvas';
 import { SystemEvent } from '../../util/SystemConstant';
 import TimePeriod from './TimePeriod'
@@ -146,13 +147,14 @@ class LineChart extends Component {
   }
 
   /**
-   * Live-recording redraw: re-render the x axis and every spline from the
+   * Live-recording redraw: re-render the axes and every spline from the
    * channel.summaryData that the LiveGraphicView maintains directly.
    * Unlike the 'changeTimePeriod' event this never refetches via TestAPI.
    */
   redrawLive = () => {
     if (this.AxisSeriesRef.current) {
       this.AxisSeriesRef.current.updateXAxis();
+      this.AxisSeriesRef.current.updateYAxis();
     }
     if (this.SplineGroupRef.current) {
       this.SplineGroupRef.current.updateDisplay();
@@ -343,9 +345,16 @@ class LineChart extends Component {
   resetTimePeriod = () => {
     const { chartController } = this.props;
 
+    // Live-recording history browsing: "reset" means the whole session —
+    // handled by the live view (no file-mode TestAPI reload).
+    if (chartController.datasourceMode === 'RecordingHistory') {
+      d3.select('#line-chart').dispatch('liveHistoryReset');
+      return;
+    }
+
     // In CSD mode the historyTimeRange was set to the file's actual time range.
-    // openHistoryMode() restores timePeriod from historyTimeRange and resets the
-    // zoom history, then dispatches changeTimePeriod to redraw the X axis.
+    // openHistoryMode() restores timePeriod from historyTimeRange and resets
+    // the zoom history, then dispatches changeTimePeriod to redraw the X axis.
     chartController.openHistoryMode();
 
     // Hide the scale-actions panel and update button states
@@ -380,7 +389,42 @@ class LineChart extends Component {
 
   printChart() {
     var svg = document.getElementById("line-chart-container")
-    saveSvgAsPng(svg,"tmp.png", { 
+
+    // Desktop app: the webview has no download handling — render the PNG and
+    // push it through the native save dialog instead.
+    if (TauriSutoAPI.isAvailable && TauriSutoAPI.isAvailable()) {
+      try {
+        svgAsPngUri(svg, {
+          backgroundColor: '#ffffff',
+          scale: 2
+        }, async (dataUri) => {
+          try {
+            if (!dataUri || !dataUri.startsWith('data:image/png')) {
+              throw new Error('PNG rendering returned no image data');
+            }
+            const b64 = dataUri.split(',')[1];
+            const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            const d = new Date();
+            const p = (n) => String(n).padStart(2, '0');
+            const name = `S4A_Chart_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
+            const savedPath = await TauriSutoAPI.saveBinaryFile(name, bytes);
+            if (savedPath) {
+              console.log('[LineChart] Chart exported to:', savedPath);
+            }
+          } catch (err) {
+            console.error('[LineChart] Chart export failed:', err);
+            alert(`Chart export failed: ${err && err.message ? err.message : err}`);
+          }
+        });
+      } catch (err) {
+        console.error('[LineChart] Chart export failed:', err);
+        alert(`Chart export failed: ${err && err.message ? err.message : err}`);
+      }
+      return;
+    }
+
+    // Browser: stock download
+    saveSvgAsPng(svg,"tmp.png", {
       backgroundColor: '#ffffff',
       scale: 2
     });
@@ -409,4 +453,7 @@ class LineChart extends Component {
   }
 }
 
-export default LineChart;
+// Memoized: the only prop is the stable chartController instance. Without
+// this, every parent re-render (e.g. the live view's 1 s elapsed tick)
+// cascades into a full d3 redraw pass of the axes and every spline.
+export default React.memo(LineChart);

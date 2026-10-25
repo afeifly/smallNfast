@@ -135,13 +135,17 @@ const DEV = {
 };
 
 // Unit indices mirror commands.rs lookup_unit():
-//  10 = m/s, 14 = m³/h, 24 = m³ (consumption → integer), 1 = °C, 38 = bar
+//  10 = m/s, 14 = m³/h, 24 = m³ (consumption → integer), 1 = °C, 38 = bar, 45 = A
 const CHANNELS = [
   { no: 1, desc: 'Flow', unitIdx: 14, unit: 'm³/h', resolution: 1, sensor: 'SUTO SFAB' },
   { no: 2, desc: 'Velocity', unitIdx: 10, unit: 'm/s', resolution: 2, sensor: 'SUTO SFAB' },
   { no: 3, desc: 'Consumption', unitIdx: 24, unit: 'm³', resolution: 0, sensor: 'SUTO SFAB' },
   { no: 4, desc: 'Temperature', unitIdx: 1, unit: '°C', resolution: 1, sensor: 'SUTO ST550' },
   { no: 5, desc: 'Pressure', unitIdx: 38, unit: 'bar', resolution: 2, sensor: 'SUTO SP560' },
+  // Three same-unit channels (amperes) to exercise multi-channel-per-axis scenarios
+  { no: 6, desc: 'Current A', unitIdx: 45, unit: 'A', resolution: 1, sensor: 'SUTO SC3' },
+  { no: 7, desc: 'Current B', unitIdx: 45, unit: 'A', resolution: 1, sensor: 'SUTO SC3' },
+  { no: 8, desc: 'Current C', unitIdx: 45, unit: 'A', resolution: 1, sensor: 'SUTO SC3' },
 ];
 const CONSUMPTION_UNITS = new Set([24, 25, 26, 27, 28, 47]);
 
@@ -185,6 +189,12 @@ function channelValue(ch, t) {
       return 23.5 + 2.8 * Math.sin(t / 1800) + 0.3 * Math.sin(t / 331);
     case 'Pressure':
       return 6.75 + 0.45 * Math.sin(t / 600 + 2.1) + 0.06 * Math.sin(t / 53);
+    case 'Current A': // three-phase currents, 120° apart
+      return 11.5 + 2.8 * Math.sin(t / 240) + 0.4 * Math.sin(t / 17);
+    case 'Current B':
+      return 11.2 + 2.6 * Math.sin(t / 240 + (2 * Math.PI) / 3) + 0.3 * Math.sin(t / 19);
+    case 'Current C':
+      return 11.4 + 2.7 * Math.sin(t / 240 + (4 * Math.PI) / 3) + 0.35 * Math.sin(t / 23);
     default:
       return 0;
   }
@@ -209,7 +219,10 @@ function buildChannelStruct(ch) {
   s.write('', 87); // unit ASCII stays empty (standard units)
   s.writeInt32LE(1, 99); // device id
   s.writeInt32LE(1, 103); // sub device id
-  const sensorId = ch.desc === 'Temperature' ? 2 : ch.desc === 'Pressure' ? 3 : 1;
+  const sensorId = ch.desc === 'Temperature' ? 2
+    : ch.desc === 'Pressure' ? 3
+    : ch.desc.startsWith('Current') ? 4
+    : 1; // flow family (incl. velocity/consumption) shares sensor 1
   s.writeInt32LE(sensorId, 107); // sensor id (flow family shares 1)
   s.writeInt32LE(ch.no, 111); // channel id
   s[115] = 1; // slaver type
@@ -230,6 +243,9 @@ const TRACE_COLORS = [
   [0x54, 0xd5, 0xff], // consumption
   [0x65, 0xff, 0xff], // temperature
   [0xc8, 0x68, 0xba], // pressure
+  [0x7c, 0xa5, 0xff], // current A (orange)
+  [0xd6, 0xa5, 0xa7], // current B (lavender)
+  [0x4f, 0xb7, 0xff], // current C (gold)
 ];
 
 function makeBmp(seed) {
@@ -551,7 +567,8 @@ function banner(server) {
   │  Device    : SUTO S331 (id 0x1065, fw ${DEV.fwString})            │
   │  Serial    : ${DEV.serial}                          │
   │  Channels  : Flow / Velocity / Consumption /        │
-  │              Temperature / Pressure                 │
+  │              Temperature / Pressure /               │
+  │              Current A·B·C                          │
   │  Logger    : 2 sessions × 7 days @ ${LOG_INTERVAL}s          │
   │  Screens   : ${SCREENSHOTS.length} virtual BMP (${SCREENSHOTS[0].size} B each)        │
   ├─────────────────────────────────────────────────────┤
@@ -718,13 +735,13 @@ export async function runSelftest() {
   // 3. Channels
   {
     const mc = await cmd(Buffer.from([CTY_SYS, SUB_NONE, 0x23]));
-    ok('max channel count = 5', mc.payload[0] === 5, `got ${mc.payload[0]}`);
+    ok('max channel count = 8', mc.payload[0] === 8, `got ${mc.payload[0]}`);
     for (const prefix of [0x02, 0x0b]) {
-      const { payload, lastFrameLen } = await cmd(Buffer.from([CTY_MEAS, 0x02, prefix, 1, 5]));
-      ok(`ch-settings(0x${prefix.toString(16)}): 5×204 bytes`, payload.length === 1020, `got ${payload.length}`);
+      const { payload, lastFrameLen } = await cmd(Buffer.from([CTY_MEAS, 0x02, prefix, 1, 8]));
+      ok(`ch-settings(0x${prefix.toString(16)}): 8×204 bytes`, payload.length === 1632, `got ${payload.length}`);
       ok(`ch-settings(0x${prefix.toString(16)}): last frame < 192`, lastFrameLen < 192, `got ${lastFrameLen}`);
-      const units = [14, 10, 24, 1, 38];
-      const valid = [1, 2, 3, 4, 5].every((no, i) => {
+      const units = [14, 10, 24, 1, 38, 45, 45, 45];
+      const valid = [1, 2, 3, 4, 5, 6, 7, 8].every((no, i) => {
         const s = payload.subarray(i * 204, (i + 1) * 204);
         return s[0] === no && s[86] === units[i];
       });
@@ -734,9 +751,9 @@ export async function runSelftest() {
 
   // 4. Online values
   {
-    const { payload } = await cmd(Buffer.from([CTY_MEAS, 0x01, 0x01, 1, 5]));
-    ok('online values: 5×7 bytes', payload.length === 35, `got ${payload.length}`);
-    const allNormal = [0, 1, 2, 3, 4].every((i) => payload[i * 7 + 6] === 0);
+    const { payload } = await cmd(Buffer.from([CTY_MEAS, 0x01, 0x01, 1, 8]));
+    ok('online values: 8×7 bytes', payload.length === 56, `got ${payload.length}`);
+    const allNormal = Array.from({ length: 8 }, (_, i) => payload[i * 7 + 6] === 0).every(Boolean);
     ok('online values: all status normal', allNormal);
     const flow = payload.readFloatLE(0);
     const cons = payload.readUInt32LE(2 * 7); // consumption is integer u32
@@ -746,9 +763,14 @@ export async function runSelftest() {
     const press = payload.readFloatLE(4 * 7);
     ok(`online values: temperature plausible (${temp.toFixed(1)} °C)`, temp > 15 && temp < 32);
     ok(`online values: pressure plausible (${press.toFixed(2)} bar)`, press > 5 && press < 8);
+    const curA = payload.readFloatLE(5 * 7);
+    const curB = payload.readFloatLE(6 * 7);
+    const curC = payload.readFloatLE(7 * 7);
+    ok(`online values: currents plausible (${curA.toFixed(1)}/${curB.toFixed(1)}/${curC.toFixed(1)} A)`,
+      [curA, curB, curC].every((v) => v > 5 && v < 20));
     // values change over time
     await new Promise((r) => setTimeout(r, 300));
-    const again = await cmd(Buffer.from([CTY_MEAS, 0x01, 0x01, 1, 5]));
+    const again = await cmd(Buffer.from([CTY_MEAS, 0x01, 0x01, 1, 8]));
     ok('online values: change between polls', again.payload.readFloatLE(0) !== flow);
   }
 
@@ -780,7 +802,7 @@ export async function runSelftest() {
     const name1 = e1.subarray(0, 12).toString().replace(/\0.*$/, '');
     ok(`file list: names LOG0000/LOG0001 (got ${name1})`, name1 === 'LOG0001');
     ok('file list: 10080 samples', e1.readUInt32LE(20) === 10080);
-    ok('file list: 5 channels', e1[24] === 5);
+    ok('file list: 8 channels', e1[24] === 8);
     ok('file list: sample rate 60 s', e1.readUInt32LE(29) === 60);
     ok('file list: current session recording', (e1.readUInt32LE(25) & 1) === 1);
     const fin = await cmd(Buffer.concat([Buffer.from([CTY_LOGGER, SUB_NONE, 0x0c]), Buffer.from(ACCESS_CODE)]));

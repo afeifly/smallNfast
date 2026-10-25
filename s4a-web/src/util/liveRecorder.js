@@ -63,9 +63,12 @@ export function getRecorderState() {
 /**
  * Start recording.
  * @param {object} [opts]
- * @param {string}  [opts.deviceName]  Device name for the CSV header / filename
+ * @param {string}  [opts.deviceName]   Device name for the CSV header / filename
  * @param {function} [opts.getChannels] () => channel list (online cache) for
  *        channel names / sensors / units in the CSV header
+ * @param {number}  [opts.intervalSec]  Sampling interval in seconds. A row is
+ *        recorded by the first poll at/after each interval boundary (default
+ *        10 → first row at 09:00:01, next at 09:00:11…). 0 records every poll.
  */
 export function start(opts = {}) {
   if (state.recording) return;
@@ -74,6 +77,8 @@ export function start(opts = {}) {
     deviceName: opts.deviceName || 'SUTO Device',
     getChannels: typeof opts.getChannels === 'function' ? opts.getChannels : () => [],
     startedAt: Date.now(),
+    intervalMs: Math.max(0, Math.round(Number(opts.intervalSec) || 0)) * 1000,
+    lastRowT: 0,
     rows: [],
     channelIds: [],
     channelMeta: {},
@@ -90,6 +95,38 @@ export function start(opts = {}) {
 export function feed(resultArray) {
   if (!state.recording || !Array.isArray(resultArray) || resultArray.length === 0) return;
   const t = Date.now();
+  let rowT = t;
+
+  if (state.rows.length > 0 && state.channelIds.length > 0 && state.intervalMs > 0) {
+    if (t - state.lastRowT >= state.intervalMs * 2 + 2000) {
+      // Real gap (OS sleep / throttling): null marker at the first missed
+      // tick, then re-anchor the grid at the actual arrival time — the
+      // recovery row must keep its true timestamp.
+      const marker = { t: state.lastRowT + state.intervalMs, values: {} };
+      for (const id of state.channelIds) {
+        marker.values[id] = null;
+      }
+      state.rows.push(marker);
+      state.lastRowT = marker.t;
+      rowT = t;
+    } else if (t - state.lastRowT >= state.intervalMs) {
+      // Normal slot crossed — snap to the interval grid so timestamps stay
+      // perfectly uniform (poll arrival jitter of 0–1.5 s disappears).
+      rowT = state.lastRowT + state.intervalMs;
+    } else {
+      return; // inside the current slot
+    }
+  } else if (state.rows.length > 0 && state.channelIds.length > 0 && state.intervalMs === 0 && t - state.lastRowT >= 5000) {
+    // interval 0 (record every poll): a 5 s stall is a real gap
+    const marker = { t: state.lastRowT + Math.round((t - state.lastRowT) / 2), values: {} };
+    for (const id of state.channelIds) {
+      marker.values[id] = null;
+    }
+    state.rows.push(marker);
+    state.lastRowT = marker.t;
+    rowT = t;
+  }
+
   const values = {};
   for (const v of resultArray) {
     const id = v?.channel_id ?? v?.id;
@@ -106,7 +143,8 @@ export function feed(resultArray) {
           : (prev ? prev.resolution : 2),
     };
   }
-  state.rows.push({ t, values });
+  state.rows.push({ t: rowT, values });
+  state.lastRowT = rowT;
   notify('sample');
 }
 

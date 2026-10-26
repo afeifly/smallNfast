@@ -263,14 +263,18 @@ class SplineGroup extends Component {
           <text className="data-tip-item-text" alignmentBaseline="before-edge"
             x="28" y="6">
             <tspan className="dtit-name" alignmentBaseline="before-edge">
-              {(d.fullName || (d.sensorDescription + ' - ' + d.name)) + ':  '}
+              {((d.fullName
+                || (d.sensorDescription && d.name ? `${d.sensorDescription} - ${d.name}` : '')
+                || d.name
+                || d.sensorDescription
+                || (d.id ? `Channel ${d.id}` : '')) + ':  ')}
             </tspan>
             <tspan className="dtit-value" alignmentBaseline="before-edge"
               fill={d.color}>
               {'--.--'}
             </tspan>
             <tspan className="dtit-unit" alignmentBaseline="before-edge">
-              {(d.unit && !(d.fullName || d.name || '').includes(d.unit)) ? '  ' + d.unit : ''}
+              {((d.unit || d.unit_in_ascii) && !(d.fullName || d.name || '').includes(d.unit || d.unit_in_ascii)) ? '  ' + (d.unit || d.unit_in_ascii) : ''}
             </tspan>
           </text>
         </g>

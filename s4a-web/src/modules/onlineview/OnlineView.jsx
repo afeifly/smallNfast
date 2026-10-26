@@ -71,16 +71,30 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     if (!isMountedRef.current) return;
     if (data && data.length) {
       setChannels((prevChannels) => {
-        const valMap = new Map(data.map((d) => [d.channel_id, d]));
+        const valMap = new Map();
+        for (const d of data) {
+          const id = d.channel_id ?? d.id;
+          if (id !== undefined && id !== null) {
+            valMap.set(id, d);
+            valMap.set(String(id), d);
+            valMap.set(Number(id), d);
+          }
+        }
         const updated = prevChannels.map((ch) => {
-          const v = valMap.get(ch.channel_id);
+          const chId = ch.channel_id ?? ch.id;
+          const v = valMap.get(chId)
+            || (ch.sensor_channel_id !== undefined ? valMap.get(ch.sensor_channel_id) : null)
+            || valMap.get(Number(chId))
+            || valMap.get(String(chId));
           if (v) {
-            const effRes = (typeof v.resolution === 'number' && v.resolution > 0)
+            const effRes = (typeof v.resolution === 'number' && v.resolution >= 0)
               ? v.resolution
-              : resolveChannelResolution(ch);
+              : ((typeof ch.resolution === 'number' && ch.resolution >= 0)
+                ? ch.resolution
+                : resolveChannelResolution(ch));
             return {
               ...ch,
-              current_value: v.current_value,
+              current_value: v.current_value !== undefined ? v.current_value : v.value,
               status: v.status,
               unit: v.unit || ch.unit,
               resolution: effRes,
@@ -122,7 +136,9 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
       if (!isMountedRef.current) return;
       const safeChs = (Array.isArray(chs) ? chs : []).map((ch) => ({
         ...ch,
-        resolution: resolveChannelResolution(ch),
+        resolution: (typeof ch.resolution === 'number' && ch.resolution >= 0)
+          ? ch.resolution
+          : resolveChannelResolution(ch),
       }));
       setChannels(safeChs);
       setLastUpdate(new Date());
@@ -315,7 +331,12 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
                     {/* Right: Value & Unit */}
                     <div className="suto-channel-right">
                       <span className={`suto-channel-value ${isBlank ? 'is-blank' : ''}`}>
-                        {formatValue(ch.current_value, resolveChannelResolution(ch))}
+                        {formatValue(
+                          ch.current_value,
+                          (typeof ch.resolution === 'number' && ch.resolution >= 0)
+                            ? ch.resolution
+                            : resolveChannelResolution(ch)
+                        )}
                       </span>
                       <span className="suto-channel-unit">
                         {ch.unit || ''}

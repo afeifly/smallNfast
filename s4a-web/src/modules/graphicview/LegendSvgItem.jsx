@@ -28,11 +28,21 @@ class LegendSvgItem extends Component {
       color = "rgb(170, 170, 170)"; 
       fontColor = "rgb(170, 170, 170)"; 
     }
+    const title = data.fullName
+      || (data.sensorDescription && data.name ? `${data.sensorDescription} - ${data.name}` : '')
+      || data.name
+      || data.sensorDescription
+      || (data.id ? `Channel ${data.id}` : '');
+    const unit = data.unit || data.unit_in_ascii || '';
+    const unitText = unit && !title.includes(unit) ? ` (${unit})` : '';
+
     return(
       <g transform="translate(15, 15)" className="legend-item"  onClick={ () => this.onClick() } >
         <rect  y='-2' rx="3" ry="3" width="24" height="5" style={{ fill:color }} />
         <circle  cx="12.5" cy="0.5" r="4" stroke={ color } strokeWidth="2.1" fill="white"/>
-        <text x="28" y="1" dominantBaseline="central" fill={ fontColor }   fontSize="12" className="legend-item-text">{ data.fullName || (data.sensorDescription + ' - ' + data.name) }</text>	
+        <text x="28" y="1" dominantBaseline="central" fill={ fontColor } fontSize="12" className="legend-item-text">
+          { title }{ unitText }
+        </text>
       </g>
     );
   }

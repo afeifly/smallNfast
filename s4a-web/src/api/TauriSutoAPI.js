@@ -166,9 +166,47 @@ export const TauriSutoAPI = {
   async getChannels(callback) {
     if (activeTransport === 'BLE_WEB') {
       try {
-        const chs = await BleSutoAPI.getChannels();
-        if (callback) callback(chs);
-        return chs;
+        const rawChs = await BleSutoAPI.getChannels();
+        const formatted = (Array.isArray(rawChs) ? rawChs : []).map((ch, idx) => {
+          const chId = ch.channel_id ?? ch.id ?? (idx + 1);
+          const chName = ch.channel_name || ch.description || ch.logic_channel_description || `Channel ${chId}`;
+          const unit = ch.unit || ch.unit_in_ascii || '';
+          const sDesc = ch.sensor_description || ch.sensor_desc || ch.sensorDescription || chName;
+          return {
+            channel_id: chId,
+            id: chId,
+            location_id: 1,
+            locationId: 1,
+            channel_name: chName,
+            name: ch.name || chName,
+            fullName: ch.fullName || ch.full_channel_name || chName,
+            full_channel_name: ch.full_channel_name || ch.fullName || chName,
+            logic_channel_description: ch.logic_channel_description || chName,
+            unit_in_ascii: ch.unit_in_ascii || unit,
+            unit: unit,
+            unit_index: ch.unit_index,
+            resolution: (typeof ch.resolution === 'number' && ch.resolution >= 0)
+              ? ch.resolution
+              : resolveChannelResolution({ unit, unit_index: ch.unit_index, resolution: ch.resolution }),
+            device_description: ch.device_description || ch.device_desc || 'SUTO BLE Device',
+            sensor_description: sDesc,
+            sensorDescription: sDesc,
+            sensor_name: ch.sensor_name || sDesc,
+            sensor_id: ch.sensor_id ?? ch.sensorId ?? 1,
+            sensorId: ch.sensor_id ?? ch.sensorId ?? 1,
+            sensor_channel_id: ch.sensor_channel_id ?? chId,
+            sensor_key: ch.sensor_key || `0&0&0&${ch.sensor_id ?? 1}`,
+            device_id: ch.device_id ?? 1,
+            sub_device_id: ch.sub_device_id ?? 0,
+            slaver_type: ch.slaver_type ?? 0,
+            slaver_addr: ch.slaver_addr ?? 0,
+            mb_output_value_type: ch.mb_output_value_type ?? 0,
+            active: true,
+            selected: idx === 0,
+          };
+        });
+        if (callback) callback(formatted);
+        return formatted;
       } catch (err) {
         console.warn('[TauriSutoAPI] BLE getChannels failed:', err);
         if (callback) callback([]);
@@ -199,7 +237,7 @@ export const TauriSutoAPI = {
         full_channel_name: ch.description,
         unit: ch.unit,
         unit_index: ch.unit_index,
-        resolution: (typeof ch.resolution === 'number' && ch.resolution > 0)
+        resolution: (typeof ch.resolution === 'number' && ch.resolution >= 0)
           ? ch.resolution
           : resolveChannelResolution({ unit: ch.unit, unit_index: ch.unit_index, resolution: ch.resolution }),
         device_description: ch.device_desc,

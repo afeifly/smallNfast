@@ -138,7 +138,7 @@ export function feed(resultArray) {
     state.channelMeta[id] = {
       unit: v.unit || (prev ? prev.unit : '') || '',
       resolution:
-        typeof v.resolution === 'number' && v.resolution > 0
+        typeof v.resolution === 'number' && v.resolution >= 0
           ? v.resolution
           : (prev ? prev.resolution : 2),
     };

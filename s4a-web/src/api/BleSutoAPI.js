@@ -392,13 +392,16 @@ export class BleSutoManager {
     // for (int j = 0; j < 8 - uuid.length(); j++) { uuid = "0" + uuid; }
     const snStr = String(rawSn).padStart(8, '0');
     const deviceName = SUTO_DEVICE_MODELS[devId] || (this.device?.name || `SUTO Sensor (0x${devId.toString(16).toUpperCase()})`);
+    const swVerF32 = swVersion / 100;
 
     return {
       serial_number: snStr,
       device_id: devId,
       device_name: deviceName,
       bus_version: busVersion,
-      firmware_version: `v${(swVersion / 10).toFixed(1)}`,
+      raw_software_version: swVersion,
+      software_version_f32: swVerF32,
+      firmware_version: `v${swVerF32.toFixed(2)}`,
       hardware_version: 'v1.0',
     };
   }
@@ -619,12 +622,16 @@ export class BleSutoManager {
 
   _deframeMultiFrame(rawBytes) {
     if (rawBytes.length < 5) throw new Error('Data too short for deframing');
+    if (rawBytes[2] !== 0x3e) {
+      throw new Error(`Device returned non-success status: 0x${rawBytes[2].toString(16)}`);
+    }
     let offset = 0;
     const payload = [];
 
     while (offset < rawBytes.length) {
       if (offset + 2 > rawBytes.length) break;
       const frameLen = rawBytes[offset + 1];
+      if (frameLen < 4) break;
       const frameEnd = offset + frameLen;
       if (frameEnd > rawBytes.length) break;
 
@@ -660,10 +667,6 @@ export class BleSutoManager {
       const devDesc = this._readUtf8String(deframed, off + 1, 21);
       const sensorDesc = this._readUtf8String(deframed, off + 43, 21);
       const chDesc = this._readUtf8String(deframed, off + 64, 21);
-      const rawRes = deframed[off + 85];
-      const resolution = (typeof rawRes === 'number' && rawRes > 0)
-        ? rawRes
-        : resolveChannelResolution({ unit, unit_index: unitIndex, resolution: rawRes });
       const unitIndex = deframed[off + 86];
       const unitAscii = this._readUtf8String(deframed, off + 87, 12);
       const mbType = deframed[off + 138];
@@ -674,17 +677,50 @@ export class BleSutoManager {
         unit = (unitAscii && unitAscii.trim()) ? unitAscii.trim() : `u${unitIndex}`;
       }
 
+      const rawRes = deframed[off + 85];
+      const resolution = resolveChannelResolution({ unit, unit_index: unitIndex, resolution: rawRes });
+
+      // Sensor / channel identity fields (little-endian i32)
+      // Matches Rust commands.rs §parse_channel_settings
+      const dv = new DataView(new Uint8Array(deframed.slice(off, off + STRUCT_SIZE)).buffer);
+      const deviceId = dv.getInt32(99, true);
+      const subDeviceId = dv.getInt32(103, true);
+      const sensorId = dv.getInt32(107, true);
+      const sensorChId = dv.getInt32(111, true);
+      const slaverType = deframed[off + 115];
+      const slaverAddr = deframed[off + 116];
+      const sensorKey = `${slaverType}&${slaverAddr}&${subDeviceId}&${sensorId}`;
+
       const chName = chDesc || sensorDesc || (devDesc ? `${devDesc} CH${chId}` : `Channel ${chId}`);
+      const sDesc = sensorDesc || chName;
 
       channels.push({
         channel_id: chId,
+        id: chId,
+        location_id: 1,
+        locationId: 1,
         channel_name: chName,
+        name: chName,
+        fullName: chName,
+        logic_channel_description: chName,
+        full_channel_name: chName,
         unit,
+        unit_in_ascii: unit,
         unit_index: unitIndex,
         resolution,
         mb_output_value_type: mbType,
         device_description: devDesc || this.getDeviceName(),
-        sensor_description: sensorDesc,
+        sensor_description: sDesc,
+        sensorDescription: sDesc,
+        sensor_name: sDesc,
+        sensor_id: typeof sensorId === 'number' ? sensorId : 1,
+        sensorId: typeof sensorId === 'number' ? sensorId : 1,
+        sensor_channel_id: typeof sensorChId === 'number' ? sensorChId : chId,
+        sensor_key: sensorKey,
+        device_id: typeof deviceId === 'number' ? deviceId : 1,
+        sub_device_id: subDeviceId || 0,
+        slaver_type: slaverType || 0,
+        slaver_addr: slaverAddr || 0,
         active: true,
         selected: true,
       });
@@ -697,63 +733,166 @@ export class BleSutoManager {
 
     // Check device model & firmware version
     const devId = this.systemInfo?.device_id || 0;
-    const swVer = parseFloat((this.systemInfo?.firmware_version || '1.0').replace(/[^\d.]/g, '') || '1.0');
+    const swVer = this.systemInfo?.software_version_f32
+      ?? parseFloat((this.systemInfo?.firmware_version || '1.0').replace(/[^\d.]/g, '') || '1.0');
     // Only S330/S331 with FW >= 1.54 use transformed channels (0x0B) as primary
     const isS330orS331 = (devId === 0x1064 || devId === 0x1065);
     const useTransfOnly = isS330orS331 && swVer >= 1.54;
     const primaryPrefix = useTransfOnly ? 0x0B : 0x02;
 
-    // Scan channels in batches of 2 to avoid overwhelming BLE UART buffers
-    const BATCH = 2;
-    const MAX_SCAN = 16;
-    const channels = [];
-    let start = 1;
-    let consecutiveEmpty = 0;
+    // 1. Query Max channel count (`[0x01, 0xFF, 0x23]`) if supported by device
+    let maxScan = 16;
+    try {
+      const maxPkt = this._packPacket(this.devAddr, [0x01, 0xFF, 0x23]);
+      const maxReply = await this.writeAndRead(maxPkt, 1500);
+      const maxDeframed = this._deframeMultiFrame(maxReply);
+      if (maxDeframed && maxDeframed.length > 0 && maxDeframed[0] > 0) {
+        maxScan = Math.min(64, Math.max(1, maxDeframed[0]));
+        TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Device reported max channel count: ${maxScan}`);
+      }
+    } catch (_) {
+      // Older sensors do not support CMD_GET_MAX_CHANNELS, scan up to default maxScan
+    }
 
-    while (start <= MAX_SCAN && consecutiveEmpty < 2) {
-      const cnt = Math.min(BATCH, MAX_SCAN - start + 1);
-      const pkt = this._packPacket(this.devAddr, [0x04, 0x02, primaryPrefix, start, cnt]);
-      try {
-        const rawSetting = await this.writeAndRead(pkt, 3000);
-        const deframed = this._deframeMultiFrame(rawSetting);
-        const parsed = this._parseChannelStructs(deframed);
-        if (parsed.length > 0) {
-          consecutiveEmpty = 0;
-          for (const ch of parsed) {
-            if (!channels.some(c => c.channel_id === ch.channel_id)) {
-              channels.push(ch);
+    // 2. Scan channels in batches of 5 matching SUTO protocol / CSLib & Rust desktop
+    const scanWithPrefix = async (prefix) => {
+      const BATCH = 5;
+      const found = [];
+      let start = 1;
+      let consecutiveEmpty = 0;
+
+      while (start <= maxScan && (found.length === 0 || consecutiveEmpty < 2)) {
+        const cnt = Math.min(BATCH, maxScan - start + 1);
+        const pkt = this._packPacket(this.devAddr, [0x04, 0x02, prefix, start, cnt]);
+        try {
+          const rawSetting = await this.writeAndRead(pkt, 5000);
+          const deframed = this._deframeMultiFrame(rawSetting);
+          const parsed = this._parseChannelStructs(deframed);
+          if (parsed.length > 0) {
+            consecutiveEmpty = 0;
+            for (const ch of parsed) {
+              if (!found.some(c => c.channel_id === ch.channel_id)) {
+                found.push(ch);
+              }
             }
+          } else {
+            consecutiveEmpty++;
           }
-          // If device returned all configured channel structs in a single multi-frame response
-          // (such as S461 responding with all 9-10 channels in one shot)
-          if (parsed.length > cnt) {
-            TauriSutoAPI.logClientEvent(
-              'INFO',
-              'BLE_CH',
-              `Device returned all ${parsed.length} channel structs in one batch.`
-            );
-            break;
-          }
-        } else {
+        } catch (err) {
+          TauriSutoAPI.logClientEvent('WARN', 'BLE_CH', `Batch start=${start} query note: ${err.message}`);
           consecutiveEmpty++;
         }
-      } catch (err) {
-        TauriSutoAPI.logClientEvent('WARN', 'BLE_CH', `Batch start=${start} query note: ${err.message}`);
-        consecutiveEmpty++;
+        start += cnt;
       }
-      start += cnt;
+      return found;
+    };
+
+    let channels = await scanWithPrefix(primaryPrefix);
+
+    // If primary prefix returned no channels and device is S330/S331, try the alternate prefix
+    if (channels.length === 0 && isS330orS331) {
+      const altPrefix = primaryPrefix === 0x0B ? 0x02 : 0x0B;
+      TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Trying alternate channel prefix 0x${altPrefix.toString(16).padStart(2, '0')}...`);
+      channels = await scanWithPrefix(altPrefix);
     }
 
     // Sort by logical channel id
     channels.sort((a, b) => a.channel_id - b.channel_id);
 
-    // Fallback: If sensor didn't return channel descriptors, synthesize standard channels
+    // Fallback: If sensor didn't return channel descriptors, synthesize standard channels matching SUTO flow sensors
     if (channels.length === 0) {
       const devName = this.systemInfo?.device_name || this.getDeviceName();
       channels.push(
-        { channel_id: 1, channel_name: 'Flow', unit: 'm³/h', unit_index: 14, resolution: 1, device_description: devName, sensor_description: 'Flow Sensor', active: true, selected: true },
-        { channel_id: 2, channel_name: 'Velocity', unit: 'm/s', unit_index: 10, resolution: 2, device_description: devName, sensor_description: 'Velocity Sensor', active: true, selected: true },
-        { channel_id: 3, channel_name: 'Temperature', unit: '°C', unit_index: 1, resolution: 1, device_description: devName, sensor_description: 'Temp Sensor', active: true, selected: true }
+        {
+          channel_id: 2,
+          id: 2,
+          location_id: 1,
+          locationId: 1,
+          channel_name: 'Flow',
+          name: 'Flow',
+          fullName: 'Flow',
+          logic_channel_description: 'Flow',
+          full_channel_name: 'Flow',
+          unit: 'm³/h',
+          unit_in_ascii: 'm³/h',
+          unit_index: 14,
+          resolution: 1,
+          mb_output_value_type: 0,
+          device_description: devName,
+          sensor_description: 'Flow Sensor',
+          sensorDescription: 'Flow Sensor',
+          sensor_name: 'Flow Sensor',
+          sensor_id: 1,
+          sensorId: 1,
+          sensor_channel_id: 2,
+          sensor_key: '0&0&0&1',
+          device_id: 1,
+          sub_device_id: 0,
+          slaver_type: 0,
+          slaver_addr: 0,
+          active: true,
+          selected: true,
+        },
+        {
+          channel_id: 3,
+          id: 3,
+          location_id: 1,
+          locationId: 1,
+          channel_name: 'Consumption',
+          name: 'Consumption',
+          fullName: 'Consumption',
+          logic_channel_description: 'Consumption',
+          full_channel_name: 'Consumption',
+          unit: 'm³',
+          unit_in_ascii: 'm³',
+          unit_index: 24,
+          resolution: 0,
+          mb_output_value_type: 0,
+          device_description: devName,
+          sensor_description: 'Consumption Sensor',
+          sensorDescription: 'Consumption Sensor',
+          sensor_name: 'Consumption Sensor',
+          sensor_id: 1,
+          sensorId: 1,
+          sensor_channel_id: 3,
+          sensor_key: '0&0&0&1',
+          device_id: 1,
+          sub_device_id: 0,
+          slaver_type: 0,
+          slaver_addr: 0,
+          active: true,
+          selected: true,
+        },
+        {
+          channel_id: 6,
+          id: 6,
+          location_id: 1,
+          locationId: 1,
+          channel_name: 'Pressure',
+          name: 'Pressure',
+          fullName: 'Pressure',
+          logic_channel_description: 'Pressure',
+          full_channel_name: 'Pressure',
+          unit: 'bar',
+          unit_in_ascii: 'bar',
+          unit_index: 38,
+          resolution: 2,
+          mb_output_value_type: 0,
+          device_description: devName,
+          sensor_description: 'Pressure Sensor',
+          sensorDescription: 'Pressure Sensor',
+          sensor_name: 'Pressure Sensor',
+          sensor_id: 1,
+          sensorId: 1,
+          sensor_channel_id: 6,
+          sensor_key: '0&0&0&1',
+          device_id: 1,
+          sub_device_id: 0,
+          slaver_type: 0,
+          slaver_addr: 0,
+          active: true,
+          selected: true,
+        }
       );
     }
 
@@ -768,76 +907,99 @@ export class BleSutoManager {
 
   async getMeasurementData() {
     if (!this.cachedChannels.length) return [];
-    const chIds = this.cachedChannels.map(c => c.channel_id);
-    const start = chIds[0];
-    const end = chIds[chIds.length - 1];
-    const count = end - start + 1;
+    const channels = [...this.cachedChannels].sort((a, b) => a.channel_id - b.channel_id);
 
-    try {
-      // CMD_GET_ONLINE_VAL: [0x04, 0x01, 0x01, start, count]
-      const valPkt = this._packPacket(this.devAddr, [0x04, 0x01, 0x01, start, count]);
-      const rawVal = await this.writeAndRead(valPkt, 2500);
-      const deframed = this._deframeMultiFrame(rawVal);
+    // Group configured channels into contiguous or near-contiguous clusters (gap <= 3)
+    // exactly matching Rust commands.rs / suto_get_values
+    const ranges = [];
+    let rStart = channels[0].channel_id;
+    let rEnd = channels[0].channel_id;
 
-      const result = [];
-      const VALUE_SIZE = 7;
-      const now = Date.now();
-
-      for (let i = 0; i < count; i++) {
-        const chId = start + i;
-        const chConfig = this.cachedChannels.find(c => c.channel_id === chId);
-        if (!chConfig) continue; // Skip unconfigured channels in gaps
-
-        const off = i * VALUE_SIZE;
-        if (off + VALUE_SIZE > deframed.length) break;
-
-        const view = new DataView(new Uint8Array(deframed.slice(off, off + 4)).buffer);
-        const unitIndex = deframed[off + 5];
-        const mbType = chConfig.mb_output_value_type ?? 0;
-        const numeric = decodeValue(view, mbType, unitIndex);
-        const statusByte = deframed[off + 6];
-
-        let status = 'normal';
-        let val = numeric;
-        if (statusByte & 0x04 || !isFinite(numeric)) {
-          status = 'invalid';
-          val = null;
-        } else if (statusByte & 0x08) {
-          status = 'overrange';
-        }
-
-        if (!this.historyBuffer.has(chId)) {
-          this.historyBuffer.set(chId, []);
-        }
-        const hist = this.historyBuffer.get(chId);
-        if (val !== null) {
-          hist.push(val);
-          if (hist.length > 3600) hist.shift();
-        }
-
-        const rawValRes = deframed[off + 4];
-        const valRes = (typeof rawValRes === 'number' && rawValRes > 0)
-          ? rawValRes
-          : resolveChannelResolution(chConfig);
-
-        result.push({
-          channel_id: chId,
-          current_value: val,
-          status,
-          unit: chConfig.unit || '',
-          resolution: valRes,
-          realStartTime: [now - (hist.length * 1000)],
-          pointInterval: [1000],
-          measurementData: [hist.slice()],
-          min: hist.length ? Math.min(...hist) : 0,
-          max: hist.length ? Math.max(...hist) : 0,
-        });
+    for (let i = 1; i < channels.length; i++) {
+      const ch = channels[i];
+      if (ch.channel_id <= rEnd + 3) {
+        rEnd = ch.channel_id;
+      } else {
+        ranges.push({ start: rStart, count: rEnd - rStart + 1 });
+        rStart = ch.channel_id;
+        rEnd = ch.channel_id;
       }
-      return result;
-    } catch (pollErr) {
-      TauriSutoAPI.logClientEvent('DEBUG', 'BLE_VAL', `Polling note: ${pollErr.message}`);
-      return [];
     }
+    ranges.push({ start: rStart, count: rEnd - rStart + 1 });
+
+    const result = [];
+    const VALUE_SIZE = 7;
+    const now = Date.now();
+
+    for (const { start, count } of ranges) {
+      try {
+        // CMD_GET_ONLINE_VAL: [0x04, 0x01, 0x01, start, count]
+        const valPkt = this._packPacket(this.devAddr, [0x04, 0x01, 0x01, start, count]);
+        const rawVal = await this.writeAndRead(valPkt, 2500);
+        const deframed = this._deframeMultiFrame(rawVal);
+
+        for (let i = 0; i < count; i++) {
+          const chId = start + i;
+          const chConfig = channels.find(c => c.channel_id === chId);
+          if (!chConfig) continue; // Skip unconfigured channels in gaps
+
+          const off = i * VALUE_SIZE;
+          if (off + VALUE_SIZE > deframed.length) break;
+
+          const view = new DataView(new Uint8Array(deframed.slice(off, off + 4)).buffer);
+          const rawValRes = deframed[off + 4];
+          const unitIndex = deframed[off + 5];
+          const statusByte = deframed[off + 6];
+
+          const mbType = chConfig.mb_output_value_type ?? 0;
+          const numeric = decodeValue(view, mbType, unitIndex);
+
+          let status = 'normal';
+          let val = numeric;
+          if ((statusByte & 0x04) !== 0 || !isFinite(numeric)) {
+            status = 'invalid';
+            val = null;
+          } else if ((statusByte & 0x08) !== 0) {
+            status = 'overrange';
+          }
+
+          if (!this.historyBuffer.has(chId)) {
+            this.historyBuffer.set(chId, []);
+          }
+          const hist = this.historyBuffer.get(chId);
+          if (val !== null) {
+            hist.push(val);
+            if (hist.length > 3600) hist.shift();
+          }
+
+          const valRes = resolveChannelResolution({
+            unit: chConfig.unit,
+            unit_index: unitIndex,
+            resolution: rawValRes,
+          });
+
+          result.push({
+            channel_id: chId,
+            id: chId,
+            current_value: val,
+            value: val,
+            status,
+            unit: chConfig.unit || '',
+            unit_in_ascii: chConfig.unit_in_ascii || chConfig.unit || '',
+            resolution: valRes,
+            realStartTime: [now - (hist.length * 1000)],
+            pointInterval: [1000],
+            measurementData: [hist.slice()],
+            min: hist.length ? Math.min(...hist) : 0,
+            max: hist.length ? Math.max(...hist) : 0,
+          });
+        }
+      } catch (pollErr) {
+        TauriSutoAPI.logClientEvent('DEBUG', 'BLE_VAL', `Polling range ${start}..=${start + count - 1} note: ${pollErr.message}`);
+      }
+    }
+
+    return result;
   }
 
   // Decode a NUL-terminated description field as UTF-8, matching CSLib

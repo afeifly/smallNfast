@@ -60,6 +60,16 @@
             />
           </div>
 
+          <!-- Additional Text -->
+          <div class="form-group">
+            <label>Additional Text</label>
+            <input 
+              type="text" 
+              v-model="additionalText" 
+              placeholder="e.g. Additional text (optional)" 
+            />
+          </div>
+
           <div class="form-group">
             <label>Serial Numbers (one per line, max 10)</label>
             <textarea v-model="serialNumbersInput" rows="5" placeholder="Enter up to 10 serial numbers, one per line"></textarea>
@@ -73,7 +83,10 @@
             <div v-for="(label, idx) in labels" :key="label.serial" class="label-card clickable-card" @click="downloadSinglePDF(idx)">
               <div class="label-content">
                 <div class="label-title">{{ productName }}</div>
-                <div class="label-subtitle">Item No.: {{ selectedItemNumber }}</div>
+                <div class="label-subtitle">
+                  <span class="label-item-no">Item No.: {{ selectedItemNumber }}</span>
+                  <span v-if="additionalText && additionalText.trim()" class="label-additional-text">{{ additionalText.trim() }}</span>
+                </div>
                 <div class="label-serial">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; SN: {{ label.serial }}</div>
                 <div class="barcode-container">
                   <svg :id="'barcode-' + idx" class="barcode-svg"></svg>
@@ -222,6 +235,7 @@ const products = ref([]);
 const selectedItemNumber = ref('');
 const productName = ref('');
 const selectedBand = ref('atlascopco');
+const additionalText = ref('');
 const serialNumbersInput = ref('');
 const labels = ref([]);
 const isDropdownOpen = ref(false);
@@ -385,7 +399,10 @@ async function getLogoBase64() {
       canvas.width = logoImg.width;
       canvas.height = logoImg.height;
       ctx.drawImage(logoImg, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+      resolve({
+        dataUrl: canvas.toDataURL('image/png'),
+        aspect: (logoImg.width || 1) / (logoImg.height || 1)
+      });
     };
     logoImg.onerror = () => resolve(null);
     logoImg.src = logoMap[selectedBand.value] || '/logo.png';
@@ -394,69 +411,112 @@ async function getLogoBase64() {
   return await logoPromise;
 }
 
+async function renderACLabelToPDF(pdf, label, idx, logoInfo) {
+  const cardWidth = 100;
+  const cardHeight = 60;
+  const x = 0;
+  const y = 0;
+  
+  // Text color #333 to match browser preview
+  pdf.setTextColor(51, 51, 51);
+  
+  // 1. Product Name: Helvetica Bold, 16pt (scaled if extra long)
+  let titleFontSize = 16;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(titleFontSize);
+  while (pdf.getTextWidth(productName.value) > 88 && titleFontSize > 11) {
+    titleFontSize -= 0.5;
+    pdf.setFontSize(titleFontSize);
+  }
+  pdf.text(productName.value, x + 5.5, y + 11.5);
+  
+  // 2. Item Number: Helvetica Bold 11pt
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  const itemNoPrefix = 'Item No.: ';
+  const fullItemNo = itemNoPrefix + selectedItemNumber.value;
+  pdf.text(fullItemNo, x + 5.5, y + 18.5);
+  
+  // 3. Additional Text: Helvetica Bold 11pt (placed to the right)
+  if (additionalText.value && additionalText.value.trim()) {
+    pdf.setFont('helvetica', 'bold');
+    const itemNoWidth = pdf.getTextWidth(fullItemNo);
+    const addTextX = Math.max(x + 59, x + 5.5 + itemNoWidth + 4);
+    pdf.text(additionalText.value.trim(), addTextX, y + 18.5);
+  }
+  
+  // 4. Serial Number: Helvetica Bold 11pt (indented to match preview position)
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.text(`SN: ${label.serial}`, x + 15.0, y + 23.5);
+  
+  // 5. Barcode: SVG rendered with high pixel density
+  const svg = document.getElementById(`barcode-${idx}`);
+  if (svg) {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      
+      const img = new Image();
+      await new Promise((resolve) => {
+        img.onload = () => {
+          const scale = 3;
+          canvas.width = (img.width || 300) * scale;
+          canvas.height = (img.height || 60) * scale;
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const barcodeDataUrl = canvas.toDataURL('image/png');
+          pdf.addImage(barcodeDataUrl, 'PNG', x + 5.5, y + 25.5, 66, 14.5);
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        img.src = url;
+      });
+    } catch (e) {
+      console.warn('Could not add barcode to PDF:', e);
+    }
+  }
+  
+  // 6. Website: Helvetica Bold, moved a little left (x + 6.0) and down (y + 54.5)
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.text(websiteMap[selectedBand.value] || 'www.atlascopco.com', x + 6.0, y + 53.5);
+  
+  // 7. Logo: Proportional, bigger (15mm max height) and placed in bottom right
+  if (logoInfo && logoInfo.dataUrl) {
+    try {
+      const maxLogoH = 15;
+      const maxLogoW = 38;
+      let targetLogoH = maxLogoH;
+      let targetLogoW = targetLogoH * (logoInfo.aspect || 1.75);
+      if (targetLogoW > maxLogoW) {
+        targetLogoW = maxLogoW;
+        targetLogoH = targetLogoW / (logoInfo.aspect || 1.75);
+      }
+      const logoX = x + cardWidth - 5.5 - targetLogoW;
+      const logoY = y + 55.5 - targetLogoH;
+      pdf.addImage(logoInfo.dataUrl, 'PNG', logoX, logoY, targetLogoW, targetLogoH);
+    } catch (e) {
+      console.warn('Could not add logo to PDF:', e);
+    }
+  }
+}
+
 async function downloadSinglePDF(index) {
   try {
     const pdf = new jsPDF({ unit: 'mm', format: [100, 60], orientation: 'landscape' });
-    const cardWidth = 100;
-    const cardHeight = 60;
-    const x = 0, y = 0;
-    
     const label = labels.value[index];
-    const logoBase64 = await getLogoBase64();
-    
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(16);
-    pdf.text(productName.value, x + 5, y + 10);
-    
-    pdf.setFont('courier', 'bold');
-    pdf.setFontSize(12);
-    pdf.text("Item No.: " + selectedItemNumber.value, x + 5, y + 15);
-    
-    pdf.setFont('courier', 'bold');
-    pdf.setFontSize(12);
-    pdf.text(`      SN: ${label.serial}`, x + 5, y + 20);
-    
-    const svg = document.getElementById(`barcode-${index}`);
-    if (svg) {
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const svgData = new XMLSerializer().serializeToString(svg);
-        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(svgBlob);
-        
-        const img = new Image();
-        await new Promise((resolve) => {
-          img.onload = () => {
-            canvas.width = img.width || 300;
-            canvas.height = img.height || 70;
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-            const barcodeDataUrl = canvas.toDataURL('image/png');
-            pdf.addImage(barcodeDataUrl, 'PNG', x + 5, y + 23, 70, 16);
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          img.onerror = () => resolve();
-          img.src = url;
-        });
-      } catch (e) {
-        console.warn('Could not add barcode to PDF:', e);
-      }
-    }
-    
-    pdf.setFontSize(11);
-    pdf.text(websiteMap[selectedBand.value] || 'www.atlascopco.com', x + 5, y + cardHeight - 4);
-    
-    if (logoBase64) {
-      try {
-        pdf.addImage(logoBase64, 'PNG', x + cardWidth - 31, y + cardHeight - 17, 30, 15);
-      } catch (e) {
-        console.warn('Could not add logo to PDF:', e);
-      }
-    }
-    
+    const logoInfo = await getLogoBase64();
+    await renderACLabelToPDF(pdf, label, index, logoInfo);
     pdf.save(`${productName.value}_${label.serial}.pdf`);
   } catch (error) {
     console.error('Error generating PDF:', error);
@@ -467,68 +527,12 @@ async function downloadSinglePDF(index) {
 async function downloadPDF() {
   try {
     const pdf = new jsPDF({ unit: 'mm', format: [100, 60], orientation: 'landscape' });
-    const cardWidth = 100;
-    const cardHeight = 60;
-    let x = 0, y = 0;
-    
-    const logoBase64 = await getLogoBase64();
+    const logoInfo = await getLogoBase64();
     
     for (let idx = 0; idx < labels.value.length; idx++) {
       const label = labels.value[idx];
-      if (idx > 0) pdf.addPage();
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(16);
-      pdf.text(productName.value, x + 5, y + 10);
-      
-      pdf.setFont('courier', 'bold');
-      pdf.setFontSize(12);
-      pdf.text("Item No.: " + selectedItemNumber.value, x + 5, y + 15);
-      
-      pdf.setFont('courier', 'bold');
-      pdf.setFontSize(12);
-      pdf.text(`      SN: ${label.serial}`, x + 5, y + 20);
-      
-      const svg = document.getElementById(`barcode-${idx}`);
-      if (svg) {
-        try {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const svgData = new XMLSerializer().serializeToString(svg);
-          const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-          const url = URL.createObjectURL(svgBlob);
-          
-          const img = new Image();
-          await new Promise((resolve) => {
-            img.onload = () => {
-              canvas.width = img.width || 300;
-              canvas.height = img.height || 70;
-              ctx.fillStyle = 'white';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              ctx.drawImage(img, 0, 0);
-              const barcodeDataUrl = canvas.toDataURL('image/png');
-              pdf.addImage(barcodeDataUrl, 'PNG', x + 5, y + 23, 70, 16);
-              URL.revokeObjectURL(url);
-              resolve();
-            };
-            img.onerror = () => resolve();
-            img.src = url;
-          });
-        } catch (e) {
-          console.warn('Could not add barcode to PDF:', e);
-        }
-      }
-      
-      pdf.setFontSize(11);
-      pdf.text(websiteMap[selectedBand.value] || 'www.atlascopco.com', x + 5, y + cardHeight - 4);
-      
-      if (logoBase64) {
-        try {
-          pdf.addImage(logoBase64, 'PNG', x + cardWidth - 31, y + cardHeight - 17, 30, 15);
-        } catch (e) {
-          console.warn('Could not add logo to PDF:', e);
-        }
-      }
+      if (idx > 0) pdf.addPage([100, 60], 'landscape');
+      await renderACLabelToPDF(pdf, label, idx, logoInfo);
     }
     
     pdf.save(`${productName.value}_labels.pdf`);
@@ -887,7 +891,7 @@ button:disabled {
   border: 2px solid #333;
   border-radius: 8px;
   width: 350px;
-  height: 225px;
+  height: 210px;
   padding: 15px;
   position: relative;
   display: flex;
@@ -942,11 +946,32 @@ button:disabled {
   line-height: 1.2;
 }
 
-.label-subtitle, .label-serial {
+.label-subtitle {
+  display: flex;
+  align-items: baseline;
   font-size: 1rem;
+  font-weight: bold;
   color: #333;
   margin-bottom: 4px;
   line-height: 1.2;
+}
+
+.label-item-no {
+  min-width: 192px;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+.label-serial {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+
+.label-additional-text {
+  font-weight: bold;
 }
 
 .barcode-container {
@@ -968,20 +993,21 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   position: absolute;
-  bottom: 10px;
-  left: 15px;
-  right: 15px;
+  bottom: -12px;
+  left: 6px;
+  right: 6px;
 }
 
 .website {
   font-size: 1rem;
+  font-weight: bold;
   color: #333;
 }
 
 .logo {
-  height: 22px;
+  height: 48px;
   width: auto;
-  max-width: 60px;
+  max-width: 130px;
   object-fit: contain;
 }
 

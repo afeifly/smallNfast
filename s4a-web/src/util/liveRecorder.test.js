@@ -66,7 +66,7 @@ describe('liveRecorder', () => {
     const dataRows = lines.filter((l) => /^\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2},/.test(l));
     expect(dataRows).toHaveLength(2);
     expect(dataRows[0]).toMatch(/,12\.5,184600$/);
-    expect(dataRows[1]).toMatch(/,,184601$/); // invalid sample → empty cell (S4A gap)
+    expect(dataRows[1]).toMatch(/,-9999\.0,184601$/); // invalid sample → sentinel
 
     expect(events).toEqual(['start', 'sample', 'sample', 'saved']);
     expect(liveRecorder.getRecorderState().recording).toBe(false);
@@ -177,9 +177,9 @@ describe('liveRecorder', () => {
     expect(snap.rows[1].values[2]).toBeNull();
     expect(snap.rows[2].values[1]).toBe(2);
 
-    // CSV renders the gap row as empty cells (S4A invalid convention)
+    // CSV renders the gap row with the -9999.0 sentinel (never empty cells)
     const result = liveRecorder.stop();
-    const gapLine = result.csvText.split('\r\n').find((l) => l.endsWith(',,'));
+    const gapLine = result.csvText.split('\r\n').find((l) => l.endsWith(',-9999.0,-9999.0'));
     expect(gapLine).toBeTruthy();
   });
 

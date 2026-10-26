@@ -409,10 +409,11 @@ class LineChart extends Component {
             const name = `S4A_Chart_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
             const savedPath = await TauriSutoAPI.saveBinaryFile(name, bytes);
             if (savedPath) {
-              console.log('[LineChart] Chart exported to:', savedPath);
+              TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Chart exported to PNG: ${savedPath}`);
             }
           } catch (err) {
             console.error('[LineChart] Chart export failed:', err);
+            TauriSutoAPI.logClientEvent('ERROR', 'EXPORT', `Chart export failed: ${err && err.message ? err.message : err}`);
             alert(`Chart export failed: ${err && err.message ? err.message : err}`);
           }
         });

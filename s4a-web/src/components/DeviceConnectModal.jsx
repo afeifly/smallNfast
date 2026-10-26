@@ -26,6 +26,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   if (!isOpen) return null;
 
   const handleConnectUsb = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'DEVICE', 'Connect requested: Direct USB');
     setLoading(true);
     setError(null);
     try {
@@ -41,6 +42,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   };
 
   const handleConnectTcp = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'DEVICE', `Connect requested: Ethernet TCP ${tcpHost}:${tcpPort}`);
     setLoading(true);
     setError(null);
     try {
@@ -75,6 +77,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   };
 
   const handleConnectBleDevice = async (dev) => {
+    TauriSutoAPI.logClientEvent('INFO', 'DEVICE', `Connect requested: BLE ${dev ? (dev.name || dev.id) : 'unknown'}`);
     setLoading(true);
     setError(null);
     try {
@@ -90,6 +93,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   };
 
   const handleConnectBle = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'DEVICE', 'BLE scan requested');
     setLoading(true);
     setError(null);
     try {

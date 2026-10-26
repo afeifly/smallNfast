@@ -318,65 +318,93 @@ class SplineGroup extends Component {
       this.mouseOver(mouse);
     }
 
-    d3.select('.mouse-line')
-      .attr('stroke-dasharray', '1,1')
-      .attr('d', function () {
-        const x = Math.floor(mouse[0]) + 0.5;
-        let d = `M${x}, ${chartController.chartHeight} ${x}, 0`;
-        return d;
-      });
+    // The whole tip snaps to REAL samples: the nearest recorded point to the
+    // cursor (binary search over the channel's own series). The shown time
+    // and every value are the point's own — never pixel-interpolated. The
+    // tip only appears when the cursor is within NEAR_PX of a sample, so an
+    // almost-empty chart does not pop tooltips everywhere.
+    const NEAR_PX = 20;
+    const tMouse = chartController.xScale.invert(mouse[0]).getTime();
+    let snappedTime = null;
+    let snappedX = mouse[0];
+    let anyNear = false;
 
     d3.selectAll('.mouse-per-line')
-      .attr('transform', function (d, i) {
+      .attr('transform', function (d) {
 
-        const currentLine = self.getLineOnMouseX(d.id, mouse[0]);
-        // console.log(currentLine);
+        const pt = self.findNearestPointByTime(d, tMouse);
+        const px = pt ? chartController.xScale(pt.time) : null;
 
-        if (!d.visible || !currentLine) {
+        if (!d.visible || !pt || Math.abs(px - mouse[0]) > NEAR_PX) {
           d3.select(this).attr('visibility', 'hidden');
           self.hideDataTipItem(d);
           return;
-        } else {
-          d3.select(this).attr('visibility', 'visible');
-          self.showDataTipItem(d);
         }
-        // const xDate = xScale.invert(mouse[0]),
-        //       bisect = d3.bisector(function(d) { return d.date; }).right,
-        // idx = bisect(d.values, xDate),
-        // y;
-        let beginning = 0;
-        let end = currentLine.getTotalLength();
-        let target = null;
-        let pos, value;
 
-        while (true) {
-          target = Math.floor((beginning + end) / 2);
+        anyNear = true;
+        d3.select(this).attr('visibility', 'visible');
+        self.showDataTipItem(d);
 
-          pos = currentLine.getPointAtLength(target);
-          if ((target === end || target === beginning) && pos.x !== mouse[0]) {
-            break;
-          }
-
-          if (pos.x > mouse[0]) {
-            end = target;
-          } else if (pos.x < mouse[0]) {
-            beginning = target;
-          } else {
-            break; //position found
-          }
+        if (snappedTime === null) {
+          snappedTime = pt.time;
+          snappedX = px;
         }
 
         const res = d.resolution !== undefined ? d.resolution : 2;
-        value = d.scale.invert(pos.y).toFixed(res);
-        self.setDataTipContent(d, value);
-
-        return "translate(" + Math.floor(mouse[0]) + "," + Math.floor(pos.y) + ")";
+        const circle = d3.select(this).select('.current-point');
+        if (pt.value === null || pt.value === undefined) {
+          circle.style('opacity', 0);
+          self.setDataTipContent(d, '--.-');
+          return `translate(${Math.floor(px)}, 0)`;
+        }
+        circle.style('opacity', 1);
+        const py = d.scale(pt.value);
+        self.setDataTipContent(d, Number(pt.value).toFixed(res));
+        return `translate(${Math.floor(px)}, ${Math.floor(py)})`;
       });
 
+    if (!anyNear) {
+      // Nothing near the cursor — hide the whole tip (line, panel, date).
+      d3.select('.mouse-line').style('opacity', 0);
+      this.hideDataTipPanel();
+      this.hideDateTip();
+      return;
+    }
+
+    d3.select('.mouse-line')
+      .style('opacity', 1)
+      .attr('stroke-dasharray', '1,1')
+      .attr('d', function () {
+        const x = Math.floor(snappedX) + 0.5;
+        return `M${x}, ${chartController.chartHeight} ${x}, 0`;
+      });
 
     this.positionDataTipPanel(chartController, mouse[0], mouse[1]);
-    this.positionDateTip(chartController, mouse);
-    // this.dataTipPanel.attr('transform', `translate(${mouse[0] + 6}, ${mouse[1] + 10})`);
+    this.positionDateTip(chartController, mouse, snappedTime);
+  }
+
+  /** Nearest point of a channel's own series to time tMs (series is sorted). */
+  findNearestPointByTime(ch, tMs) {
+    const arr = ch && ch.summaryData;
+    if (!arr || arr.length === 0) {
+      return null;
+    }
+    const getTime = (p) => (p && p.time instanceof Date ? p.time.getTime() : (p ? p.time : NaN));
+    let lo = 0;
+    let hi = arr.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (getTime(arr[mid]) < tMs) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    let best = arr[lo];
+    if (lo > 0 && Math.abs(getTime(arr[lo - 1]) - tMs) < Math.abs(getTime(best) - tMs)) {
+      best = arr[lo - 1];
+    }
+    return best;
   }
 
   positionDataTipPanel = (chartController, x, y) => {
@@ -472,7 +500,7 @@ class SplineGroup extends Component {
   }
 
 
-  showDateTip = (mouse) => {
+  showDateTip = () => {
     d3.select('.current-date-tip').attr('data-status', 'active');
   }
 
@@ -481,12 +509,16 @@ class SplineGroup extends Component {
   }
 
 
-  positionDateTip = (chartController, mouse) => {
+  positionDateTip = (chartController, mouse, snappedTime) => {
     const label = d3.select('.date-tip-label');
     const labelNode = label.node();
     if (!labelNode) return;
 
-    const date = chartController.xScale.invert(mouse[0]);
+    // Prefer the snapped sample's own timestamp over the interpolated cursor
+    // time — the label then names a real recorded moment.
+    const date = snappedTime instanceof Date
+      ? snappedTime
+      : (snappedTime ? new Date(snappedTime) : chartController.xScale.invert(mouse[0]));
     
     // Update label text first
     label.text(dateFormat(date));

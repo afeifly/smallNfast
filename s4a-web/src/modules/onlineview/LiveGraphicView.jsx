@@ -14,6 +14,7 @@ import ChannelSetting from '../channel/ChannelSetting';
 import { SystemEvent } from '../../util/SystemConstant';
 import ChartController, { niceRange, laneAnchors } from '../graphicview/ChartController';
 import TestAPI from '../../api/TestAPI';
+import TauriSutoAPI from '../../api/TauriSutoAPI';
 import Loading from '../../components/loading/Loading';
 import * as liveRecorder from '../../util/liveRecorder';
 import { setLiveSelection, getLiveSelection } from '../../util/liveSelection';
@@ -379,7 +380,9 @@ class LiveGraphicView extends Component {
 
   /** Publish the chart's channel selection for the live Table View. */
   syncSelectionToTable() {
-    setLiveSelection((this.chartController.selectedChannels || []).map((c) => c.id));
+    const ids = (this.chartController.selectedChannels || []).map((c) => c.id);
+    setLiveSelection(ids);
+    TauriSutoAPI.logClientEvent('INFO', 'CHART', `Channel selection: [${ids.join(', ')}]`);
   }
 
   startSessionWindow(session) {
@@ -578,6 +581,7 @@ class LiveGraphicView extends Component {
   }
 
   handleRangeChange(min) {
+    TauriSutoAPI.logClientEvent('INFO', 'CHART', `Live window preset: ${min} min`);
     this.rangeMinutes = min;
     this.setState({ rangeMin: min });
     if (this.chartController.datasourceMode !== 'Recording' || !this.latestT) {
@@ -600,6 +604,7 @@ class LiveGraphicView extends Component {
 
   /** Freeze refreshing and browse the recorded data like an existing file. */
   toggleBrowseMode() {
+    TauriSutoAPI.logClientEvent('INFO', 'CHART', this.state.mode === 'live' ? 'History browsing enabled (frozen refresh)' : 'Back to live refresh');
     if (this.state.mode === 'live') {
       const ctrl = this.chartController;
       ctrl.datasourceMode = 'RecordingHistory';
@@ -646,6 +651,7 @@ class LiveGraphicView extends Component {
     if (!session.rows.length) {
       return;
     }
+    TauriSutoAPI.logClientEvent('INFO', 'CHART', 'History: show whole session');
     this.applyHistoryWindow(session.rows[0].t, session.rows[session.rows.length - 1].t);
   }
 

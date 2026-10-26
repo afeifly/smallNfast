@@ -24,6 +24,7 @@
 
 import CsvAPI from './CsvAPI';
 import TauriSutoAPI from './TauriSutoAPI';
+import { DOWNSAMPLING_MODE, getDownsamplingMode, scanBuckets } from '../util/downsample';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -560,40 +561,75 @@ async function _parseHeaders(file, target, buffer) {
  * Each record is `_recordLen` bytes; the channel value sits at:
  *   record_offset + RECORD_ID_LEN + chIdx * 8
  */
-async function _readChannelData(file, chIdx, startSample, endSample, step) {
+async function _readChannelData(file, chIdx, startSample, endSample, step, aggregate = false) {
   const values = [];
+  const indices = [];
   const chByteOffset = RECORD_ID_LEN + chIdx * CHANNEL_VALUE_LEN;
 
   const totalRecords = endSample - startSample + 1;
   const spanBytes = totalRecords * _recordLen;
 
+  const collect = (points) => {
+    for (const p of points) {
+      values.push(p.value);
+      indices.push(p.index);
+    }
+  };
+
   // In-memory synchronous fast path: zero copies, zero async overhead
   if (_fileBuffer) {
     const dv = new DataView(_fileBuffer);
-    const stepBytes = step * _recordLen;
-    let recordStart = _dataStart + startSample * _recordLen;
-    for (let s = startSample; s <= endSample; s += step) {
-      const v = dv.getFloat64(recordStart + chByteOffset, false);
-      values.push((v <= DATA_OVERRANGE) ? null : v);
-      recordStart += stepBytes;
+    const read = (s) => {
+      const v = dv.getFloat64(_dataStart + s * _recordLen + chByteOffset, false);
+      return (v <= DATA_OVERRANGE) ? null : v;
+    };
+    if (aggregate) {
+      collect(scanBuckets(read, startSample, endSample, step));
+    } else {
+      for (let s = startSample; s <= endSample; s += step) {
+        values.push(read(s));
+        indices.push(s);
+      }
     }
-    return values;
+    return { values, indices };
   }
 
   // Fallback for native files (lazy loaded/not in memory)
   // Optimization 1: If the byte span is small (< 50MB), read the entire block at once
   if (spanBytes < 50 * 1024 * 1024) {
-    const recordStart = _dataStart + startSample * _recordLen;
-    const dv = await _readSlice(file, recordStart, spanBytes);
-    for (let s = 0; s < totalRecords; s += step) {
-      const recordOffset = s * _recordLen;
-      const v = dv.getFloat64(recordOffset + chByteOffset, false);
-      values.push((v <= DATA_OVERRANGE) ? null : v);
+    const dv = await _readSlice(file, _dataStart + startSample * _recordLen, spanBytes);
+    const read = (s) => {
+      const v = dv.getFloat64((s - startSample) * _recordLen + chByteOffset, false);
+      return (v <= DATA_OVERRANGE) ? null : v;
+    };
+    if (aggregate) {
+      collect(scanBuckets(read, startSample, endSample, step));
+    } else {
+      for (let s = startSample; s <= endSample; s += step) {
+        values.push(read(s));
+        indices.push(s);
+      }
     }
-    return values;
+    return { values, indices };
   }
 
-  // Optimization 2: For massive ranges, read sampled points in batches of 100 to prevent locking up browser I/O
+  // Optimization 2: For massive ranges, read in batches to prevent locking up
+  // browser I/O. Aggregation reads one small block per bucket (peak-safe);
+  // stride keeps the legacy per-point reads (fastest byte count).
+  if (aggregate) {
+    for (let b = startSample; b <= endSample; b += step) {
+      const bucketEnd = Math.min(endSample, b + step - 1);
+      const count = bucketEnd - b + 1;
+      const dv = await _readSlice(file, _dataStart + b * _recordLen, count * _recordLen);
+      const read = (s) => {
+        const v = dv.getFloat64((s - b) * _recordLen + chByteOffset, false);
+        return (v <= DATA_OVERRANGE) ? null : v;
+      };
+      collect(scanBuckets(read, b, bucketEnd, step));
+    }
+    return { values, indices };
+  }
+
   const batchSize = 100;
   for (let s = startSample; s <= endSample; s += step * batchSize) {
     const promises = [];
@@ -603,43 +639,79 @@ async function _readChannelData(file, chIdx, startSample, endSample, step) {
       promises.push(_readSlice(file, recordStart + chByteOffset, CHANNEL_VALUE_LEN));
     }
     const slices = await Promise.all(promises);
-    for (const dv of slices) {
-      const v = dv.getFloat64(0, false);
+    for (let k = 0; k < slices.length; k++) {
+      const v = slices[k].getFloat64(0, false);
       values.push((v <= DATA_OVERRANGE) ? null : v);
+      indices.push(s + k * step);
     }
   }
-  return values;
+  return { values, indices };
 }
 
 /**
  * Lazy read of one channel's float64 values from a parsed file record
  * (used by the merged multi-file session). Mirrors `_readChannelData`.
  */
-async function _readFileChannelData(fileRec, chIdx, startSample, endSample, step) {
+async function _readFileChannelData(fileRec, chIdx, startSample, endSample, step, aggregate = false) {
   const values = [];
+  const indices = [];
   const chByteOffset = RECORD_ID_LEN + chIdx * CHANNEL_VALUE_LEN;
   const totalRecords = endSample - startSample + 1;
   const spanBytes = totalRecords * fileRec.recordLen;
 
+  const collect = (points) => {
+    for (const p of points) {
+      values.push(p.value);
+      indices.push(p.index);
+    }
+  };
+
   if (fileRec.fileBuffer) {
     const dv = new DataView(fileRec.fileBuffer);
-    let recordStart = fileRec.dataStart + startSample * fileRec.recordLen;
-    for (let s = startSample; s <= endSample; s += step) {
-      const v = dv.getFloat64(recordStart + chByteOffset, false);
-      values.push((v <= DATA_OVERRANGE) ? null : v);
-      recordStart += step * fileRec.recordLen;
+    const read = (s) => {
+      const v = dv.getFloat64(fileRec.dataStart + s * fileRec.recordLen + chByteOffset, false);
+      return (v <= DATA_OVERRANGE) ? null : v;
+    };
+    if (aggregate) {
+      collect(scanBuckets(read, startSample, endSample, step));
+    } else {
+      for (let s = startSample; s <= endSample; s += step) {
+        values.push(read(s));
+        indices.push(s);
+      }
     }
-    return values;
+    return { values, indices };
   }
 
   if (spanBytes < 50 * 1024 * 1024) {
     const dv = await _fileSlice(fileRec, fileRec.dataStart + startSample * fileRec.recordLen, spanBytes);
-    for (let s = 0; s < totalRecords; s += step) {
-      const recordOffset = s * fileRec.recordLen;
-      const v = dv.getFloat64(recordOffset + chByteOffset, false);
-      values.push((v <= DATA_OVERRANGE) ? null : v);
+    const read = (s) => {
+      const v = dv.getFloat64((s - startSample) * fileRec.recordLen + chByteOffset, false);
+      return (v <= DATA_OVERRANGE) ? null : v;
+    };
+    if (aggregate) {
+      collect(scanBuckets(read, startSample, endSample, step));
+    } else {
+      for (let s = startSample; s <= endSample; s += step) {
+        values.push(read(s));
+        indices.push(s);
+      }
     }
-    return values;
+    return { values, indices };
+  }
+
+  if (aggregate) {
+    for (let b = startSample; b <= endSample; b += step) {
+      const bucketEnd = Math.min(endSample, b + step - 1);
+      const count = bucketEnd - b + 1;
+      const dv = await _fileSlice(fileRec, fileRec.dataStart + b * fileRec.recordLen, count * fileRec.recordLen);
+      const read = (s) => {
+        const v = dv.getFloat64((s - b) * fileRec.recordLen + chByteOffset, false);
+        return (v <= DATA_OVERRANGE) ? null : v;
+      };
+      collect(scanBuckets(read, b, bucketEnd, step));
+    }
+    return { values, indices };
   }
 
   const batchSize = 100;
@@ -651,12 +723,13 @@ async function _readFileChannelData(fileRec, chIdx, startSample, endSample, step
       promises.push(_fileSlice(fileRec, recordStart + chByteOffset, CHANNEL_VALUE_LEN));
     }
     const slices = await Promise.all(promises);
-    for (const dv of slices) {
-      const v = dv.getFloat64(0, false);
+    for (let k = 0; k < slices.length; k++) {
+      const v = slices[k].getFloat64(0, false);
       values.push((v <= DATA_OVERRANGE) ? null : v);
+      indices.push(s + k * step);
     }
   }
-  return values;
+  return { values, indices };
 }
 
 /**
@@ -2116,16 +2189,24 @@ const CsdAPI = {
     const actualStartMs = _startTimeMs + (startSample / _sampleRate) * 1000;
     const pointIntervalMs = (step / _sampleRate) * 1000;
 
-    // Async read — lazy slice
-    _readChannelData(_file, chIdx, startSample, endSample, step).then(values => {
-      callback([{
+    // Async read — lazy slice. MIN_MAX mode keeps each bucket's extremes
+    // (with their exact sample times) instead of every N-th point.
+    const aggregate = step > 1 && getDownsamplingMode() === DOWNSAMPLING_MODE.MIN_MAX;
+    _readChannelData(_file, chIdx, startSample, endSample, step, aggregate).then(({ values, indices }) => {
+      const rateMs = _sampleRate > 0 ? 1000 / _sampleRate : 0;
+      const response = {
         channel_id: channelId,
         measurementData: [values],
         realStartTime: [actualStartMs + 3600000 * 8],
         pointInterval: [pointIntervalMs],
         min: ch._min,
         max: ch._max,
-      }]);
+      };
+      if (aggregate && indices.length > 0) {
+        response.times = [indices.map((s) => _startTimeMs + s * rateMs + 3600000 * 8)];
+        response.realStartTime = [response.times[0][0]];
+      }
+      callback([response]);
     }).catch(err => {
       console.error('[CsdAPI] getMeasurementData slice error:', err);
       callback([]);
@@ -2168,10 +2249,14 @@ const CsdAPI = {
       const step = Math.max(1, Math.floor(range / MAX_DISPLAY_SAMPLES));
       const actualStartMs = fr.startTimeMs + startSample * fr.sampleIntervalSec * 1000;
       const pointIntervalMs = step * fr.sampleIntervalSec * 1000;
+      const aggregate = step > 1 && getDownsamplingMode() === DOWNSAMPLING_MODE.MIN_MAX;
 
-      reads.push(_readFileChannelData(fr, b.localIdx, startSample, endSample, step).then(values => ({
+      reads.push(_readFileChannelData(fr, b.localIdx, startSample, endSample, step, aggregate).then(({ values, indices }) => ({
         values,
+        indices,
+        aggregate,
         actualStartMs,
+        sampleTimeMs: (s) => fr.startTimeMs + s * fr.sampleIntervalSec * 1000,
         pointIntervalMs,
         ch,
       })));
@@ -2198,14 +2283,23 @@ const CsdAPI = {
       const min = Math.min(...results.map(r => r.ch._min));
       const max = Math.max(...results.map(r => r.ch._max));
 
-      callback([{
+      const response = {
         channel_id: id,
         measurementData,
         realStartTime,
         pointInterval,
         min,
         max,
-      }]);
+      };
+      if (results.some(r => r.aggregate)) {
+        response.times = results.map(r => r.aggregate && r.indices.length > 0
+          ? r.indices.map((s) => r.sampleTimeMs(s) + 3600000 * 8)
+          : null);
+        response.realStartTime = results.map((r, i) =>
+          r.aggregate && r.indices.length > 0 ? response.times[i][0] : realStartTime[i]);
+      }
+
+      callback([response]);
     }).catch(err => {
       console.error('[CsdAPI] merged getMeasurementData error:', err);
       callback([]);
@@ -2442,7 +2536,7 @@ const CsdAPI = {
           const rowValues = [dateStr];
           for (const ch of srcChannels) {
             const v = row.values[ch.channel_id];
-            rowValues.push((v == null || Number.isNaN(v)) ? '' : v);
+            rowValues.push((v == null || Number.isNaN(v)) ? '-9999.0' : v);
           }
           dataBuffer.push(rowValues.join(','));
         }
@@ -2551,7 +2645,7 @@ const CsdAPI = {
         const rowValues = [dateStr];
         for (const ch of srcChannels) {
           const v = row.values[ch.channel_id];
-          rowValues.push((v == null || Number.isNaN(v)) ? '' : v);
+          rowValues.push((v == null || Number.isNaN(v)) ? '-9999.0' : v);
         }
         dataBuffer.push(rowValues.join(','));
       }

@@ -62,22 +62,30 @@ let DataUtil = {
     const realStartTime = resultData.realStartTime;
     const measurementData = resultData.measurementData;
     const pointInterval = resultData.pointInterval;
+    // Optional per-point exact timestamps (ms, +8h applied like realStartTime).
+    // Present when the data layer kept non-uniform points (min/max buckets);
+    // each point then carries its own true sample time.
+    const exactTimes = resultData.times;
 
     let point;
     let time;
     let interval;
     let innerDataArray;
+    let segTimes;
     let allNull = true;
 
     for (let i = 0; i < realStartTime.length; i++) {
       time = realStartTime[i];
       interval = pointInterval[i];
       innerDataArray = measurementData[i];
+      segTimes = (exactTimes && Array.isArray(exactTimes[i]) && exactTimes[i].length === innerDataArray.length)
+        ? exactTimes[i]
+        : null;
 
       if (!time || !interval || !innerDataArray || innerDataArray.length === 0) {
         continue;
       }
-      
+
       for (let j = 0; j < innerDataArray.length; j++) {
         const value = innerDataArray[j];
 
@@ -86,7 +94,7 @@ let DataUtil = {
         }
 
         point = {
-          time: new Date(time - 3600000 * 8),
+          time: new Date((segTimes ? segTimes[j] : time) - 3600000 * 8),
           value: value
         }
 
@@ -97,7 +105,7 @@ let DataUtil = {
         //Create a point used for segment
         if (j === innerDataArray.length-1) {
           point = {
-            time: new Date(time - 3600000 * 8),
+            time: new Date((segTimes ? segTimes[j] + interval : time) - 3600000 * 8),
             value: null
           }
   

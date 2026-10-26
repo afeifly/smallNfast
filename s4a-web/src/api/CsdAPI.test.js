@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { classifyChannel } from '../analysis/LeakEngine.js';
 import CsdAPI from './CsdAPI';
+import { DOWNSAMPLING_MODE, setDownsamplingMode } from '../util/downsample';
 
 describe('CsdAPI Parser', () => {
   it('correctly parses CSD binary file headers and channel info', async () => {
@@ -1525,6 +1526,99 @@ Date Time,Flow,Pressure
     expect(parsedChannels.length).toBe(50);
     expect(parsedChannels[0].logic_channel_description).toBe('CH1');
     expect(parsedChannels[49].logic_channel_description).toBe('CH50');
+  });
+
+  it('MIN_MAX downsampling keeps bucket peaks with exact times; STRIDE drops them', async () => {
+    const FILE_HEADER_LEN = 34;
+    const PROTOCOL_HEADER_LEN = 3552;
+    const CHANNEL_HEADER_LEN = 918;
+    const RECORD_ID_LEN = 4;
+    const CHANNEL_VALUE_LEN = 8;
+
+    const numChannels = 1;
+    // > 2 * MAX_DISPLAY_SAMPLES so the fetch layer must downsample (step = 2)
+    const numSamples = 6100;
+
+    const protocolHeaderStart = FILE_HEADER_LEN;
+    const channelHeadersStart = protocolHeaderStart + PROTOCOL_HEADER_LEN;
+    const dataStart = channelHeadersStart + numChannels * CHANNEL_HEADER_LEN;
+    const recordLen = RECORD_ID_LEN + numChannels * CHANNEL_VALUE_LEN;
+    const totalSize = dataStart + numSamples * recordLen;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const encoder = new TextEncoder();
+
+    view.setInt32(0, 1, false);
+    const idBytes = encoder.encode('SUTO CSD');
+    for (let i = 0; i < idBytes.length; i++) view.setUint8(4 + i, idBytes[i]);
+
+    view.setInt32(protocolHeaderStart + 3016, numChannels, false);
+    view.setInt32(protocolHeaderStart + 3020, numSamples, false);
+    view.setInt32(protocolHeaderStart + 3024, 1, false); // 1 s interval
+    const startTimeMs = 1716380000000;
+    view.setBigInt64(protocolHeaderStart + 3032, BigInt(startTimeMs), false);
+    view.setBigInt64(protocolHeaderStart + 3040, BigInt(startTimeMs + numSamples * 1000), false);
+
+    const chStart = channelHeadersStart;
+    view.setBigInt64(chStart + 0, BigInt(100), false);
+    view.setInt16(chStart + 8, 3, false);
+    const descBytes = encoder.encode('Ch_0');
+    for (let i = 0; i < descBytes.length; i++) view.setUint8(chStart + 10 + i, descBytes[i]);
+    view.setInt32(chStart + 848, 2, false);
+    view.setFloat64(chStart + 852, 0.0, false);
+    view.setFloat64(chStart + 860, 999.0, false);
+    view.setInt32(chStart + 876, 5000, false);
+
+    // Flat series with ONE spike at sample 101 (odd → skipped by stride-2)
+    const SPIKE_IDX = 101;
+    const SPIKE_VAL = 999.0;
+    for (let s = 0; s < numSamples; s++) {
+      const recStart = dataStart + s * recordLen;
+      view.setInt32(recStart, s, false);
+      view.setFloat64(recStart + 4, s === SPIKE_IDX ? SPIKE_VAL : 10.0 + (s % 7) * 0.1, false);
+    }
+
+    const mockFile = {
+      name: 'peak.csd',
+      size: totalSize,
+      slice(start, end) {
+        return { arrayBuffer: async () => buffer.slice(start, end) };
+      }
+    };
+    const mockHandle = {
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      getFile: async () => mockFile
+    };
+    await CsdAPI.loadFileFromHandle(mockHandle);
+
+    const qStart = startTimeMs + 3600000 * 8;
+    const qStop = startTimeMs + numSamples * 1000 + 3600000 * 8;
+    const fetch = () => new Promise((resolve) => {
+      CsdAPI.getMeasurementData('0', qStart, qStop, 1, 2, resolve);
+    });
+    await new Promise(r => setTimeout(r, 50));
+
+    // Default MIN_MAX: the spike survives with its exact sample time
+    setDownsamplingMode(DOWNSAMPLING_MODE.MIN_MAX);
+    let res = await fetch();
+    let vals = res[0].measurementData[0];
+    let times = res[0].times;
+    expect(Array.isArray(times)).toBe(true);
+    const spikeAt = vals.indexOf(SPIKE_VAL);
+    expect(spikeAt).toBeGreaterThan(-1);
+    expect(vals.length).toBe(times[0].length);
+    expect(times[0][spikeAt] - 3600000 * 8).toBe(startTimeMs + SPIKE_IDX * 1000);
+
+    // STRIDE (legacy fast mode): the spike at an odd index is lost, no times
+    setDownsamplingMode(DOWNSAMPLING_MODE.STRIDE);
+    res = await fetch();
+    vals = res[0].measurementData[0];
+    expect(vals.indexOf(SPIKE_VAL)).toBe(-1);
+    expect(res[0].times).toBeUndefined();
+
+    setDownsamplingMode(DOWNSAMPLING_MODE.MIN_MAX); // restore default
   });
 
 });

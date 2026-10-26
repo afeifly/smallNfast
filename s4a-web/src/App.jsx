@@ -475,6 +475,11 @@ function App() {
     setActiveTab('readout');
   };
 
+  const switchTab = (tab) => {
+    TauriSutoAPI.logClientEvent('INFO', 'APP', `View switched: ${tab}`);
+    setActiveTab(tab);
+  };
+
   const performReturnHome = () => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Navigated back to Welcome Home');
     setAnalyzingFromReadout(false);
@@ -508,6 +513,7 @@ function App() {
   /** Stop & save the running recording, then perform the blocked action. */
   const handleExitConfirmProceed = async () => {
     const action = exitConfirm ? exitConfirm.action : null;
+    TauriSutoAPI.logClientEvent('INFO', 'APP', `Exit confirmed while recording — stop & save, then ${action === 'close' ? 'close app' : 'return home'}`);
     setExitConfirm(null);
     if (liveRecorder.getRecorderState().recording) {
       const result = liveRecorder.stop();
@@ -557,6 +563,7 @@ function App() {
   const handleDismissRepair = () => setRepairInfo(null);
 
   const handleHeaderOpenCsd = () => {
+    TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Open file requested (analyze mode)');
     const list = TestAPI.getRecentFiles ? TestAPI.getRecentFiles() : [];
     if (list.length > 0) {
       setRecentFiles(list);
@@ -569,12 +576,14 @@ function App() {
   };
 
   const handleAppendCsd = () => {
+    TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Append file requested');
     if (TestAPI.openAppend) {
       TestAPI.openAppend();
     }
   };
 
   const handleLoadRecentFile = async (file) => {
+    TauriSutoAPI.logClientEvent('INFO', 'FILE', `Recent file opened: ${file ? file.name : 'unknown'}`);
     setAnalyzingFromReadout(false);
     localStorage.removeItem('selectedChannels');
     TestAPI.setMode('analyze');
@@ -617,6 +626,7 @@ function App() {
   };
 
   const handleExportCsvOption = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Export started: all channels to CSV`);
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
       window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
@@ -642,6 +652,7 @@ function App() {
   };
 
   const handleExportCsdOption = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Export started: CSV to CSD`);
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
       window.showAppNotification('Export Aborted', 'No file is currently loaded.', 'warning');
@@ -678,6 +689,7 @@ function App() {
   };
 
   const handleExportExcelOption = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Export started: all channels to Excel`);
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
       window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
@@ -748,14 +760,14 @@ function App() {
           <div className="header-tabs">
             <button
               className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
-              onClick={() => setActiveTab('online')}
+              onClick={() => switchTab('online')}
             >
               Online View
             </button>
             {recState.hasSession && (
               <button
                 className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
-                onClick={() => setActiveTab('livegraphic')}
+                onClick={() => switchTab('livegraphic')}
               >
                 Graphic View
               </button>
@@ -763,7 +775,7 @@ function App() {
             {recState.hasSession && (
               <button
                 className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
-                onClick={() => setActiveTab('livetable')}
+                onClick={() => switchTab('livetable')}
               >
                 Table View
               </button>
@@ -785,26 +797,26 @@ function App() {
           <div className="header-tabs">
             <button
               className={`tab-btn ${activeTab === 'fileinfo' ? 'active' : ''}`}
-              onClick={() => setActiveTab('fileinfo')}
+              onClick={() => switchTab('fileinfo')}
             >
               File Info
             </button>
             <button
               className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
-              onClick={() => setActiveTab('graphic')}
+              onClick={() => switchTab('graphic')}
             >
               Graphic View
             </button>
             <button
               className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
-              onClick={() => setActiveTab('table')}
+              onClick={() => switchTab('table')}
             >
               Table View
             </button>
             {featureReport && (
               <button
                 className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
-                onClick={() => setActiveTab('report')}
+                onClick={() => switchTab('report')}
               >
                 Consumption Report
               </button>
@@ -812,14 +824,14 @@ function App() {
             {featureCompressor && (
               <button
                 className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
-                onClick={() => setActiveTab('analyze')}
+                onClick={() => switchTab('analyze')}
               >
                 Compressor Analyze
               </button>
             )}
             <button
               className="tab-btn"
-              onClick={() => setModifierOpen(true)}
+              onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Data modifier opened'); setModifierOpen(true); }}
             >
               Data Studio
             </button>
@@ -1014,7 +1026,7 @@ function App() {
 
                   <button
                     className="landing-cta-btn landing-cta-monitor"
-                    onClick={() => setShowConnectModal(true)}
+                    onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'DEVICE', 'Device connect dialog opened'); setShowConnectModal(true); }}
                   >
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -1586,7 +1598,7 @@ function App() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRecStartOpen(false)}>Cancel</Button>
+          <Button onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'RECORDER', 'Recording start cancelled'); setRecStartOpen(false); }}>Cancel</Button>
           <Button variant="contained" onClick={handleStartRecordingFromDialog}>
             Start Recording
           </Button>
@@ -1603,7 +1615,7 @@ function App() {
           </div>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setExitConfirm(null)}>Keep Recording</Button>
+          <Button onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'APP', 'Exit cancelled — recording continues'); setExitConfirm(null); }}>Keep Recording</Button>
           <Button variant="contained" onClick={handleExitConfirmProceed}>
             Stop &amp; Save
           </Button>

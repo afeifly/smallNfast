@@ -9,6 +9,7 @@
  */
 
 import TauriSutoAPI from './TauriSutoAPI';
+import { DOWNSAMPLING_MODE, getDownsamplingMode, scanBuckets } from '../util/downsample';
 
 // ── State variables ───────────────────────────────────────────────────────────
 let _fileLoaded = false;
@@ -1068,14 +1069,33 @@ const CsvAPI = {
     segments.push({ start: currentSegStart, end: endIdx });
 
     // Load, parse and downsample only specific segment slices in small batches
+    // Min/max aggregation must parse EVERY row in range. Text parsing costs
+    // ~0.5 µs/row, so huge files (measured: a 7.86M-row CSV added ~37 s across
+    // 10 channels) get an automatic fallback to fast stride sampling. Files
+    // under the budget keep the peak-safe envelope.
+    const CSV_AGG_SCAN_ROW_LIMIT = 1500000;
+    const aggregate = step > 1
+      && getDownsamplingMode() === DOWNSAMPLING_MODE.MIN_MAX
+      && totalFiltered <= CSV_AGG_SCAN_ROW_LIMIT;
+    if (step > 1 && getDownsamplingMode() === DOWNSAMPLING_MODE.MIN_MAX && !aggregate) {
+      console.info(
+        `[CsvAPI] ${totalFiltered} rows in range exceed the min/max scan budget (${CSV_AGG_SCAN_ROW_LIMIT}) — using fast stride sampling`
+      );
+    }
+
     const loadSegmentsData = async () => {
       const measurementData = [];
       const realStartTime   = [];
       const pointInterval   = [];
+      const segmentTimes    = []; // per-point exact times (aggregation only)
 
       const batchSize = 5000;
       for (const seg of segments) {
         const segValues = [];
+        const segTimes = [];
+        // Aggregation parses every row (I/O is already full-block) and keeps
+        // each bucket's min/max with their real row indices/timestamps.
+        const allValues = aggregate ? new Array(seg.end - seg.start + 1).fill(null) : null;
         const segFileIdx = _isMultiCsv ? _rowFileIndices[seg.start] : 0;
         const localColIdx = fileBindings[segFileIdx];
         if (localColIdx === undefined || localColIdx === null) {
@@ -1110,43 +1130,60 @@ const CsvAPI = {
             if (rowIdx > batchEnd) break;
             
             // Check if this row matches downsampling interval
-            if ((rowIdx - seg.start) % step === 0) {
+            if (aggregate || (rowIdx - seg.start) % step === 0) {
               const parts = parseCsvLine(line);
+              let v = null;
               if (parts.length > 0) {
                 let valuesStartIndex = 1;
                 if (!isNaN(parseInt(parts[0], 10)) && !parts[0].includes('-') && !parts[0].includes('/') && !parts[0].includes('.')) {
                   valuesStartIndex = 2;
                 }
                 const valStr = parts[valuesStartIndex + localColIdx];
-                const v = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
-                segValues.push((v === null || isNaN(v)) ? null : v);
+                const parsed = (valStr === undefined || valStr === '') ? null : parseFloat(valStr);
+                v = (parsed === null || isNaN(parsed)) ? null : parsed;
+              }
+              if (aggregate) {
+                allValues[rowIdx - seg.start] = v;
               } else {
-                segValues.push(null);
+                segValues.push(v);
               }
             }
             lineIdx++;
           }
         }
 
+        if (aggregate) {
+          const reader = (absIdx) => allValues[absIdx - seg.start];
+          for (const pt of scanBuckets(reader, seg.start, seg.end, step)) {
+            segValues.push(pt.value);
+            segTimes.push(_rowTimestamps[pt.index] + 3600000 * 8);
+          }
+        }
+
         if (segValues.length > 0) {
           measurementData.push(segValues);
-          realStartTime.push(_rowTimestamps[seg.start] + 3600000 * 8);
+          realStartTime.push(segTimes.length > 0 ? segTimes[0] : (_rowTimestamps[seg.start] + 3600000 * 8));
           pointInterval.push(pointIntervalMs);
+          segmentTimes.push(segTimes);
         }
       }
 
-      return { measurementData, realStartTime, pointInterval };
+      return { measurementData, realStartTime, pointInterval, segmentTimes };
     };
 
     loadSegmentsData().then(res => {
-      callback([{
+      const response = {
         channel_id: channelId,
         measurementData: res.measurementData,
         realStartTime: res.realStartTime,
         pointInterval: res.pointInterval,
         min: ch._min,
         max: ch._max,
-      }]);
+      };
+      if (aggregate && res.segmentTimes.some((t) => t.length > 0)) {
+        response.times = res.segmentTimes;
+      }
+      callback([response]);
     }).catch(e => {
       console.error("[CsvAPI] Failed to get measurement data:", e);
       callback([]);

@@ -266,7 +266,9 @@ function buildResult(s) {
     const cols = [fmtRowDate(new Date(row.t))];
     for (const ch of channels) {
       const v = row.values[ch.id];
-      cols.push(v === null || v === undefined ? '' : formatChannelValue(v, ch.resolution));
+      // Invalid samples (gap markers, device nulls) export as the SUTO
+      // sentinel -9999.0 — downstream systems require a numeric cell.
+      cols.push(v === null || v === undefined ? '-9999.0' : formatChannelValue(v, ch.resolution));
     }
     lines.push(cols.join(','));
   }

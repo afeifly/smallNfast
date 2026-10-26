@@ -106,9 +106,6 @@ export default function DebugLogModal({ isOpen, onClose }) {
             <span className="debug-log-icon">📋</span>
             <div>
               <h3 className="debug-log-title">S4A System & Diagnostic Logs</h3>
-              <p className="debug-log-subtitle">
-                Real-time USB, Ethernet/TCP, Bluetooth (BLE), File I/O & Application diagnostics
-              </p>
             </div>
           </div>
           <div className="debug-log-header-right">

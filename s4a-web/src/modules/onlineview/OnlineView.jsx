@@ -171,10 +171,12 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
   }, [shouldPoll]);
 
   const toggleLive = () => {
+    TauriSutoAPI.logClientEvent('INFO', 'ONLINE', isLive ? 'Online polling paused' : 'Online polling resumed');
     setIsLive((prev) => !prev);
   };
 
   const handleRescan = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'ONLINE', 'Rescan channels requested');
     await loadInitialData(true);
     await pollOnce();
   };

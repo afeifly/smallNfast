@@ -802,7 +802,9 @@ export default function ReadoutView({
       const stopSec = Math.floor(stopTimeL / 1000);
 
       setReadingProgress(20);
+      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `S461 logger read started (${new Date(startSec * 1000).toLocaleString()} → ${new Date(stopSec * 1000).toLocaleString()})`);
       const res = await TauriSutoAPI.readS461Log(startSec, stopSec);
+      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `S461 logger read finished: ${res.rowCount} rows`);
 
       setReadingProgress(90);
       const blob = new Blob([res.csv_text], { type: 'text/csv;charset=utf-8;' });
@@ -876,6 +878,7 @@ export default function ReadoutView({
 
   // Screenshot actions
   const handleDownloadScreenshot = async (item) => {
+    TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Screenshot download: ${item.name}`);
     try {
       setDownloadingScreenshot(item.name);
       const bytes = await TauriSutoAPI.readScreenshot(item.name, item.size);
@@ -907,6 +910,7 @@ export default function ReadoutView({
   };
 
   const handlePreviewScreenshot = async (item) => {
+    TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Screenshot preview: ${item.name}`);
     try {
       setDownloadingScreenshot(item.name);
       const bytes = await TauriSutoAPI.readScreenshot(item.name, item.size);
@@ -1275,7 +1279,7 @@ export default function ReadoutView({
               <div className="readout-section-actions">
                 <button
                   className="readout-btn-secondary"
-                  onClick={refreshDeviceState}
+                  onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Status refresh requested'); refreshDeviceState(); }}
                   disabled={loadingDeviceData}
                   title="Refresh logger status from device"
                 >
@@ -1355,6 +1359,7 @@ export default function ReadoutView({
                 className="readout-btn-primary"
                 onClick={() => {
                   const count = s418Period === 'last_hour' ? 60 : s418Period === 'last_day' ? 1440 : 2500;
+                  TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Quick read started: ${count} samples`);
                   performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Readout.csv`, count);
                 }}
               >
@@ -1375,7 +1380,7 @@ export default function ReadoutView({
               <div className="readout-section-actions">
                 <button
                   className="readout-btn-secondary"
-                  onClick={refreshDeviceState}
+                  onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Status refresh requested'); refreshDeviceState(); }}
                   disabled={loadingDeviceData}
                   title="Refresh logger status from device"
                 >
@@ -1481,7 +1486,7 @@ export default function ReadoutView({
               <div className="readout-section-actions">
                 <button
                   className="readout-btn-secondary"
-                  onClick={refreshDeviceState}
+                  onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Status refresh requested'); refreshDeviceState(); }}
                   disabled={loadingDeviceData}
                   title="Refresh recorded session files from device"
                 >
@@ -1595,6 +1600,7 @@ export default function ReadoutView({
                       const fname = file?.fileName ? `${file.fileName.replace(/\.csd$/i, '')}.csv` : `${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Session_${(selectedFileIdx ?? 0) + 1}.csv`;
                       const fileStart = file?.startTime ? new Date(file.startTime.replace(/-/g, '/')) : undefined;
                       const fileEnd = file?.endTime ? new Date(file.endTime.replace(/-/g, '/')) : undefined;
+                      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Logger read started: ${fname} (${file?.samplesPerChannel || 500} samples)`);
                       performRead(fname, file?.samplesPerChannel || 500, fileStart, fileEnd);
                     }}
                   >
@@ -1835,7 +1841,7 @@ export default function ReadoutView({
               <div className="readout-section-actions">
                 <button
                   className="readout-btn-secondary"
-                  onClick={refreshDeviceState}
+                  onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Status refresh requested'); refreshDeviceState(); }}
                   disabled={loadingDeviceData}
                   title="Refresh calibration records"
                 >
@@ -1852,7 +1858,7 @@ export default function ReadoutView({
               </p>
               <button
                 className="readout-btn-primary"
-                onClick={() => performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Cal_Records.csv`, 12)}
+                onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Calibration records read started'); performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Cal_Records.csv`, 12); }}
               >
                 Export Calibration Records (CSV)
               </button>
@@ -1871,7 +1877,7 @@ export default function ReadoutView({
               <div className="readout-section-actions">
                 <button
                   className="readout-btn-secondary"
-                  onClick={refreshDeviceState}
+                  onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Status refresh requested'); refreshDeviceState(); }}
                   disabled={loadingDeviceData}
                   title="Refresh alarm records"
                 >

@@ -1128,10 +1128,10 @@ pub async fn suto_read_s461_log(
 
         for r in &records {
             let dt = format_s4a_time_str(r.timestamp as i64);
-            let s1 = if r.val1 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val1) };
-            let s2 = if r.val2 <= -8000.0 { "".to_string() } else { format!("{:.2}", r.val2) };
-            let s3 = if r.val3 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val3) };
-            let s4 = if r.val4 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val4) };
+            let s1 = if r.val1 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", r.val1) };
+            let s2 = if r.val2 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.2}", r.val2) };
+            let s3 = if r.val3 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", r.val3) };
+            let s4 = if r.val4 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", r.val4) };
             csv_lines.push(format!("{},{},{},{},{}", dt, s1, s2, s3, s4));
         }
     } else {
@@ -1150,12 +1150,12 @@ pub async fn suto_read_s461_log(
 
         for r in &records {
             let dt = format_s4a_time_str(r.timestamp as i64);
-            let s1 = if r.val1 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val1) };
-            let s2 = if r.val2 <= -8000.0 { "".to_string() } else { format!("{:.2}", r.val2) };
-            let s3 = if r.val3 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val3) };
-            let s4 = if r.val4 <= -8000.0 { "".to_string() } else { format!("{:.1}", r.val4) };
-            let s5 = r.val5.map(|v| if v <= -8000.0 { "".to_string() } else { format!("{:.1}", v) }).unwrap_or_default();
-            let s6 = r.val6.map(|v| if v <= -8000.0 { "".to_string() } else { format!("{:.1}", v) }).unwrap_or_default();
+            let s1 = if r.val1 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", r.val1) };
+            let s2 = if r.val2 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.2}", r.val2) };
+            let s3 = if r.val3 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", r.val3) };
+            let s4 = if r.val4 <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", r.val4) };
+            let s5 = r.val5.map(|v| if v <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", v) }).unwrap_or_default();
+            let s6 = r.val6.map(|v| if v <= -8000.0 { "-9999.0".to_string() } else { format!("{:.1}", v) }).unwrap_or_default();
             csv_lines.push(format!("{},{},{},{},{},{},{}", dt, s1, s2, s3, s4, s5, s6));
         }
     }

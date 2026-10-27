@@ -166,6 +166,9 @@ jobs:
         working-directory: s4a-web/src-tauri
         run: cargo test
 
+      - name: Build Web Application
+        run: npm run build
+
       - name: Build Tauri macOS Release
         run: npm run tauri:build
 
@@ -175,6 +178,15 @@ jobs:
           echo "Packaging macOS artifacts for version $VERSION"
           mkdir -p dist-packages
           cp src-tauri/target/release/bundle/dmg/*.dmg dist-packages/
+
+          echo "Verifying macOS app bundle code signature:"
+          codesign --verify --deep --strict --verbose=2 src-tauri/target/release/bundle/macos/s4a-app.app
+
+          echo "Creating portable versioned macOS ZIP:"
+          cd src-tauri/target/release/bundle/macos
+          ditto -c -k --sequesterRsrc --keepParent s4a-app.app "../../../../dist-packages/s4a-app_${VERSION}_macos.zip"
+          cd ../../../..
+
           ls -la dist-packages/
 
       - name: Upload Versioned macOS DMG Installer
@@ -184,12 +196,20 @@ jobs:
           path: s4a-web/dist-packages/*.dmg
           if-no-files-found: error
 
+      - name: Upload Versioned macOS Portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: S4A-macOS-Portable-ZIP
+          path: s4a-web/dist-packages/*.zip
+          if-no-files-found: warn
+
       - name: Upload macOS Assets to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             s4a-web/dist-packages/*.dmg
+            s4a-web/dist-packages/*.zip
 
   build-android:
     name: Build Android APK

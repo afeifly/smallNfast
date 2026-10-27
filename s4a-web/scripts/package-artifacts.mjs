@@ -18,7 +18,7 @@ console.log(`[package-artifacts] Packaging versioned artifacts for v${version}..
 
 let packagedCount = 0;
 
-// 1. macOS DMG
+// 1. macOS DMG & App Bundle
 const dmgDir = path.join(rootDir, 'src-tauri', 'target', 'release', 'bundle', 'dmg');
 if (fs.existsSync(dmgDir)) {
   const dmgs = fs.readdirSync(dmgDir).filter(f => f.endsWith('.dmg'));
@@ -29,6 +29,18 @@ if (fs.existsSync(dmgDir)) {
     fs.copyFileSync(src, dest);
     console.log(`[package-artifacts] macOS DMG -> ${destName}`);
     packagedCount++;
+  }
+}
+const macAppDir = path.join(rootDir, 'src-tauri', 'target', 'release', 'bundle', 'macos', 's4a-app.app');
+if (fs.existsSync(macAppDir)) {
+  try {
+    const { execSync } = await import('child_process');
+    const zipDest = path.join(distDir, `s4a-app_${version}_macos.zip`);
+    execSync(`ditto -c -k --sequesterRsrc --keepParent "${macAppDir}" "${zipDest}"`);
+    console.log(`[package-artifacts] macOS App ZIP -> s4a-app_${version}_macos.zip`);
+    packagedCount++;
+  } catch (err) {
+    console.warn(`[package-artifacts] Could not package macOS zip: ${err.message}`);
   }
 }
 

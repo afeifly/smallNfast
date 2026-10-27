@@ -120,7 +120,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Windows Assets to GitHub Release
-        if: github.event_name == "release"
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -185,7 +185,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload macOS Assets to GitHub Release
-        if: github.event_name == "release"
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -259,7 +259,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Android Assets to GitHub Release
-        if: github.event_name == "release"
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |

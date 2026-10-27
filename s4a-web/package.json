@@ -1,7 +1,7 @@
 {
   "name": "s4a-web",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,13 +16,15 @@
     "tauri:csd": "VITE_USE_CSD=true tauri dev",
     "tauri:dev:csd": "VITE_USE_CSD=true tauri dev",
     "tauri:dev:mock": "VITE_USE_MOCK=true tauri dev",
-    "tauri:build": "tauri build",
-    "tauri:build:csd": "VITE_USE_CSD=true tauri build",
+    "tauri:build": "npm run sync:version && tauri build",
+    "tauri:build:csd": "npm run sync:version && VITE_USE_CSD=true tauri build",
     "sim:s331": "node scripts/s331-simulator.mjs",
     "sim:s331:test": "node scripts/s331-simulator.mjs --selftest",
-    "tauri:android:build": "tauri android build --apk --target aarch64",
-    "tauri:android:build:debug": "tauri android build --apk --target aarch64 --debug",
-    "tauri:android:dev": "tauri android dev"
+    "tauri:android:build": "npm run sync:version && tauri android build --apk --target aarch64",
+    "tauri:android:build:debug": "npm run sync:version && tauri android build --apk --target aarch64 --debug",
+    "tauri:android:dev": "npm run sync:version && tauri android dev",
+    "sync:version": "node scripts/sync-version.mjs",
+    "package:artifacts": "node scripts/package-artifacts.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

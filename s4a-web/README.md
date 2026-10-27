@@ -293,3 +293,142 @@ The caller adds `+8 h` before calling and `DataUtil` subtracts it back, so **CSD
 | Channels show but chart is blank | `channel_id` mismatch between `getUserSettings` and `getChannels` |
 | "No measuring data" toast | `getMeasurementData` returned all-`null` values or empty array |
 | Line is invisible but no error | Timestamps land outside the current chart time window |
+
+---
+
+## Version Management (Unified Across Web, Desktop & Android)
+
+The application uses `package.json` (`"version"`) as the **Single Source of Truth (SSOT)** for all platforms:
+
+- **Web App**: Vite injects the version into the frontend at build time; shown at the homepage top-right badge (`v0.1.0`).
+- **Desktop App (Tauri)**: Uses the exact same web UI + matches `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
+- **Android App (APK)**: Tauri sets `versionName` in Android Gradle from the config, and the webview displays the matching version.
+
+### Synchronizing Versions
+
+To bump the version across all configuration files simultaneously:
+
+```bash
+# Update version across package.json, tauri.conf.json, and Cargo.toml:
+node scripts/sync-version.mjs 0.2.0
+
+# Or sync existing package.json version:
+npm run sync:version
+
+# Package all built outputs into dist-packages/ with unified versioned names:
+npm run package:artifacts
+```
+
+*(Version sync is also triggered automatically before `npm run tauri:build` and `npm run tauri:android:build`)*.
+
+---
+
+## Building macOS Desktop App
+
+S4A runs natively on macOS (Apple Silicon M1/M2/M3/M4 & Intel x86_64) via Tauri, supporting:
+- **Direct USB Communication**: Native `rusb` (IOKit user-space bulk endpoints `0x03` OUT / `0x81` IN for SUTO `VID: 0x16C0`).
+- **Bluetooth Low Energy (BLE)**: `btleplug` / CoreBluetooth with system permission support.
+- **Ethernet TCP**: Direct SUTO CS-Bus socket communication.
+- **Local CSD & CSV Analysis**: Client-side lazy-chunking parser for instant charting.
+
+### 1. Prerequisites
+
+- **Node.js** (v18+) & **npm**
+- **Rust Toolchain**: `rustup default stable`
+- **Xcode Command Line Tools**:
+  ```bash
+  xcode-select --install
+  ```
+
+### 2. Build Commands
+
+```bash
+# Build Production macOS App (.app) & DMG installer (.dmg):
+npm run tauri:build
+
+# Run in Development mode (with Hot Module Replacement):
+npm run tauri:dev
+
+# Dev mode with local CSD parser enabled:
+npm run tauri:dev:csd
+```
+
+### 3. Output Package Locations
+
+When `npm run tauri:build` completes, the bundles are generated in `src-tauri/target/release/bundle/`:
+- **macOS Disk Image (`.dmg` installer)**:
+  `src-tauri/target/release/bundle/dmg/s4a-app_0.1.0_aarch64.dmg`
+- **macOS Application (`.app`)**:
+  `src-tauri/target/release/bundle/macos/s4a-app.app`
+
+### 4. Mounting & Installing
+
+Open and mount the DMG installer directly:
+```bash
+open src-tauri/target/release/bundle/dmg/s4a-app_0.1.0_aarch64.dmg
+```
+Or launch the `.app` directly:
+```bash
+open src-tauri/target/release/bundle/macos/s4a-app.app
+```
+
+---
+
+## Building Android APK
+
+S4A runs natively on Android via Tauri Mobile, featuring full **Bluetooth Low Energy (BLE)** and **USB OTG Host** hardware communications.
+
+### 1. Prerequisites
+
+1. **Android SDK & NDK**:
+   - Install Android Studio or Android SDK Command-line Tools (API level 34+ recommended).
+   - Install Android NDK (e.g. version `28.2.13676358`).
+2. **Java / JDK**:
+   - JDK 17 or 21 (required by Gradle 8+).
+3. **Rust Android Target**:
+   ```bash
+   rustup target add aarch64-linux-android
+   # Optional emulator target:
+   # rustup target add x86_64-linux-android
+   ```
+
+### 2. Set Environment Variables
+
+Add the following to your shell profile (`~/.zshrc` or `~/.bashrc`):
+
+```bash
+export ANDROID_HOME=$HOME/Android/sdk       # macOS default is ~/Library/Android/sdk or your custom path
+export NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358
+export PATH=$PATH:$ANDROID_HOME/platform-tools
+```
+
+### 3. Build Commands
+
+```bash
+# Build Release APK (aarch64 / ARM64 devices):
+npm run tauri:android:build
+
+# Build Debug APK (faster build with debug symbols):
+npm run tauri:android:build:debug
+
+# Live Development on a connected Android phone or emulator:
+npm run tauri:android:dev
+```
+
+### 4. Output APK Location
+
+Once built, the APKs are located at:
+- **Debug APK**:
+  `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+  *(or `src-tauri/gen/android/app/build/outputs/apk/arm64-v8a/debug/app-arm64-v8a-debug.apk`)*
+- **Release APK**:
+  `src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk`
+
+### 5. Installing onto a Device
+
+Enable **Developer Options** and **USB Debugging** on your Android device, connect via USB, and run:
+
+```bash
+adb devices
+adb install -r src-tauri/gen/android/app/build/outputs/apk/arm64-v8a/debug/app-arm64-v8a-debug.apk
+```

@@ -24,7 +24,10 @@ pub mod driver_windows;
 #[cfg(target_os = "android")]
 pub mod driver_android_usb;
 
-#[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
+#[cfg(target_os = "macos")]
+pub mod driver_macos;
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "android"), not(target_os = "macos")))]
 pub mod driver_stub;
 
 use std::sync::Mutex;
@@ -41,7 +44,10 @@ type NativeUsb = driver_windows::WindowsUsbTransport;
 #[cfg(target_os = "android")]
 type NativeUsb = driver_android_usb::AndroidUsbTransport;
 
-#[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
+#[cfg(target_os = "macos")]
+type NativeUsb = driver_macos::MacUsbTransport;
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "android"), not(target_os = "macos")))]
 type NativeUsb = driver_stub::StubUsbTransport;
 
 pub struct SutoState {

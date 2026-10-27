@@ -31,6 +31,9 @@ futures = "0.3"
 [target.'cfg(not(target_os = "android"))'.dependencies]
 rfd = "0.15"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+rusb = "0.9"
+
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22"
 ndk-context = "0.1"

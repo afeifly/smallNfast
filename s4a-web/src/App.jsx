@@ -13,6 +13,7 @@ import Loading from './components/loading/Loading';
 import DataModifierModal from './modules/modifier/DataModifierModal';
 import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
+import DownloadAppModal from './components/DownloadAppModal';
 import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
 import { isDesktop, isMobile, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
@@ -43,6 +44,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 
 const featureReport = import.meta.env.VITE_ENABLE_CONSUMPTION_REPORT === 'true';
 const featureCompressor = import.meta.env.VITE_ENABLE_COMPRESSOR_ANALYZE === 'true';
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.0';
 
 const renderNotiIcon = (type) => {
   switch (type) {
@@ -129,6 +131,7 @@ function App() {
   const [deviceInfo, setDeviceInfo] = React.useState(null);
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
+  const [showDownloadModal, setShowDownloadModal] = React.useState(false);
   const [analyzingFromReadout, setAnalyzingFromReadout] = React.useState(false);
 
   // Live value recording (header REC button)
@@ -918,20 +921,25 @@ function App() {
           )}
 
           {!appMode ? (
-            (!isDesktop && !isMobile) && (
-              <a
-                href="/s4a-app.zip"
-                download="s4a-app.zip"
-                className="try-desktop-link"
-                title="Download S4A Desktop App"
-              >
-                <svg className="try-desktop-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span className="try-desktop-text">Try the desktop App</span>
-                <span className="try-desktop-badge">New</span>
-              </a>
-            )
+            <>
+              {!isDesktop && (
+                <button
+                  type="button"
+                  className="try-desktop-link"
+                  onClick={() => setShowDownloadModal(true)}
+                  title="Download S4A for Windows, macOS, or Android"
+                >
+                  <svg className="try-desktop-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span className="try-desktop-text">Try App</span>
+                  <span className="try-desktop-badge">New</span>
+                </button>
+              )}
+              <span className="homepage-version-badge" title={`S4A Version ${APP_VERSION}`}>
+                v{APP_VERSION}
+              </span>
+            </>
           ) : (
             <Tooltip title="System Diagnostic Logs">
               <IconButton
@@ -1738,6 +1746,13 @@ function App() {
         isOpen={showConnectModal}
         onClose={() => setShowConnectModal(false)}
         onConnected={handleDeviceConnected}
+      />
+
+      {/* Platform App Download Dialog (Windows, macOS, Android) */}
+      <DownloadAppModal
+        isOpen={showDownloadModal}
+        onClose={() => setShowDownloadModal(false)}
+        version={APP_VERSION}
       />
     </div>
   );

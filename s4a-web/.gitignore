@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-packages
 *.local
 
 # Binaries, Installers & APKs
@@ -21,7 +22,7 @@ dist-ssr
 *.dmg
 *.deb
 *.zip
-!public/s4a-app.zip
+!public/s4a_*.zip
 
 # Editor directories and files
 .vscode/*

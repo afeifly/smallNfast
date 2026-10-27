@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import TauriSutoAPI from '../api/TauriSutoAPI';
 import BleSutoAPI from '../api/BleSutoAPI';
-import { checkIsDesktop } from '../util/platform';
+import { checkIsNative, isMobile } from '../util/platform';
 import './DeviceConnectModal.css';
 
 export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
-  const isDesk = checkIsDesktop();
-  const [tab, setTab] = useState(isDesk ? 'usb' : 'ble'); // 'usb' | 'tcp' | 'ble'
+  const isNative = checkIsNative();
+  const [tab, setTab] = useState(isMobile ? 'ble' : (isNative ? 'usb' : 'ble')); // 'usb' | 'tcp' | 'ble'
   const [tcpHost, setTcpHost] = useState('192.168.1.100');
   const [tcpPort, setTcpPort] = useState('502');
   const [loading, setLoading] = useState(false);
@@ -18,10 +18,10 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   const [hasScannedBle, setHasScannedBle] = useState(false);
 
   useEffect(() => {
-    if (!isDesk && tab !== 'ble') {
+    if (!isNative && tab !== 'ble') {
       setTab('ble');
     }
-  }, [isDesk, tab]);
+  }, [isNative, tab]);
 
   if (!isOpen) return null;
 
@@ -35,7 +35,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] USB connect error:', err);
-      setError(err?.message || 'Failed to connect via USB. Please verify cable and driver.');
+      const msg = typeof err === 'string' ? err : (err?.message || 'Failed to connect via USB. Please verify cable.');
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -70,7 +71,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
       setHasScannedBle(true);
     } catch (err) {
       console.error('[DeviceConnectModal] BLE scan error:', err);
-      setError(err?.message || 'Failed to scan Bluetooth devices. Ensure Bluetooth is enabled.');
+      const msg = typeof err === 'string' ? err : (err?.message || 'Failed to scan Bluetooth devices. Ensure Bluetooth is enabled.');
+      setError(msg);
     } finally {
       setScanningBle(false);
     }
@@ -86,7 +88,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] BLE connect error:', err);
-      setError(err?.message || `Failed to connect to ${dev.name}.`);
+      const msg = typeof err === 'string' ? err : (err?.message || `Failed to connect to ${dev.name}.`);
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -102,7 +105,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] BLE connect error:', err);
-      setError(err?.message || 'Bluetooth connection cancelled or failed.');
+      const msg = typeof err === 'string' ? err : (err?.message || 'Bluetooth connection cancelled or failed.');
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -122,21 +126,14 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
 
         {/* Medium Selection Tabs */}
         <div className="device-connect-tabs">
-          {isDesk ? (
+          {isNative ? (
             <>
               <button
                 className={`modal-tab-btn ${tab === 'usb' ? 'active' : ''}`}
                 onClick={() => { setTab('usb'); setError(null); }}
               >
                 <span>🔌</span>
-                <span>Direct USB</span>
-              </button>
-              <button
-                className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
-                onClick={() => { setTab('tcp'); setError(null); }}
-              >
-                <span>🌐</span>
-                <span>Ethernet TCP</span>
+                <span>{isMobile ? 'USB OTG' : 'Direct USB'}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
@@ -144,6 +141,13 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
               >
                 <span>📶</span>
                 <span>Bluetooth (BLE)</span>
+              </button>
+              <button
+                className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
+                onClick={() => { setTab('tcp'); setError(null); }}
+              >
+                <span>🌐</span>
+                <span>Ethernet TCP</span>
               </button>
             </>
           ) : (
@@ -159,9 +163,9 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
 
         {/* Platform Distinction Note */}
         <div className="platform-diff-note">
-          {isDesk ? (
+          {isNative ? (
             <p>
-              🖥️ <strong>Desktop App Mode:</strong> Direct USB, low-level Ethernet TCP, and native Bluetooth Low Energy (BLE) communicate directly with hardware.
+              ⚡ <strong>Native Hardware Engine:</strong> Direct low-level {isMobile ? 'USB OTG' : 'Direct USB'}, Bluetooth Low Energy (BLE), and Ethernet TCP communicate directly with sensors.
             </p>
           ) : (
             <p>
@@ -175,14 +179,16 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
           {tab === 'usb' && (
             <>
               <p className="tab-desc">
-                Direct Win32 driver connection. Automatically scans for connected sensor.
+                {isMobile
+                  ? 'Connect via USB-C OTG cable to SUTO sensor. When prompted, tap "OK" to grant USB permission.'
+                  : 'Direct driver connection. Automatically scans for connected sensor.'}
               </p>
               <button
                 className="connect-action-btn"
                 onClick={handleConnectUsb}
                 disabled={loading}
               >
-                {loading ? 'Connecting via USB...' : '🔌 Detect & Connect USB'}
+                {loading ? 'Connecting via USB...' : (isMobile ? '🔌 Detect & Connect USB OTG' : '🔌 Detect & Connect USB')}
               </button>
             </>
           )}
@@ -229,8 +235,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
           {tab === 'ble' && (
             <>
               <p className="tab-desc">
-                {isDesk
-                  ? 'Connect wirelessly to SUTO Bluetooth Low Energy sensors (e.g. S401 / S421 / S520) via native desktop Bluetooth.'
+                {isNative
+                  ? 'Connect wirelessly to SUTO Bluetooth Low Energy sensors (e.g. S401 / S421 / S461 / S520) via native Bluetooth.'
                   : (
                     <>Connect wirelessly to SUTO Bluetooth Low Energy sensors (e.g. S401 / S421 / S520) via browser <strong>Web Bluetooth</strong>.</>
                   )}
@@ -239,8 +245,8 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
               <div className="ble-badge-hint">
                 <span>ℹ️</span>
                 <span>
-                  {isDesk
-                    ? 'Native Bluetooth Low Energy (BLE) engine is active and ready in desktop mode.'
+                  {isNative
+                    ? 'Native Bluetooth Low Energy (BLE) engine is active and ready.'
                     : BleSutoAPI.isSupported()
                     ? 'Web Bluetooth is supported in your current browser.'
                     : (BleSutoAPI.getSupportIssue() || 'Web Bluetooth requires Chrome or a Chromium-based browser.')}
@@ -264,7 +270,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
                 </div>
               </div>
 
-              {isDesk ? (
+              {isNative ? (
                 <>
                   <button
                     className="connect-action-btn"

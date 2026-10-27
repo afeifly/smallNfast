@@ -1,27 +1,85 @@
 # Environment & Secrets
 .env
 *.env
+*.env.*
+*.local
+local.properties
+key.properties
+keystore.properties
+*.keystore
+*.jks
 
-# Binaries
+# Executables, Binaries & Installers
 *.exe
+*.msi
+*.apk
+*.aab
+*.ap_
+*.idsig
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
 *.dll
 *.so
 *.dylib
-.DS_Store
+*.pdb
 
-jsutousbIo/target/
+# Rust & Cargo Build Outputs
+target/
+**/target/
+Cargo.lock.bak
+
+# Node & Web Build Outputs
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+build/bin/
+**/build/outputs/
+
+# Android & Gradle Build Artifacts
+.gradle/
+**/.gradle/
+.cxx/
+**/.cxx/
+captures/
+**/captures/
+
+# Archives & Packages
+*.zip
+!s4a-web/public/s4a-app.zip
+!**/public/s4a-app.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
 
 # Logs
 *.log
+logs/
+**/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Editor
-.vscode/
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
 .idea/
-
-# Wails & Build
-frontend/dist/
-build/bin/
-*/dist/
+**/.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Print bridge (PyInstaller)
 acbarcode/pytool/build/
@@ -29,7 +87,8 @@ acbarcode/pytool/*.spec
 acbarcode/pytool/print_bridge.ico
 acbarcode/pytool/print_bridge.json
 
-# Python cache
+# Python cache & virtual environments
 __pycache__/
 *.py[cod]
-
+.venv/
+**/venv/

@@ -15,7 +15,7 @@ import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
 import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
-import { isDesktop, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
+import { isDesktop, isMobile, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
 import { clearLiveSelection } from './util/liveSelection';
 
@@ -918,7 +918,7 @@ function App() {
           )}
 
           {!appMode ? (
-            !isDesktop && (
+            (!isDesktop && !isMobile) && (
               <a
                 href="/s4a-app.zip"
                 download="s4a-app.zip"

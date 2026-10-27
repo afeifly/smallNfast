@@ -19,7 +19,10 @@
     "tauri:build": "tauri build",
     "tauri:build:csd": "VITE_USE_CSD=true tauri build",
     "sim:s331": "node scripts/s331-simulator.mjs",
-    "sim:s331:test": "node scripts/s331-simulator.mjs --selftest"
+    "sim:s331:test": "node scripts/s331-simulator.mjs --selftest",
+    "tauri:android:build": "tauri android build --apk --target aarch64",
+    "tauri:android:build:debug": "tauri android build --apk --target aarch64 --debug",
+    "tauri:android:dev": "tauri android dev"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

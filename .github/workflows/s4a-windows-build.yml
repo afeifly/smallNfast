@@ -67,7 +67,7 @@ jobs:
       - name: Locate and Package Versioned Artifacts
         shell: bash
         run: |
-          VERSION=$(node -p "require(./package.json).version")
+          VERSION=$(node -p "require('./package.json').version")
           echo "Packaging Windows artifacts for version $VERSION"
 
           EXE_PATH=""
@@ -171,7 +171,7 @@ jobs:
 
       - name: Package Versioned macOS Artifacts
         run: |
-          VERSION=$(node -p "require(./package.json).version")
+          VERSION=$(node -p "require('./package.json').version")
           echo "Packaging macOS artifacts for version $VERSION"
           mkdir -p dist-packages
           cp src-tauri/target/release/bundle/dmg/*.dmg dist-packages/
@@ -195,6 +195,10 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
+
     defaults:
       run:
         working-directory: s4a-web
@@ -216,12 +220,10 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK
+      - name: Setup Android SDK Licenses and NDK
         run: |
-          yes | sdkmanager --install "ndk;28.2.13676358"
+          yes | sdkmanager --licenses || true
+          yes | sdkmanager --install "ndk;28.2.13676358" "platform-tools"
 
       - name: Setup Rust toolchain with Android target
         uses: dtolnay/rust-toolchain@stable
@@ -244,7 +246,7 @@ jobs:
 
       - name: Package Versioned Android APK
         run: |
-          VERSION=$(node -p "require(./package.json).version")
+          VERSION=$(node -p "require('./package.json').version")
           echo "Packaging Android APK for version $VERSION"
           mkdir -p dist-packages
           APK_SRC=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -n 1)

@@ -17,11 +17,84 @@ use super::transport::SutoTransport;
 
 static SHARED_ADAPTER: OnceLock<Adapter> = OnceLock::new();
 
+#[cfg(target_os = "android")]
+#[derive(Debug)]
+#[allow(dead_code)]
+enum AndroidBleInitError {
+    Jni(jni::errors::Error),
+    Btle(btleplug::Error),
+}
+
+#[cfg(target_os = "android")]
+impl From<jni::errors::Error> for AndroidBleInitError {
+    fn from(e: jni::errors::Error) -> Self {
+        AndroidBleInitError::Jni(e)
+    }
+}
+
+#[cfg(target_os = "android")]
+impl From<btleplug::Error> for AndroidBleInitError {
+    fn from(e: btleplug::Error) -> Self {
+        AndroidBleInitError::Btle(e)
+    }
+}
+
+#[cfg(target_os = "android")]
+static ANDROID_INIT: OnceLock<bool> = OnceLock::new();
+
+#[cfg(target_os = "android")]
+static JAVA_VM: OnceLock<jni::JavaVM> = OnceLock::new();
+
+#[cfg(target_os = "android")]
+pub fn get_java_vm() -> Option<&'static jni::JavaVM> {
+    JAVA_VM.get()
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_s4a_app_MainActivity_initBtleplug<'frame>(
+    mut unowned_env: jni::EnvUnowned<'frame>,
+    _class: jni::objects::JClass,
+) {
+    let _ = unowned_env.with_env(|env| {
+        if let Ok(vm) = env.get_java_vm() {
+            let _ = JAVA_VM.set(vm);
+        }
+        super::driver_android_usb::init_usb_helper(env);
+        if let Err(e) = btleplug::platform::init(env) {
+            log_event("ERROR", "BLE_INIT", &format!("initBtleplug error: {:?}", e), None);
+        } else {
+            let _ = ANDROID_INIT.set(true);
+            log_event("INFO", "BLE_INIT", "btleplug initialized successfully from Java", None);
+        }
+        Ok::<(), jni::errors::Error>(())
+    });
+}
+
+#[cfg(target_os = "android")]
+fn ensure_android_init() -> Result<(), String> {
+    if ANDROID_INIT.get().is_some() {
+        return Ok(());
+    }
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) };
+    vm.attach_current_thread(|env| -> Result<(), AndroidBleInitError> {
+        btleplug::platform::init(env)?;
+        Ok(())
+    })
+    .map_err(|e| format!("Failed to init btleplug Android: {:?}", e))?;
+    let _ = ANDROID_INIT.set(true);
+    Ok(())
+}
+
 /// Obtain the shared system BLE adapter singleton
 pub async fn get_shared_adapter() -> Result<Adapter, String> {
     if let Some(adapter) = SHARED_ADAPTER.get() {
         return Ok(adapter.clone());
     }
+
+    #[cfg(target_os = "android")]
+    ensure_android_init()?;
 
     let manager = Manager::new()
         .await

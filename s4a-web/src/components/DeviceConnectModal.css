@@ -330,3 +330,51 @@
   line-height: 1.45;
 }
 
+/* Mobile optimizations for small screens */
+@media (max-width: 768px) {
+  .device-connect-modal {
+    width: 95vw;
+    max-width: 440px;
+    max-height: 85vh;
+    border-radius: 12px;
+  }
+
+  .device-connect-header {
+    padding: 14px 18px;
+  }
+
+  .device-connect-header h3 {
+    font-size: 15px;
+  }
+
+  .device-connect-tabs {
+    margin: 10px 16px 0 16px;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .device-connect-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .modal-tab-btn {
+    padding: 6px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .platform-diff-note {
+    margin: 10px 16px 0 16px;
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .device-connect-body {
+    padding: 14px 16px;
+    gap: 12px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
+

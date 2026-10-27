@@ -21,7 +21,10 @@ pub use files::{
 #[cfg(target_os = "windows")]
 pub mod driver_windows;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "android")]
+pub mod driver_android_usb;
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
 pub mod driver_stub;
 
 use std::sync::Mutex;
@@ -35,7 +38,10 @@ use transport::SutoTransport;
 #[cfg(target_os = "windows")]
 type NativeUsb = driver_windows::WindowsUsbTransport;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "android")]
+type NativeUsb = driver_android_usb::AndroidUsbTransport;
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
 type NativeUsb = driver_stub::StubUsbTransport;
 
 pub struct SutoState {
@@ -61,14 +67,7 @@ impl SutoState {
 #[tauri::command]
 pub fn suto_list_usb_devices() -> Result<Vec<String>, String> {
     log_event("INFO", "SUTO_IPC", "suto_list_usb_devices invoked", None);
-    #[cfg(target_os = "windows")]
-    {
-        Ok(driver_windows::WindowsUsbTransport::list_devices())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(driver_stub::StubUsbTransport::list_devices())
-    }
+    Ok(NativeUsb::list_devices())
 }
 
 #[tauri::command]

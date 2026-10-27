@@ -3,30 +3,36 @@
  * (Tauri or Electron) or as a pure web browser application.
  */
 
+export const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
 export const checkIsTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
 
 export const checkIsElectron = () =>
   typeof window !== 'undefined' &&
   Boolean(window.desktopApi?.isDesktop || window.electron || window.process?.type === 'renderer');
 
-export const checkIsDesktop = () => checkIsTauri() || checkIsElectron();
+export const checkIsNative = () => checkIsTauri() || checkIsElectron();
+export const isNative = typeof window !== 'undefined' && checkIsNative();
+
+export const checkIsDesktop = () => !isMobile && checkIsNative();
 
 export const isTauri = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
 export const isElectron =
   typeof window !== 'undefined' &&
   Boolean(window.desktopApi?.isDesktop || window.electron || window.process?.type === 'renderer');
 
-export const isDesktop = typeof window !== 'undefined' && Boolean(
-  window.__TAURI_INTERNALS__ || window.desktopApi?.isDesktop || window.electron || window.process?.type === 'renderer'
-);
-export const isWeb = !isDesktop;
+export const isDesktop = typeof window !== 'undefined' && !isMobile && checkIsNative();
+export const isWeb = typeof window !== 'undefined' && !checkIsNative();
 export const isDesktopApp = checkIsDesktop;
 
 /**
  * Get human-readable runtime target name
- * @returns {'desktop-tauri' | 'desktop-electron' | 'web'}
+ * @returns {'android' | 'mobile' | 'desktop-tauri' | 'desktop-electron' | 'web'}
  */
 export const getRuntimePlatform = () => {
+  if (isAndroid) return 'android';
+  if (isMobile) return 'mobile';
   if (checkIsTauri()) return 'desktop-tauri';
   if (checkIsElectron()) return 'desktop-electron';
   return 'web';

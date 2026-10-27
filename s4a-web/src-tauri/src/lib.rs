@@ -51,11 +51,15 @@ pub fn run() {
             suto::files::suto_save_file_to_path,
         ])
         .setup(|app| {
-            use tauri::Manager;
-            let icon = tauri::include_image!("icons/128x128@2x.png");
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_icon(icon);
+            #[cfg(desktop)]
+            {
+                use tauri::Manager;
+                let icon = tauri::include_image!("icons/128x128@2x.png");
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_icon(icon);
+                }
             }
+            let _ = app;
             Ok(())
         })
         .run(tauri::generate_context!())

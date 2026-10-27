@@ -12,15 +12,25 @@ dist
 dist-ssr
 *.local
 
+# Binaries, Installers & APKs
+*.exe
+*.msi
+*.apk
+*.aab
+*.idsig
+*.dmg
+*.deb
+*.zip
+!public/s4a-app.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-*.zip
-public/s4a-app.zip

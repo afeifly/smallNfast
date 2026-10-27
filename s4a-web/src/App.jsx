@@ -13,7 +13,7 @@ import DebugLogModal from './components/DebugLogModal';
 import DeviceConnectModal from './components/DeviceConnectModal';
 import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
-import { isDesktop, getRuntimePlatform } from './util/platform';
+import { isDesktop, isMobile, getRuntimePlatform } from './util/platform';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -686,7 +686,7 @@ function App() {
           )}
 
           {!appMode ? (
-            !isDesktop && (
+            (!isDesktop && !isMobile) && (
               <a
                 href="/s4a-app.zip"
                 download="s4a-app.zip"

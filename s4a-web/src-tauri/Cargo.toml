@@ -23,11 +23,17 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.4", features = [] }
 tauri-plugin-log = "2"
-rfd = "0.15"
-btleplug = "0.11"
+btleplug = "0.13"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 uuid = { version = "1", features = ["serde"] }
 futures = "0.3"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rfd = "0.15"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
+ndk-context = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = [
@@ -39,3 +45,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security",
     "Win32_System_Threading",
 ] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

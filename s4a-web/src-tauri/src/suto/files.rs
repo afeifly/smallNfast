@@ -112,12 +112,19 @@ pub fn suto_remove_recent_file(path: String) -> Result<Vec<RecentFileEntry>, Str
 
 #[tauri::command]
 pub fn suto_pick_file() -> Result<Option<String>, String> {
-    let res = rfd::FileDialog::new()
-        .add_filter("CSD / CSV Data Files", &["csd", "csv"])
-        .set_title("Open SUTO Data File (.csd, .csv)")
-        .pick_file();
+    #[cfg(not(target_os = "android"))]
+    {
+        let res = rfd::FileDialog::new()
+            .add_filter("CSD / CSV Data Files", &["csd", "csv"])
+            .set_title("Open SUTO Data File (.csd, .csv)")
+            .pick_file();
 
-    Ok(res.map(|p| p.to_string_lossy().to_string()))
+        Ok(res.map(|p| p.to_string_lossy().to_string()))
+    }
+    #[cfg(target_os = "android")]
+    {
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -160,44 +167,59 @@ pub fn suto_get_file_stats(path: String) -> Result<RecentFileEntry, String> {
 
 #[tauri::command]
 pub fn suto_save_binary_file(filename: String, data: Vec<u8>) -> Result<Option<String>, String> {
-    let mut clean = filename.replace(':', "_");
-    if clean.to_lowercase().ends_with(".png.bmp") {
-        clean.truncate(clean.len() - 4);
+    #[cfg(not(target_os = "android"))]
+    {
+        let mut clean = filename.replace(':', "_");
+        if clean.to_lowercase().ends_with(".png.bmp") {
+            clean.truncate(clean.len() - 4);
+        }
+        let ext = std::path::Path::new(&clean)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("png");
+
+        let (filter_name, dialog_title) = if ext.eq_ignore_ascii_case("pdf") {
+            ("PDF Document (.pdf)", "Save PDF Report")
+        } else if ["png", "jpg", "jpeg", "bmp", "gif"].contains(&ext.to_lowercase().as_str()) {
+            ("Image File", "Save Screenshot Image")
+        } else {
+            ("Document File", "Save File")
+        };
+
+        let res = rfd::FileDialog::new()
+            .set_file_name(&clean)
+            .add_filter(filter_name, &[ext])
+            .set_title(dialog_title)
+            .save_file();
+
+        if let Some(path) = res {
+            std::fs::write(&path, &data).map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
+            Ok(Some(path.to_string_lossy().to_string()))
+        } else {
+            Ok(None)
+        }
     }
-    let ext = std::path::Path::new(&clean)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("png");
-
-    let (filter_name, dialog_title) = if ext.eq_ignore_ascii_case("pdf") {
-        ("PDF Document (.pdf)", "Save PDF Report")
-    } else if ["png", "jpg", "jpeg", "bmp", "gif"].contains(&ext.to_lowercase().as_str()) {
-        ("Image File", "Save Screenshot Image")
-    } else {
-        ("Document File", "Save File")
-    };
-
-    let res = rfd::FileDialog::new()
-        .set_file_name(&clean)
-        .add_filter(filter_name, &[ext])
-        .set_title(dialog_title)
-        .save_file();
-
-    if let Some(path) = res {
-        std::fs::write(&path, &data).map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
-        Ok(Some(path.to_string_lossy().to_string()))
-    } else {
+    #[cfg(target_os = "android")]
+    {
+        let _ = (filename, data);
         Ok(None)
     }
 }
 
 #[tauri::command]
 pub fn suto_pick_folder() -> Result<Option<String>, String> {
-    let res = rfd::FileDialog::new()
-        .set_title("Select Folder to Save Screenshots")
-        .pick_folder();
+    #[cfg(not(target_os = "android"))]
+    {
+        let res = rfd::FileDialog::new()
+            .set_title("Select Folder to Save Screenshots")
+            .pick_folder();
 
-    Ok(res.map(|p| p.to_string_lossy().to_string()))
+        Ok(res.map(|p| p.to_string_lossy().to_string()))
+    }
+    #[cfg(target_os = "android")]
+    {
+        Ok(None)
+    }
 }
 
 #[tauri::command]

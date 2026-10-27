@@ -222,8 +222,18 @@ jobs:
 
       - name: Setup Android SDK Licenses and NDK
         run: |
-          yes | sdkmanager --licenses || true
-          yes | sdkmanager --install "ndk;28.2.13676358" "platform-tools"
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -name sdkmanager -type f | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="sdkmanager"
+          fi
+          echo "Found sdkmanager at: $SDKMANAGER"
+
+          SDK_BIN_DIR=$(dirname "$SDKMANAGER")
+          echo "$SDK_BIN_DIR" >> $GITHUB_PATH
+          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+
+          yes | "$SDKMANAGER" --licenses || true
+          yes | "$SDKMANAGER" --install "ndk;28.2.13676358" "platform-tools"
 
       - name: Setup Rust toolchain with Android target
         uses: dtolnay/rust-toolchain@stable

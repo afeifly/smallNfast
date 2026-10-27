@@ -372,6 +372,24 @@ Or launch the `.app` directly:
 open src-tauri/target/release/bundle/macos/s4a-app.app
 ```
 
+### 5. First-Launch on macOS (Gatekeeper Quarantine)
+
+When opening an app downloaded from GitHub or a web browser, macOS Gatekeeper may show:
+> *"s4a-app is damaged and can't be opened. You should move it to the Trash."*
+
+This is standard macOS Gatekeeper behavior for self-signed open-source software (without an Apple Developer ID notarization subscription). To open it:
+
+1. **Option A (Terminal - Recommended)**: Remove the download quarantine attribute:
+   ```bash
+   xattr -cr /Applications/s4a-app.app
+   ```
+   *(Or on the downloaded DMG: `xattr -cr ~/Downloads/s4a-app_*.dmg`)*
+
+2. **Option B (System Settings)**:
+   - Open **System Settings** → **Privacy & Security**.
+   - Scroll down to the **Security** section where it mentions `s4a-app was blocked`.
+   - Click **Open Anyway** and confirm.
+
 ---
 
 ## Building Android APK

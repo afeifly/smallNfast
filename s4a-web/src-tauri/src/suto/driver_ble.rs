@@ -61,6 +61,7 @@ pub extern "system" fn Java_com_s4a_app_MainActivity_initBtleplug<'frame>(
             let _ = JAVA_VM.set(vm);
         }
         super::driver_android_usb::init_usb_helper(env);
+        super::files::init_file_helper(env);
         if let Err(e) = btleplug::platform::init(env) {
             log_event("ERROR", "BLE_INIT", &format!("initBtleplug error: {:?}", e), None);
         } else {

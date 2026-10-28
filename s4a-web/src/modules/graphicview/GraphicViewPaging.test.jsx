@@ -214,7 +214,7 @@ describe('HeaderLegend & Landscape Space Optimization', () => {
   });
 
   it('correctly detects small-screen landscape mode to save curve space', async () => {
-    const { isSmallLandscapeMode } = await import('./LineChart');
+    const { isSmallLandscapeMode } = await import('./screenUtil');
 
     // Case 1: Normal desktop mode (matchMedia returns false)
     window.matchMedia = vi.fn().mockImplementation((query) => ({

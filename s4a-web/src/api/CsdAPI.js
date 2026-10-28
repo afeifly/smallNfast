@@ -24,6 +24,7 @@
 
 import CsvAPI from './CsvAPI';
 import TauriSutoAPI from './TauriSutoAPI';
+import { checkIsDesktop } from '../util/platform';
 import { DOWNSAMPLING_MODE, getDownsamplingMode, scanBuckets } from '../util/downsample';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1155,14 +1156,15 @@ function _ensureFileInput() {
   if (_fileInput) return;
   _fileInput = document.createElement('input');
   _fileInput.type = 'file';
-  _fileInput.accept = '.csd,.csv';
+  _fileInput.accept = '.csd,.csv,application/octet-stream,text/csv,text/plain,*/*';
   _fileInput.style.display = 'none';
   document.body.appendChild(_fileInput);
 
   _fileInput.addEventListener('change', async e => {
-    const file = e.target.files[0];
+    const file = e.target.files && e.target.files[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.csd') && !file.name.toLowerCase().endsWith('.csv')) {
+    const lowerName = file.name ? file.name.toLowerCase() : '';
+    if (!lowerName.endsWith('.csd') && !lowerName.endsWith('.csv')) {
       if (window.showAppNotification) {
         window.showAppNotification("Unsupported File Format", "Only .csd and .csv files are supported!", "error");
       } else {
@@ -1281,11 +1283,12 @@ const CsdAPI = {
    * - Safari/Firefox: falls back to <input type="file">.
    */
   async openFile() {
-    if (TauriSutoAPI.isAvailable()) {
+    if (checkIsDesktop() && TauriSutoAPI.isAvailable()) {
       try {
         const filePath = await TauriSutoAPI.pickFile();
         if (filePath) {
           await this.loadFileFromPath(filePath);
+          return;
         }
       } catch (err) {
         console.error('[CsdAPI] Tauri pickFile error:', err);
@@ -1306,7 +1309,7 @@ const CsdAPI = {
    * Returns { ok, reason?, numFiles? }.
    */
   async openAppend() {
-    if (TauriSutoAPI.isAvailable()) {
+    if (checkIsDesktop() && TauriSutoAPI.isAvailable()) {
       try {
         const filePath = await TauriSutoAPI.pickFile();
         if (filePath) {
@@ -1315,6 +1318,7 @@ const CsdAPI = {
           if (!res.ok && window.showAppNotification) {
             window.showAppNotification('Append Failed', res.reason, 'error');
           }
+          return;
         }
       } catch (err) {
         console.error('[CsdAPI] Tauri append pickFile error:', err);

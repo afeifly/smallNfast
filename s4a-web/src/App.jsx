@@ -412,13 +412,23 @@ function App() {
   const saveRecordingResult = async (result) => {
     if (!result) return;
     try {
+      let saved = false;
       if (TauriSutoAPI.isAvailable()) {
         const bytes = new TextEncoder().encode(result.csvText);
         const savedPath = await TauriSutoAPI.saveBinaryFile(result.filename, bytes);
         if (savedPath) {
+          saved = true;
           TauriSutoAPI.logClientEvent('INFO', 'RECORDER', `Live recording saved (${result.rowCount} rows): ${savedPath}`);
+          if (window.showAppNotification) {
+            window.showAppNotification(
+              'Recording Saved',
+              `Live recording successfully saved (${result.rowCount} rows):\n${savedPath}`,
+              'success'
+            );
+          }
         }
-      } else {
+      }
+      if (!saved) {
         const blob = new Blob([result.csvText], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -428,10 +438,20 @@ function App() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        if (window.showAppNotification) {
+          window.showAppNotification(
+            'Recording Saved',
+            `Live recording (${result.rowCount} rows) downloaded: ${result.filename}`,
+            'success'
+          );
+        }
       }
     } catch (err) {
       console.error('[Recorder] Save failed:', err);
       TauriSutoAPI.logClientEvent('ERROR', 'RECORDER', `Saving live recording failed: ${err?.message || err}`);
+      if (window.showAppNotification) {
+        window.showAppNotification('Save Failed', `Could not save live recording: ${err?.message || err}`, 'error');
+      }
     }
   };
 
@@ -440,6 +460,13 @@ function App() {
       const result = liveRecorder.stop();
       if (!result) {
         TauriSutoAPI.logClientEvent('WARN', 'RECORDER', 'Recording stopped but no samples had been captured');
+        if (window.showAppNotification) {
+          window.showAppNotification(
+            'Recording Stopped',
+            'Recording stopped, but no measurement samples were captured yet.',
+            'warning'
+          );
+        }
         return;
       }
       await saveRecordingResult(result);
@@ -644,12 +671,15 @@ function App() {
       const handle = await TestAPI.getHandleForFile(file.name);
       if (handle) {
         loadSuccess = await TestAPI.loadFileFromHandle(handle);
+      } else if (TestAPI.openFile) {
+        TestAPI.openFile();
+        return;
       } else {
         if (window.showAppNotification) {
           window.showAppNotification("File Not Found", `The requested file "${file.name}" could not be found.`, "error");
         }
       }
-    } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
+    } else if (TestAPI.openFile) {
       TestAPI.openFile();
       return;
     }

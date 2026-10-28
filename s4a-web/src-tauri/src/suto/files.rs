@@ -10,6 +10,71 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::SystemTime;
 
+#[cfg(target_os = "android")]
+use jni::{jni_sig, jni_str};
+#[cfg(target_os = "android")]
+use jni::objects::{Global, JClass, JString, JValue};
+
+#[cfg(target_os = "android")]
+static FILE_HELPER_CLASS: LazyLock<std::sync::Mutex<Option<Global<JClass>>>> = LazyLock::new(|| std::sync::Mutex::new(None));
+
+#[cfg(target_os = "android")]
+pub fn init_file_helper(env: &mut jni::Env) {
+    if let Ok(class) = env.find_class(jni_str!("com/s4a/app/SutoFileHelper")) {
+        if let Ok(global) = env.new_global_ref(class) {
+            let mut lock = FILE_HELPER_CLASS.lock().unwrap();
+            *lock = Some(global);
+            super::logger::log_event("INFO", "FILE_INIT", "SutoFileHelper cached globally", None);
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+fn save_binary_file_android(filename: &str, data: &[u8]) -> Result<Option<String>, String> {
+    let vm = super::driver_ble::get_java_vm().ok_or_else(|| "JVM not initialized".to_string())?;
+
+    vm.attach_current_thread(|env| -> Result<Option<String>, jni::errors::Error> {
+        let helper_class = {
+            let lock = FILE_HELPER_CLASS.lock().unwrap();
+            lock.as_ref().map(|g| g.clone())
+        };
+
+        let j_class = match helper_class {
+            Some(g) => g,
+            None => {
+                let c = env.find_class(jni_str!("com/s4a/app/SutoFileHelper"))?;
+                let g = env.new_global_ref(c)?;
+                let mut lock = FILE_HELPER_CLASS.lock().unwrap();
+                *lock = Some(g.clone());
+                g
+            }
+        };
+
+        let j_filename = env.new_string(filename)?;
+        let byte_arr = env.byte_array_from_slice(data)?;
+
+        let res = env.call_static_method(
+            &j_class,
+            jni_str!("saveBinaryFile"),
+            jni_sig!("(Ljava/lang/String;[B)Ljava/lang/String;"),
+            &[
+                JValue::Object(j_filename.as_ref()),
+                JValue::Object(byte_arr.as_ref()),
+            ],
+        )?;
+
+        let obj = res.l()?;
+        if obj.is_null() {
+            Ok(None)
+        } else {
+            let jstr = unsafe { JString::from_raw(env, obj.into_raw()) };
+            let rust_str = jstr.to_string();
+            Ok(Some(rust_str))
+        }
+    })
+    .map_err(|e| format!("Failed to save binary file on Android: {:?}", e))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentFileEntry {
     pub name: String,
@@ -201,8 +266,7 @@ pub fn suto_save_binary_file(filename: String, data: Vec<u8>) -> Result<Option<S
     }
     #[cfg(target_os = "android")]
     {
-        let _ = (filename, data);
-        Ok(None)
+        save_binary_file_android(&filename, &data)
     }
 }
 

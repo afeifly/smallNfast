@@ -13,18 +13,11 @@ import { SystemEvent } from '../../util/SystemConstant';
 import TimePeriod from './TimePeriod'
 import TestAPI from '../../api/TestAPI';
 
+import { isSmallLandscapeMode } from './screenUtil';
 import './css/LineChart.css'; 
 
 let self;
 let yAxisData = [];
-
-export const isSmallLandscapeMode = () => {
-  if (typeof window === 'undefined') return false;
-  if (window.matchMedia) {
-    return window.matchMedia('(max-height: 550px) and (orientation: landscape), (max-height: 500px)').matches;
-  }
-  return (window.innerHeight || 0) <= 550;
-};
 
 class LineChart extends Component {
   constructor() {

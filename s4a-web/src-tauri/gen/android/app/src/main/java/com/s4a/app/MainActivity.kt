@@ -1,12 +1,16 @@
 package com.s4a.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
@@ -17,10 +21,14 @@ import androidx.core.view.WindowInsetsCompat
 class MainActivity : TauriActivity() {
   private external fun initBtleplug()
 
+  private var filePathCallback: ValueCallback<Array<Uri>>? = null
+  private val FILE_CHOOSER_REQUEST_CODE = 2001
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     SutoUsbHelper.init(this)
+    SutoFileHelper.init(this)
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       window.attributes.layoutInDisplayCutoutMode =
@@ -49,6 +57,61 @@ class MainActivity : TauriActivity() {
     requestBluetoothPermissions()
   }
 
+  override fun onWebViewCreate(webView: WebView) {
+    super.onWebViewCreate(webView)
+    setupWebChromeClient(webView)
+  }
+
+  private fun setupWebChromeClient(webView: WebView) {
+    if (webView.tag == "file_chooser_attached") return
+    webView.tag = "file_chooser_attached"
+
+    webView.webChromeClient = object : WebChromeClient() {
+      override fun onShowFileChooser(
+        wv: WebView?,
+        filePathCb: ValueCallback<Array<Uri>>?,
+        fileChooserParams: FileChooserParams?
+      ): Boolean {
+        this@MainActivity.filePathCallback?.onReceiveValue(null)
+        this@MainActivity.filePathCallback = filePathCb
+
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+          addCategory(Intent.CATEGORY_OPENABLE)
+          type = "*/*"
+          putExtra(
+            Intent.EXTRA_MIME_TYPES,
+            arrayOf(
+              "text/csv",
+              "text/comma-separated-values",
+              "text/plain",
+              "application/octet-stream",
+              "*/*"
+            )
+          )
+        }
+
+        try {
+          startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE)
+        } catch (e: Exception) {
+          android.util.Log.e("MainActivity", "Failed to start file chooser: ${e.message}")
+          this@MainActivity.filePathCallback = null
+          return false
+        }
+        return true
+      }
+    }
+  }
+
+  @Deprecated("Deprecated in Java")
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+      val result = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+      filePathCallback?.onReceiveValue(result)
+      filePathCallback = null
+    }
+  }
+
   private fun updateSafeAreaInsets() {
     val insets = ViewCompat.getRootWindowInsets(window.decorView) ?: return
     val statusBar = insets.getInsets(
@@ -60,6 +123,7 @@ class MainActivity : TauriActivity() {
     val bottomDp = (navBar.bottom / density).toInt()
 
     findWebView(window.decorView)?.let { wv ->
+      setupWebChromeClient(wv)
       wv.post {
         wv.evaluateJavascript(
           "document.documentElement.style.setProperty('--safe-area-top', '${topDp}px'); document.documentElement.style.setProperty('--safe-area-bottom', '${bottomDp}px');",

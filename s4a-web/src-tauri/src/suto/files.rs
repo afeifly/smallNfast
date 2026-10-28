@@ -16,14 +16,16 @@ use jni::{jni_sig, jni_str};
 use jni::objects::{Global, JClass, JString, JValue};
 
 #[cfg(target_os = "android")]
-static FILE_HELPER_CLASS: LazyLock<std::sync::Mutex<Option<Global<JClass>>>> = LazyLock::new(|| std::sync::Mutex::new(None));
+static FILE_HELPER_CLASS: std::sync::OnceLock<Global<JClass>> = std::sync::OnceLock::new();
 
 #[cfg(target_os = "android")]
 pub fn init_file_helper(env: &mut jni::Env) {
+    if FILE_HELPER_CLASS.get().is_some() {
+        return;
+    }
     if let Ok(class) = env.find_class(jni_str!("com/s4a/app/SutoFileHelper")) {
         if let Ok(global) = env.new_global_ref(class) {
-            let mut lock = FILE_HELPER_CLASS.lock().unwrap();
-            *lock = Some(global);
+            let _ = FILE_HELPER_CLASS.set(global);
             super::logger::log_event("INFO", "FILE_INIT", "SutoFileHelper cached globally", None);
         }
     }
@@ -34,27 +36,20 @@ fn save_binary_file_android(filename: &str, data: &[u8]) -> Result<Option<String
     let vm = super::driver_ble::get_java_vm().ok_or_else(|| "JVM not initialized".to_string())?;
 
     vm.attach_current_thread(|env| -> Result<Option<String>, jni::errors::Error> {
-        let helper_class = {
-            let lock = FILE_HELPER_CLASS.lock().unwrap();
-            lock.as_ref().map(|g| g.clone())
-        };
-
-        let j_class = match helper_class {
-            Some(g) => g,
-            None => {
-                let c = env.find_class(jni_str!("com/s4a/app/SutoFileHelper"))?;
-                let g = env.new_global_ref(c)?;
-                let mut lock = FILE_HELPER_CLASS.lock().unwrap();
-                *lock = Some(g.clone());
-                g
-            }
+        let helper_class_ref = if let Some(c) = FILE_HELPER_CLASS.get() {
+            c
+        } else {
+            let class = env.find_class(jni_str!("com/s4a/app/SutoFileHelper"))?;
+            let global = env.new_global_ref(class)?;
+            let _ = FILE_HELPER_CLASS.set(global);
+            FILE_HELPER_CLASS.get().unwrap()
         };
 
         let j_filename = env.new_string(filename)?;
         let byte_arr = env.byte_array_from_slice(data)?;
 
         let res = env.call_static_method(
-            &j_class,
+            helper_class_ref,
             jni_str!("saveBinaryFile"),
             jni_sig!("(Ljava/lang/String;[B)Ljava/lang/String;"),
             &[

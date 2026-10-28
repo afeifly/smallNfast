@@ -1,0 +1,109 @@
+.header-legend-wrapper {
+  display: none; /* hidden on desktop by default */
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  margin-right: 12px;
+  overflow: hidden;
+}
+
+/* In small screen landscape mode (e.g., iPhone 16 852x393, landscape phones <= 550px height, or window height <= 500px) */
+@media (max-height: 550px) and (orientation: landscape), (max-height: 500px) {
+  .header-legend-wrapper {
+    display: flex;
+  }
+}
+
+.header-legend-scroll {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 2px;
+}
+
+.header-legend-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.header-legend-scroll.is-dragging {
+  cursor: grabbing;
+}
+
+.header-legend-item {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.header-legend-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.header-legend-item.inactive {
+  opacity: 0.45;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.header-legend-symbol {
+  position: relative;
+  width: 18px;
+  height: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.header-legend-line {
+  position: absolute;
+  width: 18px;
+  height: 3.5px;
+  border-radius: 2px;
+}
+
+.header-legend-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffffff;
+  border-width: 1.8px;
+  border-style: solid;
+}
+
+.header-legend-text {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: normal;
+}

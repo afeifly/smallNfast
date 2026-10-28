@@ -2,9 +2,7 @@ import React, { Component } from 'react';
 import * as d3 from 'd3';
 import $ from 'jquery';
 import intl from "react-intl-universal";
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import ScreenRotationIcon from '@mui/icons-material/ScreenRotation';
 import AxisSeries from './AxisSeries';
 import SplineGroup from './SplineGroup';
 import LegendSvgGroup from './LegendSvgGroup';
@@ -16,11 +14,17 @@ import TimePeriod from './TimePeriod'
 import TestAPI from '../../api/TestAPI';
 
 import './css/LineChart.css'; 
-import { Button, Fab, Tooltip } from '@mui/material';
 
 let self;
 let yAxisData = [];
 
+export const isSmallLandscapeMode = () => {
+  if (typeof window === 'undefined') return false;
+  if (window.matchMedia) {
+    return window.matchMedia('(max-height: 550px) and (orientation: landscape), (max-height: 500px)').matches;
+  }
+  return (window.innerHeight || 0) <= 550;
+};
 
 class LineChart extends Component {
   constructor() {
@@ -31,26 +35,18 @@ class LineChart extends Component {
     this.LegendGroupRef = React.createRef();
     this.SplineGroupRef = React.createRef();
     this.TimePeriodRef = React.createRef();
-    this.scaleActionsRef = React.createRef();
     this.state = {
-      backButtonEnabled: false,
-      nextButtonEnabled: false,
       dataType: 'Realtime',
       denoisingChecked: true,
       fileLoaded: false,
     };
   }
-  
 
   render() {
     const { chartController } = this.props;
     const isLoaded = this.state.fileLoaded || (TestAPI.isFileLoaded && TestAPI.isFileLoaded());
     const placeholderText = isLoaded ? 'No channel selected' : 'Open a file to show data';
 
-    const buttonStyle = {
-      marginLeft: 4
-    };
-    
     return(
       <div id="line-chart" ref={this.rootRef}>
         <svg id="line-chart-container"  width={'100%'} height={'100%'}>
@@ -63,33 +59,16 @@ class LineChart extends Component {
           <div className="no-data-tip">{ placeholderText }</div>
         </div>
 
-        <div className="scale-actions" ref={this.scaleActionsRef}>
-          <Tooltip title="Previous scale">
-            <div>
-              <Button style={ buttonStyle } margin="dense" size="small" variant="outlined" 
-                disabled={ !this.state.backButtonEnabled }
-                onClick={ this.gotoPreTimePeriod }>
-                <ArrowBackIcon/>
-              </Button>
-            </div>
-          </Tooltip>
-
-          <Tooltip title="Next scale">
-            <div>
-              <Button style={ buttonStyle } size="small" variant="outlined" 
-                disabled={ !this.state.nextButtonEnabled }
-                onClick={ this.gotoNextTimePeriod }>
-                <ArrowForwardIcon/>
-              </Button>
-            </div>
-          </Tooltip>
-
-          <Tooltip title="Reset">
-            <Button style={ buttonStyle } size="small" variant="outlined" 
-              onClick={ this.resetTimePeriod } >
-              <RefreshIcon/>
-            </Button>
-          </Tooltip>
+        <div className="landscape-prompt">
+          <div className="landscape-icon-wrapper">
+            <ScreenRotationIcon className="landscape-rotate-icon" />
+          </div>
+          <h3 className="landscape-prompt-title">
+            {intl.get('LANDSCAPE_RECOMMENDED_TITLE') || 'Landscape Mode Recommended'}
+          </h3>
+          <p className="landscape-prompt-desc">
+            {intl.get('LANDSCAPE_RECOMMENDED_DESC') || 'Please rotate your screen to landscape orientation for the best curve viewing experience.'}
+          </p>
         </div>
       </div>
     );
@@ -104,7 +83,72 @@ class LineChart extends Component {
       });
     }
 
-    const chartHeight = $('#line-chart').height() - 180;
+    this._isMounted = true;
+    this.resizeTimeouts = [];
+
+    // Mobile & WebView orientation settling handler
+    this.handleOrientationOrResize = () => {
+      if (this.resizeTimeouts) {
+        this.resizeTimeouts.forEach(clearTimeout);
+      }
+      this.resizeTimeouts = [];
+
+      const executeUpdate = () => {
+        if (!this._isMounted) return;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('resize'));
+        }
+        if (this.rootRef.current) {
+          const width = $(this.rootRef.current).width();
+          if (width > 0) {
+            this.updateHeight();
+            this.setWidth(width);
+          }
+        }
+      };
+
+      // Execute in staggered passes so Android/iOS animation settling frames are caught
+      [50, 200, 400, 600].forEach(delay => {
+        const tid = setTimeout(executeUpdate, delay);
+        this.resizeTimeouts.push(tid);
+      });
+    };
+
+    if (typeof window !== 'undefined') {
+      if (window.matchMedia) {
+        this.orientationMediaQuery = window.matchMedia('(orientation: portrait)');
+        if (this.orientationMediaQuery.addEventListener) {
+          this.orientationMediaQuery.addEventListener('change', this.handleOrientationOrResize);
+        } else if (this.orientationMediaQuery.addListener) {
+          this.orientationMediaQuery.addListener(this.handleOrientationOrResize);
+        }
+      }
+      if (window.screen && window.screen.orientation) {
+        window.screen.orientation.addEventListener('change', this.handleOrientationOrResize);
+      }
+      window.addEventListener('orientationchange', this.handleOrientationOrResize);
+    }
+
+    if (typeof ResizeObserver !== 'undefined' && this.rootRef.current) {
+      let lastW = 0;
+      let lastH = 0;
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          const { width, height } = entry.contentRect;
+          if (width > 0 && height > 0 && (Math.abs(width - lastW) > 2 || Math.abs(height - lastH) > 2)) {
+            lastW = width;
+            lastH = height;
+            this.updateHeight();
+            this.setWidth(width);
+          }
+        }
+      });
+      this.resizeObserver.observe(this.rootRef.current);
+    }
+
+    const rawHeight = $('#line-chart').height() || 0;
+    const bottomPadding = isSmallLandscapeMode() ? 65 : 134;
+    const chartHeight = Math.max(50, rawHeight - bottomPadding);
     chartController.setChartHeight(chartHeight);
 
     // d3.select('.graphic-view').on('changeSelectedChannels', this.changeSelectedChannelsHandler);
@@ -118,11 +162,6 @@ class LineChart extends Component {
     .on('changeTimePeriod', () => {
       this.AxisSeriesRef.current.updateXAxis();
       this.SplineGroupRef.current.refreshData();
-
-      // setTimeout(this.updateTimePeriodActions, 500);
-    })
-    .on('updateScaleActions', () => {
-      this.updateTimePeriodActions();
     })
     .on(SystemEvent.UPDATE_CHANNEL_COLOR, (event) => {
       const detail = event.detail;
@@ -136,6 +175,30 @@ class LineChart extends Component {
   }
 
   componentWillUnmount() {
+    this._isMounted = false;
+    if (this.resizeTimeouts) {
+      this.resizeTimeouts.forEach(clearTimeout);
+      this.resizeTimeouts = [];
+    }
+    if (this.setWidthTimeout) {
+      clearTimeout(this.setWidthTimeout);
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
+    if (this.orientationMediaQuery) {
+      if (this.orientationMediaQuery.removeEventListener) {
+        this.orientationMediaQuery.removeEventListener('change', this.handleOrientationOrResize);
+      } else if (this.orientationMediaQuery.removeListener) {
+        this.orientationMediaQuery.removeListener(this.handleOrientationOrResize);
+      }
+    }
+    if (typeof window !== 'undefined') {
+      if (window.screen && window.screen.orientation) {
+        window.screen.orientation.removeEventListener('change', this.handleOrientationOrResize);
+      }
+      window.removeEventListener('orientationchange', this.handleOrientationOrResize);
+    }
     if (this.fileLoadedUnsubscribe) {
       this.fileLoadedUnsubscribe();
     }
@@ -143,7 +206,9 @@ class LineChart extends Component {
 
 
   updateYAxis = () => {
-    this.AxisSeriesRef.current.updateYAxis();
+    if (this.AxisSeriesRef.current) {
+      this.AxisSeriesRef.current.updateYAxis();
+    }
   }
 
   /**
@@ -161,97 +226,66 @@ class LineChart extends Component {
     }
   }
 
-  updateTimePeriodActions = () => {
-    const { chartController } = this.props;
-    const { timePeriods, currentTimePeriodIndex } = chartController;
 
-    const hasHistory = timePeriods.length > 0;
-    const atFirst    = currentTimePeriodIndex <= 0;
-    const atLast     = currentTimePeriodIndex >= timePeriods.length - 1;
-
-    this.setState({
-      backButtonEnabled: hasHistory && !atFirst,
-      nextButtonEnabled: hasHistory && !atLast,
-    });
-
-    // Show the whole scale-actions panel whenever there are time periods to navigate
-    if (hasHistory) {
-      d3.select(this.scaleActionsRef.current).attr('data-status', 'active');
-    } else {
-      d3.select(this.scaleActionsRef.current).attr('data-status', '');
-    }
-  };
-
-  updateResetButton = () => {
-    const { chartController } = this.props;
-    if (!chartController.resetEnable) {
-      return;
-    }
-
-    const x = chartController.chartX + chartController.chartWidth - 110;
-    d3.select(this.scaleActionsRef.current)
-      // .style('left', x + 'px')
-      .attr('data-status', 'active');
-  };
-
-  gotoPreTimePeriod = () => {
-    const { chartController } = this.props;
-
-    // Guard: already at the beginning — do nothing
-    if (chartController.currentTimePeriodIndex <= 0) {
-      return;
-    }
-
-    chartController.gotoPreTimePeriod();
-    this.AxisSeriesRef.current.updateXAxis();
-    this.SplineGroupRef.current.refreshData();
-
-    this.updateTimePeriodActions();
-    d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
-  };
-
-  gotoNextTimePeriod = () => {
-    const { chartController } = this.props;
-
-    // Guard: already at the newest zoom — do nothing
-    if (chartController.currentTimePeriodIndex >= chartController.timePeriods.length - 1) {
-      return;
-    }
-
-    chartController.gotoNextTimePeriod();
-    this.AxisSeriesRef.current.updateXAxis();
-    this.SplineGroupRef.current.refreshData();
-
-    this.updateTimePeriodActions();
-    d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
-  };
-
-
-  setWidth(w) {
+  setWidth = (w) => {
     $('#line-chart').width(w);
     
-    if (yAxisData.length > 0) {
-      setTimeout(() => {
+    if (this.setWidthTimeout) clearTimeout(this.setWidthTimeout);
+    this.setWidthTimeout = setTimeout(() => {
+      if (!this._isMounted) return;
+      if (this.AxisSeriesRef.current) {
         this.AxisSeriesRef.current.updateDisplay();
+      }
+      if (this.SplineGroupRef.current) {
         this.SplineGroupRef.current.updateDisplay();
-        this.positionLegend();
-      }, 100);
-    }
-  }
+      }
+      this.positionLegend();
+    }, 50);
+  };
 
-  updateHeight() {
+  updateHeight = () => {
+    if (!this._isMounted) return;
     const { chartController } = this.props;
-    const chartHeight = $('#line-chart').height() - 180;
+    const rawHeight = $('#line-chart').height() || 0;
+    const bottomPadding = isSmallLandscapeMode() ? 65 : 134;
+    const chartHeight = Math.max(50, rawHeight - bottomPadding);
 
-    for (let i = 0; i < yAxisData.length; i++) {
-      const channel = yAxisData[i];
-      channel.scale.rangeRound([chartHeight, 0]);
+    // 1. Update all selected channels in chartController & yAxisData
+    const channels = chartController.selectedChannels || yAxisData || [];
+    for (let i = 0; i < channels.length; i++) {
+      const channel = channels[i];
+      if (channel && channel.scale) {
+        channel.scale.rangeRound([chartHeight, 0]);
+      }
+    }
+
+    // 2. Also update all Y-axis data objects in chartController.yAxisDataset
+    if (chartController.yAxisDataset) {
+      for (let i = 0; i < chartController.yAxisDataset.length; i++) {
+        const d = chartController.yAxisDataset[i];
+        if (d && d.scale) {
+          d.scale.rangeRound([chartHeight, 0]);
+        }
+      }
+    }
+
+    // 3. Update majorYAxisData directly in AxisSeriesRef
+    if (this.AxisSeriesRef.current && this.AxisSeriesRef.current.majorYAxisData?.scale) {
+      this.AxisSeriesRef.current.majorYAxisData.scale.rangeRound([chartHeight, 0]);
     }
 
     chartController.setChartHeight(chartHeight);
-    this.AxisSeriesRef.current.updateYAxis();
-    this.AxisSeriesRef.current.updateLineGrid();
-  }
+
+    if (this.AxisSeriesRef.current) {
+      this.AxisSeriesRef.current.updateYAxis();
+      this.AxisSeriesRef.current.updateXAxis();
+      this.AxisSeriesRef.current.updateLineGrid(false);
+    }
+    if (this.SplineGroupRef.current) {
+      this.SplineGroupRef.current.updateDisplay();
+    }
+    this.positionLegend();
+  };
 
   setX(x) {
     const { chartController } = this.props;
@@ -299,8 +333,15 @@ class LineChart extends Component {
 
 
   positionLegend = () => {
-    const panelHeight = $('#line-chart').height();
-    const panelWidth = $('#line-chart').width();
+    if (!this._isMounted || !this.LegendGroupRef.current) return;
+    if (isSmallLandscapeMode()) {
+      d3.select('#legend-group').style('display', 'none');
+      return;
+    }
+    d3.select('#legend-group').style('display', null);
+
+    const panelHeight = $('#line-chart').height() || 0;
+    const panelWidth = $('#line-chart').width() || 0;
 
     // Layout legend items in rows, wrapping when they would exceed panel width.
     // Each item is placed with a fixed 15px left-gap from the previous item's
@@ -311,7 +352,8 @@ class LineChart extends Component {
     const GAP = 15;
 
     d3.selectAll('.legend-item').each(function() {
-      const itemW = this.getBBox().width;
+      const bbox = this.getBBox ? this.getBBox() : { width: 0 };
+      const itemW = bbox.width;
       if (row === 0 && rowX > 0 && rowX + GAP + itemW > panelWidth - 30) {
         // Wrap to second row
         maxRowX = rowX;
@@ -328,13 +370,17 @@ class LineChart extends Component {
     const legendH = row > 0 ? 50 : 30;
     const x = Math.max(0, Math.floor((panelWidth - legendW) / 2));
 
-    this.LegendGroupRef.current.setWidth(legendW);
-    this.LegendGroupRef.current.setHeight(legendH);
-    this.LegendGroupRef.current.setPosition({ x, y: panelHeight - 60 });
+    if (this.LegendGroupRef.current) {
+      this.LegendGroupRef.current.setWidth(legendW);
+      this.LegendGroupRef.current.setHeight(legendH);
+      this.LegendGroupRef.current.setPosition({ x, y: panelHeight - 60 });
+    }
   }
 
   updateDenoisingSetting = () => {
-    self.SplineGroupRef.current.updateDisplay();
+    if (this.SplineGroupRef.current) {
+      this.SplineGroupRef.current.updateDisplay();
+    }
   };
 
 
@@ -357,15 +403,7 @@ class LineChart extends Component {
     // the zoom history, then dispatches changeTimePeriod to redraw the X axis.
     chartController.openHistoryMode();
 
-    // Hide the scale-actions panel and update button states
-    d3.select(this.scaleActionsRef.current).attr('data-status', '');
-    this.updateTimePeriodActions();
-
     d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
-  }
-
-  hideScaleActionButtons = () => {
-    d3.select(this.scaleActionsRef.current).attr('data-status', '');
   }
 
 
@@ -442,7 +480,6 @@ class LineChart extends Component {
 
   updateViewForRealtimeMode = () => {
     this.hideTimePeriod();
-    this.hideScaleActionButtons();
   };
 
   setNoLoggingChannels = (bool) => {

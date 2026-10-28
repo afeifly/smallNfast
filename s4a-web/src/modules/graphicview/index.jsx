@@ -16,11 +16,14 @@ import ListItemText from '@mui/material/ListItemText';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import PrintIcon from '@mui/icons-material/Print';
 import RangeIcon from '@mui/icons-material/DateRange';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import intl from "react-intl-universal";
 import DeleteIcon from '@mui/icons-material/Delete';
 
 import ChannelList from '../channel/ChannelList';
 import LineChart from './LineChart';
+import HeaderLegend from './HeaderLegend';
 import YAxisSetting from './YAxisSetting';
 import { SystemEvent } from '../../util/SystemConstant';
 import ChartController from './ChartController';
@@ -42,6 +45,7 @@ class GraphicView extends Component {
     this.channelListRef = React.createRef();
     this.graphicViewRef = React.createRef();
     this.lineChartRef = React.createRef();
+    this.headerLegendRef = React.createRef();
     this.loadingRef = React.createRef();
     this.ySettingRef = React.createRef();
     this.channelSettingRef = React.createRef();
@@ -54,6 +58,8 @@ class GraphicView extends Component {
       recentFilesOpen: false,
       recentFiles: [],
       shareMenuAnchorEl: null,
+      canMovePrev: false,
+      canMoveNext: false,
     }
 
     this.chartController = new ChartController();
@@ -93,9 +99,44 @@ class GraphicView extends Component {
 
         <div className="graphic-view" ref={this.graphicViewRef}>
           <div className="app-window-title">
-            <span />
+            <HeaderLegend 
+              ref={this.headerLegendRef}
+              chartController={this.chartController} 
+            />
 
             <div className="window-title-right-area">
+
+              {/* Previous page button */}
+              {this.state.canMovePrev && (
+                <Tooltip title={intl.get('PREVIOUS_PAGE')}>
+                  <div>
+                    <IconButton
+                      aria-label="previous page"
+                      onClick={this.movePrevPage}
+                      style={buttonStyle}
+                      disableRipple
+                    >
+                      <ChevronLeftIcon style={iconStyle} />
+                    </IconButton>
+                  </div>
+                </Tooltip>
+              )}
+
+              {/* Next page button */}
+              {this.state.canMoveNext && (
+                <Tooltip title={intl.get('NEXT_PAGE')}>
+                  <div>
+                    <IconButton
+                      aria-label="next page"
+                      onClick={this.moveNextPage}
+                      style={buttonStyle}
+                      disableRipple
+                    >
+                      <ChevronRightIcon style={iconStyle} />
+                    </IconButton>
+                  </div>
+                </Tooltip>
+              )}
 
               {/* Channel list button */}
               <Tooltip title={intl.get('CHANNEL')}>
@@ -141,12 +182,26 @@ class GraphicView extends Component {
           <YAxisSetting ref={this.ySettingRef} />
           <ChannelSetting ref={this.channelSettingRef} />
 
-          <Dialog maxWidth='md' onClose={this.handleCloseRecentFiles} open={this.state.recentFilesOpen}>
+          <Dialog 
+            maxWidth='xs' 
+            fullWidth
+            onClose={this.handleCloseRecentFiles} 
+            open={this.state.recentFilesOpen}
+            PaperProps={{
+              style: {
+                borderRadius: '16px',
+                margin: '16px',
+                maxWidth: '420px',
+                width: 'calc(100% - 32px)',
+                boxSizing: 'border-box'
+              }
+            }}
+          >
             <DialogTitle className="dialog-title" onClose={this.handleCloseRecentFiles}>
               { intl.get('RECENT_CSD_FILES') }
             </DialogTitle>
-            <DialogContent>
-              <List style={{ width: '400px', maxHeight: '300px', overflow: 'auto' }}>
+            <DialogContent style={{ padding: '8px 16px' }}>
+              <List style={{ width: '100%', maxHeight: '50vh', overflow: 'auto', boxSizing: 'border-box' }}>
                 {this.state.recentFiles.map((file, idx) => (
                   <ListItem 
                     disablePadding 
@@ -166,7 +221,7 @@ class GraphicView extends Component {
                       <ListItemText 
                         primary={file.name} 
                         secondary={file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')} 
-                        primaryTypographyProps={{ style: { fontWeight: 'bold' } }}
+                        primaryTypographyProps={{ style: { fontWeight: 'bold', fontSize: '13px', wordBreak: 'break-all' } }}
                         secondaryTypographyProps={{ style: { fontSize: '11px', wordBreak: 'break-all' } }}
                       />
                     </ListItemButton>
@@ -174,7 +229,7 @@ class GraphicView extends Component {
                 ))}
               </List>
             </DialogContent>
-            <DialogActions className="dialog-footer">
+            <DialogActions className="dialog-footer" style={{ flexWrap: 'wrap', gap: '8px', padding: '12px 16px' }}>
               <Button onClick={this.handleOpenNewCsd} color="primary" variant="contained">
                 { intl.get('OPEN_NEW_CSD_FILE') }
               </Button>
@@ -273,6 +328,7 @@ class GraphicView extends Component {
         if (this.lineChartRef.current && this.lineChartRef.current.SplineGroupRef.current) {
           this.lineChartRef.current.SplineGroupRef.current.drawAll();
         }
+        this.checkPagingState();
       })
       .on(SystemEvent.NO_SELECTED_CHANNELS, () => {
         d3.select('.chart-placeholder').attr('data-status', 'active');
@@ -309,12 +365,18 @@ class GraphicView extends Component {
 
         this.channelSettingRef.current.handleClickOpen(channel);
       });
+    d3.select('#line-chart')
+      .on('changeTimePeriod.paging', this.checkPagingState)
+      .on('updateScaleActions.paging', this.checkPagingState);
   }
 
   componentWillUnmount() {
     this.chartController.clearTimer();
     d3.select(window).on('resize.updateChart', null);
     d3.select('#App').on('checkTimer', null);
+    d3.select('#line-chart')
+      .on('changeTimePeriod.paging', null)
+      .on('updateScaleActions.paging', null);
     if (this.fileLoadedUnsubscribe) {
       this.fileLoadedUnsubscribe();
     }
@@ -345,7 +407,7 @@ class GraphicView extends Component {
       }
       this.setState({
         noLoggingChannels: true
-      });
+      }, this.checkPagingState);
       if (this.loadingRef.current) {
         this.loadingRef.current.hide();
       }
@@ -371,7 +433,7 @@ class GraphicView extends Component {
     if (Object.keys(displayChannels).length > 0) {
       this.setState({
         noLoggingChannels: false
-      });
+      }, this.checkPagingState);
       this.chartController.setDisplayChannels(displayChannels);
     } else {
       if (this.lineChartRef.current) {
@@ -619,6 +681,7 @@ class GraphicView extends Component {
 
     // Update the toggle button UI to reflect History mode
     this.initToggleButton('history');
+    this.checkPagingState();
 
     console.log(`[GraphicView] CSD time range: ${startDate.toISOString()} → ${stopDate.toISOString()}`);
   };
@@ -753,14 +816,146 @@ class GraphicView extends Component {
     if (selectedChannels && selectedChannels.length === 0) {
       this.setState({
         noLoggingChannels: true
-      });
+      }, this.checkPagingState);
     } else {
       this.setState({
         noLoggingChannels: false
-      });
+      }, this.checkPagingState);
     }
 
-    this.lineChartRef.current.changeSelectedChannelsHandler();
+    if (this.headerLegendRef && this.headerLegendRef.current) {
+      this.headerLegendRef.current.updateChannels(selectedChannels);
+    }
+
+    if (this.lineChartRef && this.lineChartRef.current) {
+      this.lineChartRef.current.changeSelectedChannelsHandler();
+    }
+  };
+
+  getDataTimeBounds = () => {
+    let minStart = null;
+    let maxEnd = null;
+
+    if (TestAPI.getFileTimeRange) {
+      const range = TestAPI.getFileTimeRange();
+      if (range && Number.isFinite(range.start) && Number.isFinite(range.stop) && range.stop > range.start) {
+        minStart = range.start;
+        maxEnd = range.stop;
+      }
+    }
+
+    if (minStart === null && this.chartController && this.chartController.historyTimeRange) {
+      const { start, end } = this.chartController.historyTimeRange;
+      const hStart = start ? new Date(start).getTime() : NaN;
+      const hEnd = end ? new Date(end).getTime() : NaN;
+      if (Number.isFinite(hStart) && Number.isFinite(hEnd) && hEnd > hStart) {
+        minStart = hStart;
+        maxEnd = hEnd;
+      }
+    }
+
+    if (minStart === null || maxEnd === null || maxEnd <= minStart) {
+      return null;
+    }
+    return { minStart, maxEnd };
+  };
+
+  checkPagingState = () => {
+    const cc = this.chartController;
+    if (!cc || !cc.timePeriod || !cc.timePeriod.start || !cc.timePeriod.end) {
+      if (this.state.canMovePrev || this.state.canMoveNext) {
+        this.setState({ canMovePrev: false, canMoveNext: false });
+      }
+      return;
+    }
+
+    if (this.state.noLoggingChannels && (!cc.selectedChannels || cc.selectedChannels.length === 0)) {
+      if (this.state.canMovePrev || this.state.canMoveNext) {
+        this.setState({ canMovePrev: false, canMoveNext: false });
+      }
+      return;
+    }
+
+    const bounds = this.getDataTimeBounds();
+    if (!bounds) {
+      if (this.state.canMovePrev || this.state.canMoveNext) {
+        this.setState({ canMovePrev: false, canMoveNext: false });
+      }
+      return;
+    }
+
+    const currentStart = new Date(cc.timePeriod.start).getTime();
+    const currentEnd = new Date(cc.timePeriod.end).getTime();
+    if (!Number.isFinite(currentStart) || !Number.isFinite(currentEnd) || currentEnd <= currentStart) {
+      if (this.state.canMovePrev || this.state.canMoveNext) {
+        this.setState({ canMovePrev: false, canMoveNext: false });
+      }
+      return;
+    }
+
+    const THRESHOLD = 500;
+    const canMovePrev = currentStart > bounds.minStart + THRESHOLD;
+    const canMoveNext = currentEnd < bounds.maxEnd - THRESHOLD;
+
+    if (canMovePrev !== this.state.canMovePrev || canMoveNext !== this.state.canMoveNext) {
+      this.setState({ canMovePrev, canMoveNext });
+    }
+  };
+
+  movePrevPage = () => {
+    const { chartController } = this;
+    if (!chartController || !chartController.timePeriod) return;
+    const currentStart = new Date(chartController.timePeriod.start).getTime();
+    const currentEnd = new Date(chartController.timePeriod.end).getTime();
+    const duration = currentEnd - currentStart;
+    if (duration <= 0) return;
+
+    const bounds = this.getDataTimeBounds();
+    if (!bounds) return;
+
+    let newStart = currentStart - duration;
+    let newEnd = currentEnd - duration;
+    if (newStart < bounds.minStart) {
+      newStart = bounds.minStart;
+      newEnd = Math.min(bounds.maxEnd, newStart + duration);
+    }
+
+    this.applyNewTimePeriod(newStart, newEnd);
+  };
+
+  moveNextPage = () => {
+    const { chartController } = this;
+    if (!chartController || !chartController.timePeriod) return;
+    const currentStart = new Date(chartController.timePeriod.start).getTime();
+    const currentEnd = new Date(chartController.timePeriod.end).getTime();
+    const duration = currentEnd - currentStart;
+    if (duration <= 0) return;
+
+    const bounds = this.getDataTimeBounds();
+    if (!bounds) return;
+
+    let newEnd = currentEnd + duration;
+    let newStart = currentStart + duration;
+    if (newEnd > bounds.maxEnd) {
+      newEnd = bounds.maxEnd;
+      newStart = Math.max(bounds.minStart, newEnd - duration);
+    }
+
+    this.applyNewTimePeriod(newStart, newEnd);
+  };
+
+  applyNewTimePeriod = (newStart, newEnd) => {
+    const startDate = new Date(newStart);
+    const endDate = new Date(newEnd);
+
+    this.chartController.timePeriod = { start: startDate, end: endDate };
+    if (this.chartController.xScale) {
+      this.chartController.xScale.domain([startDate, endDate]);
+    }
+
+    d3.select('#line-chart').dispatch('changeTimePeriod');
+    d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
+    this.checkPagingState();
   };
 
 }

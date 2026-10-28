@@ -24,5 +24,9 @@ export default {
     "VISIBLE": "Visible",
     "SET_AS_MAIN_YAXIS": "Set as Main Y-Axis",
     "RECENT_CSD_FILES": "Recent CSD Files",
-    "OPEN_NEW_CSD_FILE": "Open New CSD File..."
+    "OPEN_NEW_CSD_FILE": "Open New CSD File...",
+    "PREVIOUS_PAGE": "Previous Page",
+    "NEXT_PAGE": "Next Page",
+    "LANDSCAPE_RECOMMENDED_TITLE": "Landscape Mode Recommended",
+    "LANDSCAPE_RECOMMENDED_DESC": "Please rotate your screen to landscape orientation for the best curve viewing experience."
 };

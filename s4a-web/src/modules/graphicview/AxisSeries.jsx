@@ -30,7 +30,7 @@ class AxisSeries extends Component {
     const yAxisItems = this.getYAxisItems();
 
     return(
-      <g id="axis-container" transform="translate(0, 70)">
+      <g id="axis-container" transform="translate(0, 24)">
         <g id="grid-container">
           <g className="grid-line" transform="translate(4, 0)"/>
         </g>
@@ -103,9 +103,25 @@ class AxisSeries extends Component {
       d3.select('#axis-container').attr('visibility', 'hidden');
       return;
     }
+
+    const { chartController } = this.props;
+    const chartHeight = chartController.chartHeight;
+    if (chartHeight > 0) {
+      if (this.yDataset) {
+        for (let i = 0; i < this.yDataset.length; i++) {
+          const d = this.yDataset[i];
+          if (d && d.scale) {
+            d.scale.rangeRound([chartHeight, 0]);
+          }
+        }
+      }
+      if (this.majorYAxisData && this.majorYAxisData.scale) {
+        this.majorYAxisData.scale.rangeRound([chartHeight, 0]);
+      }
+    }
     
     this.reviseYAxisLayout();
-    this.updateLineGrid(true);
+    this.updateLineGrid(false);
     this.updateXAxis();
     this.updateYAxis();
     d3.selectAll('.y-axis').attr('visibility', 'visible');
@@ -203,10 +219,10 @@ class AxisSeries extends Component {
       if (y_axis) {
         chartEndX = y_axis.getX() - 1;
       } else {
-        chartEndX = $('#line-chart').width() - 80;
+        chartEndX = $('#line-chart').width() - 24;
       }
     }else {
-      chartEndX = $('#line-chart').width() - 80;
+      chartEndX = $('#line-chart').width() - 24;
     }
     chartWidth = Math.max(0, chartEndX - chartStartX);
 
@@ -316,6 +332,11 @@ class AxisSeries extends Component {
 
     const { chartController } = this.props;
     const chartWidth = chartController.chartWidth;
+    const chartHeight = chartController.chartHeight;
+
+    if (chartHeight > 0 && this.majorYAxisData.scale) {
+      this.majorYAxisData.scale.rangeRound([chartHeight, 0]);
+    }
 
     if (withAnimation) {
       d3.select('.grid-line').transition().duration(500)

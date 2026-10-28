@@ -37,3 +37,29 @@ if (typeof window !== 'undefined' && !window.__TAURI_INTERNALS__) {
     invoke: async () => ({ success: true, channels: [], info: {} }),
   };
 }
+
+// Polyfill SVGElement.transform.baseVal for d3 transitions in jsdom
+if (typeof SVGElement !== 'undefined' && !SVGElement.prototype.transform) {
+  Object.defineProperty(SVGElement.prototype, 'transform', {
+    get() {
+      return {
+        baseVal: {
+          consolidate: () => null,
+          numberOfItems: 0,
+          getItem: () => null,
+        },
+      };
+    },
+    configurable: true,
+  });
+}
+
+// Polyfill ResizeObserver in jsdom
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+  window.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+

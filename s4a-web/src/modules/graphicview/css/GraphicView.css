@@ -49,6 +49,16 @@
   position: relative;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+@media (max-height: 550px) and (orientation: landscape), (max-height: 500px) {
+  .app-window-title {
+    height: 42px;
+    line-height: 42px;
+    padding: 0 8px 0 12px;
+  }
 }
 
 

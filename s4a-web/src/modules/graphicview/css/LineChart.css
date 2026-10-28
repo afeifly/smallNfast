@@ -86,19 +86,6 @@
   flex-grow: 1;
 }
 
-.scale-actions {
-  position: absolute;
-  display: flex;
-  top: 16px;
-  right: 128px;
-  visibility: hidden;
-}
-
-.scale-actions[data-status=active] {
-  visibility: visible
-}
-
-
 .channel-list-button {
   position: relative;
   width: 24px;
@@ -169,3 +156,87 @@
 #export-image-container[data-status=active] {
   visibility: visible;
 } 
+
+/* Centered prompt suggesting landscape orientation on phones */
+.landscape-prompt {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  box-sizing: border-box;
+  text-align: center;
+  z-index: 10;
+  animation: fadeIn 300ms ease-out;
+}
+
+.landscape-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: rgba(0, 172, 134, 0.1);
+  color: #00ac86;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 14px rgba(0, 172, 134, 0.15);
+}
+
+.landscape-rotate-icon {
+  font-size: 32px !important;
+  animation: rotateHint 2.4s infinite ease-in-out;
+}
+
+@keyframes rotateHint {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  35%, 65% {
+    transform: rotate(-90deg);
+  }
+}
+
+.landscape-prompt-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.landscape-prompt-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
+  max-width: 260px;
+}
+
+/* When viewed on a phone in portrait orientation, hide the drawing area and display the prompt */
+@media (max-width: 768px) and (orientation: portrait) {
+  #line-chart .landscape-prompt {
+    display: flex;
+  }
+
+  #line-chart #line-chart-container,
+  #line-chart .chart-placeholder {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+/* In small screen landscape mode (e.g. iPhone 16 852x393), hide bottom SVG legend to maximize curve height */
+@media (max-height: 550px) and (orientation: landscape), (max-height: 500px) {
+  #legend-group {
+    display: none !important;
+  }
+}
+
+

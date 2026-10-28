@@ -1196,12 +1196,26 @@ function App() {
       </main>
 
       {/* Global Recent Files Dialog */}
-      <Dialog maxWidth='md' onClose={() => setRecentDialogOpen(false)} open={recentDialogOpen}>
+      <Dialog 
+        maxWidth='xs' 
+        fullWidth
+        onClose={() => setRecentDialogOpen(false)} 
+        open={recentDialogOpen}
+        PaperProps={{
+          style: {
+            borderRadius: '16px',
+            margin: '16px',
+            maxWidth: '420px',
+            width: 'calc(100% - 32px)',
+            boxSizing: 'border-box'
+          }
+        }}
+      >
         <DialogTitle className="dialog-title" onClose={() => setRecentDialogOpen(false)}>
           Recent Files
         </DialogTitle>
-        <DialogContent>
-          <List style={{ width: '400px', maxHeight: '300px', overflow: 'auto' }}>
+        <DialogContent style={{ padding: '8px 16px' }}>
+          <List style={{ width: '100%', maxHeight: '50vh', overflow: 'auto', boxSizing: 'border-box' }}>
             {recentFiles.map((file, idx) => (
               <ListItem 
                 disablePadding 
@@ -1224,7 +1238,7 @@ function App() {
                   <ListItemText
                     primary={file.name}
                     secondary={file.path || (file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '')}
-                    primaryTypographyProps={{ style: { fontWeight: 'bold' } }}
+                    primaryTypographyProps={{ style: { fontWeight: 'bold', fontSize: '13px', wordBreak: 'break-all' } }}
                     secondaryTypographyProps={{ style: { fontSize: '11px', wordBreak: 'break-all' } }}
                   />
                 </ListItemButton>
@@ -1232,7 +1246,7 @@ function App() {
             ))}
           </List>
         </DialogContent>
-        <DialogActions className="dialog-footer">
+        <DialogActions className="dialog-footer" style={{ flexWrap: 'wrap', gap: '8px', padding: '12px 16px' }}>
           <Button onClick={() => {
             setRecentDialogOpen(false);
             handleOpenFile();
@@ -1294,7 +1308,7 @@ function App() {
           setLargeCsvDialogOpen(false);
           TestAPI.resolveLargeCsvChoice && TestAPI.resolveLargeCsvChoice('cancel');
         }}
-        PaperProps={{ style: { borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)' } }}
+        PaperProps={{ style: { borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', margin: '16px', width: 'calc(100% - 32px)' } }}
       >
         {/* Header */}
         <DialogTitle style={{
@@ -1371,9 +1385,10 @@ function App() {
         </DialogContent>
 
         <DialogActions style={{
-          padding: '16px 24px', background: '#fafafa',
+          padding: '16px 20px', background: '#fafafa',
           borderTop: '1px solid #e2e8f0',
           display: 'flex', gap: '8px', justifyContent: 'flex-end',
+          flexWrap: 'wrap'
         }}>
           {/* Cancel */}
           <Button
@@ -1727,22 +1742,10 @@ function App() {
 
       {/* Global File Loading Overlay */}
       {fileLoading && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.4)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999
-        }}>
-          <div className="landing-card" style={{ padding: '40px', textAlign: 'center', minWidth: '360px', background: '#ffffff', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
-            <div className="landing-logo-container" style={{ animation: 'spin 2s linear infinite' }}>
-              <svg className="landing-card-logo" viewBox="0 0 24 24" width="64" height="64">
+        <div className="file-loading-overlay">
+          <div className="file-loading-card">
+            <div className="file-loading-logo-box">
+              <svg className="file-loading-spinner" viewBox="0 0 24 24" width="36" height="36">
                 <path
                   fill="none"
                   stroke="#00ac86"
@@ -1753,25 +1756,20 @@ function App() {
                 />
               </svg>
             </div>
-            <h2 style={{ fontSize: '18px', fontWeight: '800', marginTop: '20px', color: '#0f172a' }}>
+            <h2 className="file-loading-title">
               Loading File...
             </h2>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: '6px 0 20px 0' }}>
-              Reading binary slices for <strong>{loadingFilename}</strong>
+            <p className="file-loading-subtitle">
+              Reading binary slices for <strong className="file-loading-filename">{loadingFilename}</strong>
             </p>
             
-            <div style={{ width: '100%', height: '8px', background: '#cbd5e1', borderRadius: '4px', overflow: 'hidden', position: 'relative', marginBottom: '12px' }}>
+            <div className="file-loading-bar-track">
               <div 
-                style={{ 
-                  width: `${Math.round(fileLoadingProgress * 100)}%`, 
-                  height: '100%', 
-                  background: 'linear-gradient(90deg, #00ac86, #10b981)', 
-                  transition: 'width 0.15s ease-out',
-                  borderRadius: '4px' 
-                }}
+                className="file-loading-bar-fill"
+                style={{ width: `${Math.round(fileLoadingProgress * 100)}%` }}
               />
             </div>
-            <div style={{ fontSize: '13px', fontWeight: '800', color: '#00ac86' }}>
+            <div className="file-loading-pct">
               {Math.round(fileLoadingProgress * 100)}% Completed
             </div>
           </div>

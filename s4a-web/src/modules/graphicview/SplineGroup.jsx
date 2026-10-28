@@ -48,7 +48,7 @@ class SplineGroup extends Component {
     const dataTipPanel = this.getDataTip();
 
     return (
-      <g id="line-container" ref={this.rootRef} transform={`translate(${x}, 70)`}>
+      <g id="line-container" ref={this.rootRef} transform={`translate(${x}, 24)`}>
         <defs>
           <filter id="drop-shadow" x="-100%" y="-100%" width="300%" height="300%">
             <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
@@ -155,7 +155,7 @@ class SplineGroup extends Component {
     const height = chartController.chartHeight;
 
     // Keep the container transform in sync
-    d3.select('#line-container').attr('transform', `translate(${x}, 70)`);
+    d3.select('#line-container').attr('transform', `translate(${x}, 24)`);
     d3.select('.line-background').attr('width', Math.max(0, width)).attr('height', Math.max(0, height));
 
     // Re-draw each channel's spline with now-valid refs
@@ -177,7 +177,7 @@ class SplineGroup extends Component {
     // Sync the container's SVG transform with the current chartX so lines always
     // start at the Y-axis, not the left edge of the SVG. chartX is set by
     // AxisSeries.reviseYAxisLayout() which may run after React's render pass.
-    d3.select('#line-container').attr('transform', `translate(${x}, 70)`);
+    d3.select('#line-container').attr('transform', `translate(${x}, 24)`);
 
     //Update line background size
     d3.select('.line-background')

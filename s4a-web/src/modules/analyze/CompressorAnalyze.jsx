@@ -109,6 +109,9 @@ export default function CompressorAnalyze() {
   const [editingCompressors, setEditingCompressors] = useState([]);
   const [selectedCompIdx, setSelectedCompIdx] = useState(0);
 
+  // Mobile view switcher ('config' | 'report')
+  const [mobileTab, setMobileTab] = useState('config');
+
   // Refs for d3 charts
   const pieRef = useRef(null);
   const barRef = useRef(null);
@@ -215,6 +218,7 @@ export default function CompressorAnalyze() {
     setLoading(true);
     setProgress(0);
     setError(null);
+    setMobileTab('report');
 
     try {
       // Get channels from the loaded file
@@ -549,7 +553,27 @@ export default function CompressorAnalyze() {
   }
 
   return (
-    <div className="analyze-container">
+    <div className={`analyze-container mobile-tab-${mobileTab}`}>
+      {/* Small Screen View Switcher (Hidden on Desktop via CSS) */}
+      <div className="analyze-mobile-switcher">
+        <button
+          type="button"
+          className={`analyze-mobile-btn ${mobileTab === 'config' ? 'active' : ''}`}
+          onClick={() => setMobileTab('config')}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Parameters</span>
+        </button>
+        <button
+          type="button"
+          className={`analyze-mobile-btn ${mobileTab === 'report' ? 'active' : ''}`}
+          onClick={() => setMobileTab('report')}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          <span>Analysis Results</span>
+        </button>
+      </div>
+
       {/* Sidebar Settings */}
       <aside className="analyze-sidebar">
         <h3 className="sidebar-section-title">Settings</h3>
@@ -1074,13 +1098,13 @@ export default function CompressorAnalyze() {
       </main>
 
       {/* Per-Compressor Configuration Dialog */}
-      <Dialog maxWidth="md" fullWidth open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+      <Dialog maxWidth="md" fullWidth open={settingsOpen} onClose={() => setSettingsOpen(false)} className="compressor-settings-dialog">
         <DialogTitle style={{ fontWeight: '800', color: '#0f172a' }}>
           Configure Compressors
         </DialogTitle>
         <DialogContent dividers>
           {editingCompressors.length > 0 ? (
-            <div style={{ display: 'flex', gap: '20px', minHeight: '400px' }}>
+            <div className="compressor-dialog-body" style={{ display: 'flex', gap: '20px', minHeight: '400px' }}>
               {/* Left pane: Selector */}
               <div style={{ width: '220px', borderRight: '1px solid #e2e8f0', paddingRight: '16px' }}>
                 <div style={{ fontWeight: '700', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.05em' }}>

@@ -43,6 +43,7 @@ const TableView = () => {
   const [draggingVal, setDraggingVal] = useState(null);
   
   const [pageInputVal, setPageInputVal] = useState('1');
+  const [columnsVisible, setColumnsVisible] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 768 : true));
 
   // Load channels once on mount
   useEffect(() => {
@@ -180,86 +181,116 @@ const TableView = () => {
 
   return (
     <div className="table-view-container">
-      {/* Left Sidebar - Columns Selection */}
-      <aside className="table-sidebar">
-        <div className="table-sidebar-header">
-          <span>Columns ({selectedChannelIds.length}/{channels.length})</span>
-        </div>
-        
-        <input
-          type="text"
-          className="sidebar-search-box"
-          placeholder="Search channels..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+      {/* Mobile Backdrop */}
+      {columnsVisible && (
+        <div
+          className="table-sidebar-backdrop"
+          onClick={() => setColumnsVisible(false)}
+          aria-hidden="true"
         />
-        
-        <div className="sidebar-actions">
-          <button className="sidebar-btn" onClick={handleSelectAll}>Select All</button>
-          <button className="sidebar-btn" onClick={handleClearAll}>Clear All</button>
-        </div>
+      )}
 
-        <div className="channels-list-scroll">
-          {Object.keys(groups).map(groupName => {
-            const groupChannels = groups[groupName];
-            const groupChannelIds = groupChannels.map(c => c.channel_id);
-            const selectedInGroup = groupChannelIds.filter(id => selectedChannelIds.includes(id));
-            
-            const isAllSelected = selectedInGroup.length === groupChannelIds.length;
-            const isSomeSelected = selectedInGroup.length > 0 && selectedInGroup.length < groupChannelIds.length;
+      {/* Left Sidebar - Columns Selection */}
+      <aside className={`table-sidebar ${columnsVisible ? 'expanded' : 'collapsed'}`}>
+        <div className="table-sidebar-inner">
+          <div className="table-sidebar-header">
+            <span className="table-sidebar-title">Columns ({selectedChannelIds.length}/{channels.length})</span>
+            <button
+              type="button"
+              className="sidebar-close-btn"
+              onClick={() => setColumnsVisible(false)}
+              title="Hide Columns panel"
+              aria-label="Close columns panel"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <input
+            type="text"
+            className="sidebar-search-box"
+            placeholder="Search channels..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          
+          <div className="sidebar-actions">
+            <button className="sidebar-btn" onClick={handleSelectAll}>Select All</button>
+            <button className="sidebar-btn" onClick={handleClearAll}>Clear All</button>
+          </div>
 
-            return (
-              <div key={groupName} className="sensor-group-container">
-                <div className="sensor-group-header">
-                  <Checkbox
-                    size="small"
-                    checked={isAllSelected}
-                    indeterminate={isSomeSelected}
-                    onChange={(e) => handleGroupCheckboxChange(groupChannels, e.target.checked)}
-                    sx={{
-                      padding: '4px',
-                      color: '#cbd5e1',
-                      '&.Mui-checked': { color: '#00ac86' },
-                      '&.MuiCheckbox-indeterminate': { color: '#00ac86' }
-                    }}
-                  />
-                  <span className="sensor-group-title">{groupName}</span>
+          <div className="channels-list-scroll">
+            {Object.keys(groups).map(groupName => {
+              const groupChannels = groups[groupName];
+              const groupChannelIds = groupChannels.map(c => c.channel_id);
+              const selectedInGroup = groupChannelIds.filter(id => selectedChannelIds.includes(id));
+              
+              const isAllSelected = selectedInGroup.length === groupChannelIds.length;
+              const isSomeSelected = selectedInGroup.length > 0 && selectedInGroup.length < groupChannelIds.length;
+
+              return (
+                <div key={groupName} className="sensor-group-container">
+                  <div className="sensor-group-header">
+                    <Checkbox
+                      size="small"
+                      checked={isAllSelected}
+                      indeterminate={isSomeSelected}
+                      onChange={(e) => handleGroupCheckboxChange(groupChannels, e.target.checked)}
+                      sx={{
+                        padding: '4px',
+                        color: '#cbd5e1',
+                        '&.Mui-checked': { color: '#00ac86' },
+                        '&.MuiCheckbox-indeterminate': { color: '#00ac86' }
+                      }}
+                    />
+                    <span className="sensor-group-title">{groupName}</span>
+                  </div>
+                  <div className="sensor-group-channels">
+                    {groupChannels.map(ch => {
+                      const isChecked = selectedChannelIds.includes(ch.channel_id);
+                      return (
+                        <label key={ch.channel_id} className="channel-checkbox-item">
+                          <div className="channel-checkbox-left">
+                            <Checkbox
+                              size="small"
+                              checked={isChecked}
+                              onChange={() => handleChannelCheckboxChange(ch.channel_id)}
+                              sx={{
+                                padding: '4px',
+                                color: '#cbd5e1',
+                                '&.Mui-checked': { color: '#00ac86' }
+                              }}
+                            />
+                            <span className="channel-item-name">
+                              {ch.full_channel_name || ch.logic_channel_description || `Channel ${ch.channel_id}`}
+                            </span>
+                          </div>
+                          {!ch.full_channel_name && ch.unit_in_ascii && (
+                            <span className="channel-item-unit">{ch.unit_in_ascii}</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="sensor-group-channels">
-                  {groupChannels.map(ch => {
-                    const isChecked = selectedChannelIds.includes(ch.channel_id);
-                    return (
-                      <label key={ch.channel_id} className="channel-checkbox-item">
-                        <div className="channel-checkbox-left">
-                          <Checkbox
-                            size="small"
-                            checked={isChecked}
-                            onChange={() => handleChannelCheckboxChange(ch.channel_id)}
-                            sx={{
-                              padding: '4px',
-                              color: '#cbd5e1',
-                              '&.Mui-checked': { color: '#00ac86' }
-                            }}
-                          />
-                          <span className="channel-item-name">
-                            {ch.full_channel_name || ch.logic_channel_description || `Channel ${ch.channel_id}`}
-                          </span>
-                        </div>
-                        {!ch.full_channel_name && ch.unit_in_ascii && (
-                          <span className="channel-item-unit">{ch.unit_in_ascii}</span>
-                        )}
-                      </label>
-                    );
-                  })}
-                </div>
+              );
+            })}
+            {Object.keys(groups).length === 0 && (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                No channels found
               </div>
-            );
-          })}
-          {Object.keys(groups).length === 0 && (
-            <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
-              No channels found
-            </div>
-          )}
+            )}
+          </div>
+
+          <div className="sidebar-mobile-done-bar">
+            <button
+              type="button"
+              className="sidebar-done-btn"
+              onClick={() => setColumnsVisible(false)}
+            >
+              Apply &amp; Close
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -267,6 +298,20 @@ const TableView = () => {
       <section className="table-main-content">
         {/* Toolbar Controls */}
         <div className="table-toolbar">
+          <button
+            type="button"
+            className={`toggle-columns-btn ${columnsVisible ? 'active' : ''}`}
+            onClick={() => setColumnsVisible(prev => !prev)}
+            title={columnsVisible ? 'Hide Columns' : 'Show Columns'}
+            aria-expanded={columnsVisible}
+            aria-label={columnsVisible ? 'Hide Columns' : 'Show Columns'}
+          >
+            <svg className="toggle-columns-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
+
           {/* Left Side: Timeline Slider with bounds on top */}
           <div className="time-slider-section">
             <div className="time-slider-bounds-row">

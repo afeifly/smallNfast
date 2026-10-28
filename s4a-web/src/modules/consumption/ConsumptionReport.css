@@ -703,3 +703,171 @@
   border-right-color: #cbd5e1 !important;
 }
 
+/* Mobile view switcher & apply bar (Hidden on Desktop & Print) */
+.mobile-view-switcher,
+.mobile-apply-bar {
+  display: none !important;
+}
+
+/* Small screen / phone adaptations (max-width: 768px) */
+@media (max-width: 768px) {
+  .consumption-report-container {
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .mobile-view-switcher {
+    display: flex !important;
+    background: #f1f5f9;
+    padding: 6px;
+    gap: 6px;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+  }
+
+  .mobile-view-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .mobile-view-btn.active {
+    background: #ffffff;
+    color: #00ac86;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* When mobileTab is 'report', show main content and hide sidebar */
+  .consumption-report-container.mobile-tab-report .consumption-sidebar {
+    display: none !important;
+  }
+  .consumption-report-container.mobile-tab-report .consumption-main-content {
+    display: flex !important;
+    width: 100% !important;
+    padding: 12px;
+    gap: 14px;
+  }
+
+  /* When mobileTab is 'config', show sidebar and hide main content */
+  .consumption-report-container.mobile-tab-config .consumption-sidebar {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-right: none;
+    flex: 1;
+    padding: 14px 12px;
+    box-shadow: none;
+  }
+  .consumption-report-container.mobile-tab-config .consumption-main-content {
+    display: none !important;
+  }
+
+  .mobile-apply-bar {
+    display: block !important;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .mobile-apply-btn {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #00ac86 0%, #007d61 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 172, 134, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .mobile-apply-btn:hover {
+    box-shadow: 0 6px 16px rgba(0, 172, 134, 0.3);
+  }
+
+  /* Compact content styling for small screens */
+  .report-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .report-main-title {
+    font-size: 18px;
+  }
+
+  .report-subtitle {
+    font-size: 11.5px;
+  }
+
+  .export-pdf-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .metric-card {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .metric-icon-wrap {
+    width: 36px;
+    height: 36px;
+  }
+
+  .metric-label {
+    font-size: 10px;
+  }
+
+  .metric-value {
+    font-size: 15px;
+  }
+
+  .chart-card,
+  .table-card {
+    padding: 14px 12px;
+    border-radius: 10px;
+    gap: 12px;
+  }
+
+  .chart-container-div {
+    min-height: 240px;
+  }
+
+  .d3-chart-svg {
+    height: 240px;
+  }
+
+  .report-table-wrapper {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .report-table th,
+  .report-table td {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+}
+
+

@@ -200,7 +200,7 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
         {/* Modal Footer */}
         <div className="download-modal-footer">
           <div className="download-footer-note">
-            💡 S4A Web version <strong>v{version}</strong>. Standalone desktop & mobile packages provide native hardware access.
+            💡 S4A version <strong>v{version}</strong>. Standalone desktop & mobile packages provide native hardware access.
           </div>
           <button className="download-footer-close-btn" onClick={onClose}>
             Close

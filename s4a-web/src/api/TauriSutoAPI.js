@@ -160,7 +160,7 @@ export const TauriSutoAPI = {
   },
 
   /**
-   * Get channels formatted for S4A-Web Views
+   * Get channels formatted for S4A Views
    * @param {Function} [callback]
    */
   async getChannels(callback) {

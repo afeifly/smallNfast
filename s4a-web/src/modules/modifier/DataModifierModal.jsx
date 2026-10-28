@@ -800,7 +800,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
           );
         }
 
-        // Open newly created file in S4A-Web if requested
+        // Open newly created file in S4A if requested
         if (autoOpenAfterExport) {
           if (res.filePath && TestAPI.loadFileFromPath) {
             await TestAPI.loadFileFromPath(res.filePath);
@@ -2029,7 +2029,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               checked={autoOpenAfterExport}
               onChange={(e) => setAutoOpenAfterExport(e.target.checked)}
             />
-            Open generated file in S4A-Web immediately
+            Open generated file in S4A immediately
           </label>
 
           {isExporting && (

@@ -54,6 +54,19 @@ const Icons = {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6"></polyline>
     </svg>
+  ),
+  Settings: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  ),
+  BarChart: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10"></line>
+      <line x1="12" y1="20" x2="12" y2="4"></line>
+      <line x1="6" y1="20" x2="6" y2="14"></line>
+    </svg>
   )
 };
 
@@ -104,12 +117,14 @@ function ConsumptionChart({
 
     const parent = svgRef.current.parentNode;
     const width = isPrint ? 1060 : (parent.clientWidth || 600);
-    const margin = { top: 30, right: 30, bottom: 40, left: 65 };
+    const isSmall = !isPrint && (width < 500 || (typeof window !== 'undefined' && window.innerWidth <= 768));
+    const margin = isSmall ? { top: 20, right: 16, bottom: 35, left: 45 } : { top: 30, right: 30, bottom: 40, left: 65 };
+    const chartHeight = isSmall ? 240 : height;
 
     svgEl
       .attr('width', '100%')
-      .attr('height', height)
-      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('height', chartHeight)
+      .attr('viewBox', `0 0 ${width} ${chartHeight}`)
       .attr('preserveAspectRatio', 'xMidYMid meet');
 
     const colors = ['#00ac86', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6', '#f43f5e'];
@@ -347,6 +362,9 @@ export default function ConsumptionReport() {
 
   // Active page index for screen pagination (only controls the active chart page)
   const [activePageIndex, setActivePageIndex] = React.useState(0);
+
+  // Mobile view switcher ('config' | 'report')
+  const [mobileTab, setMobileTab] = React.useState('config');
 
   // Fetch initial channels & time-series rows
   React.useEffect(() => {
@@ -642,7 +660,27 @@ export default function ConsumptionReport() {
   }
 
   return (
-    <div className="consumption-report-container">
+    <div className={`consumption-report-container mobile-tab-${mobileTab}`}>
+
+      {/* Small Screen View Switcher (Hidden on Desktop via CSS) */}
+      <div className="mobile-view-switcher">
+        <button
+          type="button"
+          className={`mobile-view-btn ${mobileTab === 'config' ? 'active' : ''}`}
+          onClick={() => setMobileTab('config')}
+        >
+          <Icons.Settings />
+          <span>Settings & Groups</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-view-btn ${mobileTab === 'report' ? 'active' : ''}`}
+          onClick={() => setMobileTab('report')}
+        >
+          <Icons.BarChart />
+          <span>Report View</span>
+        </button>
+      </div>
 
       {/* ── Left Sidebar Configuration (Screen Only) ── */}
       <div className="consumption-sidebar screen-only">
@@ -841,6 +879,17 @@ export default function ConsumptionReport() {
               <Icons.Plus /> Add Channel Group
             </button>
           </div>
+        </div>
+
+        {/* Small Screen Apply Button */}
+        <div className="mobile-apply-bar">
+          <button
+            type="button"
+            className="mobile-apply-btn"
+            onClick={() => setMobileTab('report')}
+          >
+            Apply & View Report
+          </button>
         </div>
 
       </div>

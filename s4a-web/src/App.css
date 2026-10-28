@@ -57,13 +57,22 @@
   letter-spacing: -0.025em;
 }
 
+/* Header Scroll Container (Wraps tabs + right actions for responsive swipe/drag) */
+.header-scroll-container {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  height: 56px;
+}
+
 /* Tab Navigation */
 .header-tabs {
   display: flex;
   gap: 4px;
   height: 56px;
-  align-items: flex-end;
-  padding-bottom: 1px;
+  align-items: center;
 }
 
 .tab-btn {
@@ -72,12 +81,19 @@
   color: #475569; /* Slate 600 */
   font-size: 14px;
   font-weight: 600;
-  padding: 12px 18px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  padding: 0 16px;
   cursor: pointer;
   position: relative;
   transition: color 0.3s ease;
   outline: none !important;
   box-shadow: none !important;
+  box-sizing: border-box;
 }
 
 .tab-btn:hover {
@@ -95,8 +111,8 @@
   content: '';
   position: absolute;
   bottom: 0;
-  left: 18px;
-  right: 18px;
+  left: 16px;
+  right: 16px;
   height: 4px;
   background-color: #00ac86; /* Company Active Teal/Mint */
   border-radius: 4px 4px 0 0;
@@ -136,6 +152,8 @@
   display: flex;
   align-items: center;
   height: 56px;
+  margin-left: auto;
+  gap: 8px;
 }
 
 /* Try App Link / Button */
@@ -889,6 +907,7 @@
 
   .header-left {
     gap: 8px;
+    flex-shrink: 0;
   }
 
   .header-logo {
@@ -900,27 +919,65 @@
     font-size: 17px;
   }
 
-  .header-tabs {
+  .header-scroll-container {
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
     scrollbar-width: none;
-    max-width: 58vw;
-    gap: 2px;
+    align-items: center;
+    padding-left: 4px;
+    gap: 0;
+    cursor: grab;
+    user-select: none;
   }
 
-  .header-tabs::-webkit-scrollbar {
+  .header-scroll-container:active {
+    cursor: grabbing;
+  }
+
+  .header-scroll-container::-webkit-scrollbar {
     display: none;
   }
 
+  .header-tabs {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    height: 56px;
+    gap: 2px;
+    max-width: none;
+    overflow: visible;
+  }
+
+  .header-tabs + .header-right {
+    border-left: 1px solid rgba(15, 23, 42, 0.15);
+    margin-left: 6px;
+    padding-left: 8px;
+  }
+
+  .header-right {
+    flex-shrink: 0;
+    padding-right: 4px;
+    gap: 6px;
+  }
+
   .tab-btn {
-    padding: 8px 10px;
+    height: 56px;
+    padding: 0 10px;
     font-size: 12.5px;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+    box-sizing: border-box;
   }
 
   .tab-btn::after {
     left: 10px;
     right: 10px;
+    bottom: 0;
   }
 
   .try-desktop-link {

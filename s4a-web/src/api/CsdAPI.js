@@ -2735,9 +2735,9 @@ const CsdAPI = {
     // ── Metadata header rows ──────────────────────────────────────────────────
     let metaXml = '';
 
-    // Row 1: Title "S4A-Web V2"
+    // Row 1: Title "S4A V2"
     metaXml += '   <Row>\n';
-    metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">S4A-Web</Data></Cell>\n';
+    metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">S4A</Data></Cell>\n';
     metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">V2</Data></Cell>\n';
     metaXml += '   </Row>\n';
 

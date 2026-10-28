@@ -1,7 +1,7 @@
 /**
  * CsvAPI.js
  *
- * Implements standard s4a-web API surface for parsing and rendering CSV files
+ * Implements standard S4A API surface for parsing and rendering CSV files
  * matching the format of `eg_format.csv` or exported files.
  *
  * Designed with a high-performance stream-indexed lazy-loader to handle large
@@ -1269,9 +1269,9 @@ const CsvAPI = {
     // ── Metadata header rows ──────────────────────────────────────────────────
     let metaXml = '';
 
-    // Row 1: Title "S4A-Web V2"
+    // Row 1: Title "S4A V2"
     metaXml += '   <Row>\n';
-    metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">S4A-Web</Data></Cell>\n';
+    metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">S4A</Data></Cell>\n';
     metaXml += '    <Cell ss:StyleID="sTitle"><Data ss:Type="String">V2</Data></Cell>\n';
     metaXml += '   </Row>\n';
 

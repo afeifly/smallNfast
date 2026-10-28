@@ -16,7 +16,7 @@ import DeviceConnectModal from './components/DeviceConnectModal';
 import DownloadAppModal from './components/DownloadAppModal';
 import ReadoutView, { clearReadoutCache } from './modules/readout/ReadoutView';
 import './App.css';
-import { isDesktop, isMobile, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
+import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
 import { clearLiveSelection } from './util/liveSelection';
 
@@ -168,6 +168,41 @@ function App() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [recState.recording]);
+
+  // Header horizontal swipe/drag container ref and active tab auto-scroll
+  const headerScrollRef = React.useRef(null);
+  const dragInfoRef = React.useRef({ isDown: false, startX: 0, scrollLeft: 0 });
+
+  const handleHeaderMouseDown = (e) => {
+    if (e.button !== 0 || !headerScrollRef.current) return;
+    dragInfoRef.current = {
+      isDown: true,
+      startX: e.pageX - headerScrollRef.current.offsetLeft,
+      scrollLeft: headerScrollRef.current.scrollLeft,
+    };
+  };
+
+  const handleHeaderMouseMove = (e) => {
+    if (!dragInfoRef.current.isDown || !headerScrollRef.current) return;
+    const x = e.pageX - headerScrollRef.current.offsetLeft;
+    const walk = x - dragInfoRef.current.startX;
+    if (Math.abs(walk) > 3) {
+      headerScrollRef.current.scrollLeft = dragInfoRef.current.scrollLeft - walk;
+    }
+  };
+
+  const handleHeaderMouseUp = () => {
+    dragInfoRef.current.isDown = false;
+  };
+
+  React.useEffect(() => {
+    if (headerScrollRef.current) {
+      const activeEl = headerScrollRef.current.querySelector('.tab-btn.active');
+      if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
+  }, [activeTab]);
 
   // Desktop app: intercept the window close while recording, ask first.
   React.useEffect(() => {
@@ -546,8 +581,6 @@ function App() {
   const handleOpenFile = () => {
     TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Triggered Open File action');
     setAnalyzingFromReadout(false);
-    TestAPI.setMode('analyze');
-    setAppMode('analyze');
     if (TestAPI.openFile) {
       TestAPI.openFile();
     }
@@ -586,11 +619,8 @@ function App() {
   };
 
   const handleLoadRecentFile = async (file) => {
-    TauriSutoAPI.logClientEvent('INFO', 'FILE', `Recent file opened: ${file ? file.name : 'unknown'}`);
-    setAnalyzingFromReadout(false);
-    localStorage.removeItem('selectedChannels');
-    TestAPI.setMode('analyze');
-    setAppMode('analyze');
+    if (!file) return;
+    TauriSutoAPI.logClientEvent('INFO', 'FILE', `Recent file opened: ${file.name || 'unknown'}`);
 
     let filePath = file.path;
     if (!filePath && TauriSutoAPI.isAvailable()) {
@@ -603,20 +633,32 @@ function App() {
       }
     }
 
+    let loadSuccess = false;
+
     if (filePath && TestAPI.loadFileFromPath) {
-      const ok = await TestAPI.loadFileFromPath(filePath);
-      if (!ok && window.showAppNotification) {
+      loadSuccess = await TestAPI.loadFileFromPath(filePath);
+      if (!loadSuccess && window.showAppNotification) {
         window.showAppNotification("File Not Found", `Could not open file at: ${filePath}`, "error");
       }
     } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
       const handle = await TestAPI.getHandleForFile(file.name);
       if (handle) {
-        await TestAPI.loadFileFromHandle(handle);
-      } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
-        TestAPI.openFile();
+        loadSuccess = await TestAPI.loadFileFromHandle(handle);
+      } else {
+        if (window.showAppNotification) {
+          window.showAppNotification("File Not Found", `The requested file "${file.name}" could not be found.`, "error");
+        }
       }
     } else if (TauriSutoAPI.isAvailable() && TestAPI.openFile) {
       TestAPI.openFile();
+      return;
+    }
+
+    if (loadSuccess) {
+      setAnalyzingFromReadout(false);
+      localStorage.removeItem('selectedChannels');
+      TestAPI.setMode('analyze');
+      setAppMode('analyze');
     }
   };
 
@@ -743,7 +785,7 @@ function App() {
               </linearGradient>
             </defs>
           </svg>
-          <span className="app-title">S4A-Web</span>
+          <span className="app-title">S4A</span>
           {appMode && (
             <button
               className="header-home-btn"
@@ -758,7 +800,16 @@ function App() {
           )}
         </div>
 
-        {/* View Switcher Tabs */}
+        {/* Unified Scrollable Strip: Tabs + Action Items */}
+        <div
+          className="header-scroll-container"
+          ref={headerScrollRef}
+          onMouseDown={handleHeaderMouseDown}
+          onMouseMove={handleHeaderMouseMove}
+          onMouseUp={handleHeaderMouseUp}
+          onMouseLeave={handleHeaderMouseUp}
+        >
+          {/* View Switcher Tabs */}
         {appMode === 'monitor' ? (
           <div className="header-tabs">
             <button
@@ -841,7 +892,7 @@ function App() {
           </div>
         ) : null}
 
-        <div className="header-right" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="header-right">
 
           {appMode === 'monitor' && (
             <Tooltip
@@ -922,7 +973,7 @@ function App() {
 
           {!appMode ? (
             <>
-              {!isDesktop && (
+              {checkIsWeb() && (
                 <button
                   type="button"
                   className="try-desktop-link"
@@ -954,6 +1005,7 @@ function App() {
               </IconButton>
             </Tooltip>
           )}
+          </div>
         </div>
       </header>
 

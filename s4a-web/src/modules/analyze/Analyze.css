@@ -203,3 +203,121 @@
     page-break-inside: avoid !important;
   }
 }
+
+/* Mobile view switcher (Hidden on Desktop & Print) */
+.analyze-mobile-switcher {
+  display: none !important;
+}
+
+/* Small screen / phone adaptations (max-width: 768px) */
+@media (max-width: 768px) {
+  .analyze-container {
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .analyze-mobile-switcher {
+    display: flex !important;
+    background: #f1f5f9;
+    padding: 6px;
+    gap: 6px;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+  }
+
+  .analyze-mobile-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .analyze-mobile-btn.active {
+    background: #ffffff;
+    color: #00ac86;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* When mobileTab is 'report', show main content and hide sidebar */
+  .analyze-container.mobile-tab-report .analyze-sidebar {
+    display: none !important;
+  }
+  .analyze-container.mobile-tab-report .analyze-main-content {
+    display: flex !important;
+    width: 100% !important;
+    padding: 12px;
+    gap: 14px;
+  }
+
+  /* When mobileTab is 'config', show sidebar and hide main content */
+  .analyze-container.mobile-tab-config .analyze-sidebar {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-right: none;
+    flex: 1;
+    padding: 14px 12px;
+    box-shadow: none;
+  }
+  .analyze-container.mobile-tab-config .analyze-main-content {
+    display: none !important;
+  }
+
+  .charts-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .charts-row .chart-card {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .report-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+
+  .report-main-title {
+    font-size: 18px !important;
+  }
+
+  .export-pdf-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Responsive compressor configuration modal */
+  .compressor-settings-dialog .MuiDialog-paper {
+    margin: 10px !important;
+    width: calc(100% - 20px) !important;
+    max-height: calc(100% - 20px) !important;
+  }
+
+  .compressor-dialog-body {
+    flex-direction: column !important;
+    gap: 12px !important;
+    min-height: auto !important;
+  }
+
+  .compressor-dialog-body > div:first-child {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 12px !important;
+  }
+}
+

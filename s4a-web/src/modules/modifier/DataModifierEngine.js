@@ -1,7 +1,7 @@
 /**
  * DataModifierEngine.js
  *
- * Engine for transforming, extending, and synthesizing sensor log data in s4a-web.
+ * Engine for transforming, extending, and synthesizing sensor log data in S4A.
  * Generates interactive previews and exports 100% compliant binary CSD and CSV files.
  */
 

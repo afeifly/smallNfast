@@ -288,5 +288,30 @@ describe('App', () => {
     // getChannels should NOT be called again because the structure was preserved
     expect(getChannelsSpy.mock.calls.length).toBe(initialChannelCalls);
   });
+
+  it('does not navigate to File Info or any other page when opening a file fails / file is not found', async () => {
+    vi.spyOn(TestAPI, 'getRecentFiles').mockReturnValue([{ name: 'missing.csd', path: '/non/existent/missing.csd' }]);
+    vi.spyOn(TestAPI, 'loadFileFromPath').mockResolvedValue(false);
+    const notifySpy = vi.fn();
+    window.showAppNotification = notifySpy;
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('missing.csd')).toBeDefined();
+    });
+
+    // Click on missing file
+    fireEvent.click(screen.getByText('missing.csd'));
+
+    await waitFor(() => {
+      expect(notifySpy).toHaveBeenCalledWith('File Not Found', expect.stringContaining('/non/existent/missing.csd'), 'error');
+    });
+
+    // Ensure we stayed on the Welcome screen and did not navigate away
+    expect(screen.getByText('Device Monitor Mode')).toBeDefined();
+    expect(screen.getByText('File Analyze Mode')).toBeDefined();
+    expect(screen.queryByText('File Details & Metadata')).toBeNull();
+  });
 });
 

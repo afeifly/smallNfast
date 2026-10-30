@@ -13,6 +13,7 @@
 import { isTauri, checkIsTauri } from '../util/platform';
 import { invoke } from '@tauri-apps/api/core';
 import BleSutoAPI from './BleSutoAPI';
+import ApiDevice from './device/ApiDevice';
 import { resolveChannelResolution } from '../util/resolution';
 
 const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke);
@@ -20,13 +21,16 @@ const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_I
 // Rolling measurement buffer for chart display (keeps last 3600 points)
 const historyBuffer = new Map();
 const MAX_HISTORY = 3600;
-let activeTransport = 'USB'; // 'USB' | 'TCP' | 'BLE'
+let activeTransport = 'USB'; // 'USB' | 'TCP' | 'BLE' | 'API'
 let activeMeasurementPromise = null;
 let lastMeasurementResult = null;
 let lastMeasurementTime = 0;
 
 export const TauriSutoAPI = {
   isAvailable() {
+    if (activeTransport === 'API' || activeTransport === 'BLE_WEB') {
+      return true;
+    }
     return hasTauri();
   },
 
@@ -35,6 +39,21 @@ export const TauriSutoAPI = {
       return 'BLE';
     }
     return activeTransport;
+  },
+
+  getCapabilities() {
+    if (activeTransport === 'API') {
+      return ApiDevice.getCapabilities();
+    }
+    return {
+      rawCommand: true,
+      screenshots: true,
+      report600: true,
+      loggerFiles: true,
+      loggerPageRead: false,
+      s461Read: true,
+      onlineSource: 'suto',
+    };
   },
 
   /** List available USB devices */
@@ -144,13 +163,22 @@ export const TauriSutoAPI = {
     return { ...conn, transport: 'BLE' };
   },
 
+  /** Connect to SUTO S332 WebAPI device over HTTP */
+  async connectApi(host = '192.168.1.100', port = 8080) {
+    activeTransport = 'API';
+    await this.logClientEvent('INFO', 'API_CONN', `Initiating WebAPI connection to ${host}:${port}...`);
+    return await ApiDevice.connect({ host, port });
+  },
+
   /** Disconnect from active device */
   async disconnect() {
     await this.logClientEvent('INFO', 'SUTO_IPC', `Disconnecting active transport (${activeTransport})...`);
     activeMeasurementPromise = null;
     lastMeasurementResult = null;
     lastMeasurementTime = 0;
-    if (activeTransport === 'BLE_WEB') {
+    if (activeTransport === 'API') {
+      await ApiDevice.disconnect();
+    } else if (activeTransport === 'BLE_WEB') {
       await BleSutoAPI.disconnect();
     } else if (hasTauri()) {
       await invoke('suto_disconnect');
@@ -160,10 +188,23 @@ export const TauriSutoAPI = {
   },
 
   /**
+   * Get device layout points if supported (e.g. S332 WebAPI)
+   */
+  async getLayoutInfo() {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getLayoutInfo();
+    }
+    return [];
+  },
+
+  /**
    * Get channels formatted for S4A Views
    * @param {Function} [callback]
    */
   async getChannels(callback) {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getChannels(callback);
+    }
     if (activeTransport === 'BLE_WEB') {
       try {
         const rawChs = await BleSutoAPI.getChannels();
@@ -267,6 +308,9 @@ export const TauriSutoAPI = {
    * @param {Function} [callback]
    */
   async getMeasurementData(callback) {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getMeasurementData(callback);
+    }
     if (activeTransport === 'BLE_WEB') {
       const now = Date.now();
       // Reuse recent fresh measurement within 750ms
@@ -351,6 +395,9 @@ export const TauriSutoAPI = {
    * Get table rows for TableView in monitor mode
    */
   getTablePage(pageIndex, pageSize, selectedChannelIds, callback) {
+    if (activeTransport === 'API') {
+      return ApiDevice.getTablePage(pageIndex, pageSize, selectedChannelIds, callback);
+    }
     const timestampsSet = new Set();
     for (const [chId, pts] of historyBuffer.entries()) {
       if (!selectedChannelIds || selectedChannelIds.includes(chId)) {
@@ -395,6 +442,9 @@ export const TauriSutoAPI = {
    * Get device system information (serial number, firmware version, device name, etc.)
    */
   async getSystemInfo() {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getSystemInfo();
+    }
     if (activeTransport === 'BLE_WEB') {
       return await BleSutoAPI.getSystemInfo();
     }
@@ -408,6 +458,9 @@ export const TauriSutoAPI = {
    * Get logger status (enabled, recorded count, start/end time, interval)
    */
   async getLoggerStatus() {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getLoggerStatus();
+    }
     if (!hasTauri()) {
       return null;
     }
@@ -431,10 +484,35 @@ export const TauriSutoAPI = {
   },
 
   /**
+   * Read logger data from device (e.g. S332 WebAPI paged retrieval)
+   * @param {string} fileName
+   * @param {Function} [onProgress]
+   */
+  async readLoggerData(fileName, onProgress, fileMeta = null) {
+    if (activeTransport === 'API') {
+      return await ApiDevice.readLoggerData(fileName, onProgress, fileMeta);
+    }
+    throw new Error('readLoggerData is only supported on WebAPI devices');
+  },
+
+  /**
+   * Get storage / disk capacity (e.g. S332 WebAPI)
+   */
+  async getDiskCapacity() {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getDiskCapacity();
+    }
+    return null;
+  },
+
+  /**
    * Query device for list of recorded measurement session files stored in device memory
    * @returns {Promise<Array<{fileName: string, startTime: string, endTime: string, channelsCount: number, samplesPerChannel: number, sampleRate: number, description: string, status: number}>>}
    */
   async getLoggerFiles() {
+    if (activeTransport === 'API') {
+      return await ApiDevice.getLoggerFiles();
+    }
     if (!hasTauri()) {
       return [];
     }
@@ -471,6 +549,9 @@ export const TauriSutoAPI = {
    * @returns {Promise<Array<{name: string, size: number, index: number}>>}
    */
   async getScreenshots() {
+    if (activeTransport === 'API') {
+      return [];
+    }
     if (!hasTauri()) {
       return [];
     }
@@ -484,6 +565,9 @@ export const TauriSutoAPI = {
    * @returns {Promise<Uint8Array>}
    */
   async readScreenshot(name, size) {
+    if (activeTransport === 'API') {
+      throw new Error('Screenshots are not supported on WebAPI devices.');
+    }
     if (!hasTauri()) {
       throw new Error('readScreenshot requires Tauri desktop runtime with connected hardware.');
     }
@@ -496,6 +580,9 @@ export const TauriSutoAPI = {
    * @returns {Promise<Array<{id: number, name: string, size: number, date: number, date_str: string}>>}
    */
   async get600CsdFiles() {
+    if (activeTransport === 'API') {
+      return [];
+    }
     if (!hasTauri()) {
       return [];
     }
@@ -511,6 +598,9 @@ export const TauriSutoAPI = {
    * @returns {Promise<{file_name: string, file_size: number, file_date: number, pdf_bytes: Array<number>}>}
    */
   async generate600Report(id, name, size, date) {
+    if (activeTransport === 'API') {
+      throw new Error('ISO 8573 report export is not supported on WebAPI devices.');
+    }
     if (!hasTauri()) {
       throw new Error('generate600Report requires Tauri desktop runtime with connected hardware.');
     }
@@ -650,10 +740,10 @@ export const TauriSutoAPI = {
     return await invoke('suto_remove_recent_file', { path });
   },
 
-  /** Save binary data using native OS Save File dialog */
+  /** Save binary data using native OS Save File dialog (or browser download) */
   async saveBinaryFile(filename, data) {
     if (!hasTauri()) {
-      return null;
+      return await ApiDevice.saveBinaryFile(filename, data);
     }
     const byteArr = data instanceof Uint8Array ? Array.from(data) : Array.from(new Uint8Array(data));
     return await invoke('suto_save_binary_file', { filename, data: byteArr });

@@ -69,6 +69,28 @@ export const SUTO_MODEL_TYPES = {
   0x106f: 'S600-AC',
   0x1080: 'DP500',
   0x1082: 'DP520',
+  0x1088: 'S332+A3001',
+  0x1089: 'S332+A3002',
+  0x108a: 'S332-OPT-Relay2ch',
+  0x108b: 'S332-OPT-Current',
+  0x108c: 'S332-OPT-Voltage',
+  0x108d: 'S332-OPT-Digital input',
+  0x108e: 'S332-OPT-Relay4ch',
+  0x108f: 'DL G2',
+  '0x1088': 'S332+A3001',
+  '0x1089': 'S332+A3002',
+  '0x108a': 'S332-OPT-Relay2ch',
+  '0x108A': 'S332-OPT-Relay2ch',
+  '0x108b': 'S332-OPT-Current',
+  '0x108B': 'S332-OPT-Current',
+  '0x108c': 'S332-OPT-Voltage',
+  '0x108C': 'S332-OPT-Voltage',
+  '0x108d': 'S332-OPT-Digital input',
+  '0x108D': 'S332-OPT-Digital input',
+  '0x108e': 'S332-OPT-Relay4ch',
+  '0x108E': 'S332-OPT-Relay4ch',
+  '0x108f': 'DL G2',
+  '0x108F': 'DL G2',
   0x120e: 'S418-DN8',
   0x120f: 'S418-DN15',
   0x1210: 'S418-DN20',
@@ -94,9 +116,33 @@ export const SUTO_MODEL_TYPES = {
   0x0006: 'DS 300',
 };
 
+export const S332_MODEL_IDS = {
+  0x1088: 'S332+A3001',
+  0x1089: 'S332+A3002',
+  0x108a: 'S332-OPT-Relay2ch',
+  0x108b: 'S332-OPT-Current',
+  0x108c: 'S332-OPT-Voltage',
+  0x108d: 'S332-OPT-Digital input',
+  0x108e: 'S332-OPT-Relay4ch',
+  0x108f: 'DL G2',
+};
+
+export function isS332DeviceId(deviceId) {
+  if (deviceId === undefined || deviceId === null) return false;
+  const num = typeof deviceId === 'string'
+    ? (parseInt(String(deviceId).trim().replace(/^ox/i, '0x'), 16) || Number(deviceId))
+    : Number(deviceId);
+  return num >= 0x1088 && num <= 0x108f;
+}
+
 export function resolveDeviceTypeName(sysInfo, deviceInfo) {
-  if (sysInfo?.device_id && SUTO_MODEL_TYPES[sysInfo.device_id]) {
-    return SUTO_MODEL_TYPES[sysInfo.device_id];
+  const rawId = sysInfo?.device_id ?? deviceInfo?.deviceId ?? deviceInfo?.device_id;
+  if (rawId !== undefined && rawId !== null) {
+    if (SUTO_MODEL_TYPES[rawId]) return SUTO_MODEL_TYPES[rawId];
+    const num = typeof rawId === 'string'
+      ? (parseInt(String(rawId).trim().replace(/^ox/i, '0x'), 16) || Number(rawId))
+      : Number(rawId);
+    if (SUTO_MODEL_TYPES[num]) return SUTO_MODEL_TYPES[num];
   }
   const candidateNames = [
     sysInfo?.device_name,

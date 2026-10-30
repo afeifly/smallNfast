@@ -4,7 +4,7 @@ import React from 'react';
 import App from './App';
 import TestAPI from './api/TestAPI';
 import TauriSutoAPI from './api/TauriSutoAPI';
-import { clearReadoutCache } from './modules/readout/ReadoutView';
+import { clearReadoutCache } from './modules/readout/readoutSession';
 import { clearOnlineCache, getOnlineCache } from './modules/onlineview/OnlineView';
 
 describe('App', () => {

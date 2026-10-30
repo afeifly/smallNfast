@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import ReadoutView, { resolveLoggerType, clearReadoutCache } from './ReadoutView';
+import ReadoutView from './ReadoutView';
+import { resolveLoggerType, clearReadoutCache } from './readoutSession';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 
 describe('ReadoutView Dedicated Page Component', () => {
@@ -10,7 +11,26 @@ describe('ReadoutView Dedicated Page Component', () => {
     clearReadoutCache();
   });
 
-  it('correctly resolves logger type for various SUTO hardware families', () => {
+  it('correctly resolves logger type for various SUTO hardware families including S332 variants', () => {
+    expect(resolveLoggerType({ device: 'S332' }, null)).toBe('s332');
+    expect(resolveLoggerType({ device: 'DL G2' }, null)).toBe('s332');
+    expect(resolveLoggerType(null, { device_id: 0x108f })).toBe('s332');
+    expect(resolveLoggerType({ transport: 'API' }, null)).toBe('s332');
+
+    // All S332 variants (0x1088 - 0x108F)
+    expect(resolveLoggerType(null, { device_id: 0x1088 })).toBe('s332'); // S332+A3001
+    expect(resolveLoggerType(null, { device_id: 0x1089 })).toBe('s332'); // S332+A3002
+    expect(resolveLoggerType(null, { device_id: '0x108a' })).toBe('s332'); // S332-OPT-Relay2ch
+    expect(resolveLoggerType(null, { device_id: '0x108A' })).toBe('s332');
+    expect(resolveLoggerType(null, { device_id: '0x108b' })).toBe('s332'); // S332-OPT-Current
+    expect(resolveLoggerType(null, { device_id: '0x108B' })).toBe('s332');
+    expect(resolveLoggerType(null, { device_id: 'Ox108C' })).toBe('s332'); // S332-OPT-Voltage
+    expect(resolveLoggerType(null, { device_id: 'Ox108D' })).toBe('s332'); // S332-OPT-Digital input
+    expect(resolveLoggerType(null, { device_id: 'Ox108E' })).toBe('s332'); // S332-OPT-Relay4ch
+    expect(resolveLoggerType(null, { device_id: 0x108f })).toBe('s332'); // DL G2
+    expect(resolveLoggerType({ device: 'S332-OPT-Relay2ch' }, null)).toBe('s332');
+    expect(resolveLoggerType({ device: 'S332-OPT-Current' }, null)).toBe('s332');
+
     expect(resolveLoggerType({ device: 'SUTO S418-DN25' }, null)).toBe('s418');
     expect(resolveLoggerType({ device: 'S419 Compact' }, null)).toBe('s418');
     expect(resolveLoggerType({ device: 'S461 Flow Meter' }, null)).toBe('s461');
@@ -141,6 +161,70 @@ describe('ReadoutView Dedicated Page Component', () => {
       expect(screen.queryByText(/Logger Idle/)).toBeNull();
       // Static tip is removed
       expect(screen.queryByText(/Tip: Reads the selected session and outputs a standard CSV file/)).toBeNull();
+    });
+  });
+
+  it('renders dedicated S332 log files page with storage indicator and without screenshots tab', async () => {
+    vi.spyOn(TauriSutoAPI, 'getActiveTransport').mockReturnValue('API');
+    vi.spyOn(TauriSutoAPI, 'getSystemInfo').mockResolvedValue({
+      device_id: '0x108F',
+      device_name: 'S332',
+      serial_number: '12341234',
+      firmware_version: '1.0.3-Atlas11',
+    });
+    vi.spyOn(TauriSutoAPI, 'getDiskCapacity').mockResolvedValue({
+      total: 11969748992,
+      free: 11833544704,
+      used: 136204288,
+      percentUsed: '1.1',
+    });
+    vi.spyOn(TauriSutoAPI, 'getLoggerFiles').mockResolvedValue([
+      {
+        fileName: 'DL_G2_log',
+        startTime: '2026-09-10 09:50:33',
+        endTime: '2026-09-10 10:01:43',
+        startTimeStamp: 1789005033589,
+        endTimeStamp: 1789005703514,
+        sampleRate: 10,
+        channelsCount: 14,
+        channels: [{ description: 'Lin0' }, { description: 'Dew point' }],
+      },
+    ]);
+
+    const screenshotSpy = vi.spyOn(TauriSutoAPI, 'getScreenshots');
+
+    render(
+      <ReadoutView
+        deviceInfo={{ device: 'S332', transport: 'API', host: '192.168.5.28', port: 8080 }}
+      />
+    );
+
+    await waitFor(() => {
+      // Header and dedicated S332 section
+      expect(screen.getByText('S332 Recorded Log Files')).toBeDefined();
+      // getScreenshots is never called for S332
+      expect(screenshotSpy).not.toHaveBeenCalled();
+      // Only log files, no screenshots or report tabs
+      expect(screen.queryByText('Read screenshots')).toBeNull();
+      expect(screen.queryByText('Export report')).toBeNull();
+      // Correct SN and FW
+      expect(screen.getByText('12341234')).toBeDefined();
+      expect(screen.getByText('1.0.3-Atlas11')).toBeDefined();
+      // Clean Ethernet badge without 8080 or Network API (8080)
+      expect(screen.queryByText(/Network API/)).toBeNull();
+      expect(screen.queryByText(/8080/)).toBeNull();
+      expect(screen.getByText('Ethernet (192.168.5.28)')).toBeDefined();
+      // Storage bar
+      expect(screen.getByText(/S332 Internal Logger Storage/)).toBeDefined();
+      // Log file listed in table
+      expect(screen.getAllByText('DL_G2_log').length).toBeGreaterThan(0);
+      // No Logged Channels column
+      expect(screen.queryByText('Logged Channels')).toBeNull();
+      // No readout-bottom-bar in S332 view
+      expect(document.querySelector('.readout-bottom-bar')).toBeNull();
+      expect(screen.queryByText('Read Selected Log to CSV')).toBeNull();
+      // Per-row action button
+      expect(screen.getByText('Read to CSV')).toBeDefined();
     });
   });
 });

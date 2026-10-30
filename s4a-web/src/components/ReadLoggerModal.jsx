@@ -1,5 +1,6 @@
 import React from 'react';
-import ReadoutView, { resolveLoggerType } from '../modules/readout/ReadoutView';
+import ReadoutView from '../modules/readout/ReadoutView';
+import { resolveLoggerType } from '../modules/readout/readoutSession';
 import './ReadLoggerModal.css';
 
 export { resolveLoggerType };

@@ -6,9 +6,10 @@ import './DeviceConnectModal.css';
 
 export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   const isNative = checkIsNative();
-  const [tab, setTab] = useState(isMobile ? 'ble' : (isNative ? 'usb' : 'ble')); // 'usb' | 'tcp' | 'ble'
+  const [tab, setTab] = useState(isMobile ? 'ble' : (isNative ? 'usb' : 'ble')); // 'usb' | 'tcp' | 'ble' | 'api'
   const [tcpHost, setTcpHost] = useState('192.168.1.100');
   const [tcpPort, setTcpPort] = useState('502');
+  const [apiHost, setApiHost] = useState('192.168.1.100');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -18,7 +19,7 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
   const [hasScannedBle, setHasScannedBle] = useState(false);
 
   useEffect(() => {
-    if (!isNative && tab !== 'ble') {
+    if (!isNative && tab !== 'ble' && tab !== 'api') {
       setTab('ble');
     }
   }, [isNative, tab]);
@@ -57,6 +58,22 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
     } catch (err) {
       console.error('[DeviceConnectModal] TCP connect error:', err);
       setError(err?.message || 'Failed to connect to SUTO Ethernet device. Check IP address and port.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConnectApi = async () => {
+    TauriSutoAPI.logClientEvent('INFO', 'DEVICE', `Connect requested: WebAPI (S332) ${apiHost}:8080`);
+    setLoading(true);
+    setError(null);
+    try {
+      const conn = await TauriSutoAPI.connectApi(apiHost.trim(), 8080);
+      onConnected(conn);
+      onClose();
+    } catch (err) {
+      console.error('[DeviceConnectModal] WebAPI connect error:', err);
+      setError(err?.message || 'Failed to connect to S332 WebAPI device. Check IP address and network connection.');
     } finally {
       setLoading(false);
     }
@@ -149,15 +166,34 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
                 <span>🌐</span>
                 <span>Ethernet TCP</span>
               </button>
+              <button
+                className={`modal-tab-btn ${tab === 'api' ? 'active' : ''}`}
+                onClick={() => { setTab('api'); setError(null); }}
+              >
+                <span>⚡</span>
+                <span>S332 API</span>
+              </button>
             </>
           ) : (
-            <button
-              className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
-              onClick={() => { setTab('ble'); setError(null); }}
-            >
-              <span>📶</span>
-              <span>Bluetooth (BLE)</span>
-            </button>
+            <>
+              <button
+                className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
+                onClick={() => { setTab('ble'); setError(null); }}
+              >
+                <span>📶</span>
+                <span>Bluetooth (BLE)</span>
+              </button>
+              {import.meta.env.DEV && (
+                <button
+                  className={`modal-tab-btn ${tab === 'api' ? 'active' : ''}`}
+                  onClick={() => { setTab('api'); setError(null); }}
+                  title="Local Dev Testing Only"
+                >
+                  <span>⚡</span>
+                  <span>S332 API (Dev)</span>
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -165,11 +201,11 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
         <div className="platform-diff-note">
           {isNative ? (
             <p>
-              ⚡ <strong>Native Hardware Engine:</strong> Direct low-level {isMobile ? 'USB OTG' : 'Direct USB'}, Bluetooth Low Energy (BLE), and Ethernet TCP communicate directly with sensors.
+              ⚡ <strong>Native Hardware Engine:</strong> Direct low-level {isMobile ? 'USB OTG' : 'Direct USB'}, Bluetooth Low Energy (BLE), Ethernet TCP, and S332 API communicate directly with sensors.
             </p>
           ) : (
             <p>
-              🌐 <strong>Web Browser Mode:</strong> Direct wireless sensor monitoring via <strong>Web Bluetooth</strong> (no native driver required). Low-level USB and raw TCP socket communication are available in the S4A Desktop App.
+              🌐 <strong>Web Browser Mode:</strong> Direct wireless sensor monitoring via <strong>Web Bluetooth</strong>. Low-level USB, Ethernet TCP, and local S332 API communication are available in the S4A Desktop App.
             </p>
           )}
         </div>
@@ -330,6 +366,32 @@ export default function DeviceConnectModal({ isOpen, onClose, onConnected }) {
                   {loading ? 'Pairing Bluetooth...' : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan SUTO BLE Sensors')}
                 </button>
               )}
+            </>
+          )}
+
+          {tab === 'api' && (
+            <>
+              <p className="tab-desc">
+                Connect directly to SUTO S332 devices over local LAN in the S4A Desktop App.
+              </p>
+              <div className="form-group">
+                <label className="form-label">S332 IP Address / Host</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={apiHost}
+                  onChange={(e) => setApiHost(e.target.value)}
+                  placeholder="192.168.1.100"
+                  disabled={loading}
+                />
+              </div>
+              <button
+                className="connect-action-btn"
+                onClick={handleConnectApi}
+                disabled={loading || !apiHost.trim()}
+              >
+                {loading ? 'Connecting to S332...' : '⚡ Connect to S332'}
+              </button>
             </>
           )}
 

@@ -56,42 +56,47 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
     {
       platform: 'Web',
       badge: '🌐',
-      usb: { supported: false, label: 'Sandbox (No USB)' },
-      ble: { supported: true, label: 'Web Bluetooth API' },
-      tcp: { supported: false, label: 'No raw TCP API' },
-      file: { supported: true, label: 'Stream CSD & CSV' },
+      usb: { supported: false, label: 'Unsupported' },
+      ble: { supported: true, label: 'Web BLE' },
+      tcp: { supported: false, label: 'Unsupported' },
+      file: { supported: true, label: 'Supported' },
+      api: { supported: false, label: 'Unsupported' },
     },
     {
       platform: 'Android',
       badge: '🤖',
-      usb: { supported: true, label: 'USB-C OTG Host' },
-      ble: { supported: true, label: 'Native BLE scan' },
-      tcp: { supported: true, label: 'Port 502 direct' },
-      file: { supported: true, label: 'Full offline file' },
+      usb: { supported: true, label: 'USB OTG' },
+      ble: { supported: true, label: 'Supported' },
+      tcp: { supported: true, label: 'Supported' },
+      file: { supported: true, label: 'Supported' },
+      api: { supported: true, label: 'Supported' },
     },
     {
       platform: 'Win (Windows)',
       badge: '🪟',
-      usb: { supported: true, label: 'Direct Win32 driver' },
-      ble: { supported: true, label: 'Native Windows BLE' },
-      tcp: { supported: true, label: 'Port 502 direct' },
-      file: { supported: true, label: 'Full offline file' },
+      usb: { supported: true, label: 'Direct USB' },
+      ble: { supported: true, label: 'Supported' },
+      tcp: { supported: true, label: 'Supported' },
+      file: { supported: true, label: 'Supported' },
+      api: { supported: true, label: 'Supported' },
     },
     {
       platform: 'macOS',
       badge: '🍎',
-      usb: { supported: true, label: 'IOKit raw USB Bulk' },
-      ble: { supported: true, label: 'CoreBluetooth BLE' },
-      tcp: { supported: true, label: 'Port 502 direct' },
-      file: { supported: true, label: 'Full offline file' },
+      usb: { supported: true, label: 'Direct USB' },
+      ble: { supported: true, label: 'Supported' },
+      tcp: { supported: true, label: 'Supported' },
+      file: { supported: true, label: 'Supported' },
+      api: { supported: true, label: 'Supported' },
     },
     {
       platform: 'iOS',
       badge: '📱',
-      usb: { supported: false, label: 'Blocked by Apple' },
-      ble: { supported: true, label: 'CoreBluetooth BLE' },
-      tcp: { supported: true, label: 'Port 502 direct' },
-      file: { supported: true, label: 'Files / AirDrop' },
+      usb: { supported: false, label: 'Unsupported' },
+      ble: { supported: true, label: 'Supported' },
+      tcp: { supported: true, label: 'Supported' },
+      file: { supported: true, label: 'Supported' },
+      api: { supported: true, label: 'Supported' },
     },
   ];
 
@@ -172,10 +177,11 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
                 <thead>
                   <tr>
                     <th className="th-platform">Platform</th>
-                    <th>Direct USB</th>
-                    <th>Bluetooth (BLE)</th>
-                    <th>Ethernet TCP</th>
-                    <th>Local CSD / CSV</th>
+                    <th>USB</th>
+                    <th>BLE</th>
+                    <th>Ethernet</th>
+                    <th>Local File</th>
+                    <th>S332 API</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -189,6 +195,7 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
                       <td>{renderStatusCell(row.ble)}</td>
                       <td>{renderStatusCell(row.tcp)}</td>
                       <td>{renderStatusCell(row.file)}</td>
+                      <td>{renderStatusCell(row.api)}</td>
                     </tr>
                   ))}
                 </tbody>

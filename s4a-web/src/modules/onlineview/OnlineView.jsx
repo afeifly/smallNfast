@@ -21,6 +21,7 @@ let _onlineSessionCache = {
   hasFetched: false,
   channels: [],
   sysInfo: null,
+  layoutPoints: [],
 };
 
 export function clearOnlineCache() {
@@ -29,6 +30,7 @@ export function clearOnlineCache() {
     hasFetched: false,
     channels: [],
     sysInfo: null,
+    layoutPoints: [],
   };
 }
 
@@ -44,6 +46,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
   const hasCachedData = _onlineSessionCache.deviceKey === deviceKey && _onlineSessionCache.hasFetched;
 
   const [channels, setChannels] = useState(() => (hasCachedData ? _onlineSessionCache.channels : []));
+  const [layoutPoints, setLayoutPoints] = useState(() => (hasCachedData ? (_onlineSessionCache.layoutPoints || []) : []));
   const [sysInfo, setSysInfo] = useState(() => (hasCachedData ? _onlineSessionCache.sysInfo : null));
   const [isLive, setIsLive] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -53,10 +56,11 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
   const viewActiveRef = useRef(false);
 
   const deviceDisplayName = resolveDeviceTypeName(sysInfo, deviceInfo);
-  const isEthernet = deviceInfo?.transport === 'TCP' || TauriSutoAPI.getActiveTransport() === 'TCP' || Boolean(deviceInfo?.host);
-  const ethernetIp = isEthernet
-    ? (deviceInfo?.host ? `${deviceInfo.host}${deviceInfo.port && deviceInfo.port !== 502 && deviceInfo.port !== '502' ? `:${deviceInfo.port}` : ''}` : sysInfo?.ip)
-    : (sysInfo?.ip || null);
+  const isEthernet = deviceInfo?.transport === 'TCP' || deviceInfo?.transport === 'API' || TauriSutoAPI.getActiveTransport() === 'TCP' || TauriSutoAPI.getActiveTransport() === 'API' || Boolean(deviceInfo?.host);
+  const rawIp = deviceInfo?.host || deviceInfo?.ip || sysInfo?.ip || null;
+  const ethernetIp = isEthernet && rawIp
+    ? String(rawIp).replace(/^https?:\/\//i, '').replace(/:\d+$/, '').trim()
+    : null;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -125,6 +129,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     // If we already have the sensor-channel structure cached for this device, keep it and do not re-query
     if (!force && _onlineSessionCache.deviceKey === deviceKey && _onlineSessionCache.hasFetched) {
       setChannels(_onlineSessionCache.channels);
+      setLayoutPoints(_onlineSessionCache.layoutPoints || []);
       if (_onlineSessionCache.sysInfo) {
         setSysInfo(_onlineSessionCache.sysInfo);
       }
@@ -132,7 +137,10 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     }
 
     try {
-      const chs = await TauriSutoAPI.getChannels();
+      const [chs, layout] = await Promise.all([
+        TauriSutoAPI.getChannels(),
+        TauriSutoAPI.getLayoutInfo ? TauriSutoAPI.getLayoutInfo() : Promise.resolve([]),
+      ]);
       if (!isMountedRef.current) return;
       const safeChs = (Array.isArray(chs) ? chs : []).map((ch) => ({
         ...ch,
@@ -140,7 +148,9 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
           ? ch.resolution
           : resolveChannelResolution(ch),
       }));
+      const safeLayout = Array.isArray(layout) ? layout : [];
       setChannels(safeChs);
+      setLayoutPoints(safeLayout);
       setLastUpdate(new Date());
 
       // Query system info as non-blocking enhancement
@@ -159,6 +169,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
         deviceKey,
         hasFetched: true,
         channels: safeChs,
+        layoutPoints: safeLayout,
         sysInfo: fetchedSysInfo || null,
       };
     } catch (err) {
@@ -197,11 +208,40 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     await pollOnce();
   };
 
-  // One card per SENSOR. Channels sharing a `sensor_key` (SensorID) belong to
-  // the same sensor, mirroring cs_monitor `CommonValue.intVailableChannels` /
-  // `setSingleSensor`.
+  // One card per Measurement Point (when layout available, mirroring S332 screen),
+  // or one card per physical SENSOR as default fallback.
   const sensorCards = useMemo(() => {
     if (!channels || channels.length === 0) return [];
+
+    if (layoutPoints && layoutPoints.length > 0) {
+      const cards = [];
+      for (const pt of layoutPoints) {
+        const pointChannelsSet = new Set((pt.channels || []).map(String));
+        const matchedChannels = channels.filter((ch) => {
+          const createTime = String(ch.channel_create_time || ch.raw?.ChannelCreateTime || '');
+          return pointChannelsSet.has(createTime) && ch.active !== false;
+        });
+
+        if (matchedChannels.length > 0) {
+          const loc = pt.location?.trim() || '';
+          const mea = pt.meapoint?.trim() || '';
+          const cardTitle = loc && mea ? `${loc} / ${mea}` : (loc || mea || `Point ${pt.index + 1}`);
+
+          cards.push({
+            key: `point_${pt.index}_${cardTitle}`,
+            sensorName: cardTitle,
+            location: loc,
+            meapoint: mea,
+            isMeasurementPoint: true,
+            channels: matchedChannels,
+          });
+        }
+      }
+      if (cards.length > 0) {
+        return cards;
+      }
+    }
+
     const cardMap = new Map();
     for (const ch of channels) {
       const devName = ch.device_description?.trim()
@@ -228,7 +268,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
       idx += 1;
     }
     return cards;
-  }, [channels, sysInfo]);
+  }, [channels, layoutPoints, sysInfo]);
 
   return (
     <div className="online-view-container">
@@ -303,8 +343,12 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
                 <span className="suto-device-name" title={sensor.sensorName}>
                   {sensor.sensorName}
                 </span>
-                {sensor.sensorId !== undefined && sensor.sensorId !== null && (
-                  <span className="suto-sensor-chip">sensor #{sensor.sensorId}</span>
+                {sensor.isMeasurementPoint ? (
+                  <span className="suto-sensor-chip">Point</span>
+                ) : (
+                  sensor.sensorId !== undefined && sensor.sensorId !== null && (
+                    <span className="suto-sensor-chip">sensor #{sensor.sensorId}</span>
+                  )
                 )}
               </div>
               <div className="suto-device-header-meta">

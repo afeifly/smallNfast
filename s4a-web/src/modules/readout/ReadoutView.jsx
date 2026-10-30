@@ -2,75 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 import { resolveDeviceTypeName } from '../../util/platform';
 import { getOnlineCache } from '../onlineview/OnlineView';
+import { resolveLoggerType, isS332Family, _readoutSessionCache, updateReadoutCache } from './readoutSession';
 import './ReadoutView.css';
-
-/**
- * Identify SUTO logger family based on S4ABase.java logic:
- * - 'ds310': DS310, S330, S331, S551 (Simple devices)
- * - 's600': S600, S601, S602, S132
- * - 's605': S605 Series
- * - 's606': S606 Series
- * - 's418': S418, S419, S415 Series (Compact Flow Meter Logger)
- * - 's461': S461, S463 Series (Clamp-On Ultrasonic Flow & Energy Meter Logger)
- */
-export function resolveLoggerType(deviceInfo, sysInfo) {
-  const devId = Number(sysInfo?.device_id ?? deviceInfo?.deviceId ?? deviceInfo?.device_id);
-  const resolvedName = resolveDeviceTypeName(sysInfo, deviceInfo) || '';
-  const name = `${deviceInfo?.device || ''} ${deviceInfo?.name || ''} ${sysInfo?.device_name || ''} ${deviceInfo?.device_description || ''} ${resolvedName}`.toLowerCase();
-
-  // S418 / S419
-  if (
-    name.includes('418') ||
-    name.includes('419') ||
-    name.includes('415') ||
-    devId === 418 ||
-    devId === 419 ||
-    (devId >= 0x120e && devId <= 0x1219) ||
-    (devId >= 0x122b && devId <= 0x122e)
-  ) {
-    return 's418';
-  }
-
-  // S461 / S463
-  if (
-    name.includes('461') ||
-    name.includes('463') ||
-    devId === 461 ||
-    devId === 463 ||
-    devId === 0x1300 ||
-    devId === 0x1302
-  ) {
-    return 's461';
-  }
-
-  // S606
-  if (name.includes('606') || devId === 606 || devId === 0x1220 || devId === 0x1221) {
-    return 's606';
-  }
-
-  // S605
-  if (name.includes('605') || devId === 605 || devId === 0x121e || devId === 0x121f) {
-    return 's605';
-  }
-
-  // S600
-  if (
-    name.includes('600') ||
-    name.includes('601') ||
-    name.includes('602') ||
-    name.includes('132') ||
-    devId === 600 ||
-    devId === 0x1068 ||
-    devId === 0x1069 ||
-    devId === 0x106f ||
-    devId === 0x1049
-  ) {
-    return 's600';
-  }
-
-  // S330 / S331 / DS310 / S551 / S120 (Memory Logger)
-  return 'ds310';
-}
 
 function formatUnixTimestamp(unixSec) {
   if (!unixSec || unixSec <= 0) return '---';
@@ -95,6 +28,25 @@ function formatDateToCsvString(d) {
   return `${DD}-${MM}-${YYYY} ${HH}:${mm}:${ss}`;
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+}
+
+function formatDuration(sec) {
+  if (!sec || sec <= 0) return '0s';
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const seconds = sec % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 function normalizeScreenshotFilename(rawName, bytes = null) {
   if (!rawName) return 'Screenshot.png';
   let name = String(rawName).trim();
@@ -111,7 +63,7 @@ function normalizeScreenshotFilename(rawName, bytes = null) {
   return name;
 }
 
-export function getRelativeTimeString(date) {
+function getRelativeTimeString(date) {
   if (!date || isNaN(date.getTime())) return '';
   const now = Date.now();
   const diffSec = Math.floor((now - date.getTime()) / 1000);
@@ -128,7 +80,7 @@ export function getRelativeTimeString(date) {
   return `${Math.floor(diffDay / 365)}y ago`;
 }
 
-export function parseScreenshotTime(item) {
+function parseScreenshotTime(item) {
   if (!item) return { timestamp: 0, formatted: '---', relative: '' };
 
   if (item.date && typeof item.date === 'number') {
@@ -206,31 +158,6 @@ export function parseScreenshotTime(item) {
   };
 }
 
-// Session cache for preserving readout data across component mount/unmount while connected
-let _readoutSessionCache = {
-  deviceKey: null,
-  hasFetched: false,
-  filesList: [],
-  selectedFileIdx: null,
-  sysInfo: null,
-  deviceChannels: [],
-  loggerStatus: null,
-  screenshotsList: [],
-};
-
-export function clearReadoutCache() {
-  _readoutSessionCache = {
-    deviceKey: null,
-    hasFetched: false,
-    filesList: [],
-    selectedFileIdx: null,
-    sysInfo: null,
-    deviceChannels: [],
-    loggerStatus: null,
-    screenshotsList: [],
-  };
-}
-
 export default function ReadoutView({
   deviceInfo,
   onAnalyzeCsv,
@@ -248,6 +175,7 @@ export default function ReadoutView({
   const [loggerStatus, setLoggerStatus] = useState(() => (hasCachedData ? _readoutSessionCache.loggerStatus : null));
   const [deviceChannels, setDeviceChannels] = useState(() => (hasCachedData ? _readoutSessionCache.deviceChannels : []));
   const [filesList, setFilesList] = useState(() => (hasCachedData ? _readoutSessionCache.filesList : []));
+  const [diskCapacity, setDiskCapacity] = useState(() => (hasCachedData ? _readoutSessionCache.diskCapacity : null));
   const [loadingDeviceData, setLoadingDeviceData] = useState(() => !hasCachedData);
 
   // Active Readout Action
@@ -305,6 +233,7 @@ export default function ReadoutView({
 
   // Fetch screenshots from device memory
   const fetchScreenshots = useCallback(async () => {
+    if (TauriSutoAPI.getActiveTransport() === 'API') return;
     setLoadingDeviceData(true);
     try {
       const list = await TauriSutoAPI.getScreenshots();
@@ -322,6 +251,7 @@ export default function ReadoutView({
 
   // Fetch S600 CSD sessions for report generation
   const fetchReportFiles = useCallback(async () => {
+    if (TauriSutoAPI.getActiveTransport() === 'API') return;
     setLoadingDeviceData(true);
     setReportStatusMsg('');
     try {
@@ -494,11 +424,27 @@ export default function ReadoutView({
         : await TauriSutoAPI.getChannels();
       setDeviceChannels(chs || []);
 
-      const sShots = await TauriSutoAPI.getScreenshots();
+      // Only query screenshots for devices that actually support it (DS310, S600, S605, S606)
+      // Never query screenshots for S332 or WebAPI devices
+      const activeTrans = TauriSutoAPI.getActiveTransport() || deviceInfo?.transport;
+      const isApiDevice = activeTrans === 'API' || dType === 's332';
+      let sShots = [];
+      if (!isApiDevice && dType !== 's418' && dType !== 's461') {
+        try {
+          sShots = await TauriSutoAPI.getScreenshots();
+        } catch (e) {
+          console.warn('[ReadoutView] Querying screenshots failed:', e);
+        }
+      }
       setScreenshotsList(sShots || []);
       setSelectedScreenshots(new Set());
 
-      const files = await TauriSutoAPI.getLoggerFiles();
+      let files = [];
+      try {
+        files = await TauriSutoAPI.getLoggerFiles();
+      } catch (e) {
+        console.warn('[ReadoutView] Querying logger files failed:', e);
+      }
       const sortedFiles = [...(files || [])].sort((a, b) =>
         (b.startTime || '').localeCompare(a.startTime || '')
       );
@@ -510,7 +456,17 @@ export default function ReadoutView({
       });
       setReportFilesList([]);
 
-      _readoutSessionCache = {
+      let disk = null;
+      if (typeof TauriSutoAPI.getDiskCapacity === 'function') {
+        try {
+          disk = await TauriSutoAPI.getDiskCapacity();
+          setDiskCapacity(disk);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      updateReadoutCache({
         deviceKey,
         hasFetched: true,
         filesList: sortedFiles,
@@ -519,7 +475,8 @@ export default function ReadoutView({
         deviceChannels: chs || [],
         loggerStatus: lStatus || null,
         screenshotsList: sShots || [],
-      };
+        diskCapacity: disk || null,
+      });
     } catch (e) {
       console.warn('[ReadoutView] Querying device info failed:', e);
     } finally {
@@ -546,8 +503,18 @@ export default function ReadoutView({
     return resolveLoggerType(deviceInfo, sysInfo);
   }, [deviceInfo, sysInfo]);
 
+  const activeTransport = TauriSutoAPI.getActiveTransport() || deviceInfo?.transport;
+  const isBle = activeTransport === 'BLE' || Boolean(deviceInfo?.isBle);
+  const isS332 = loggerType === 's332' || activeTransport === 'API' || deviceInfo?.transport === 'API' || isS332Family(deviceInfo, sysInfo);
+  const isApi = isS332;
+  const isEthernet = !isBle && (deviceInfo?.transport === 'TCP' || activeTransport === 'TCP' || Boolean(deviceInfo?.host) || isS332);
+  const isUsb = !isBle && !isEthernet && !isS332;
+
   // Available readout options based on device type matching S4ABase.java
   const availableReadoutOptions = useMemo(() => {
+    if (isS332) {
+      return [{ id: 'files', label: 'Recorded Log Files', icon: '📁', badge: filesList.length }];
+    }
     if (loggerType === 's418' || loggerType === 's461') {
       return [{ id: 'files', label: 'Read Logged Data (CSV)', icon: '📊' }];
     }
@@ -565,7 +532,7 @@ export default function ReadoutView({
       options.push({ id: 'alarm', label: 'Export alarm history', icon: '⚠️' });
     }
     return options;
-  }, [loggerType, screenshotsList.length, filesList.length]);
+  }, [isS332, loggerType, screenshotsList.length, filesList.length]);
 
   const deviceDisplayName =
     resolveDeviceTypeName(sysInfo, deviceInfo) ||
@@ -574,13 +541,11 @@ export default function ReadoutView({
     deviceInfo?.name ||
     'SUTO Device';
 
-  const activeTransport = TauriSutoAPI.getActiveTransport() || deviceInfo?.transport;
-  const isBle = activeTransport === 'BLE' || Boolean(deviceInfo?.isBle);
-  const isEthernet = !isBle && (deviceInfo?.transport === 'TCP' || activeTransport === 'TCP' || Boolean(deviceInfo?.host));
-  const isUsb = !isBle && !isEthernet;
-  const ethernetIp = isEthernet
-    ? (deviceInfo?.host ? `${deviceInfo.host}${deviceInfo.port && deviceInfo.port !== 502 && deviceInfo.port !== '502' ? `:${deviceInfo.port}` : ''}` : sysInfo?.ip)
-    : (sysInfo?.ip || null);
+  const rawIp = deviceInfo?.host || deviceInfo?.ip || sysInfo?.ip || null;
+  const cleanIp = isEthernet && rawIp
+    ? String(rawIp).replace(/^https?:\/\//i, '').replace(/:\d+$/, '').trim()
+    : null;
+  const ethernetIp = cleanIp;
 
   const rawSerial = sysInfo?.serial_number || deviceInfo?.serial;
   const serialNumber = typeof rawSerial === 'string' ? rawSerial.trim() : (rawSerial ? String(rawSerial).trim() : '');
@@ -715,11 +680,29 @@ export default function ReadoutView({
     return { blob, count };
   };
 
-  const performRead = async (filename, sampleCount, customStart, customEnd) => {
+  const performRead = async (filename, sampleCount, customStart, customEnd, originalFile) => {
     setReadingProgress(0);
     setReadResult(null);
 
     try {
+      const caps = TauriSutoAPI.getCapabilities ? TauriSutoAPI.getCapabilities() : {};
+      if (caps.loggerPageRead && originalFile?.fileName) {
+        setReadingProgress(10);
+        TauriSutoAPI.logClientEvent('INFO', 'READOUT', `WebAPI logger read started: ${originalFile.fileName}`);
+        const res = await TauriSutoAPI.readLoggerData(originalFile.fileName, (prog) => {
+          setReadingProgress(prog.percent);
+        }, originalFile);
+        TauriSutoAPI.logClientEvent('INFO', 'READOUT', `WebAPI logger read finished: ${res.rowCount} rows`);
+        const blob = new Blob([res.csv_text], { type: 'text/csv;charset=utf-8;' });
+        setReadingProgress(null);
+        setReadResult({
+          filename: res.filename || filename,
+          blob,
+          rowCount: res.rowCount,
+        });
+        return;
+      }
+
       const result = await handleGenerateCsvAsync(
         filename,
         sampleCount,
@@ -994,7 +977,7 @@ export default function ReadoutView({
               <h2 className="readout-device-title">{deviceDisplayName}</h2>
               <span className="readout-badge read-logger-title" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>Readout</span>
               {isEthernet ? (
-                <span className="readout-badge badge-tcp">Ethernet {ethernetIp ? `(${ethernetIp})` : ''}</span>
+                <span className="readout-badge badge-tcp">Ethernet {cleanIp ? `(${cleanIp})` : ''}</span>
               ) : isBle ? (
                 <span className="readout-badge badge-ble">Bluetooth (BLE)</span>
               ) : isUsb ? (
@@ -1004,7 +987,13 @@ export default function ReadoutView({
             <div className="readout-meta-row">
               {hasSerialNumber && (
                 <>
-                  <span>Serial: {serialNumber}</span>
+                  <span>SN: <strong style={{ fontFamily: 'monospace' }}>{serialNumber}</strong></span>
+                  <span>•</span>
+                </>
+              )}
+              {sysInfo?.firmware_version && (
+                <>
+                  <span>FW: <strong style={{ fontFamily: 'monospace' }}>{sysInfo.firmware_version}</strong></span>
                   <span>•</span>
                 </>
               )}
@@ -1475,8 +1464,150 @@ export default function ReadoutView({
           </div>
         )}
 
+        {/* ── Sub-view S332: Network API Logger Files (S332) ── */}
+        {readoutOption === 'files' && (isApi || loggerType === 's332') && (
+          <div className="readout-tab-pane">
+            <div className="readout-section-header">
+              <div className="readout-section-title-group">
+                <h3>S332 Recorded Log Files</h3>
+                <p>Browse recorded sessions stored in S332 memory. Select a file to read and export directly to CSV.</p>
+              </div>
+              <div className="readout-section-actions">
+                <button
+                  className="readout-btn-secondary"
+                  onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'S332 files refresh requested'); refreshDeviceState(); }}
+                  disabled={loadingDeviceData}
+                  title="Refresh recorded session files from S332"
+                >
+                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Files'}
+                </button>
+              </div>
+            </div>
+
+            {/* Storage capacity indicator */}
+            {diskCapacity && (
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '12px 18px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                  <span style={{ fontWeight: 600, color: '#334155' }}>
+                    💾 S332 Internal Logger Storage
+                  </span>
+                  <span style={{ color: '#64748b', fontFamily: 'monospace' }}>
+                    {formatBytes(diskCapacity.used)} used / {formatBytes(diskCapacity.total)} total ({diskCapacity.percentUsed}% used)
+                  </span>
+                </div>
+                <div style={{ height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.min(100, Math.max(1, Number(diskCapacity.percentUsed) || 1))}%`,
+                      backgroundColor: '#00ac86',
+                      borderRadius: '4px',
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {filesList.length > 0 ? (
+              <>
+                <div className="readout-table-wrapper">
+                  <table className="readout-data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 180 }}>File Name</th>
+                        <th style={{ width: 170 }}>Start Time</th>
+                        <th style={{ width: 170 }}>End Time</th>
+                        <th style={{ width: 120 }}>Duration</th>
+                        <th style={{ width: 90 }}>Interval</th>
+                        <th style={{ width: 100 }}>Channels</th>
+                        <th style={{ width: 140, textAlign: 'right' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filesList.map((file, idx) => {
+                        const durationSec = Math.max(0, Math.round(((file.endTimeStamp - file.startTimeStamp) / 1000)));
+                        const isSelected = selectedFileIdx === idx;
+
+                        return (
+                          <tr
+                            key={file.fileName || idx}
+                            className={`readout-table-row ${isSelected ? 'selected' : ''}`}
+                            onClick={() => handleSelectFileIdx(idx)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <td>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
+                                {file.fileName}
+                              </span>
+                            </td>
+                            <td>{file.startTime || '---'}</td>
+                            <td>{file.endTime || '---'}</td>
+                            <td>{formatDuration(durationSec)}</td>
+                            <td>
+                              <span style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: 4, fontSize: '0.78rem', fontWeight: 600 }}>
+                                {file.sampleRate ? `${file.sampleRate}s` : '1s'}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: '0.78rem' }}>
+                                {file.channelsCount || (file.channels ? file.channels.length : 0)} chs
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                              <button
+                                className="readout-btn-mini primary"
+                                disabled={Boolean(readingProgress)}
+                                onClick={() => {
+                                  handleSelectFileIdx(idx);
+                                  const fname = `${file.fileName.replace(/\.csv$/i, '')}.csv`;
+                                  performRead(fname, file.samplesPerChannel || 300, undefined, undefined, file);
+                                }}
+                                title="Read recorded data from S332 into CSV"
+                              >
+                                Read to CSV
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : loadingDeviceData ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <div className="readout-progress-spin" style={{ margin: '0 auto 16px auto' }} />
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>Loading Recorded Sessions...</h4>
+                <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
+                  Querying S332 memory for recorded log files...
+                </p>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <div style={{ fontSize: '40px', marginBottom: '12px' }}>📁</div>
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Recorded Log Files Found</h4>
+                <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
+                  The connected S332 logger currently has no recorded session files in memory.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Sub-view 4: Type 1 (DS310 / S331 / S600 Standard Logger Files) ── */}
-        {readoutOption === 'files' && (loggerType === 'ds310' || loggerType === 's600' || loggerType === 's605' || loggerType === 's606') && (
+        {readoutOption === 'files' && !isApi && loggerType !== 's332' && (loggerType === 'ds310' || loggerType === 's600' || loggerType === 's605' || loggerType === 's606') && (
           <div className="readout-tab-pane">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
@@ -1601,7 +1732,7 @@ export default function ReadoutView({
                       const fileStart = file?.startTime ? new Date(file.startTime.replace(/-/g, '/')) : undefined;
                       const fileEnd = file?.endTime ? new Date(file.endTime.replace(/-/g, '/')) : undefined;
                       TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Logger read started: ${fname} (${file?.samplesPerChannel || 500} samples)`);
-                      performRead(fname, file?.samplesPerChannel || 500, fileStart, fileEnd);
+                      performRead(fname, file?.samplesPerChannel || 500, fileStart, fileEnd, file);
                     }}
                   >
                     {filesList[selectedFileIdx]?.isRecording ? 'Read Active Session to CSV' : 'Read Selected Session to CSV'}

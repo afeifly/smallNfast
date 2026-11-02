@@ -378,7 +378,7 @@
 
 .landing-wrapper {
   width: 100%;
-  max-width: 880px;
+  max-width: 1200px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -394,10 +394,16 @@
 
 .landing-modes-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(320px, 420px));
-  gap: 32px;
+  grid-template-columns: repeat(3, minmax(280px, 360px));
+  gap: 24px;
   width: 100%;
   justify-content: center;
+}
+
+@media (max-width: 1080px) {
+  .landing-modes-grid {
+    grid-template-columns: repeat(2, minmax(280px, 400px));
+  }
 }
 
 @media (max-width: 768px) {
@@ -452,6 +458,12 @@
   border: 1px solid #a7f3d0;
 }
 
+.badge-processscape {
+  background-color: #f0fdf4;
+  color: #00a876;
+  border: 1px solid #bbf7d0;
+}
+
 .mode-icon-box {
   width: 56px;
   height: 56px;
@@ -468,6 +480,11 @@
 }
 
 .mode-icon-monitor {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+}
+
+.mode-icon-processscape {
   background: linear-gradient(135deg, #00ac86 0%, #007d61 100%);
   color: #ffffff;
 }
@@ -488,10 +505,18 @@
 }
 
 .landing-cta-monitor {
-  background: linear-gradient(135deg, #00ac86 0%, #008f6e 100%);
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
 }
 
 .landing-cta-monitor:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+}
+
+.landing-cta-processscape {
+  background: linear-gradient(135deg, #00ac86 0%, #008f6e 100%);
+}
+
+.landing-cta-processscape:hover {
   background: linear-gradient(135deg, #008f6e 0%, #007358 100%);
 }
 
@@ -534,8 +559,13 @@
 }
 
 .header-mode-indicator.monitor {
-  background: rgba(5, 150, 105, 0.15);
-  color: #047857;
+  background: rgba(2, 132, 199, 0.15);
+  color: #0284c7;
+}
+
+.header-mode-indicator.processscape {
+  background: rgba(0, 168, 118, 0.15);
+  color: #00ac86;
 }
 
 .landing-cta-btn {

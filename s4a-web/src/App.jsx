@@ -16,6 +16,7 @@ import DeviceConnectModal from './components/DeviceConnectModal';
 import DownloadAppModal from './components/DownloadAppModal';
 import ReadoutView from './modules/readout/ReadoutView';
 import { clearReadoutCache } from './modules/readout/readoutSession';
+import ProcessScapeView from './modules/processscape/ProcessScapeView';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
@@ -134,6 +135,11 @@ function App() {
   const [showConnectModal, setShowConnectModal] = React.useState(false);
   const [showDownloadModal, setShowDownloadModal] = React.useState(false);
   const [analyzingFromReadout, setAnalyzingFromReadout] = React.useState(false);
+
+  // ProcessScape states
+  const [psTitle, setPsTitle] = React.useState('ProcessScape');
+  const [psScreenSize, setPsScreenSize] = React.useState({ w: 1024, h: 800 });
+  const psActionsRef = React.useRef(null);
 
   // Live value recording (header REC button)
   const [recState, setRecState] = React.useState(() => liveRecorder.getRecorderState());
@@ -829,6 +835,28 @@ function App() {
               </svg>
             </button>
           )}
+          {appMode === 'analyze' && (
+            <span className="header-mode-indicator analyze">File Analysis</span>
+          )}
+          {appMode === 'monitor' && (
+            <span className="header-mode-indicator monitor">Device Studio</span>
+          )}
+          {appMode === 'processscape' && (
+            <>
+              <span className="header-mode-indicator processscape">ProcessScape</span>
+              <input
+                className="ps-title-input"
+                style={{ marginLeft: 8, height: 26, fontSize: 12, padding: '2px 8px', width: 180 }}
+                value={psTitle}
+                onChange={(e) => {
+                  setPsTitle(e.target.value);
+                  psActionsRef.current?.setProjectTitle(e.target.value);
+                }}
+                placeholder="Plant SCADA Title"
+                title="Rename Plant SCADA Project"
+              />
+            </>
+          )}
         </div>
 
         {/* Unified Scrollable Strip: Tabs + Action Items */}
@@ -841,13 +869,20 @@ function App() {
           onMouseLeave={handleHeaderMouseUp}
         >
           {/* View Switcher Tabs */}
-        {appMode === 'monitor' ? (
+        {appMode === 'processscape' ? null : appMode === 'monitor' ? (
           <div className="header-tabs">
             <button
               className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
               onClick={() => switchTab('online')}
             >
               Online View
+            </button>
+            <button
+              className="tab-btn"
+              onClick={() => setAppMode('processscape')}
+              title="Switch to Multi-Device ProcessScape"
+            >
+              ProcessScape (Multi)
             </button>
             {recState.hasSession && (
               <button
@@ -866,7 +901,7 @@ function App() {
               </button>
             )}
             {/* Readout hammers the device — never offered while recording */}
-            {appMode === 'monitor' && !recState.recording && (
+            {!recState.recording && (
               <button
                 className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
                 onClick={() => {
@@ -924,6 +959,30 @@ function App() {
         ) : null}
 
           <div className="header-right">
+
+          {appMode === 'processscape' && (
+            <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Tooltip title="Export JSON Topology (Includes Real Picture Size with 16px margin)">
+                <button
+                  type="button"
+                  className="tab-btn active"
+                  onClick={() => psActionsRef.current?.handleExportJson()}
+                >
+                  📋 Export JSON
+                </button>
+              </Tooltip>
+
+              <Tooltip title="Export High-Resolution PNG Picture (Auto-cropped to real elements with 16px margin)">
+                <button
+                  type="button"
+                  className="tab-btn"
+                  onClick={() => psActionsRef.current?.handleExportPng()}
+                >
+                  🖼 Export PNG
+                </button>
+              </Tooltip>
+            </div>
+          )}
 
           {appMode === 'monitor' && (
             <Tooltip
@@ -1042,8 +1101,19 @@ function App() {
 
       {/* Main Content Area */}
       <main className="app-main-content">
-        {!appMode ? (
-          /* Welcome Landing Page with dual modes */
+        {appMode === 'processscape' ? (
+          <div className="view-content-wrapper" style={{ height: '100%', overflow: 'hidden' }}>
+            <ProcessScapeView
+              onBackToLanding={() => setAppMode(null)}
+              onRegisterActions={(actions) => { psActionsRef.current = actions; }}
+              onStateChange={({ screenSize, projectTitle }) => {
+                if (screenSize) setPsScreenSize(screenSize);
+                if (projectTitle != null) setPsTitle(projectTitle);
+              }}
+            />
+          </div>
+        ) : !appMode ? (
+          /* Welcome Landing Page with 3 modes */
           <div className="landing-container">
             <div className="landing-wrapper">
               <div className="landing-modes-grid">
@@ -1137,6 +1207,42 @@ function App() {
                       <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#334155', fontWeight: 600 }}>Direct USB</span>
                       <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>Ethernet TCP</span>
                       <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>Bluetooth (BLE)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mode Card 3: ProcessScape (Multi-Device Plant SCADA) */}
+                <div className="landing-mode-card">
+                  <span className="mode-card-badge badge-processscape">Multi Device · Plant SCADA</span>
+                  <div className="mode-icon-box mode-icon-processscape">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </div>
+                  <h2 className="mode-card-title">ProcessScape</h2>
+                  <p className="mode-card-desc">
+                    Multi-device plant pipeline visualizer, equipment topology, compressors, buffer tanks, chillers, and distributed live telemetry cards.
+                  </p>
+
+                  <button
+                    className="landing-cta-btn landing-cta-processscape"
+                    onClick={() => {
+                      TauriSutoAPI.logClientEvent('INFO', 'APP', 'ProcessScape mode activated');
+                      setAppMode('processscape');
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                    Open ProcessScape
+                  </button>
+
+                  <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>SCADA Architecture:</div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>Piping Flow</span>
+                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>8 Color Themes</span>
+                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#b45309', fontWeight: 600 }}>Live Telemetry</span>
                     </div>
                   </div>
                 </div>

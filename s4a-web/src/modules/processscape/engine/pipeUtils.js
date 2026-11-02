@@ -181,9 +181,9 @@ export function rectsIntersect(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h) {
 export function getElementBBox(el) {
   if (!el) return { x: 0, y: 0, w: 0, h: 0 };
   if (el.type === 'sensor_card') {
-    const channels = (el.channels && Array.isArray(el.channels) && el.channels.length > 0)
+    const channels = (el.channels && Array.isArray(el.channels))
       ? el.channels
-      : [{ id: 'ch1', name: 'Pressure', val: 7.2, unit: 'bar' }, { id: 'ch2', name: 'Flow', val: 125.4, unit: 'm³/h' }];
+      : [];
     const numChannels = channels.length;
     const tagLines = el.tag && (el.tag.includes('\n') ? el.tag.split('\n') : (el.tag.includes('/') ? el.tag.split('/') : [el.tag])) || ['Sensor'];
     const maxTagLen = Math.max(...tagLines.map(l => l.length));
@@ -207,7 +207,7 @@ export function getElementBBox(el) {
     const rowH = 19;
     const channelsH = Math.max(26, numChannels * rowH + 6);
 
-    if (el.titlePosition === 'top') {
+    if (el.titlePosition !== 'left') {
       const headerH = 22;
       const totalW = Math.max(104, nameColW + valColW + unitColW + 28, maxTagLen * 8 + 24);
       const totalH = headerH + 3 + channelsH;
@@ -307,12 +307,12 @@ export function arePipesConnected(p1, p2) {
   // Check endpoint to endpoint
   for (const ea of endA) {
     for (const eb of endB) {
-      if (Math.hypot(ea.x - eb.x, ea.y - eb.y) <= 15) return true;
+      if (Math.hypot(ea.x - eb.x, ea.y - eb.y) <= 20) return true;
     }
   }
 
   // Check endpoint of A touching segment of B (T-junction)
-  const padB = (p2.w || 20) / 2 + 6;
+  const padB = (p2.w || 20) / 2 + 8;
   for (const ea of endA) {
     for (let i = 0; i < p2.points.length - 1; i++) {
       if (distToSegment(ea, p2.points[i], p2.points[i + 1]) <= padB) return true;
@@ -320,7 +320,7 @@ export function arePipesConnected(p1, p2) {
   }
 
   // Check endpoint of B touching segment of A
-  const padA = (p1.w || 20) / 2 + 6;
+  const padA = (p1.w || 20) / 2 + 8;
   for (const eb of endB) {
     for (let i = 0; i < p1.points.length - 1; i++) {
       if (distToSegment(eb, p1.points[i], p1.points[i + 1]) <= padA) return true;
@@ -375,11 +375,11 @@ export function isPipeEndpointOpen(pipe, endpointIdx, allPipes = []) {
 
     const otherEnd0 = other.points[0];
     const otherEndN = other.points[other.points.length - 1];
-    if (Math.hypot(pt.x - otherEnd0.x, pt.y - otherEnd0.y) <= 12) return false;
-    if (Math.hypot(pt.x - otherEndN.x, pt.y - otherEndN.y) <= 12) return false;
+    if (Math.hypot(pt.x - otherEnd0.x, pt.y - otherEnd0.y) <= 18) return false;
+    if (Math.hypot(pt.x - otherEndN.x, pt.y - otherEndN.y) <= 18) return false;
 
     // Check if touching other pipe body (T-junction)
-    const pad = (other.w || 20) / 2 + 4;
+    const pad = (other.w || 20) / 2 + 8;
     for (let i = 0; i < other.points.length - 1; i++) {
       if (distToSegment(pt, other.points[i], other.points[i + 1]) <= pad) return false;
     }

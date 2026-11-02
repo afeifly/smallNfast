@@ -39,10 +39,16 @@ describe('BleSutoAPI channel parsing & normalization', () => {
     expect(ch.sensorDescription).toBe('Flow Sensor');
   });
 
-  it('provides complete metadata on fallback dummy channels when no device descriptors are returned', async () => {
-    // Force cachedChannels empty and get fallback
+  it('returns empty channels by default when no descriptors are returned (zero fake data)', async () => {
     BleSutoAPI.cachedChannels = [];
     const chs = await BleSutoAPI.getChannels();
+    expect(chs.length).toBe(0);
+  });
+
+  it('provides complete metadata on fallback dummy channels when allowFallback is explicitly enabled', async () => {
+    // Force cachedChannels empty and get fallback with explicit allowFallback flag
+    BleSutoAPI.cachedChannels = [];
+    const chs = await BleSutoAPI.getChannels({ allowFallback: true });
     expect(chs.length).toBe(3);
 
     for (const ch of chs) {

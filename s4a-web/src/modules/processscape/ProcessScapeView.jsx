@@ -24,7 +24,8 @@ import {
   expandConnectedPipes,
   resolvePipelineFlowDirections,
   getPipeLength,
-  adjustPipeLength
+  adjustPipeLength,
+  distToSegment
 } from './engine/pipeUtils.js';
 import {
   svgEl,
@@ -36,6 +37,16 @@ import {
   getEquipmentTheme
 } from './engine/illustrators.js';
 import { renderAssetPaletteIcon } from './engine/paletteIcons.jsx';
+import {
+  getActiveScape,
+  getActiveScapeId,
+  setActiveScapeId,
+  getAllScapes,
+  saveScape,
+  DEFAULT_COMPRESSED_AIR_SCAPE
+} from './engine/scapeStorage.js';
+import ScapeManagerModal from './ScapeManagerModal.jsx';
+import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
 
 const PALETTE_CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -102,9 +113,69 @@ const HudIcons = {
       <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
     </svg>
   ),
+  ZoomFit: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+    </svg>
+  ),
+  ZoomIn: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  ),
+  ZoomOut: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  ),
   Check: () => (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  Import: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  ),
+  ExportJson: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  ),
+  ExportPng: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
+  ),
+  LiveDnd: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="5 9 2 12 5 15" />
+      <polyline points="9 5 12 2 15 5" />
+      <polyline points="15 19 12 22 9 19" />
+      <polyline points="19 9 22 12 19 15" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <line x1="12" y1="2" x2="12" y2="22" />
+    </svg>
+  ),
+  BoundsScale: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3" />
+      <rect x="2" y="2" width="4" height="4" fill="currentColor" />
+      <rect x="18" y="2" width="4" height="4" fill="currentColor" />
+      <rect x="18" y="18" width="4" height="4" fill="currentColor" />
+      <rect x="2" y="18" width="4" height="4" fill="currentColor" />
     </svg>
   )
 };
@@ -114,14 +185,94 @@ export default function ProcessScapeView({
   onRegisterActions,
   onStateChange,
   initialElements = [],
-  initialPipes = []
+  initialPipes = [],
+  initialMode
 }) {
-  // --- Canvas Document State (Fixed Resolution for Temporary Drawing) ---
-  const [projectTitle, setProjectTitle] = useState('ProcessScape');
-  const [screenSize, setScreenSize] = useState({ w: 1024, h: 800 });
-  const [zones, setZones] = useState([]);
-  const [pipes, setPipes] = useState(initialPipes);
-  const [elements, setElements] = useState(initialElements);
+  const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const defaultMode = initialMode || (isTest ? 'editor' : 'runtime');
+  const [scapeMode, setScapeMode] = useState(defaultMode); // 'runtime' | 'editor'
+  const [isScapeManagerOpen, setIsScapeManagerOpen] = useState(false);
+
+  // Load active scape from storage if custom elements/pipes not explicitly passed
+  const activeScape = useMemo(() => {
+    if (initialElements.length > 0 || initialPipes.length > 0) {
+      return {
+        id: 'scape_custom',
+        title: 'ProcessScape',
+        elements: initialElements,
+        pipes: initialPipes,
+        zones: []
+      };
+    }
+    return getActiveScape();
+  }, [initialElements, initialPipes]);
+
+  const [activeScapeId, setActiveScapeIdState] = useState(() => activeScape.id);
+  const [projectTitle, setProjectTitle] = useState(() => activeScape.title || 'ProcessScape');
+  const [screenSize, setScreenSize] = useState(() => (
+    activeScape.tempCanvasSize
+      ? { w: activeScape.tempCanvasSize.width, h: activeScape.tempCanvasSize.height }
+      : { w: 1024, h: 800 }
+  ));
+  const [zones, setZones] = useState(() => activeScape.zones || []);
+  const [pipes, setPipes] = useState(() => (initialPipes.length > 0 ? initialPipes : (activeScape.pipes || [])));
+  const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape.elements || [])));
+
+  const handleSelectActiveScape = useCallback((scape) => {
+    setActiveScapeIdState(scape.id);
+    setProjectTitle(scape.title || 'ProcessScape');
+    setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
+    setZones(scape.zones || []);
+    setElements(scape.elements || []);
+    setPipes(scape.pipes || []);
+    setSelectedIds(new Set());
+    setScapeMode('runtime');
+  }, []);
+
+  const handleEditScapeFromManager = useCallback((scape) => {
+    setActiveScapeIdState(scape.id);
+    setProjectTitle(scape.title || 'ProcessScape');
+    setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
+    setZones(scape.zones || []);
+    setElements(scape.elements || []);
+    setPipes(scape.pipes || []);
+    setSelectedIds(new Set());
+    setScapeMode('editor');
+  }, []);
+
+  const handleSaveAndExitEditor = useCallback(() => {
+    saveScape({
+      id: activeScapeId,
+      title: projectTitle,
+      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+      zones,
+      elements,
+      pipes
+    });
+    setSelectedIds(new Set());
+    setScapeMode('runtime');
+    if (typeof window !== 'undefined' && window.showAppNotification) {
+      window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
+    }
+  }, [activeScapeId, projectTitle, screenSize, zones, elements, pipes]);
+
+  const changeScapeMode = useCallback((newMode) => {
+    if (newMode === 'runtime' && scapeMode === 'editor') {
+      saveScape({
+        id: activeScapeId,
+        title: projectTitle,
+        tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+        zones,
+        elements,
+        pipes
+      });
+      if (typeof window !== 'undefined' && window.showAppNotification) {
+        window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
+      }
+    }
+    setSelectedIds(new Set());
+    setScapeMode(newMode);
+  }, [activeScapeId, projectTitle, screenSize, zones, elements, pipes, scapeMode]);
 
   // Dynamic real picture bounding box based on placed items with 16px margin to edge
   const contentBounds = useMemo(() => getContentBounds(elements, pipes, 16), [elements, pipes]);
@@ -130,7 +281,7 @@ export default function ProcessScapeView({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [currentTool, setCurrentTool] = useState('select'); // 'select' | 'pan' | 'draw_pipe'
   const [activePipeMedium, setActivePipeMedium] = useState('gas'); // 'gas' | 'liquid'
-  const [view, setView] = useState({ x: 20, y: 78, zoom: 0.85 });
+  const [view, setView] = useState({ x: 20, y: 78, zoom: 1.0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const isSpacePressedRef = useRef(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -140,10 +291,26 @@ export default function ProcessScapeView({
   const [tipIndex, setTipIndex] = useState(0);
   const [tipVisible, setTipVisible] = useState(true);
 
+  // Live View Tool States
+  const [isLiveDndActive, setIsLiveDndActive] = useState(false);
+  const [isBoundsResizerActive, setIsBoundsResizerActive] = useState(false);
+  const [resizingBox, setResizingBox] = useState(null);
+  const boundsBoxRef = useRef(null);
+
+  // Real device live telemetry hook - powers live numbers and dynamic pipe flow (paused during bounds resizing)
+  const telemetry = useProcessScapeTelemetry({
+    elements,
+    pipes,
+    setElements,
+    setPipes,
+    enabled: !isBoundsResizerActive
+  });
+
   // --- SVG Viewport & Rendering Refs ---
   const viewportRef = useRef(null);
   const diagramLayerRef = useRef(null);
   const interactionLayerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Undo / Redo history
   const historyRef = useRef({ undo: [], redo: [] });
@@ -294,6 +461,54 @@ export default function ProcessScapeView({
     handleZoomFit();
   }, [selectedIds, elements, pipes, centerOnPoint, handleZoomFit]);
 
+  // Diagram Bounding Box Scaler & Pipe Extender Tool
+  const handleToggleBoundsResizer = useCallback(() => {
+    if (!isBoundsResizerActive) {
+      const cb = getContentBounds(elements, pipes, 24);
+      const initialBox = {
+        x: snap(cb.x, 5),
+        y: snap(cb.y, 5),
+        w: Math.max(160, snap(cb.width, 5)),
+        h: Math.max(120, snap(cb.height, 5))
+      };
+      boundsBoxRef.current = {
+        origBox: { ...initialBox },
+        currentBox: { ...initialBox },
+        origElements: JSON.parse(JSON.stringify(elements)),
+        origPipes: JSON.parse(JSON.stringify(pipes)),
+        currentElements: JSON.parse(JSON.stringify(elements)),
+        currentPipes: JSON.parse(JSON.stringify(pipes))
+      };
+      setResizingBox({ ...initialBox });
+      setIsBoundsResizerActive(true);
+    } else {
+      // Clicked again: Confirm, skip bounding box, apply new size, and fit screen!
+      const currentBox = resizingBox || (boundsBoxRef.current ? boundsBoxRef.current.currentBox : null);
+      if (currentBox) {
+        const finalW = Math.max(1024, Math.round(currentBox.w + 64));
+        const finalH = Math.max(800, Math.round(currentBox.h + 64));
+        setScreenSize({ w: finalW, h: finalH });
+        const finalElements = boundsBoxRef.current?.currentElements || elements;
+        const finalPipes = boundsBoxRef.current?.currentPipes || pipes;
+        if (activeScapeId) setActiveScapeId(activeScapeId);
+        saveScape({
+          id: activeScapeId,
+          title: projectTitle,
+          tempCanvasSize: { width: finalW, height: finalH },
+          zones,
+          elements: finalElements,
+          pipes: finalPipes
+        });
+      }
+      setIsBoundsResizerActive(false);
+      setResizingBox(null);
+      boundsBoxRef.current = null;
+      setTimeout(() => {
+        focusSelectedOrCenter();
+      }, 50);
+    }
+  }, [isBoundsResizerActive, resizingBox, elements, pipes, activeScapeId, projectTitle, zones, focusSelectedOrCenter]);
+
   // Layer Stacking (Front / Back)
   const bringToFront = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -352,19 +567,20 @@ export default function ProcessScapeView({
     });
 
     const flowDirections = resolvePipelineFlowDirections(pipes);
+    const activeSelectedIds = (scapeMode === 'editor') ? selectedIds : new Set();
 
     drawables.forEach(d => {
       if (d.kind === 'pipe') {
-        dLayer.appendChild(renderPipe(d.item, selectedIds, pipes, flowDirections));
+        dLayer.appendChild(renderPipe(d.item, activeSelectedIds, pipes, flowDirections));
       } else if (d.kind === 'element') {
         if (d.item.type === 'sensor_card') {
-          dLayer.appendChild(renderSensorCard(d.item, selectedIds, elements));
+          dLayer.appendChild(renderSensorCard(d.item, activeSelectedIds, elements, (scapeMode === 'runtime' && isLiveDndActive)));
         } else {
-          dLayer.appendChild(renderAssetNode(d.item, selectedIds, pipes));
+          dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes));
         }
       }
     });
-  }, [elements, pipes, selectedIds]);
+  }, [elements, pipes, selectedIds, scapeMode, isLiveDndActive]);
 
   // --- Drag & Drop from Sidebar ---
   const handleDragOver = (e) => {
@@ -374,6 +590,22 @@ export default function ProcessScapeView({
 
   const handleDrop = (e) => {
     e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.name.endsWith('.json') || file.type === 'application/json') {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const json = JSON.parse(ev.target.result);
+            loadProcessScapeConfig(json);
+          } catch (err) {
+            console.error('Failed to parse dropped JSON:', err);
+          }
+        };
+        reader.readAsText(file);
+        return;
+      }
+    }
     const rawData = e.dataTransfer.getData('application/json');
     if (!rawData) return;
     try {
@@ -414,16 +646,16 @@ export default function ProcessScapeView({
           desc: tpl.desc,
           x: dropX,
           y: dropY,
-          titlePosition: 'left',
+          titlePosition: 'top',
           status: 'normal',
           channels: channels,
           zIndex: 40
         };
-        // Check snap to closest real sensor or gateway
+        // Check snap to closest item (sensor, machine, equipment, etc.)
         let closestTarget = null;
-        let minD = 80;
+        let minD = 90;
         elements.forEach(other => {
-          if (isSensorOrGateway(other)) {
+          if (other.type !== 'sensor_card') {
             const d = Math.hypot(other.x - dropX, other.y - dropY);
             if (d < minD) {
               minD = d;
@@ -500,6 +732,60 @@ export default function ProcessScapeView({
 
     const w = clientToWorld(e.clientX, e.clientY);
 
+    // Bounding Box Handle Drag (works in runtime and editor modes)
+    if (isBoundsResizerActive && resizingBox) {
+      const handleEl = e.target.closest('.ps-bounds-handle');
+      if (handleEl) {
+        const handleType = handleEl.getAttribute('data-handle');
+        dragRef.current.draggingBoundsHandle = {
+          handleType,
+          startMouse: { x: w.x, y: w.y },
+          startBox: { ...resizingBox }
+        };
+        return;
+      }
+    }
+
+    if (scapeMode === 'runtime') {
+      if (isLiveDndActive) {
+        // 1. Dragging anchor reticle on sensor card
+        const anchorEl = e.target.closest('.element-anchor-handle');
+        if (anchorEl) {
+          const elId = anchorEl.getAttribute('data-element-id');
+          dragRef.current.draggingAnchor = { elId, startW: { x: w.x, y: w.y } };
+          anchorEl.style.display = 'none';
+          anchorEl.closest('.sensor-badge-group, .plant-node')?.querySelectorAll('.element-anchor-line').forEach(l => {
+            l.style.display = 'none';
+          });
+          return;
+        }
+
+        // 2. Dragging measurement point card
+        const cardEl = e.target.closest('.sensor-badge-group');
+        if (cardEl) {
+          const cardId = cardEl.getAttribute('data-card-id');
+          const targetCard = elements.find(item => item.id === cardId);
+          if (targetCard) {
+            dragRef.current.draggingLiveCard = {
+              cardId,
+              startMouse: { x: w.x, y: w.y },
+              origPos: { x: targetCard.x, y: targetCard.y }
+            };
+            return;
+          }
+        }
+      }
+
+      // In runtime mode, left-click or middle-click pans the plant diagram smoothly
+      if (e.button === 0 || e.button === 1 || e.button === 2) {
+        dragRef.current.isPanning = true;
+        dragRef.current.didPan = false;
+        dragRef.current.panStart = { x: e.clientX - view.x, y: e.clientY - view.y };
+        if (viewportRef.current) viewportRef.current.classList.add('is-panning');
+      }
+      return;
+    }
+
     // Workspace Pan (Middle click, Right click, Spacebar held, or Pan Tool)
     if (e.button === 1 || e.button === 2 || currentTool === 'pan' || isSpacePressedRef.current) {
       dragRef.current.isPanning = true;
@@ -524,11 +810,9 @@ export default function ProcessScapeView({
       const el = elements.find(item => item.id === elId);
       if (iLayer && el) {
         iLayer.innerHTML = '';
-        iLayer.appendChild(svgEl('circle', {
-          cx: el.x, cy: el.y, r: 4, fill: '#00ac86', stroke: '#ffffff', 'stroke-width': 1.5
-        }));
         const reticleG = svgEl('g', { transform: `translate(${el.x}, ${el.y})` });
         reticleG.appendChild(svgEl('circle', {
+          class: 'anchor-handle-core',
           cx: 0, cy: 0, r: 8, fill: el.attachedPipeId ? '#00ac86' : '#0ea5e9', stroke: '#ffffff', 'stroke-width': 2.5
         }));
         reticleG.appendChild(svgEl('line', { x1: -4, y1: 0, x2: 4, y2: 0, stroke: '#ffffff', 'stroke-width': 1.5 }));
@@ -661,8 +945,29 @@ export default function ProcessScapeView({
         const snapPt = getSnapOrthogonalPoint(pStart, rawSnap);
         if (Math.hypot(snapPt.x - pStart.x, snapPt.y - pStart.y) > 10) {
           saveHistory('Draw Pipe');
+          let assignedGroupId = null;
+          let matchedExistingPipe = null;
+          for (const ep of pipes) {
+            if (!ep.points || ep.points.length < 2) continue;
+            const ends = [ep.points[0], ep.points[ep.points.length - 1]];
+            const touchesEnd = ends.some(pt => Math.hypot(pt.x - pStart.x, pt.y - pStart.y) <= 20 || Math.hypot(pt.x - snapPt.x, pt.y - snapPt.y) <= 20);
+            const pad = (ep.w || 20) / 2 + 8;
+            let touchesBody = false;
+            for (let i = 0; i < ep.points.length - 1; i++) {
+              if (distToSegment(pStart, ep.points[i], ep.points[i + 1]) <= pad || distToSegment(snapPt, ep.points[i], ep.points[i + 1]) <= pad) {
+                touchesBody = true;
+                break;
+              }
+            }
+            if (touchesEnd || touchesBody) {
+              matchedExistingPipe = ep;
+              assignedGroupId = ep.groupId || `pipe_group_${Date.now()}`;
+              break;
+            }
+          }
           const newPipe = {
             id: `pipe_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+            groupId: assignedGroupId,
             medium: activePipeMedium,
             points: [pStart, snapPt],
             d: pointsToPath([pStart, snapPt]),
@@ -671,8 +976,12 @@ export default function ProcessScapeView({
             label: '',
             zIndex: 10
           };
-          setPipes(prev => [...prev, newPipe]);
-          setSelectedIds(new Set([newPipe.id]));
+          const updatedPipes = assignedGroupId
+            ? pipes.map(p => (p.id === matchedExistingPipe?.id || (p.groupId && p.groupId === assignedGroupId)) ? { ...p, groupId: assignedGroupId } : p).concat(newPipe)
+            : [...pipes, newPipe];
+          setPipes(updatedPipes);
+          const connectedIds = getConnectedPipeIds(newPipe.id, updatedPipes);
+          setSelectedIds(new Set(connectedIds));
         }
         dragRef.current.drawingPipeStart = null;
         if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
@@ -748,6 +1057,15 @@ export default function ProcessScapeView({
           }
         });
       }
+      // Also track any sensor cards attached to elements being moved
+      const movingElementIds = new Set(elements.filter(el => effectiveIds.has(el.id)).map(el => el.id));
+      if (movingElementIds.size > 0) {
+        elements.forEach(el => {
+          if (!origs.has(el.id) && el.type === 'sensor_card' && el.attachedAssetId && movingElementIds.has(el.attachedAssetId)) {
+            origs.set(el.id, { kind: 'element', x: el.x, y: el.y });
+          }
+        });
+      }
       dragRef.current.origPositions = origs;
       return;
     }
@@ -773,6 +1091,182 @@ export default function ProcessScapeView({
     }
 
     const w = clientToWorld(e.clientX, e.clientY);
+
+    // Bounding Box Handle Dragging (scales diagram pipes and elements proportionally)
+    if (dragRef.current.draggingBoundsHandle && boundsBoxRef.current) {
+      const { handleType, startMouse, startBox } = dragRef.current.draggingBoundsHandle;
+      const dx = w.x - startMouse.x;
+      const dy = w.y - startMouse.y;
+      let newX = startBox.x;
+      let newY = startBox.y;
+      let newW = startBox.w;
+      let newH = startBox.h;
+
+      if (handleType.includes('e')) newW = Math.max(120, startBox.w + dx);
+      if (handleType.includes('s')) newH = Math.max(100, startBox.h + dy);
+      if (handleType.includes('w')) {
+        const maxDx = startBox.w - 120;
+        const clampedDx = Math.min(maxDx, dx);
+        newX = startBox.x + clampedDx;
+        newW = startBox.w - clampedDx;
+      }
+      if (handleType.includes('n')) {
+        const maxDy = startBox.h - 100;
+        const clampedDy = Math.min(maxDy, dy);
+        newY = startBox.y + clampedDy;
+        newH = startBox.h - clampedDy;
+      }
+
+      const updatedBox = { x: snap(newX, 5), y: snap(newY, 5), w: snap(newW, 5), h: snap(newH, 5) };
+      setResizingBox(updatedBox);
+      boundsBoxRef.current.currentBox = updatedBox;
+
+      const origBox = boundsBoxRef.current.origBox;
+      const origPipes = boundsBoxRef.current.origPipes;
+      const origElements = boundsBoxRef.current.origElements;
+      const sx = updatedBox.w / origBox.w;
+      const sy = updatedBox.h / origBox.h;
+      const shiftX = updatedBox.x - origBox.x;
+      const shiftY = updatedBox.y - origBox.y;
+
+      // Helper: check if a pipe is horizontal
+      const isPipeHoriz = (p) => {
+        if (!p.points || p.points.length < 2) return false;
+        return p.points.every(pt => Math.abs(pt.y - p.points[0].y) <= 3);
+      };
+
+      // 1. Automatically extend or contract pipe lengths along horizontal and vertical axes
+      // Horizontal pipes extend their length horizontally, while preserving V position (no vertical drift)
+      const updatedPipes = origPipes.map(p => {
+        const pipeIsHoriz = isPipeHoriz(p);
+        const newPoints = (p.points || []).map((pt, ptIdx, pts) => {
+          const px = Math.round(updatedBox.x + (pt.x - origBox.x) * sx);
+          let py;
+          if (pipeIsHoriz) {
+            // Horizontal pipe: V position does not change (only translates if top box boundary shifts)
+            py = Math.round(pt.y + shiftY);
+          } else {
+            const prev = pts[ptIdx - 1];
+            const next = pts[ptIdx + 1];
+            const segHoriz = (prev && Math.abs(prev.y - pt.y) <= 2) || (next && Math.abs(next.y - pt.y) <= 2);
+            const segVert = (prev && Math.abs(prev.x - pt.x) <= 2) || (next && Math.abs(next.x - pt.x) <= 2);
+            if (segHoriz && !segVert) {
+              py = Math.round(pt.y + shiftY);
+            } else {
+              py = Math.round(updatedBox.y + (pt.y - origBox.y) * sy);
+            }
+          }
+          return { x: px, y: py };
+        });
+
+        return {
+          ...p,
+          points: newPoints,
+          d: pointsToPath(newPoints)
+        };
+      });
+      boundsBoxRef.current.currentPipes = updatedPipes;
+      setPipes(updatedPipes);
+
+      // 2. Reposition elements:
+      // A machine touching a horizontal pipe line:
+      // - In H direction: follows percent size (sx) along the pipe ("very good")
+      // - In V direction: does NOT change V position ("it should not change the V position")
+      const posMap = new Map();
+
+      origElements.forEach(el => {
+        if (el.type === 'sensor_card' && el.attachedAssetId) return; // Follows parent asset in pass 2
+
+        const elW = el.w || 100;
+        const elH = el.h || 80;
+        const elLeft = el.x - elW / 2;
+        const elRight = el.x + elW / 2;
+
+        let touchesHorizPipe = false;
+        for (const p of origPipes) {
+          if (!p.points || p.points.length < 2) continue;
+          const isExplicitAttached = el.attachedPipeId && el.attachedPipeId === p.id;
+
+          for (let i = 0; i < p.points.length - 1; i++) {
+            const p1 = p.points[i];
+            const p2 = p.points[i + 1];
+            if (Math.abs(p1.y - p2.y) > 3) continue;
+
+            const pipeY = (p1.y + p2.y) / 2;
+            const pMinX = Math.min(p1.x, p2.x) - 30;
+            const pMaxX = Math.max(p1.x, p2.x) + 30;
+
+            if (elRight >= pMinX && elLeft <= pMaxX) {
+              const pipeThickness = p.w || 20;
+              const distY = Math.abs(el.y - pipeY);
+              if (isExplicitAttached || distY <= (elH / 2 + pipeThickness / 2 + 30)) {
+                touchesHorizPipe = true;
+                break;
+              }
+            }
+          }
+          if (touchesHorizPipe) break;
+        }
+
+        const newX = Math.round(updatedBox.x + (el.x - origBox.x) * sx);
+        let newY;
+        if (touchesHorizPipe) {
+          // Machine touching horizontal pipe: V position does NOT change
+          newY = Math.round(el.y + shiftY);
+        } else {
+          newY = Math.round(updatedBox.y + (el.y - origBox.y) * sy);
+        }
+
+        posMap.set(el.id, { x: newX, y: newY });
+      });
+
+      // Second pass: sensor cards attached to assets follow their parent asset exactly
+      origElements.forEach(el => {
+        if (el.type === 'sensor_card' && el.attachedAssetId) {
+          const parentOrig = origElements.find(item => item.id === el.attachedAssetId);
+          const parentNew = posMap.get(el.attachedAssetId);
+          if (parentOrig && parentNew) {
+            const offX = el.x - parentOrig.x;
+            const offY = el.y - parentOrig.y;
+            posMap.set(el.id, {
+              x: Math.round(parentNew.x + offX),
+              y: Math.round(parentNew.y + offY)
+            });
+            return;
+          }
+        }
+        if (!posMap.has(el.id)) {
+          posMap.set(el.id, {
+            x: Math.round(updatedBox.x + (el.x - origBox.x) * sx),
+            y: Math.round(updatedBox.y + (el.y - origBox.y) * sy)
+          });
+        }
+      });
+
+      const updatedElements = origElements.map(el => {
+        const pos = posMap.get(el.id);
+        return pos ? { ...el, x: pos.x, y: pos.y } : el;
+      });
+      boundsBoxRef.current.currentElements = updatedElements;
+      setElements(updatedElements);
+      return;
+    }
+
+    // Live DND Measurement Point dragging in runtime mode
+    if (dragRef.current.draggingLiveCard) {
+      const { cardId, startMouse, origPos } = dragRef.current.draggingLiveCard;
+      const dx = snap(w.x - startMouse.x, 5);
+      const dy = snap(w.y - startMouse.y, 5);
+      setElements(prev => prev.map(el => {
+        if (el.id === cardId) {
+          return { ...el, x: origPos.x + dx, y: origPos.y + dy };
+        }
+        return el;
+      }));
+      return;
+    }
+
+    if (scapeMode === 'runtime' && !dragRef.current.draggingAnchor) return;
 
     // Marquee Selection Box
     if (dragRef.current.isMarquee) {
@@ -943,11 +1437,11 @@ export default function ProcessScapeView({
       const targetY = snap(w.y);
 
       if (el.type === 'sensor_card') {
-        // Find closest real sensor or gateway
+        // Find closest equipment / machine / tank / wall (any item except pipes and other sensor cards)
         let closestTarget = null;
-        let minD = 85;
+        let minD = 90;
         elements.forEach(other => {
-          if (other.id !== el.id && isSensorOrGateway(other)) {
+          if (other.id !== el.id && other.type !== 'sensor_card') {
             const d = Math.hypot(other.x - targetX, other.y - targetY);
             if (d < minD) {
               minD = d;
@@ -989,11 +1483,6 @@ export default function ProcessScapeView({
         }
         const anchorPt = (closestPipe && closestData) ? closestData.point : { x: targetX, y: targetY };
 
-        // Origin dot at equipment center
-        iLayer.appendChild(svgEl('circle', {
-          cx: el.x, cy: el.y, r: 4, fill: '#00ac86', stroke: '#ffffff', 'stroke-width': 1.5
-        }));
-
         // Dynamic dashed connection line
         iLayer.appendChild(svgEl('line', {
           x1: el.x, y1: el.y, x2: anchorPt.x, y2: anchorPt.y,
@@ -1003,6 +1492,7 @@ export default function ProcessScapeView({
         // Moving anchor reticle following cursor / snapped pipe contact
         const reticleG = svgEl('g', { transform: `translate(${anchorPt.x}, ${anchorPt.y})` });
         reticleG.appendChild(svgEl('circle', {
+          class: 'anchor-handle-core',
           cx: 0, cy: 0, r: 8,
           fill: closestPipe ? '#00ac86' : '#0284c7', stroke: '#ffffff', 'stroke-width': 2.5
         }));
@@ -1022,6 +1512,109 @@ export default function ProcessScapeView({
           viewportRef.current.classList.remove('panning');
         }
       }
+    }
+
+    if (dragRef.current.draggingBoundsHandle) {
+      dragRef.current.draggingBoundsHandle = null;
+    }
+
+    if (scapeMode === 'runtime') {
+      if (dragRef.current.draggingLiveCard) {
+        const { cardId } = dragRef.current.draggingLiveCard;
+        dragRef.current.draggingLiveCard = null;
+        setElements(prev => {
+          const updated = prev.map(el => {
+            if (el.id !== cardId) return el;
+            let closestTarget = null;
+            let minD = 90;
+            prev.forEach(other => {
+              if (other.id !== el.id && other.type !== 'sensor_card') {
+                const d = Math.hypot(other.x - el.x, other.y - el.y);
+                if (d < minD) {
+                  minD = d;
+                  closestTarget = other;
+                }
+              }
+            });
+            if (closestTarget) {
+              return {
+                ...el,
+                attachedAssetId: closestTarget.id,
+                targetOffsetX: el.x - closestTarget.x,
+                targetOffsetY: el.y - closestTarget.y
+              };
+            }
+            return el;
+          });
+          saveScape({
+            id: activeScapeId,
+            title: projectTitle,
+            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+            zones,
+            elements: updated,
+            pipes
+          });
+          return updated;
+        });
+      }
+
+      if (dragRef.current.draggingAnchor) {
+        const w = clientToWorld(e.clientX, e.clientY);
+        const targetX = snap(w.x);
+        const targetY = snap(w.y);
+        const elId = dragRef.current.draggingAnchor.elId;
+
+        let closestTarget = null;
+        let minD = 90;
+        elements.forEach(other => {
+          if (other.id !== elId && other.type !== 'sensor_card') {
+            const d = Math.hypot(other.x - targetX, other.y - targetY);
+            if (d < minD) {
+              minD = d;
+              closestTarget = other;
+            }
+          }
+        });
+
+        setElements(prev => {
+          const updated = prev.map(item => {
+            if (item.id !== elId) return item;
+            if (closestTarget) {
+              return {
+                ...item,
+                attachedAssetId: closestTarget.id,
+                targetOffsetX: item.x - closestTarget.x,
+                targetOffsetY: item.y - closestTarget.y
+              };
+            } else {
+              const u = { ...item };
+              delete u.attachedAssetId;
+              delete u.targetOffsetX;
+              delete u.targetOffsetY;
+              return u;
+            }
+          });
+          saveScape({
+            id: activeScapeId,
+            title: projectTitle,
+            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+            zones,
+            elements: updated,
+            pipes
+          });
+          return updated;
+        });
+
+        if (viewportRef.current) {
+          viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line').forEach(node => {
+            node.style.display = '';
+          });
+        }
+        const iLayer = interactionLayerRef.current;
+        if (iLayer) iLayer.innerHTML = '';
+        dragRef.current.draggingAnchor = null;
+      }
+      return;
     }
 
     if (dragRef.current.draggingVertex) {
@@ -1046,6 +1639,7 @@ export default function ProcessScapeView({
       dragRef.current.isDragging = false;
       saveHistory('Move Item(s)');
       // If an element attached to a pipe was moved, update pipeOffsetX / pipeOffsetY relative to pipeT
+      // If a measurement point card (sensor_card) was moved, update attachment target or offset
       setElements(prev => prev.map(el => {
         if (el.attachedPipeId && el.pipeT != null) {
           const pipe = pipes.find(p => p.id === el.attachedPipeId);
@@ -1057,6 +1651,45 @@ export default function ProcessScapeView({
                 pipeOffsetX: el.x - pt.x,
                 pipeOffsetY: el.y - pt.y
               };
+            }
+          }
+        }
+        if (el.type === 'sensor_card' && dragRef.current.origPositions.has(el.id)) {
+          let closestTarget = null;
+          let minD = 90;
+          prev.forEach(other => {
+            if (other.id !== el.id && other.type !== 'sensor_card') {
+              const d = Math.hypot(other.x - el.x, other.y - el.y);
+              if (d < minD) {
+                minD = d;
+                closestTarget = other;
+              }
+            }
+          });
+          if (closestTarget) {
+            return {
+              ...el,
+              attachedAssetId: closestTarget.id,
+              targetOffsetX: el.x - closestTarget.x,
+              targetOffsetY: el.y - closestTarget.y
+            };
+          } else if (el.attachedAssetId) {
+            const existingTarget = prev.find(p => p.id === el.attachedAssetId);
+            if (existingTarget) {
+              const d = Math.hypot(existingTarget.x - el.x, existingTarget.y - el.y);
+              if (d > 220) {
+                const detached = { ...el };
+                delete detached.attachedAssetId;
+                delete detached.targetOffsetX;
+                delete detached.targetOffsetY;
+                return detached;
+              } else {
+                return {
+                  ...el,
+                  targetOffsetX: el.x - existingTarget.x,
+                  targetOffsetY: el.y - existingTarget.y
+                };
+              }
             }
           }
         }
@@ -1073,9 +1706,9 @@ export default function ProcessScapeView({
 
       if (el && el.type === 'sensor_card') {
         let closestTarget = null;
-        let minD = 85;
+        let minD = 90;
         elements.forEach(other => {
-          if (other.id !== el.id && isSensorOrGateway(other)) {
+          if (other.id !== el.id && other.type !== 'sensor_card') {
             const d = Math.hypot(other.x - targetX, other.y - targetY);
             if (d < minD) {
               minD = d;
@@ -1222,6 +1855,28 @@ export default function ProcessScapeView({
     }
   };
 
+  const handleClick = (e) => {
+    if (scapeMode === 'runtime') return;
+    const nodeEl = e.target.closest('.plant-node');
+    const cardEl = e.target.closest('.sensor-badge-group');
+    const textEl = e.target.closest('.plant-text-group');
+    const pipeEl = e.target.closest('.plant-pipe-group');
+
+    const clickedId = nodeEl?.getAttribute('data-node-id') ||
+                      cardEl?.getAttribute('data-card-id') ||
+                      textEl?.getAttribute('data-text-id') ||
+                      pipeEl?.getAttribute('data-pipe-id');
+
+    if (clickedId) {
+      let idsToSelect = [clickedId];
+      if (pipeEl || pipes.some(p => p.id === clickedId)) {
+        idsToSelect = getConnectedPipeIds(clickedId, pipes);
+      }
+      setSelectedIds(new Set(idsToSelect));
+      setIsInspectorOpen(true);
+    }
+  };
+
   // Keep mouse handlers continuously attached to window for smooth drag & pan
   const mouseHandlersRef = useRef({ move: handleMouseMove, up: handleMouseUp });
   mouseHandlersRef.current = { move: handleMouseMove, up: handleMouseUp };
@@ -1311,7 +1966,7 @@ export default function ProcessScapeView({
         if (selectedIds.size > 0) {
           saveHistory('Delete Item');
           const deletedPipeIds = new Set(pipes.filter(p => selectedIds.has(p.id)).map(p => p.id));
-          setElements(prev => prev.filter(el => !selectedIds.has(el.id)).map(el => {
+          const updatedElements = elements.filter(el => !selectedIds.has(el.id)).map(el => {
             if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
               const updated = { ...el };
               delete updated.attachedPipeId;
@@ -1321,9 +1976,19 @@ export default function ProcessScapeView({
               return updated;
             }
             return el;
-          }));
-          setPipes(prev => prev.filter(p => !selectedIds.has(p.id)));
+          });
+          const updatedPipes = pipes.filter(p => !selectedIds.has(p.id));
+          setElements(updatedElements);
+          setPipes(updatedPipes);
           setSelectedIds(new Set());
+          saveScape({
+            id: activeScapeId,
+            title: projectTitle,
+            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+            zones,
+            elements: updatedElements,
+            pipes: updatedPipes
+          });
         }
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
@@ -1370,7 +2035,7 @@ export default function ProcessScapeView({
   const selectedElement = singleSelectedElement;
   const selectedPipe = representativePipe;
   const hasSelection = isPipeSelection || selectedElements.length > 0;
-  const showInspector = isInspectorOpen && hasSelection;
+  const showInspector = (scapeMode === 'editor') && isInspectorOpen && hasSelection;
 
   const prevSelectedIdsSizeRef = useRef(selectedIds.size);
   useEffect(() => {
@@ -1471,23 +2136,33 @@ export default function ProcessScapeView({
       tempCanvasSize: { width: screenSize.w, height: screenSize.h },
       viewBox: `${originX} ${originY} ${finalW} ${finalH}`,
       margin: 16,
+      zones: zones,
       sensors: elements.filter(e => e.type === 'sensor_card').map(s => ({
         id: s.id,
         tag: s.tag,
+        desc: s.desc,
         x: s.x,
         y: s.y,
         finalX: s.x - originX,
         finalY: s.y - originY,
         xPercent: `${(((s.x - originX) / finalW) * 100).toFixed(2)}%`,
         yPercent: `${(((s.y - originY) / finalH) * 100).toFixed(2)}%`,
+        titlePosition: s.titlePosition,
+        status: s.status,
+        metric: s.metric,
         channels: s.channels,
-        attachedAssetId: s.attachedAssetId || null
+        attachedAssetId: s.attachedAssetId || null,
+        zIndex: s.zIndex
       })),
       pipes: pipes.map(p => ({
         id: p.id,
+        groupId: p.groupId,
         medium: p.medium,
         label: p.label,
         points: p.points,
+        w: p.w || 20,
+        flow: p.flow || 'forward',
+        zIndex: p.zIndex,
         finalPoints: p.points ? p.points.map(pt => ({ x: pt.x - originX, y: pt.y - originY })) : null
       })),
       elements: elements.filter(e => e.type !== 'sensor_card').map(el => {
@@ -1499,9 +2174,15 @@ export default function ProcessScapeView({
           id: el.id,
           type: el.type,
           tag: el.tag || el.text,
+          text: el.text || el.tag,
+          fontSize: el.fontSize,
+          textColor: el.textColor,
           colorTheme: el.colorTheme || 'blue',
           x: el.x,
           y: el.y,
+          w: el.w,
+          h: el.h,
+          zIndex: el.zIndex,
           finalX: el.x - originX,
           finalY: el.y - originY,
           xPercent: `${(((el.x - originX) / finalW) * 100).toFixed(2)}%`,
@@ -1521,7 +2202,7 @@ export default function ProcessScapeView({
     a.download = `${projectTitle.toLowerCase().replace(/\s+/g, '-')}-layout.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [contentBounds, screenSize, projectTitle, elements, pipes]);
+  }, [contentBounds, screenSize, projectTitle, elements, pipes, zones]);
 
   // Export High-Res PNG Picture (Cropped to real element bounds + 16px margin)
   const handleExportPng = useCallback(() => {
@@ -1536,6 +2217,7 @@ export default function ProcessScapeView({
     const clone = svg.cloneNode(true);
     clone.querySelector('#boundaryGuide')?.remove();
     clone.querySelector('.ps-real-bounds-guide')?.remove();
+    clone.querySelector('.ps-bounds-resizer-group')?.remove();
     clone.querySelector('#interactionLayer')?.remove();
     clone.querySelectorAll('.pipe-extend-group')?.forEach(e => e.remove());
     clone.querySelectorAll('.pipe-drag-handle')?.forEach(e => e.remove());
@@ -1574,48 +2256,226 @@ export default function ProcessScapeView({
     img.src = url;
   }, [contentBounds, screenSize, isDarkMode, projectTitle]);
 
+  // Import JSON ProcessScape Configuration
+  const loadProcessScapeConfig = useCallback((data, showNotification = true) => {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid JSON format');
+    }
+
+    saveHistory('Import Config');
+
+    if (data.project || data.projectTitle || data.title) {
+      setProjectTitle(data.project || data.projectTitle || data.title);
+    }
+
+    if (data.tempCanvasSize) {
+      setScreenSize({
+        w: data.tempCanvasSize.width || data.tempCanvasSize.w || 1024,
+        h: data.tempCanvasSize.height || data.tempCanvasSize.h || 800
+      });
+    } else if (data.screenSize) {
+      setScreenSize({
+        w: data.screenSize.width || data.screenSize.w || 1024,
+        h: data.screenSize.height || data.screenSize.h || 800
+      });
+    }
+
+    if (Array.isArray(data.zones)) {
+      setZones(data.zones);
+    }
+
+    let parsedPipes = [];
+    if (Array.isArray(data.pipes)) {
+      parsedPipes = data.pipes.map((p, idx) => {
+        const pts = p.points || [];
+        return {
+          id: p.id || `pipe_${Date.now()}_${idx}`,
+          groupId: p.groupId,
+          medium: p.medium || 'gas',
+          label: p.label || '',
+          points: pts,
+          d: p.d || pointsToPath(pts),
+          w: p.w || 20,
+          flow: p.flow || 'forward',
+          zIndex: p.zIndex != null ? p.zIndex : 10
+        };
+      });
+      setPipes(parsedPipes);
+    }
+
+    let parsedElements = [];
+    if (Array.isArray(data.elements)) {
+      parsedElements.push(...data.elements.map((el, idx) => {
+        if (el.type === 'sensor_card') {
+          return {
+            id: el.id || `sensor_card_${Date.now()}_${idx}`,
+            type: 'sensor_card',
+            tag: el.tag || 'Sensor',
+            desc: el.desc || '',
+            x: typeof el.x === 'number' ? el.x : 0,
+            y: typeof el.y === 'number' ? el.y : 0,
+            titlePosition: el.titlePosition || 'top',
+            status: el.status || 'normal',
+            metric: el.metric || 'flow',
+            val: el.val,
+            unit: el.unit,
+            channels: Array.isArray(el.channels) ? el.channels : [],
+            attachedAssetId: el.attachedAssetId || null,
+            targetOffsetX: el.targetOffsetX,
+            targetOffsetY: el.targetOffsetY,
+            mpId: el.mpId || null,
+            locationId: el.locationId || null,
+            zIndex: el.zIndex != null ? el.zIndex : 40
+          };
+        }
+        return {
+          id: el.id || `asset_${Date.now()}_${idx}`,
+          type: el.type || 'tank_buffer',
+          tag: el.tag || el.text || '',
+          text: el.text || el.tag || '',
+          fontSize: el.fontSize,
+          textColor: el.textColor,
+          colorTheme: el.colorTheme || 'blue',
+          x: typeof el.x === 'number' ? el.x : 0,
+          y: typeof el.y === 'number' ? el.y : 0,
+          w: el.w,
+          h: el.h,
+          zIndex: el.zIndex != null ? el.zIndex : (el.type === 'text_note' ? 30 : 20),
+          attachedPipeId: el.attachedPipeId || null,
+          pipeT: el.pipeT != null ? el.pipeT : null,
+          pipeOffsetX: el.pipeOffsetX !== undefined ? el.pipeOffsetX : null,
+          pipeOffsetY: el.pipeOffsetY !== undefined ? el.pipeOffsetY : null
+        };
+      }));
+    }
+
+    if (Array.isArray(data.sensors)) {
+      parsedElements.push(...data.sensors.map((s, idx) => ({
+        id: s.id || `sensor_card_${Date.now()}_${idx}`,
+        type: 'sensor_card',
+        tag: s.tag || 'Sensor',
+        desc: s.desc || '',
+        x: typeof s.x === 'number' ? s.x : 0,
+        y: typeof s.y === 'number' ? s.y : 0,
+        titlePosition: s.titlePosition || 'top',
+        status: s.status || 'normal',
+        metric: s.metric || 'flow',
+        val: s.val,
+        unit: s.unit,
+        channels: Array.isArray(s.channels) ? s.channels : [],
+        attachedAssetId: s.attachedAssetId || null,
+        zIndex: s.zIndex != null ? s.zIndex : 40
+      })));
+    }
+
+    setElements(parsedElements);
+    setSelectedIds(new Set());
+
+    if (showNotification && typeof window !== 'undefined' && window.showAppNotification) {
+      window.showAppNotification(
+        'Import Successful',
+        `Imported ${parsedElements.length} elements and ${parsedPipes.length} pipes.`,
+        'success'
+      );
+    }
+  }, [saveHistory]);
+
+  const handleImportJson = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  }, []);
+
+  const handleFileInputChange = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const data = JSON.parse(text);
+        loadProcessScapeConfig(data, true);
+      } catch (err) {
+        console.error('Failed to import ProcessScape config:', err);
+        if (typeof window !== 'undefined' && window.showAppNotification) {
+          window.showAppNotification(
+            'Import Failed',
+            'Could not parse the selected JSON file. Please check file format.',
+            'error'
+          );
+        }
+      }
+    };
+    reader.readAsText(file);
+  }, [loadProcessScapeConfig]);
+
+  const reloadActiveScape = useCallback((targetScapeId = null) => {
+    if (targetScapeId) {
+      setActiveScapeId(targetScapeId);
+      setActiveScapeIdState(targetScapeId);
+    }
+    const all = getAllScapes();
+    const active = targetScapeId ? all.find(s => s.id === targetScapeId) : getActiveScape();
+    if (active) {
+      loadProcessScapeConfig(active, false);
+    }
+  }, [loadProcessScapeConfig]);
+
   // Register actions & notify state to parent header
   useEffect(() => {
     if (onRegisterActions) {
       onRegisterActions({
         undo,
         redo,
+        handleUndo: undo,
+        handleRedo: redo,
         handleZoomFit,
         handleExportJson,
         handleExportPng,
+        handleImportJson,
+        handleSaveAndExit: handleSaveAndExitEditor,
+        saveCurrentScape: handleSaveAndExitEditor,
+        saveScape: handleSaveAndExitEditor,
         setScreenSize,
-        setProjectTitle
+        setProjectTitle,
+        openScapeManager: () => setIsScapeManagerOpen(true),
+        setScapeMode: changeScapeMode,
+        reloadActiveScape
       });
     }
-  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng]);
+  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape]);
 
   useEffect(() => {
     if (onStateChange) {
       onStateChange({
         screenSize,
         finalSize: { width: contentBounds.width, height: contentBounds.height },
-        projectTitle
+        projectTitle,
+        scapeMode
       });
     }
-  }, [screenSize, contentBounds, projectTitle, onStateChange]);
+  }, [screenSize, contentBounds, projectTitle, scapeMode, onStateChange]);
 
   return (
     <div className={`processscape-root ${isDarkMode ? 'theme-dark' : ''}`}>
       {/* Main 3-Column Workbench */}
       <div className="ps-workbench">
-        {/* Left Sidebar Palette */}
-        <aside className="ps-sidebar">
-          <div className="ps-palette-tabs">
-            {PALETTE_CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                className={`ps-palette-tab ${activePaletteTab === cat.id ? 'active' : ''}`}
-                onClick={() => setActivePaletteTab(cat.id)}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
+        {/* Left Sidebar Palette (Editor Mode only) */}
+        {scapeMode === 'editor' && (
+          <aside className="ps-sidebar">
+            <div className="ps-palette-tabs">
+              {PALETTE_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  className={`ps-palette-tab ${activePaletteTab === cat.id ? 'active' : ''}`}
+                  onClick={() => setActivePaletteTab(cat.id)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
 
           <div className="ps-palette-items">
             {/* Helper renderers */}
@@ -1759,7 +2619,6 @@ export default function ProcessScapeView({
               if (activePaletteTab === 'all') {
                 return (
                   <>
-                    {Object.entries(SENSOR_CARD_TEMPLATES).map(([k, tpl]) => renderSensorCardTemplate(k, tpl))}
                     {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
                     {PIPE_PRESETS.map(p => renderPipePresetCard(p))}
                     {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d))}
@@ -1773,7 +2632,6 @@ export default function ProcessScapeView({
               if (activePaletteTab === 'sensors') {
                 return (
                   <>
-                    {Object.entries(SENSOR_CARD_TEMPLATES).map(([k, tpl]) => renderSensorCardTemplate(k, tpl))}
                     {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
                   </>
                 );
@@ -1825,88 +2683,61 @@ export default function ProcessScapeView({
             </div>
           )}
         </aside>
+      )}
 
         {/* Center Canvas Viewport */}
         <main
           ref={viewportRef}
           className={`ps-canvas-viewport ${currentTool === 'pan' || isSpacePressed ? 'panning' : ''} ${currentTool === 'draw_pipe' ? 'drawing-pipe' : ''}`}
           onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+          onClick={handleClick}
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          {/* Top Floating HUD Toolbar */}
-          <div className="canvas-floating-hud top-hud ps-hud-bar">
-            {/* Tool Selection Group */}
-            <div className="tool-group">
-              <button
-                id="toolSelect"
-                type="button"
-                className={`hud-icon-btn ${currentTool === 'select' ? 'active' : ''}`}
-                onClick={() => {
-                  dragRef.current.drawingPipeStart = null;
-                  dragRef.current.extendingPipe = null;
-                  if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                  setCurrentTool('select');
-                }}
-                title="Select (V) & Box Select"
-                aria-label="Select Tool"
-              >
-                <HudIcons.Select />
-              </button>
-              <button
-                id="toolPan"
-                type="button"
-                className={`hud-icon-btn ${currentTool === 'pan' ? 'active' : ''}`}
-                onClick={() => {
-                  dragRef.current.drawingPipeStart = null;
-                  dragRef.current.extendingPipe = null;
-                  if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                  setCurrentTool('pan');
-                }}
-                title="Pan / Drag Workspace (H or Hold Space)"
-                aria-label="Pan Tool"
-              >
-                <HudIcons.Pan />
-              </button>
-            </div>
+          {/* Top Floating HUD Toolbar in Editor Mode */}
+          {scapeMode === 'editor' && (
+            <div className="canvas-floating-hud top-hud ps-hud-bar">
+              {/* Tool Selection Group */}
+              <div className="tool-group">
+                <button
+                  id="toolSelect"
+                  type="button"
+                  className={`hud-icon-btn ${currentTool === 'select' ? 'active' : ''}`}
+                  onClick={() => {
+                    dragRef.current.drawingPipeStart = null;
+                    dragRef.current.extendingPipe = null;
+                    if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+                    setCurrentTool('select');
+                  }}
+                  title="Select Tool (V)"
+                  aria-label="Select Tool"
+                >
+                  <HudIcons.Select />
+                </button>
+                <button
+                  id="toolPan"
+                  type="button"
+                  className={`hud-icon-btn ${currentTool === 'pan' ? 'active' : ''}`}
+                  onClick={() => {
+                    dragRef.current.drawingPipeStart = null;
+                    dragRef.current.extendingPipe = null;
+                    if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+                    setCurrentTool('pan');
+                  }}
+                  title="Pan Tool (H or hold Space)"
+                  aria-label="Pan Tool"
+                >
+                  <HudIcons.Pan />
+                </button>
+              </div>
 
-            <div className="hud-divider" />
-
-            {/* Undo / Redo History Group */}
-            <div className="tool-group">
-              <button
-                id="toolUndo"
-                type="button"
-                className="hud-icon-btn"
-                disabled={!canUndo}
-                onClick={undo}
-                title="Undo (Ctrl+Z)"
-                aria-label="Undo"
-              >
-                <HudIcons.Undo />
-              </button>
-              <button
-                id="toolRedo"
-                type="button"
-                className="hud-icon-btn"
-                disabled={!canRedo}
-                onClick={redo}
-                title="Redo (Ctrl+Y)"
-                aria-label="Redo"
-              >
-                <HudIcons.Redo />
-              </button>
-            </div>
-
-            {/* Dynamic Dimension Controls (W: H: for elements, L: D: for pipes) - only shown when an item is selected */}
-            {(isPipeSelection || selectedElements.length > 0) && (
-              <>
-                <div className="hud-divider" />
-                <div className="hud-dimension-group" id="hudDimensionSelector">
+              {/* Dynamic Dimension Controls (W: H: for elements, L: D: for pipes) */}
+              {(isPipeSelection || selectedElements.length > 0) && (
+                <>
+                  <div className="hud-divider" />
+                  <div className="hud-dimension-group" id="hudDimensionSelector">
                   {isPipeSelection ? (
                     <>
                       <label className="hud-dim-item" title="Pipeline Length (px)">
@@ -1987,147 +2818,120 @@ export default function ProcessScapeView({
                     </>
                   )}
                 </div>
-              </>
-            )}
+                </>
+              )}
 
-            {currentTool === 'draw_pipe' && (
-              <button
-                id="finishPipeBtn"
-                type="button"
-                className="hud-icon-btn active"
-                onClick={() => {
-                  dragRef.current.drawingPipeStart = null;
-                  dragRef.current.extendingPipe = null;
-                  if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                  setCurrentTool('select');
-                }}
-                title="Finish current pipe"
-                aria-label="Finish Pipe"
-              >
-                <HudIcons.Check />
-              </button>
-            )}
+              {currentTool === 'draw_pipe' && (
+                <>
+                  <div className="hud-divider" />
+                  <button
+                    id="finishPipeBtn"
+                    type="button"
+                    className="hud-icon-btn active"
+                    onClick={() => {
+                      dragRef.current.drawingPipeStart = null;
+                      dragRef.current.extendingPipe = null;
+                      if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+                      setCurrentTool('select');
+                    }}
+                    title="Finish current pipe"
+                    aria-label="Finish Pipe"
+                  >
+                    <HudIcons.Check />
+                  </button>
+                </>
+              )}
 
-            <div className="hud-divider" />
+              {selectedIds.size > 0 && (
+                <>
+                  <div className="hud-divider" />
+                  <div className="tool-group">
+                    <button
+                      id="hudFrontBtn"
+                      type="button"
+                      className="hud-icon-btn"
+                      disabled={selectedIds.size === 0}
+                      onClick={bringToFront}
+                      title="Bring to Front (])"
+                      aria-label="Bring to Front"
+                    >
+                      <HudIcons.BringToFront />
+                    </button>
+                    <button
+                      id="hudBackBtn"
+                      type="button"
+                      className="hud-icon-btn"
+                      disabled={selectedIds.size === 0}
+                      onClick={sendToBack}
+                      title="Send to Back ([)"
+                      aria-label="Send to Back"
+                    >
+                      <HudIcons.SendToBack />
+                    </button>
+                    <button
+                      id="hudDeleteBtn"
+                      type="button"
+                      className="hud-icon-btn btn-danger-outline"
+                      disabled={selectedIds.size === 0}
+                      onClick={() => {
+                        saveHistory('Delete Item');
+                        const updatedElements = elements.filter(el => !selectedIds.has(el.id));
+                        const updatedPipes = pipes.filter(p => !selectedIds.has(p.id));
+                        setElements(updatedElements);
+                        setPipes(updatedPipes);
+                        setSelectedIds(new Set());
+                        saveScape({
+                          id: activeScapeId,
+                          title: projectTitle,
+                          tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                          zones,
+                          elements: updatedElements,
+                          pipes: updatedPipes
+                        });
+                      }}
+                      title="Delete selected items (Delete key)"
+                      aria-label="Delete Selected"
+                    >
+                      <HudIcons.Delete />
+                    </button>
+                  </div>
+                </>
+              )}
 
-            {/* Layer Stacking & Editing Controls */}
-            <div className="tool-group">
-              <button
-                id="hudFrontBtn"
-                type="button"
-                className="hud-icon-btn"
-                disabled={selectedIds.size === 0}
-                onClick={bringToFront}
-                title="Bring to Front (])"
-                aria-label="Bring to Front"
-              >
-                <HudIcons.BringToFront />
-              </button>
-              <button
-                id="hudBackBtn"
-                type="button"
-                className="hud-icon-btn"
-                disabled={selectedIds.size === 0}
-                onClick={sendToBack}
-                title="Send to Back ([)"
-                aria-label="Send to Back"
-              >
-                <HudIcons.SendToBack />
-              </button>
-              <button
-                id="hudDeleteBtn"
-                type="button"
-                className="hud-icon-btn btn-danger-outline"
-                disabled={selectedIds.size === 0}
-                onClick={() => {
-                  saveHistory('Delete Item');
-                  setElements(prev => prev.filter(el => !selectedIds.has(el.id)));
-                  setPipes(prev => prev.filter(p => !selectedIds.has(p.id)));
-                  setSelectedIds(new Set());
-                }}
-                title="Delete selected items (Delete key)"
-                aria-label="Delete Selected"
-              >
-                <HudIcons.Delete />
-              </button>
+              {contentBounds.hasContent && (
+                <>
+                  <div className="hud-divider" />
+                  <button
+                    id="toolRealSize"
+                    type="button"
+                    className={`hud-icon-btn ${isRealSizePreview ? 'active' : ''}`}
+                    onMouseDown={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
+                    onMouseUp={() => setIsRealSizePreview(false)}
+                    onMouseLeave={() => setIsRealSizePreview(false)}
+                    onTouchStart={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
+                    onTouchEnd={() => setIsRealSizePreview(false)}
+                    title={`Hold to preview Real Picture Size (${contentBounds.width}×${contentBounds.height}px)`}
+                    aria-label="Real Size Preview"
+                  >
+                    <HudIcons.RealSize />
+                  </button>
+                </>
+              )}
             </div>
+          )}
 
-            <div className="hud-divider" />
-
-            {/* Real Size Preview Button (Click & Hold to view final picture size) */}
-            <button
-              id="toolRealSize"
-              type="button"
-              className={`hud-icon-btn ${isRealSizePreview ? 'active' : ''}`}
-              onMouseDown={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
-              onMouseUp={() => setIsRealSizePreview(false)}
-              onMouseLeave={() => setIsRealSizePreview(false)}
-              onTouchStart={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
-              onTouchEnd={() => setIsRealSizePreview(false)}
-              title={contentBounds.hasContent
-                ? `Hold to preview Real Picture Size (${contentBounds.width}×${contentBounds.height}px)`
-                : 'Hold to preview Real Picture Size'}
-              aria-label="Real Size Preview"
-            >
-              <HudIcons.RealSize />
-            </button>
-          </div>
-
-          {/* Floating Zoom HUD */}
-          <div className="canvas-floating-hud zoom-hud">
-            <button
-              id="zoomOutBtn"
-              className="hud-btn-sm"
-              onClick={() => {
-                const rect = viewportRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: 800, height: 600 };
-                zoomAtPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1 / 1.2);
-              }}
-              title="Zoom Out"
-            >
-              −
-            </button>
-            <span id="zoomLevelText" className="zoom-text">
-              {Math.round(view.zoom * 100)}%
-            </span>
-            <button
-              id="zoomInBtn"
-              className="hud-btn-sm"
-              onClick={() => {
-                const rect = viewportRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: 800, height: 600 };
-                zoomAtPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.2);
-              }}
-              title="Zoom In"
-            >
-              +
-            </button>
-            <button
-              id="zoomFitBtn"
-              className="hud-btn-sm"
-              onClick={handleZoomFit}
-              title="Fit to View"
-            >
-              Fit
-            </button>
-            <button
-              id="zoomResetBtn"
-              className="hud-btn-sm"
-              onClick={resetView}
-              title="Reset 100%"
-            >
-              1:1
-            </button>
-            <button
-              id="zoomFocusBtn"
-              className="hud-btn-sm"
-              onClick={focusSelectedOrCenter}
-              title="Focus Selected Item in Center (F)"
-            >
-              🎯 Focus
-            </button>
-          </div>
+          {/* Hidden JSON file input for importing layout config */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleFileInputChange}
+            style={{ display: 'none' }}
+            aria-hidden="true"
+          />
 
           {/* Floating Inspector Reopen Button (when Inspector is closed but an element is selected) */}
-          {!showInspector && hasSelection && (
+          {(scapeMode === 'editor') && !showInspector && hasSelection && (
             <div className="ps-inspector-toggle-float">
               <button
                 className="hud-btn"
@@ -2136,6 +2940,198 @@ export default function ProcessScapeView({
               >
                 <span>⚙️</span> Inspector
               </button>
+            </div>
+          )}
+
+          {/* Bottom Floating Canvas Tools HUD in Modify Scape (Editor Mode only) */}
+          {scapeMode === 'editor' && (
+            <div className="canvas-floating-hud zoom-hud" id="psModifyPageTools">
+              <div className="tool-group">
+                <button
+                  id="toolZoomOut"
+                  type="button"
+                  className="hud-icon-btn"
+                  onClick={() => {
+                    const rect = viewportRef.current?.getBoundingClientRect();
+                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                    zoomAtPoint(cx, cy, 1 / 1.15);
+                  }}
+                  title="Zoom Out (-)"
+                  aria-label="Zoom Out"
+                >
+                  <HudIcons.ZoomOut />
+                </button>
+
+                <button
+                  id="toolZoomReset"
+                  type="button"
+                  className="zoom-text hud-btn-zoom-reset"
+                  onClick={resetView}
+                  title="Reset Zoom to 100% (Click to reset)"
+                  aria-label="Zoom Percentage"
+                >
+                  {Math.round((view?.zoom || 1) * 100)}%
+                </button>
+
+                <button
+                  id="toolZoomIn"
+                  type="button"
+                  className="hud-icon-btn"
+                  onClick={() => {
+                    const rect = viewportRef.current?.getBoundingClientRect();
+                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                    zoomAtPoint(cx, cy, 1.15);
+                  }}
+                  title="Zoom In (+)"
+                  aria-label="Zoom In"
+                >
+                  <HudIcons.ZoomIn />
+                </button>
+              </div>
+
+              <div className="hud-divider" />
+
+              <button
+                id="toolZoomFit"
+                type="button"
+                className="hud-icon-btn"
+                onClick={focusSelectedOrCenter}
+                title="Focus / Fit Whole Canvas (F)"
+                aria-label="Focus / Fit Whole Canvas"
+              >
+                <HudIcons.ZoomFit />
+              </button>
+
+              <div className="hud-divider" />
+
+              <button
+                id="toolModifyBoundsResizer"
+                type="button"
+                className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  handleToggleBoundsResizer();
+                }}
+                title={isBoundsResizerActive ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
+                aria-label="Diagram Bounds Resizer"
+              >
+                <HudIcons.BoundsScale />
+              </button>
+
+              <div className="hud-divider" />
+
+              <span
+                className="ps-canvas-size-badge"
+                title={`Whole Canvas Size: ${screenSize.w} × ${screenSize.h} px`}
+              >
+                {screenSize.w}×{screenSize.h}
+              </span>
+            </div>
+          )}
+
+          {/* Bottom Floating Canvas Tools HUD in Live View (Runtime Mode) */}
+          {scapeMode === 'runtime' && (
+            <div className="canvas-floating-hud zoom-hud ps-runtime-page-tools" id="psRuntimePageTools">
+              <div className="tool-group">
+                <button
+                  id="toolRuntimeZoomOut"
+                  type="button"
+                  className="hud-icon-btn"
+                  onClick={() => {
+                    const rect = viewportRef.current?.getBoundingClientRect();
+                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                    zoomAtPoint(cx, cy, 1 / 1.15);
+                  }}
+                  title="Zoom Out (-)"
+                  aria-label="Zoom Out"
+                >
+                  <HudIcons.ZoomOut />
+                </button>
+
+                <button
+                  id="toolRuntimeZoomReset"
+                  type="button"
+                  className="zoom-text hud-btn-zoom-reset"
+                  onClick={resetView}
+                  title="Reset Zoom to 100% (Click to reset)"
+                  aria-label="Zoom Percentage"
+                >
+                  {Math.round((view?.zoom || 1) * 100)}%
+                </button>
+
+                <button
+                  id="toolRuntimeZoomIn"
+                  type="button"
+                  className="hud-icon-btn"
+                  onClick={() => {
+                    const rect = viewportRef.current?.getBoundingClientRect();
+                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                    zoomAtPoint(cx, cy, 1.15);
+                  }}
+                  title="Zoom In (+)"
+                  aria-label="Zoom In"
+                >
+                  <HudIcons.ZoomIn />
+                </button>
+              </div>
+
+              <div className="hud-divider" />
+
+              <button
+                id="toolRuntimeZoomFit"
+                type="button"
+                className="hud-icon-btn"
+                onClick={focusSelectedOrCenter}
+                title="Focus / Fit Whole Canvas (F)"
+                aria-label="Focus / Fit Whole Canvas"
+              >
+                <HudIcons.ZoomFit />
+              </button>
+
+              <div className="hud-divider" />
+
+              {/* Status toggle to enable/disable DND of measurement point card & anchor position */}
+              <button
+                id="toolRuntimeDndToggle"
+                type="button"
+                className={`hud-icon-btn ${isLiveDndActive ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  setIsLiveDndActive(prev => !prev);
+                }}
+                title={isLiveDndActive ? "Disable Card & Anchor Dragging" : "Enable Card & Anchor Dragging (Live DND)"}
+                aria-label="Toggle Measurement Point DND"
+              >
+                <HudIcons.LiveDnd />
+              </button>
+
+              {/* Diagram Bounding Box Resizer Tool */}
+              <button
+                id="toolRuntimeBoundsResizer"
+                type="button"
+                className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  handleToggleBoundsResizer();
+                }}
+                title={isBoundsResizerActive ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
+                aria-label="Diagram Bounds Resizer"
+              >
+                <HudIcons.BoundsScale />
+              </button>
+
+              <div className="hud-divider" />
+
+              <span
+                className="ps-canvas-size-badge"
+                title={`Current Diagram Size: ${screenSize.w} × ${screenSize.h} px`}
+              >
+                {screenSize.w}×{screenSize.h}
+              </span>
             </div>
           )}
 
@@ -2151,17 +3147,19 @@ export default function ProcessScapeView({
             </defs>
 
             <g id="worldGroup" transform={`translate(${view.x}, ${view.y}) scale(${view.zoom})`}>
-              {/* Screen Boundary Guide (Temporary canvas drawing area) */}
-              <rect
-                id="boundaryGuide"
-                x={0} y={0}
-                width={screenSize.w} height={screenSize.h}
-                rx={12}
-                fill="#ffffff"
-                stroke={isDarkMode ? '#1e293b' : '#cbd5e1'}
-                strokeWidth={2}
-                strokeDasharray="8 6"
-              />
+              {/* Screen Boundary Guide (Temporary canvas drawing area in editor mode) */}
+              {scapeMode !== 'runtime' && (
+                <rect
+                  id="boundaryGuide"
+                  x={0} y={0}
+                  width={screenSize.w} height={screenSize.h}
+                  rx={12}
+                  fill="#ffffff"
+                  stroke={isDarkMode ? '#1e293b' : '#cbd5e1'}
+                  strokeWidth={2}
+                  strokeDasharray="8 6"
+                />
+              )}
 
               {/* Dynamic Real Picture Bounds Guide (Shown only when holding 'Real Size' button) */}
               {isRealSizePreview && contentBounds.hasContent && (
@@ -2240,12 +3238,83 @@ export default function ProcessScapeView({
 
               {/* Interactive Layer (Anchors, Lead lines, Reticles) */}
               <g ref={interactionLayerRef} />
+
+              {/* Diagram Bounding Box Resizer Tool Overlay */}
+              {isBoundsResizerActive && resizingBox && (
+                <g id="boundsResizerGroup" className="ps-bounds-resizer-group">
+                  <rect
+                    x={resizingBox.x}
+                    y={resizingBox.y}
+                    width={resizingBox.w}
+                    height={resizingBox.h}
+                    fill="rgba(0, 172, 134, 0.05)"
+                    stroke="#00ac86"
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    rx={4}
+                    pointerEvents="none"
+                  />
+                  <g transform={`translate(${resizingBox.x + 8}, ${resizingBox.y - 10})`} pointerEvents="none">
+                    <rect x={-4} y={-14} width={164} height={20} rx={4} fill="#0f172a" opacity={0.92} />
+                    <text x={6} y={1} fontSize={11} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
+                      📐 Diagram: {Math.round(resizingBox.w)}×{Math.round(resizingBox.h)}px
+                    </text>
+                  </g>
+                  {[
+                    // Side edge handles first (10x10 px)
+                    { type: 'n', x: resizingBox.x + resizingBox.w / 2, y: resizingBox.y, cursor: 'ns-resize', isCorner: false },
+                    { type: 'e', x: resizingBox.x + resizingBox.w, y: resizingBox.y + resizingBox.h / 2, cursor: 'ew-resize', isCorner: false },
+                    { type: 's', x: resizingBox.x + resizingBox.w / 2, y: resizingBox.y + resizingBox.h, cursor: 'ns-resize', isCorner: false },
+                    { type: 'w', x: resizingBox.x, y: resizingBox.y + resizingBox.h / 2, cursor: 'ew-resize', isCorner: false },
+                    // Corner handles second so they render on top with prominent 14x14 px styling
+                    { type: 'nw', x: resizingBox.x, y: resizingBox.y, cursor: 'nwse-resize', isCorner: true },
+                    { type: 'ne', x: resizingBox.x + resizingBox.w, y: resizingBox.y, cursor: 'nesw-resize', isCorner: true },
+                    { type: 'se', x: resizingBox.x + resizingBox.w, y: resizingBox.y + resizingBox.h, cursor: 'nwse-resize', isCorner: true },
+                    { type: 'sw', x: resizingBox.x, y: resizingBox.y + resizingBox.h, cursor: 'nesw-resize', isCorner: true },
+                  ].map(h => (
+                    <g
+                      key={h.type}
+                      className="ps-bounds-handle"
+                      data-handle={h.type}
+                      transform={`translate(${h.x}, ${h.y})`}
+                      style={{ cursor: h.cursor }}
+                      pointerEvents="all"
+                    >
+                      {/* Generous invisible hit target (28x28 px) for effortless clicking without precision strain */}
+                      <rect
+                        x={-14}
+                        y={-14}
+                        width={28}
+                        height={28}
+                        fill="transparent"
+                        style={{ cursor: h.cursor }}
+                        pointerEvents="all"
+                      />
+                      {/* Crisp, stable visual handle (14x14 px for 4 corners, 10x10 px for 4 edge midpoints) */}
+                      <rect
+                        className="ps-bounds-handle-rect"
+                        x={h.isCorner ? -7 : -5}
+                        y={h.isCorner ? -7 : -5}
+                        width={h.isCorner ? 14 : 10}
+                        height={h.isCorner ? 14 : 10}
+                        rx={h.isCorner ? 3 : 2}
+                        fill="#ffffff"
+                        stroke="#00ac86"
+                        strokeWidth={h.isCorner ? 2.5 : 2}
+                        style={{ cursor: h.cursor }}
+                        pointerEvents="none"
+                      />
+                    </g>
+                  ))}
+                </g>
+              )}
             </g>
           </svg>
         </main>
 
-        {/* Right Inspector Panel */}
-        <aside className={`ps-inspector ${showInspector ? '' : 'collapsed'}`}>
+        {/* Right Inspector Panel (Editor Mode only) */}
+        {scapeMode === 'editor' && (
+          <aside className={`ps-inspector ${showInspector ? '' : 'collapsed'}`}>
           <div className="ps-inspector-header">
             <div className="ps-inspector-title">
               {singleSelectedElement
@@ -2342,101 +3411,36 @@ export default function ProcessScapeView({
                   </div>
                 )}
 
-                {/* Telemetry Channels Table */}
+                {/* Assigned Telemetry Channels */}
                 <div className="ps-form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label className="ps-form-label">Telemetry Channels</label>
-                    <button
-                      type="button"
-                      className="hud-btn-sm btn-primary"
-                      style={{ height: 22, fontSize: 10, padding: '0 6px' }}
-                      onClick={() => {
-                        const newChannels = [
-                          ...(selectedElement.channels || []),
-                          { id: `ch_${Date.now()}`, name: 'Channel', val: 0, unit: '', status: 'normal' }
-                        ];
-                        updateSelectedElement({ channels: newChannels });
-                      }}
-                    >
-                      + Add
-                    </button>
-                  </div>
-
-                  <table className="ps-channels-table">
-                    <thead>
-                      <tr>
-                        <th>Status</th>
-                        <th>Name</th>
-                        <th>Value</th>
-                        <th>Unit</th>
-                        <th style={{ width: 20 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <label className="ps-form-label">
+                    Assigned Telemetry Channels ({(selectedElement.channels || []).length})
+                  </label>
+                  {(selectedElement.channels || []).length === 0 ? (
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
+                      No channels assigned. Use <strong>Sensor & Measurement Point Manager</strong> to detect and bind channels.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
                       {(selectedElement.channels || []).map((ch, idx) => (
-                        <tr key={ch.id || idx}>
-                          <td>
-                            <div
-                              className="ps-ch-status-dot"
-                              style={{ background: ch.status === 'alarm' ? '#dc2626' : (ch.status === 'warn' ? '#eab308' : '#16a34a') }}
-                              title="Click to toggle status (Normal / Warning / Alarm)"
-                              onClick={() => {
-                                const nextStatus = ch.status === 'normal' ? 'warn' : (ch.status === 'warn' ? 'alarm' : 'normal');
-                                const updated = [...selectedElement.channels];
-                                updated[idx] = { ...ch, status: nextStatus };
-                                updateSelectedElement({ channels: updated });
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="ps-ch-input"
-                              value={ch.name || ''}
-                              onChange={(e) => {
-                                const updated = [...selectedElement.channels];
-                                updated[idx] = { ...ch, name: e.target.value };
-                                updateSelectedElement({ channels: updated });
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="ps-ch-input"
-                              type="number"
-                              value={ch.val !== undefined ? ch.val : 0}
-                              onChange={(e) => {
-                                const updated = [...selectedElement.channels];
-                                updated[idx] = { ...ch, val: parseFloat(e.target.value) || 0 };
-                                updateSelectedElement({ channels: updated });
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              className="ps-ch-input"
-                              value={ch.unit || ''}
-                              onChange={(e) => {
-                                const updated = [...selectedElement.channels];
-                                updated[idx] = { ...ch, unit: e.target.value };
-                                updateSelectedElement({ channels: updated });
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <button
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#ef4444', fontWeight: 800 }}
-                              onClick={() => {
-                                const updated = selectedElement.channels.filter((_, i) => i !== idx);
-                                updateSelectedElement({ channels: updated });
-                              }}
-                            >
-                              ×
-                            </button>
-                          </td>
-                        </tr>
+                        <div
+                          key={ch.id || idx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '4px 8px',
+                            background: 'rgba(15, 23, 42, 0.03)',
+                            borderRadius: 4,
+                            fontSize: 11
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{ch.name}</span>
+                          <span style={{ fontFamily: 'monospace', color: '#0284c7' }}>{ch.unit || ''}</span>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -2445,8 +3449,17 @@ export default function ProcessScapeView({
                   style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
                   onClick={() => {
                     saveHistory('Delete Sensor');
-                    setElements(prev => prev.filter(e => e.id !== singleSelectedElement.id));
+                    const updated = elements.filter(e => e.id !== singleSelectedElement.id);
+                    setElements(updated);
                     setSelectedIds(new Set());
+                    saveScape({
+                      id: activeScapeId,
+                      title: projectTitle,
+                      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                      zones,
+                      elements: updated,
+                      pipes
+                    });
                   }}
                 >
                   🗑 Delete Sensor Card
@@ -2567,8 +3580,17 @@ export default function ProcessScapeView({
                   style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
                   onClick={() => {
                     saveHistory('Delete Equipment');
-                    setElements(prev => prev.filter(e => e.id !== singleSelectedElement.id));
+                    const updated = elements.filter(e => e.id !== singleSelectedElement.id);
+                    setElements(updated);
                     setSelectedIds(new Set());
+                    saveScape({
+                      id: activeScapeId,
+                      title: projectTitle,
+                      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                      zones,
+                      elements: updated,
+                      pipes
+                    });
                   }}
                 >
                   🗑 Delete Equipment
@@ -2711,8 +3733,8 @@ export default function ProcessScapeView({
                     const deletedPipeIds = new Set(
                       pipes.filter(p => selectedIds.has(p.id) || (p.groupId && targetGroupIds.has(p.groupId))).map(p => p.id)
                     );
-                    setPipes(prev => prev.filter(p => !deletedPipeIds.has(p.id)));
-                    setElements(prev => prev.map(el => {
+                    const updatedPipes = pipes.filter(p => !deletedPipeIds.has(p.id));
+                    const updatedElements = elements.map(el => {
                       if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
                         const updated = { ...el };
                         delete updated.attachedPipeId;
@@ -2722,8 +3744,18 @@ export default function ProcessScapeView({
                         return updated;
                       }
                       return el;
-                    }));
+                    });
+                    setPipes(updatedPipes);
+                    setElements(updatedElements);
                     setSelectedIds(new Set());
+                    saveScape({
+                      id: activeScapeId,
+                      title: projectTitle,
+                      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                      zones,
+                      elements: updatedElements,
+                      pipes: updatedPipes
+                    });
                   }}
                 >
                   🗑 Delete Pipeline {selectedPipes.length > 1 ? `(${selectedPipes.length} segments)` : ''}
@@ -2732,7 +3764,16 @@ export default function ProcessScapeView({
             ) : null}
           </div>
         </aside>
+        )}
       </div>
+
+      {/* Scape Manager Dialog for switching, creating, and modifying plant environments */}
+      <ScapeManagerModal
+        isOpen={isScapeManagerOpen}
+        onClose={() => setIsScapeManagerOpen(false)}
+        onSelectActiveScape={handleSelectActiveScape}
+        onEditScape={handleEditScapeFromManager}
+      />
     </div>
   );
 }

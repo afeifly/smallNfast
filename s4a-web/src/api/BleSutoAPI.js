@@ -607,25 +607,50 @@ export class BleSutoManager {
     return `${preview} ... (${bytes.length} bytes total)`;
   }
 
+  _calculateChecksum(bytes, length = bytes.length) {
+    let total = 0;
+    const len = Math.min(length, bytes.length);
+    for (let i = 0; i < len; i++) {
+      total = (total + bytes[i]) & 0xff;
+    }
+    return ((total ^ 0xff) + 1) & 0xff;
+  }
+
   _packPacket(addr, cmdBytes) {
     const totalLen = 2 + cmdBytes.length + 2;
     const pkt = [addr, totalLen, ...cmdBytes];
-    let sum = 0;
-    for (let i = 0; i < pkt.length; i++) {
-      sum = (sum + pkt[i]) & 0xff;
-    }
-    const cksum = ((sum ^ 0xff) + 1) & 0xff;
+    const cksum = this._calculateChecksum(pkt, pkt.length);
     pkt.push(cksum);
     pkt.push(0x00);
     return pkt;
   }
 
   _deframeMultiFrame(rawBytes) {
-    if (rawBytes.length < 5) throw new Error('Data too short for deframing');
-    if (rawBytes[2] !== 0x3e) {
-      throw new Error(`Device returned non-success status: 0x${rawBytes[2].toString(16)}`);
+    if (!rawBytes || rawBytes.length < 5) throw new Error('Data too short for deframing');
+
+    // Robust SUTO frame synchronization: scan forward to locate frame 0 with valid checksum
+    let startOffset = 0;
+    while (startOffset + 4 < rawBytes.length) {
+      const fl = rawBytes[startOffset + 1];
+      if (fl >= 5 && startOffset + fl <= rawBytes.length && rawBytes[startOffset + 2] === 0x3e) {
+        const expectedCk = this._calculateChecksum(rawBytes.slice(startOffset, startOffset + fl - 2));
+        if (rawBytes[startOffset + fl - 2] === expectedCk) {
+          break; // Found synchronized frame 0
+        }
+      }
+      startOffset++;
     }
-    let offset = 0;
+
+    if (startOffset + 4 >= rawBytes.length) {
+      // Fallback: if no 0x3e byte, check if first byte is valid status
+      if (rawBytes[2] !== 0x3e) {
+        throw new Error(`Device returned non-success status: 0x${rawBytes[2] ? rawBytes[2].toString(16) : 'unknown'}`);
+      }
+      startOffset = 0;
+    }
+
+    let offset = startOffset;
+    let frameIdx = 0;
     const payload = [];
 
     while (offset < rawBytes.length) {
@@ -635,29 +660,46 @@ export class BleSutoManager {
       const frameEnd = offset + frameLen;
       if (frameEnd > rawBytes.length) break;
 
-      // Frame 0 has status byte at index 2 (0x3E)
-      const dataStart = offset === 0 ? offset + 3 : offset + 2;
-      const dataEnd = frameEnd - 2;
-
-      for (let i = dataStart; i < dataEnd; i++) {
-        payload.push(rawBytes[i]);
+      const frame = rawBytes.slice(offset, frameEnd);
+      const expectedCk = this._calculateChecksum(frame.slice(0, frameLen - 2));
+      const actualCk = frame[frameLen - 2];
+      if (expectedCk !== actualCk) {
+        TauriSutoAPI.logClientEvent('WARN', 'BLE_RX', `Frame ${frameIdx} checksum mismatch (expected 0x${expectedCk.toString(16)}, got 0x${actualCk.toString(16)})`);
+        break;
       }
+
+      if (frameIdx === 0) {
+        if (frame[2] !== 0x3e) break;
+        // Skip addr (1) + len (1) + status 0x3E (1)
+        for (let i = 3; i < frameLen - 2; i++) {
+          payload.push(frame[i]);
+        }
+      } else {
+        // Continuation frames: skip addr (1) + len (1)
+        for (let i = 2; i < frameLen - 2; i++) {
+          payload.push(frame[i]);
+        }
+      }
+
       offset = frameEnd;
+      frameIdx++;
     }
+
     return payload;
   }
 
   _parseChannelStructs(deframed) {
     const STRUCT_SIZE = 204;
     const channels = [];
+    if (!deframed || deframed.length < STRUCT_SIZE) return channels;
     const numStructs = Math.floor(deframed.length / STRUCT_SIZE);
 
     for (let i = 0; i < numStructs; i++) {
       const off = i * STRUCT_SIZE;
       const logChNo = deframed[off];
-      // Reject unconfigured/empty structs (logical channel 0 or 0xFF),
-      // mirroring CSLib `CSCOMM_DS310_CHANNEL_SETTING.parseByteArray`.
-      if (logChNo === 0 || logChNo === 0xff) continue;
+      // SUTO logical channel number MUST be in valid range 1..64.
+      // Rejects unconfigured (0, 0xFF) and misaligned text bytes (e.g. ASCII 'P' = 80).
+      if (typeof logChNo !== 'number' || logChNo < 1 || logChNo > 64) continue;
       const chId = logChNo;
 
       // Channels with bit 3 of ChOptionalConfig set are hidden/disabled (cs_monitor: & 0x08)
@@ -671,10 +713,10 @@ export class BleSutoManager {
       const unitAscii = this._readUtf8String(deframed, off + 87, 12);
       const mbType = deframed[off + 138];
 
-      // Custom unit fallback: if unitIndex is 0 or unit not in standard table, use unitAscii
-      let unit = SUTO_UNITS[unitIndex];
-      if (!unit || unitIndex === 0) {
-        unit = (unitAscii && unitAscii.trim()) ? unitAscii.trim() : `u${unitIndex}`;
+      // Clean unit resolution: never produce fake 'u0'
+      let unit = (unitIndex > 0 && SUTO_UNITS[unitIndex]) ? SUTO_UNITS[unitIndex] : '';
+      if (!unit && unitAscii && unitAscii.trim()) {
+        unit = unitAscii.trim();
       }
 
       const rawRes = deframed[off + 85];
@@ -692,7 +734,7 @@ export class BleSutoManager {
       const sensorKey = `${slaverType}&${slaverAddr}&${subDeviceId}&${sensorId}`;
 
       const chName = chDesc || sensorDesc || (devDesc ? `${devDesc} CH${chId}` : `Channel ${chId}`);
-      const sDesc = sensorDesc || chName;
+      const sDesc = (sensorDesc && sensorDesc !== '451') ? sensorDesc : (devDesc || this.getDeviceName() || chName);
 
       channels.push({
         channel_id: chId,
@@ -728,7 +770,7 @@ export class BleSutoManager {
     return channels;
   }
 
-  async getChannels() {
+  async getChannels(options = {}) {
     TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Querying channel configuration for address ${this.devAddr}...`);
 
     // Check device model & firmware version
@@ -799,8 +841,8 @@ export class BleSutoManager {
     // Sort by logical channel id
     channels.sort((a, b) => a.channel_id - b.channel_id);
 
-    // Fallback: If sensor didn't return channel descriptors, synthesize standard channels matching SUTO flow sensors
-    if (channels.length === 0) {
+    // Only synthesize fallback dummy channels if explicitly requested (e.g. mock test harnesses)
+    if (channels.length === 0 && options.allowFallback) {
       const devName = this.systemInfo?.device_name || this.getDeviceName();
       channels.push(
         {

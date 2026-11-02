@@ -312,11 +312,33 @@
   transform: none;
 }
 
+.editor-nav-hud {
+  top: 14px;
+  right: 16px;
+  padding: 4px 8px;
+  gap: 6px;
+  z-index: 35;
+}
+
 .zoom-hud {
   bottom: 38px;
   right: 16px;
   padding: 4px 8px;
   gap: 6px;
+}
+
+/* Live DND Mode & Bounds Resizer */
+.live-dnd-active {
+  cursor: grab !important;
+  transition: filter 0.15s ease;
+}
+
+.live-dnd-active:hover {
+  filter: drop-shadow(0 4px 12px rgba(0, 172, 134, 0.4));
+}
+
+.live-dnd-active:active {
+  cursor: grabbing !important;
 }
 
 .tool-group {
@@ -630,6 +652,41 @@
   color: #f8fafc;
 }
 
+.hud-btn-zoom-reset {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+}
+
+.hud-btn-zoom-reset:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #00ac86;
+}
+
+.theme-dark .hud-btn-zoom-reset:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #00ac86;
+}
+
+.ps-canvas-size-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ps-text-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.04);
+  user-select: none;
+}
+
+.theme-dark .ps-canvas-size-badge {
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+}
+
 .hud-divider,
 .ps-hud-divider {
   width: 1px;
@@ -912,11 +969,144 @@
   pointer-events: all;
 }
 
-.element-anchor-handle:hover circle:nth-child(2) {
+.element-anchor-handle:hover .anchor-handle-core {
   stroke-width: 3.5px;
-  filter: brightness(1.15);
 }
 
 .element-anchor-handle:active {
   cursor: grabbing !important;
 }
+
+/* Runtime Live HUD & Info Badges */
+.ps-runtime-hud {
+  padding: 5px 12px;
+  gap: 8px;
+}
+
+.runtime-info-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.runtime-scape-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ps-text-main, #0f172a);
+}
+
+.runtime-telemetry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+}
+
+.runtime-telemetry-badge.is-live {
+  background: #e6f7f3;
+  color: #00ac86;
+  border: 1px solid rgba(0, 172, 134, 0.3);
+}
+
+.runtime-telemetry-badge.is-offline {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.telemetry-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.runtime-telemetry-badge.is-live .telemetry-dot {
+  box-shadow: 0 0 6px #00ac86;
+  animation: psPulse 2s infinite ease-in-out;
+}
+
+@keyframes psPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.runtime-hud-btn {
+  background: #ffffff;
+  border: 1px solid var(--ps-border, #cbd5e1);
+  color: var(--ps-text-main, #0f172a);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.runtime-hud-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.runtime-hud-btn.btn-edit-primary,
+.runtime-hud-btn.btn-save-primary {
+  background: #00ac86;
+  color: #ffffff;
+  border-color: #009372;
+  font-weight: 700;
+}
+
+.runtime-hud-btn.btn-edit-primary:hover,
+.runtime-hud-btn.btn-save-primary:hover {
+  background: #009372;
+  transform: translateY(-1px);
+}
+
+/* Live DND Mode for Measurement Point Cards */
+.sensor-badge-group.live-dnd-active {
+  cursor: grab !important;
+}
+
+.sensor-badge-group.live-dnd-active:hover {
+  filter: drop-shadow(0 4px 12px rgba(0, 172, 134, 0.35));
+}
+
+.sensor-badge-group.live-dnd-active:active {
+  cursor: grabbing !important;
+}
+
+/* Diagram Bounding Box Resizer Handles & Styling */
+.ps-bounds-resizer-group {
+  user-select: none;
+}
+
+.ps-bounds-handle {
+  pointer-events: all;
+  user-select: none;
+}
+
+.ps-bounds-handle-rect {
+  transition: fill 0.1s ease, stroke 0.1s ease;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.15));
+}
+
+.ps-bounds-handle:hover .ps-bounds-handle-rect {
+  fill: #00ac86 !important;
+  stroke: #ffffff !important;
+}
+
+.ps-bounds-handle:active .ps-bounds-handle-rect {
+  fill: #00875e !important;
+  stroke: #ffffff !important;
+}
+
+

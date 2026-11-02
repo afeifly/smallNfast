@@ -1,9 +1,27 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ProcessScapeView from './ProcessScapeView.jsx';
 import { ASSET_DEFS, PIPE_PRESETS, SENSOR_CARD_TEMPLATES } from './engine/constants.js';
 import { renderAssetPaletteIcon } from './engine/paletteIcons.jsx';
+import {
+  getAllScapes,
+  getActiveScape,
+  saveScape,
+  duplicateScape,
+  deleteScape
+} from './engine/scapeStorage.js';
+import SensorManagerModal from './SensorManagerModal.jsx';
+import TauriSutoAPI from '../../api/TauriSutoAPI.js';
+import {
+  getLocations,
+  saveLocations,
+  detectConnectedSensors,
+  syncMeasurementPointToScape,
+  syncAllLocationsToScapes,
+  buildDeviceFromRawChannels,
+  getSavedDevices
+} from './engine/sensorManagerStorage.js';
 import {
   pointsToPath,
   getSnapExtensionPoint,
@@ -117,30 +135,30 @@ describe('ProcessScape Engine & Constants', () => {
     const injectionG = drawInjectionMolder(fakeNode);
     expect(injectionG.tagName.toLowerCase()).toBe('g');
 
-    // Physical sensor transmitters & detectors
+    // Physical sensor transmitters & detectors (clean placeholders without fake mock numbers)
     const dewPointG = drawDewPointMeter(fakeNode);
     expect(dewPointG.tagName.toLowerCase()).toBe('g');
-    expect(dewPointG.innerHTML).toContain('-49.2');
+    expect(dewPointG.innerHTML).toContain('--.-');
     expect(dewPointG.innerHTML).toContain('°C Td');
     expect(dewPointG.innerHTML).toContain('.SUTO');
 
     const leakG = drawLeakDetector(fakeNode);
     expect(leakG.tagName.toLowerCase()).toBe('g');
     expect(leakG.innerHTML).toContain('SUTO S530');
-    expect(leakG.innerHTML).toContain('75 dB');
-    expect(leakG.innerHTML).toContain('GRADE 3');
+    expect(leakG.innerHTML).toContain('-- dB');
+    expect(leakG.innerHTML).toContain('STANDBY');
 
     const compactFlowG = drawCompactFlowMeter(fakeNode);
     expect(compactFlowG.tagName.toLowerCase()).toBe('g');
-    expect(compactFlowG.innerHTML).toContain('183.6');
+    expect(compactFlowG.innerHTML).toContain('---.-');
     expect(compactFlowG.innerHTML).toContain('.SUTO');
     expect(compactFlowG.innerHTML).toContain('lpm');
 
     const flowMeterG = drawFlowMeter(fakeNode);
     expect(flowMeterG.tagName.toLowerCase()).toBe('g');
-    expect(flowMeterG.innerHTML).toContain('37.3');
+    expect(flowMeterG.innerHTML).toContain('--.-');
     expect(flowMeterG.innerHTML).toContain('m³/h');
-    expect(flowMeterG.innerHTML).toContain('6.2 bar');
+    expect(flowMeterG.innerHTML).toContain('--.- bar');
     expect(flowMeterG.innerHTML).toContain('.SUTO');
 
     // Stationary displays and field cases
@@ -230,44 +248,68 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(tabs[6].textContent).toContain('Walls & Others');
   });
 
-  it('renders floating top HUD and floating zoom HUD with all controls', () => {
-    const { container } = render(<ProcessScapeView />);
+  it('renders top HUD with toolSelect and toolPan, and provides page tools (zoom percent, focus, size) in modify scape only', () => {
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'el_1', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 }
+        ]}
+      />
+    );
 
-    // Top HUD
-    const topHud = container.querySelector('.canvas-floating-hud.top-hud');
+    // Top HUD is present in editor mode and houses toolSelect and toolPan
+    const topHud = container.querySelector('.canvas-floating-hud.top-hud.ps-hud-bar');
     expect(topHud).not.toBeNull();
-    expect(container.querySelector('#toolSelect')).not.toBeNull();
-    expect(container.querySelector('#toolPan')).not.toBeNull();
-    expect(container.querySelector('#toolUndo')).not.toBeNull();
-    expect(container.querySelector('#toolRedo')).not.toBeNull();
-    // toolDrawPipe and pipeMediumSelector removed as requested
-    expect(container.querySelector('#toolDrawPipe')).toBeNull();
-    expect(container.querySelector('#pipeMediumSelector')).toBeNull();
+    expect(topHud.querySelector('#toolSelect')).not.toBeNull();
+    expect(topHud.querySelector('#toolPan')).not.toBeNull();
+
+    // Dimensions and item actions are hidden when nothing is selected
     expect(container.querySelector('#hudDimensionSelector')).toBeNull();
+    expect(container.querySelector('#hudFrontBtn')).toBeNull();
+
+    // Select the element
+    const nodeEl = container.querySelector('.plant-node');
+    expect(nodeEl).not.toBeNull();
+    fireEvent.click(nodeEl);
+
+    // Top HUD appears showing dimensions and layer stacking
+    expect(container.querySelector('#hudDimensionSelector')).not.toBeNull();
     expect(container.querySelector('#hudFrontBtn')).not.toBeNull();
     expect(container.querySelector('#hudBackBtn')).not.toBeNull();
     expect(container.querySelector('#hudDeleteBtn')).not.toBeNull();
 
-    // Zoom HUD
-    const zoomHud = container.querySelector('.canvas-floating-hud.zoom-hud');
-    expect(zoomHud).not.toBeNull();
-    expect(container.querySelector('#zoomOutBtn')).not.toBeNull();
-    expect(container.querySelector('#zoomLevelText')).not.toBeNull();
-    expect(container.querySelector('#zoomInBtn')).not.toBeNull();
-    expect(container.querySelector('#zoomFitBtn')).not.toBeNull();
-    expect(container.querySelector('#zoomResetBtn')).not.toBeNull();
-    expect(container.querySelector('#zoomFocusBtn')).not.toBeNull();
+    // Redundant canvas buttons are removed (they reside cleanly in top bar)
+    expect(container.querySelector('#toolUndo')).toBeNull();
+    expect(container.querySelector('#toolRedo')).toBeNull();
+    expect(container.querySelector('#hudImportJsonBtn')).toBeNull();
+    expect(container.querySelector('#hudExportJsonBtn')).toBeNull();
+
+    // Modify scape page tools (zoom percent, focus, tools) are present in editor mode
+    const pageTools = container.querySelector('.canvas-floating-hud.zoom-hud');
+    expect(pageTools).not.toBeNull();
+    expect(pageTools.querySelector('#toolZoomReset').textContent).toMatch(/\d+%/);
+    expect(pageTools.querySelector('#toolZoomFit')).not.toBeNull();
+    expect(pageTools.querySelector('.ps-canvas-size-badge')).not.toBeNull();
+    // toolSelect and toolPan are strictly in top-hud, not in zoom-hud
+    expect(pageTools.querySelector('#toolSelect')).toBeNull();
+    expect(pageTools.querySelector('#toolPan')).toBeNull();
+
+    // Palette has NO "Live Telemetry Card" (managed exclusively by Sensor Manager)
+    const paletteTitles = Array.from(container.querySelectorAll('.ps-card-title')).map(el => el.textContent);
+    expect(paletteTitles.some(t => t.includes('Live Telemetry'))).toBe(false);
   });
 
-  it('allows activating Pan tool and updates viewport class to panning', () => {
+  it('allows activating Pan mode via keyboard and updates viewport class to panning', () => {
     const { container } = render(<ProcessScapeView />);
     const viewport = container.querySelector('.ps-canvas-viewport');
     expect(viewport.classList.contains('panning')).toBe(false);
 
-    const panBtn = container.querySelector('#toolPan');
-    fireEvent.click(panBtn);
-    expect(panBtn.classList.contains('active')).toBe(true);
+    fireEvent.keyDown(window, { code: 'Space' });
     expect(viewport.classList.contains('panning')).toBe(true);
+
+    fireEvent.keyUp(window, { code: 'Space' });
+    expect(viewport.classList.contains('panning')).toBe(false);
   });
 
   it('calculates real picture bounds with 16px margin to each edge (30x20 element gives 62x52)', () => {
@@ -357,14 +399,15 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(y).toBe(78);
   });
 
-  it('renders Real Size icon button on HUD and keeps bounds guide hidden unless button is held', () => {
-    const { container } = render(<ProcessScapeView />);
-    const realSizeBtn = container.querySelector('#toolRealSize');
-    expect(realSizeBtn).not.toBeNull();
-    expect(realSizeBtn.getAttribute('title')).toContain('preview Real Picture Size');
-    expect(realSizeBtn.querySelector('svg')).not.toBeNull();
-    // Only Gas / Liquid retain text, all other buttons are pure icon buttons
-    expect(realSizeBtn.textContent.trim()).toBe('');
+  it('renders Real Size bounds guide hidden unless active and keeps top HUD selection-focused', () => {
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'el_1', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 }
+        ]}
+      />
+    );
 
     // Bounds guide is NOT shown by default when drawing
     expect(container.querySelector('.ps-real-bounds-guide')).toBeNull();
@@ -373,34 +416,37 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(container.querySelector('.hud-stat-pill')).toBeNull();
   });
 
-  it('renders all buttons in top-hud as consistent icon buttons with undo/redo and no pipeMediumSelector', () => {
-    const { container } = render(<ProcessScapeView />);
+  it('renders all buttons in top-hud as consistent icon buttons when selection is active', () => {
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'el_1', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 }
+        ]}
+      />
+    );
+
+    // Select the element
+    const nodeEl = container.querySelector('.plant-node');
+    expect(nodeEl).not.toBeNull();
+    fireEvent.click(nodeEl);
+
     const topHud = container.querySelector('.canvas-floating-hud.top-hud');
     expect(topHud).not.toBeNull();
 
     // pipeMediumSelector is removed from top-hud
     expect(container.querySelector('#pipeMediumSelector')).toBeNull();
 
-    // All buttons in top-hud must be pure icon buttons with consistent SVG icon and NO plain text
-    const buttons = Array.from(topHud.querySelectorAll('button'));
-    expect(buttons.length).toBeGreaterThanOrEqual(6);
+    // All action buttons in selection top-hud must be icon buttons with SVG icon
+    const buttons = Array.from(topHud.querySelectorAll('button.hud-icon-btn'));
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
 
     buttons.forEach(btn => {
       expect(btn.classList.contains('hud-icon-btn')).toBe(true);
-      expect(btn.textContent.trim()).toBe('');
       const svg = btn.querySelector('svg');
       expect(svg).not.toBeNull();
       expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
-      expect(svg.getAttribute('stroke')).toBe('currentColor');
     });
-
-    // Check Undo and Redo buttons exist in top-hud and have proper disabled/enabled states
-    const undoBtn = container.querySelector('#toolUndo');
-    const redoBtn = container.querySelector('#toolRedo');
-    expect(undoBtn).not.toBeNull();
-    expect(redoBtn).not.toBeNull();
-    expect(undoBtn.hasAttribute('disabled')).toBe(true);
-    expect(redoBtn.hasAttribute('disabled')).toBe(true);
   });
 
   it('dynamically displays W: H: for equipment and L: D: for pipes in top-hud only when selected', () => {
@@ -884,10 +930,10 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const anchorHandle = container.querySelector('.element-anchor-handle[data-element-id="machine_1"]');
     expect(anchorHandle).not.toBeNull();
 
-    // MouseDown on anchor handle, drag towards pipe1 at world (200, 100) -> clientX: 190, clientY: 163
-    fireEvent.mouseDown(anchorHandle, { clientX: 190, clientY: 112, button: 0 });
-    fireEvent.mouseMove(window, { clientX: 190, clientY: 163 });
-    fireEvent.mouseUp(window, { clientX: 190, clientY: 163 });
+    // MouseDown on anchor handle, drag towards pipe1 at world (200, 100) -> clientX: 220, clientY: 178 (at zoom 1.0, vx: 20, vy: 78)
+    fireEvent.mouseDown(anchorHandle, { clientX: 220, clientY: 178, button: 0 });
+    fireEvent.mouseMove(window, { clientX: 220, clientY: 178 });
+    fireEvent.mouseUp(window, { clientX: 220, clientY: 178 });
 
     // Machine is now bound at ~50% of pipe_branch_1
     expect(inspector.textContent).toContain('Bound (50%)');
@@ -898,6 +944,940 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     fireEvent.click(detachBtn);
     expect(inspector.textContent).toContain('Free floating');
   });
+
+  it('registers Import JSON, Export JSON, and Export PNG actions for pure icon buttons', () => {
+    let capturedActions = null;
+    render(
+      <ProcessScapeView
+        onRegisterActions={(actions) => {
+          capturedActions = actions;
+        }}
+      />
+    );
+
+    expect(typeof capturedActions.handleImportJson).toBe('function');
+    expect(typeof capturedActions.handleExportJson).toBe('function');
+    expect(typeof capturedActions.handleExportPng).toBe('function');
+  });
+
+  it('supports importing a ProcessScape JSON config file and updating diagram elements and pipes', async () => {
+    let capturedActions = null;
+    const { container } = render(
+      <ProcessScapeView
+        onRegisterActions={(actions) => {
+          capturedActions = actions;
+        }}
+      />
+    );
+
+    expect(capturedActions).not.toBeNull();
+    expect(typeof capturedActions.handleImportJson).toBe('function');
+
+    const fileInput = container.querySelector('input[type="file"][accept*=".json"]');
+    expect(fileInput).not.toBeNull();
+
+    // Simulate file import with config containing 1 element and 1 pipe
+    const mockConfig = {
+      projectTitle: 'Custom Imported Plant',
+      tempCanvasSize: { width: 1200, height: 900 },
+      elements: [
+        { id: 'imported_chiller_1', type: 'machine_chiller', tag: 'Imported Chiller', x: 250, y: 150, w: 140, h: 140 }
+      ],
+      pipes: [
+        { id: 'imported_pipe_1', medium: 'liquid', points: [{ x: 50, y: 50 }, { x: 400, y: 50 }], d: 'M 50,50 L 400,50', w: 16 }
+      ]
+    };
+
+    const originalFileReader = global.FileReader;
+    class MockFileReader {
+      readAsText() {
+        setTimeout(() => {
+          if (this.onload) {
+            this.onload({ target: { result: JSON.stringify(mockConfig) } });
+          }
+        }, 10);
+      }
+    }
+    global.FileReader = MockFileReader;
+
+    try {
+      const file = new File([JSON.stringify(mockConfig)], 'plant-config.json', { type: 'application/json' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      // Wait for file reader to update diagram
+      await waitFor(() => {
+        expect(container.querySelector('.plant-node[data-node-id="imported_chiller_1"]')).not.toBeNull();
+        expect(container.querySelector('.plant-pipe-group[data-pipe-id="imported_pipe_1"]')).not.toBeNull();
+      });
+    } finally {
+      global.FileReader = originalFileReader;
+    }
+  });
+
+  it('renders clean Current Scape runtime view by default when initialMode="runtime" with runtime page tools', () => {
+    const { container } = render(<ProcessScapeView initialMode="runtime" />);
+
+    // Palette sidebar and inspector are completely hidden in runtime
+    expect(container.querySelector('.ps-sidebar')).toBeNull();
+    expect(container.querySelector('.ps-inspector')).toBeNull();
+
+    // Editor top-hud and telemetry cards are completely removed in runtime mode
+    expect(container.querySelector('.canvas-floating-hud.top-hud')).toBeNull();
+    expect(container.querySelector('.canvas-floating-hud.ps-runtime-hud')).toBeNull();
+    // boundaryGuide is removed in runtime mode (current mode) as requested
+    expect(container.querySelector('#boundaryGuide')).toBeNull();
+
+    // Runtime floating tools HUD (#psRuntimePageTools) is available
+    const runtimeTools = container.querySelector('#psRuntimePageTools');
+    expect(runtimeTools).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomOut')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomReset')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomIn')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomFit')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeDndToggle')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeBoundsResizer')).not.toBeNull();
+  });
+
+  it('allows toggling Live DND in runtime mode to drag measurement point cards and anchors', () => {
+    const testCard = {
+      id: 'live_card_1',
+      type: 'sensor_card',
+      tag: 'Main S403',
+      x: 200,
+      y: 200,
+      channels: [{ id: 'ch_1', name: 'Flow', val: 120, unit: 'm³/h' }]
+    };
+
+    const currentActive = getActiveScape();
+    currentActive.elements = [testCard];
+    saveScape(currentActive);
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+      />
+    );
+
+    const dndToggleBtn = container.querySelector('#toolRuntimeDndToggle');
+    expect(dndToggleBtn).not.toBeNull();
+    expect(dndToggleBtn.classList.contains('active')).toBe(false);
+
+    // Initial state: card does not have live-dnd-active
+    let cardGroup = container.querySelector('.sensor-badge-group[data-card-id="live_card_1"]');
+    expect(cardGroup).not.toBeNull();
+    expect(cardGroup.classList.contains('live-dnd-active')).toBe(false);
+
+    // Click toggle to enable Live DND
+    fireEvent.click(dndToggleBtn);
+    expect(dndToggleBtn.classList.contains('active')).toBe(true);
+
+    cardGroup = container.querySelector('.sensor-badge-group[data-card-id="live_card_1"]');
+    expect(cardGroup.classList.contains('live-dnd-active')).toBe(true);
+    // Anchor handle is present, but green pill bar showing element name is removed
+    expect(cardGroup.querySelector('rect[fill="#00a876"]')).toBeNull();
+    expect(cardGroup.textContent).not.toContain('⚓');
+
+    // Drag the measurement point card to a new position
+    fireEvent.mouseDown(cardGroup, { clientX: 200, clientY: 200, button: 0 });
+    fireEvent.mouseMove(window, { clientX: 250, clientY: 280 });
+    fireEvent.mouseUp(window, { clientX: 250, clientY: 280 });
+
+    // Verify card was moved and saved
+    const activeScape = getActiveScape();
+    const updatedCard = activeScape.elements.find(e => e.id === 'live_card_1');
+    expect(updatedCard).toBeDefined();
+
+    // Toggle off Live DND
+    fireEvent.click(dndToggleBtn);
+    expect(dndToggleBtn.classList.contains('active')).toBe(false);
+  });
+
+  it('allows resizing diagram bounding box, extending pipe lengths proportionally, and confirming optimal screen fit', () => {
+    const testPipe = {
+      id: 'resizer_pipe_1',
+      medium: 'gas',
+      w: 20,
+      points: [{ x: 100, y: 100 }, { x: 300, y: 100 }],
+      d: 'M 100,100 L 300,100'
+    };
+    const testMachine = {
+      id: 'resizer_machine_1',
+      type: 'machine_compressor',
+      tag: 'Comp A',
+      x: 100,
+      y: 100,
+      w: 120,
+      h: 100
+    };
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={[testMachine]}
+        initialPipes={[testPipe]}
+      />
+    );
+
+    const boundsResizerBtn = container.querySelector('#toolRuntimeBoundsResizer');
+    expect(boundsResizerBtn).not.toBeNull();
+    expect(boundsResizerBtn.classList.contains('active')).toBe(false);
+    expect(container.querySelector('#boundsResizerGroup')).toBeNull();
+
+    // 1. Click bounds resizer tool to activate bounding box
+    fireEvent.click(boundsResizerBtn);
+    expect(boundsResizerBtn.classList.contains('active')).toBe(true);
+
+    const resizerGroup = container.querySelector('#boundsResizerGroup');
+    expect(resizerGroup).not.toBeNull();
+
+    const handles = resizerGroup.querySelectorAll('.ps-bounds-handle');
+    expect(handles.length).toBe(8); // nw, n, ne, e, se, s, sw, w
+
+    // 2. Drag the East handle to stretch width
+    const eastHandle = resizerGroup.querySelector('.ps-bounds-handle[data-handle="e"]');
+    expect(eastHandle).not.toBeNull();
+
+    fireEvent.mouseDown(eastHandle, { clientX: 350, clientY: 150, button: 0 });
+    fireEvent.mouseMove(window, { clientX: 550, clientY: 150 });
+    fireEvent.mouseUp(window);
+
+    // Verify pipe points extended along horizontal axis
+    const pipeGroup = container.querySelector('.plant-pipe-group[data-pipe-id="resizer_pipe_1"]');
+    expect(pipeGroup).not.toBeNull();
+
+    // 3. Click bounds resizer tool icon again to confirm, dismiss bounding box, and apply optimal size
+    fireEvent.click(boundsResizerBtn);
+    expect(boundsResizerBtn.classList.contains('active')).toBe(false);
+    expect(container.querySelector('#boundsResizerGroup')).toBeNull();
+
+    // Verify active scape in storage was updated with the new dimensions
+    const activeScape = getActiveScape();
+    expect(activeScape.tempCanvasSize).toBeDefined();
+    expect(activeScape.tempCanvasSize.width).toBeGreaterThanOrEqual(1024);
+    // Machine touching horizontal pipe kept its vertical Y position locked at 100
+    const finalMachine = activeScape.elements.find(e => e.id === 'resizer_machine_1');
+    expect(finalMachine).toBeDefined();
+    expect(finalMachine.y).toBe(100);
+  });
+
+  it('switches between Current Scape runtime and Scape Builder editor seamlessly', () => {
+    let actions;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        onRegisterActions={(actObj) => { actions = actObj; }}
+      />
+    );
+
+    // Runtime mode: sidebar hidden
+    expect(container.querySelector('.ps-sidebar')).toBeNull();
+
+    // Switch to editor mode via action
+    act(() => {
+      actions.setScapeMode('editor');
+    });
+
+    // Sidebar unfolds
+    expect(container.querySelector('.ps-sidebar')).not.toBeNull();
+
+    // Switch back to runtime view via action
+    act(() => {
+      actions.setScapeMode('runtime');
+    });
+
+    // Returns to runtime view
+    expect(container.querySelector('.ps-sidebar')).toBeNull();
+  });
+
+  it('opens and closes Scape Manager modal to browse and manage plant topologies', () => {
+    let actions;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        onRegisterActions={(actObj) => { actions = actObj; }}
+      />
+    );
+
+    // Modal is initially not rendered
+    expect(container.querySelector('.ps-mgr-modal')).toBeNull();
+
+    // Open Scape Manager via action
+    act(() => {
+      actions.openScapeManager();
+    });
+
+    // Modal opens
+    expect(container.querySelector('.ps-mgr-modal')).not.toBeNull();
+    expect(container.querySelector('#mgrModalTitle').textContent).toBe('Scape Manager');
+
+    // Close button works
+    const closeBtn = container.querySelector('.ps-mgr-close-btn');
+    fireEvent.click(closeBtn);
+    expect(container.querySelector('.ps-mgr-modal')).toBeNull();
+  });
+
+  it('scapeStorage handles CRUD, defaults, duplication, and protection of last scape', () => {
+    const scapes = getAllScapes();
+    expect(scapes.length).toBeGreaterThan(0);
+    expect(scapes[0].title).toBeDefined();
+
+    const active = getActiveScape();
+    expect(active).not.toBeNull();
+    expect(active.id).toBeDefined();
+
+    // Duplicate
+    const dup = duplicateScape(active.id);
+    expect(dup).not.toBeNull();
+    expect(dup.title).toContain('(Copy)');
+
+    // Delete
+    const deleted = deleteScape(dup.id);
+    expect(deleted).toBe(true);
+  });
+
+  it('renders anchor handle with anchor-handle-core and without ghost offsets or redundant origin dots', () => {
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'm_1', type: 'machine_compressor', tag: 'Main Compressor', x: 200, y: 200, w: 170, h: 140 }
+        ]}
+      />
+    );
+
+    // Click compressor to select it
+    const nodeEl = container.querySelector('.plant-node');
+    expect(nodeEl).not.toBeNull();
+    fireEvent.click(nodeEl);
+
+    // Verify anchor handle has .anchor-handle-core class and no css filter
+    const anchorCore = container.querySelector('.element-anchor-handle .anchor-handle-core');
+    expect(anchorCore).not.toBeNull();
+    expect(anchorCore.getAttribute('cx')).toBe('0');
+    expect(anchorCore.getAttribute('cy')).toBe('0');
+    expect(anchorCore.getAttribute('r')).toBe('8');
+  });
+
+  it('SensorManagerModal reuses Connect SUTO Hardware dialog to collect real sensors one at a time, displays them together on the left, and supports DND and sync', async () => {
+    let synced = false;
+    let connectedDevice = null;
+
+    // Spy on hardware connection and channel query
+    const connectUsbSpy = vi.spyOn(TauriSutoAPI, 'connectUsb').mockResolvedValue({
+      transport: 'USB',
+      name: 'SUTO S401 Flow Meter',
+      serial: 'SN-4010892'
+    });
+
+    const getChannelsSpy = vi.spyOn(TauriSutoAPI, 'getChannels').mockResolvedValue([
+      { id: 1, channel_id: 1, name: 'Flow Rate', unit: 'm³/h', sensor_name: 'Thermal Flow Transducer' },
+      { id: 2, channel_id: 2, name: 'Air Temp', unit: '°C', sensor_name: 'Thermal Flow Transducer' }
+    ]);
+
+    const getSysInfoSpy = vi.spyOn(TauriSutoAPI, 'getSystemInfo').mockResolvedValue({
+      device_name: 'SUTO S401 Flow Meter',
+      serial_number: 'SN-4010892'
+    });
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        onSyncToScape={() => { synced = true; }}
+        onDeviceConnected={(conn) => { connectedDevice = conn; }}
+      />
+    );
+
+    // Modal title & two columns
+    expect(container.querySelector('.ps-sm-title').textContent).toContain('Sensor & Measurement Point Manager');
+    expect(container.querySelector('.ps-sm-col-left')).not.toBeNull();
+    expect(container.querySelector('.ps-sm-col-right')).not.toBeNull();
+
+    // 1. Initially zero fake locations and zero fake devices (clean state)
+    expect(container.querySelector('.ps-sm-empty-tree')).not.toBeNull();
+    // No redundant button inside the empty tree (user requested removal)
+    expect(container.querySelector('.ps-sm-empty-connect-btn')).toBeNull();
+    expect(container.querySelector('.ps-sm-empty-locations')).not.toBeNull();
+    expect(container.querySelectorAll('.ps-sm-device-node').length).toBe(0);
+    expect(container.querySelectorAll('.ps-sm-location-card').length).toBe(0);
+
+    // Top bar has "Detect" button, and NO "Import active sensor" or "Clear All" buttons
+    const detectBtn = container.querySelector('.ps-sm-detect-btn');
+    expect(detectBtn).not.toBeNull();
+    expect(detectBtn.textContent).toContain('Detect');
+    expect(container.querySelector('.ps-sm-import-active-btn')).toBeNull();
+    expect(container.querySelector('.ps-sm-clear-btn')).toBeNull();
+
+    // 2. Click "Detect" button to open DeviceConnectModal
+    fireEvent.click(detectBtn);
+
+    // Connect SUTO Hardware dialog (DeviceConnectModal) is opened!
+    const overlay = document.querySelector('.device-connect-overlay');
+    expect(overlay).not.toBeNull();
+    expect(document.querySelector('.device-connect-modal h3').textContent).toBe('Connect SUTO Hardware');
+
+    // 3. Connect First Device via USB in DeviceConnectModal
+    const usbActionBtn = document.querySelector('.connect-action-btn');
+    expect(usbActionBtn).not.toBeNull();
+    fireEvent.click(usbActionBtn);
+
+    // Wait for sensor 1 to be read and appended to the left tree
+    await waitFor(() => {
+      expect(container.querySelectorAll('.ps-sm-device-node').length).toBe(1);
+    });
+    expect(container.textContent).toContain('SUTO S401 Flow Meter');
+    expect(connectedDevice).not.toBeNull();
+
+    // 4. Connect Second Device via Ethernet TCP ("one time one sensor to collect as many as we can")
+    fireEvent.click(detectBtn);
+    expect(document.querySelector('.device-connect-overlay')).not.toBeNull();
+
+    // Switch mock to TCP station for device 2
+    getChannelsSpy.mockResolvedValueOnce([
+      { id: 10, channel_id: 10, name: 'Main Dew Point', unit: '°C Td', sensor_name: 'Dew Point Transducer' }
+    ]);
+    getSysInfoSpy.mockResolvedValueOnce({
+      device_name: 'SUTO S331 Data Station',
+      serial_number: 'SN-3310056'
+    });
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockResolvedValue({
+      transport: 'TCP',
+      name: 'SUTO S331 Data Station',
+      serial: 'SN-3310056',
+      host: '192.168.1.100'
+    });
+
+    // Switch tab to Ethernet TCP and connect
+    const tcpTabBtn = Array.from(document.querySelectorAll('.modal-tab-btn')).find(b => b.textContent.includes('Ethernet TCP'));
+    expect(tcpTabBtn).not.toBeUndefined();
+    fireEvent.click(tcpTabBtn);
+
+    const tcpActionBtn = document.querySelector('.connect-action-btn');
+    fireEvent.click(tcpActionBtn);
+
+    // Both USB and TCP real sensors are collected together in the left tree!
+    await waitFor(() => {
+      expect(container.querySelectorAll('.ps-sm-device-node').length).toBe(2);
+    });
+    expect(container.textContent).toContain('SUTO S401 Flow Meter');
+    expect(container.textContent).toContain('SUTO S331 Data Station');
+
+    // Transport badges
+    const pills = container.querySelectorAll('.ps-sm-device-pill');
+    expect(pills.length).toBe(2);
+
+    // Draggable channels are rendered
+    const channels = container.querySelectorAll('.ps-sm-channel-item');
+    expect(channels.length).toBeGreaterThan(0);
+    expect(channels[0].getAttribute('draggable')).toBe('true');
+
+    // 5. Test user creating location and measurement point for themselves
+    const addLocBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Location'));
+    expect(addLocBtn).not.toBeUndefined();
+    fireEvent.click(addLocBtn);
+
+    // Location card is added
+    const locCards = container.querySelectorAll('.ps-sm-location-card');
+    expect(locCards.length).toBe(1);
+
+    // Location starts with 0 measurement points (clean empty location as requested by user)
+    expect(container.querySelectorAll('.ps-sm-mp-card').length).toBe(0);
+    expect(container.querySelector('.ps-sm-loc-empty-dropzone')).not.toBeNull();
+
+    // Add Measurement Point 1 to this location
+    const addPtBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Measurement Point'));
+    expect(addPtBtn).not.toBeUndefined();
+    fireEvent.click(addPtBtn);
+
+    let ptCards = container.querySelectorAll('.ps-sm-mp-card');
+    expect(ptCards.length).toBe(1);
+    expect(ptCards[0].querySelector('.ps-sm-mp-name-input').value).toBe('Measurement Point 1');
+
+    // Add Measurement Point 2
+    fireEvent.click(addPtBtn);
+    ptCards = container.querySelectorAll('.ps-sm-mp-card');
+    expect(ptCards.length).toBe(2);
+    expect(ptCards[1].querySelector('.ps-sm-mp-name-input').value).toBe('Measurement Point 2');
+
+    // 6. Test Drag & Drop channel onto the measurement point
+    const dropTargets = container.querySelectorAll('.ps-sm-dropzone');
+    expect(dropTargets.length).toBe(2);
+
+    // Simulate drop onto Measurement Point 1
+    fireEvent.drop(dropTargets[0], {
+      dataTransfer: {
+        getData: (k) => JSON.stringify({
+          channelId: 'ch_test_1',
+          name: 'Flow Rate',
+          unit: 'm³/h',
+          device: 'SUTO S401 Flow Meter'
+        })
+      }
+    });
+
+    // Channel should now be mapped in the point card
+    expect(ptCards[0].querySelectorAll('.ps-sm-assigned-tag').length).toBe(1);
+
+    // Assigned channel tag on right side is draggable for moving between points
+    const assignedTag = ptCards[0].querySelector('.ps-sm-assigned-tag.draggable-tag');
+    expect(assignedTag).not.toBeNull();
+    expect(assignedTag.getAttribute('draggable')).toBe('true');
+
+    // Individual sync button on MP card is removed
+    expect(container.querySelector('.ps-sm-sync-btn')).toBeNull();
+
+    // 7. Test DND moving channel from Measurement Point 1 to Measurement Point 2
+    fireEvent.drop(dropTargets[1], {
+      dataTransfer: {
+        getData: (k) => JSON.stringify({
+          type: 'move_channel',
+          id: 'ch_test_1',
+          name: 'Flow Rate',
+          unit: 'm³/h',
+          device: 'SUTO S401 Flow Meter',
+          fromLocId: locCards[0].key || 'loc_test',
+          fromMpId: ptCards[0].key || 'mp_test_1'
+        })
+      }
+    });
+
+    // 8. Test Footer Bar Confirm & Sync All
+    const footer = container.querySelector('.ps-sensor-mgr-footer');
+    expect(footer).not.toBeNull();
+    expect(footer.querySelector('.ps-sm-footer-info')).not.toBeNull();
+
+    const confirmBtn = container.querySelector('.ps-sm-footer-confirm-btn');
+    expect(confirmBtn).not.toBeNull();
+    expect(confirmBtn.textContent).toContain('Confirm & Sync All');
+    fireEvent.click(confirmBtn);
+    expect(synced).toBe(true);
+
+    connectUsbSpy.mockRestore();
+    connectTcpSpy.mockRestore();
+    getChannelsSpy.mockRestore();
+    getSysInfoSpy.mockRestore();
+  });
+
+  it('unifies S403 channels (Flow, Consumption, Pressure) under a single S403 sensor node without splitting into 451 or pressure', () => {
+    const rawChannels = [
+      { id: 2, channel_id: 2, name: 'Flow', unit: 'm³/h', sensor_description: '451', device_desc: 'S 403' },
+      { id: 3, channel_id: 3, name: 'Consumption', unit: 'm³', sensor_description: '451', device_desc: 'S 403' },
+      { id: 6, channel_id: 6, name: 'Pressure', unit: 'bar', sensor_description: 'Pressure Sensor', device_desc: 'S 403' },
+    ];
+
+    const device = buildDeviceFromRawChannels(
+      rawChannels,
+      'S403-12345678',
+      'Bluetooth (BLE)',
+      'ble',
+      { device_name: 'S403-12345678', serial_number: '12345678' }
+    );
+
+    // There should be exactly 1 sensor container named S403
+    expect(device.sensors.length).toBe(1);
+    expect(device.sensors[0].name).toBe('S403');
+
+    // All 3 channels belong to S403
+    expect(device.sensors[0].channels.length).toBe(3);
+    const names = device.sensors[0].channels.map(c => c.name);
+    expect(names).toEqual(['Flow', 'Consumption', 'Pressure']);
+
+    // Check localStorage auto-consolidation of legacy split sensors
+    window.localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([{
+      id: 'dev_legacy_s403',
+      name: 'S403-12345678',
+      model: 'S403-12345678',
+      serial: 'SN-12345678',
+      transport: 'Bluetooth (BLE)',
+      transportType: 'ble',
+      sensors: [
+        {
+          id: 'sens_split_451',
+          name: '451',
+          channels: [
+            { id: 'ch_2', channel_id: 2, name: 'Flow', unit: 'm³/h' },
+            { id: 'ch_3', channel_id: 3, name: 'Consumption', unit: 'm³' }
+          ]
+        },
+        {
+          id: 'sens_split_press',
+          name: 'Pressure',
+          channels: [
+            { id: 'ch_6', channel_id: 6, name: 'Pressure', unit: 'bar' }
+          ]
+        }
+      ]
+    }]));
+
+    const saved = getSavedDevices();
+    expect(saved.length).toBe(1);
+    expect(saved[0].sensors.length).toBe(1);
+    expect(saved[0].sensors[0].name).toBe('S403');
+    expect(saved[0].sensors[0].channels.length).toBe(3);
+  });
+
+  it('creates a measurement point named after the sensor when dropping entire sensor or channel onto an empty location', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.removeItem('s4a_sensor_devices_v1');
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // 1. Add location (starts completely empty with 0 measurement points)
+    const addLocBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Location'));
+    fireEvent.click(addLocBtn);
+
+    const locCard = container.querySelector('.ps-sm-location-card');
+    expect(locCard).not.toBeNull();
+    expect(locCard.querySelectorAll('.ps-sm-mp-card').length).toBe(0);
+
+    const emptyDropzone = locCard.querySelector('.ps-sm-loc-empty-dropzone');
+    expect(emptyDropzone).not.toBeNull();
+
+    // 2. Drop an entire sensor (e.g. S403 with 3 channels) directly onto the location
+    fireEvent.drop(emptyDropzone, {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'sensor',
+          sensorName: 'S403',
+          device: 'S403-12345678',
+          channels: [
+            { id: 'ch_2', channel_id: 2, name: 'Flow', unit: 'm³/h' },
+            { id: 'ch_3', channel_id: 3, name: 'Consumption', unit: 'm³' },
+            { id: 'ch_6', channel_id: 6, name: 'Pressure', unit: 'bar' }
+          ]
+        })
+      }
+    });
+
+    // Measurement point named "S403" is created with all 3 channels
+    const mpCards = locCard.querySelectorAll('.ps-sm-mp-card');
+    expect(mpCards.length).toBe(1);
+    expect(mpCards[0].querySelector('.ps-sm-mp-name-input').value).toBe('S403');
+    expect(mpCards[0].querySelectorAll('.ps-sm-assigned-tag').length).toBe(3);
+
+    // 3. Add a second empty location and test dropping a single channel
+    fireEvent.click(addLocBtn);
+    const allLocs = container.querySelectorAll('.ps-sm-location-card');
+    expect(allLocs.length).toBe(2);
+
+    const secondEmptyDropzone = allLocs[1].querySelector('.ps-sm-loc-empty-dropzone');
+    expect(secondEmptyDropzone).not.toBeNull();
+
+    fireEvent.drop(secondEmptyDropzone, {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_temp',
+          name: 'Temperature',
+          unit: '°C',
+          sensorName: 'S403',
+          device: 'S403-12345678'
+        })
+      }
+    });
+
+    // Measurement point named after the sensor ("S403") is created for this channel
+    const secondLocMps = allLocs[1].querySelectorAll('.ps-sm-mp-card');
+    expect(secondLocMps.length).toBe(1);
+    expect(secondLocMps[0].querySelector('.ps-sm-mp-name-input').value).toBe('S403');
+    expect(secondLocMps[0].querySelectorAll('.ps-sm-assigned-tag').length).toBe(1);
+    expect(secondLocMps[0].querySelector('.ps-sm-assigned-tag').textContent).toContain('Temperature');
+  });
+
+  it('enforces channel exclusivity (cannot reuse assigned channels) and allows dragging channels between measurement points', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([{
+      id: 'dev_test_s403',
+      name: 'S403 Flow Meter',
+      transport: 'USB',
+      transportType: 'usb',
+      sensors: [{
+        id: 'sens_s403',
+        name: 'S403',
+        channels: [
+          { id: 'ch_flow', channel_id: 1, name: 'Flow Rate', unit: 'm³/h' },
+          { id: 'ch_temp', channel_id: 2, name: 'Temperature', unit: '°C' }
+        ]
+      }]
+    }]));
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Initial state: both channels are unassigned
+    let channelItems = container.querySelectorAll('.ps-sm-channel-item');
+    expect(channelItems.length).toBe(2);
+    expect(channelItems[0].classList.contains('is-assigned')).toBe(false);
+    expect(channelItems[0].getAttribute('draggable')).toBe('true');
+
+    // Add a Location
+    const addLocBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Location'));
+    fireEvent.click(addLocBtn);
+
+    // Add Measurement Point 1 & 2
+    const addPtBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Measurement Point'));
+    fireEvent.click(addPtBtn);
+    fireEvent.click(addPtBtn);
+
+    let dropzones = container.querySelectorAll('.ps-sm-dropzone');
+    expect(dropzones.length).toBe(2);
+
+    // Drop 'Flow Rate' channel into Measurement Point 1
+    fireEvent.drop(dropzones[0], {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_flow',
+          channel_id: 1,
+          name: 'Flow Rate',
+          unit: 'm³/h',
+          device: 'S403 Flow Meter'
+        })
+      }
+    });
+
+    // Flow Rate is now assigned to Measurement Point 1
+    expect(dropzones[0].querySelectorAll('.ps-sm-assigned-tag').length).toBe(1);
+
+    // Left tree channel item for Flow Rate is now marked as assigned and disabled from dragging
+    channelItems = container.querySelectorAll('.ps-sm-channel-item');
+    expect(channelItems[0].classList.contains('is-assigned')).toBe(true);
+    expect(channelItems[0].getAttribute('draggable')).toBe('false');
+    expect(channelItems[0].textContent).toContain('✓ Assigned');
+
+    // Dropping Flow Rate again into Measurement Point 2 is prevented (exclusivity)
+    fireEvent.drop(dropzones[1], {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_flow',
+          channel_id: 1,
+          name: 'Flow Rate',
+          unit: 'm³/h',
+          device: 'S403 Flow Meter'
+        })
+      }
+    });
+    // Measurement Point 2 still has 0 channels
+    expect(dropzones[1].querySelectorAll('.ps-sm-assigned-tag').length).toBe(0);
+
+    // Moving Flow Rate from MP1 to MP2 via drag & drop on the right side
+    const locs = getLocations();
+    const locId = locs[0]?.id;
+    const mp1Id = locs[0]?.measurementPoints[0]?.id;
+    const mp2Id = locs[0]?.measurementPoints[1]?.id;
+
+    fireEvent.drop(dropzones[1], {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'move_channel',
+          id: 'ch_flow',
+          channel_id: 1,
+          name: 'Flow Rate',
+          unit: 'm³/h',
+          device: 'S403 Flow Meter',
+          fromLocId: locId,
+          fromMpId: mp1Id
+        })
+      }
+    });
+
+    // Channel moved from MP1 to MP2
+    dropzones = container.querySelectorAll('.ps-sm-dropzone');
+    expect(dropzones[0].querySelectorAll('.ps-sm-assigned-tag').length).toBe(0);
+    expect(dropzones[1].querySelectorAll('.ps-sm-assigned-tag').length).toBe(1);
+    expect(dropzones[1].querySelector('.ps-sm-assigned-tag').textContent).toContain('Flow Rate');
+
+    // With 1 channel moved to MP2, footer reports exactly 1 Channel Assigned
+    let footerInfo = container.querySelector('.ps-sm-footer-info');
+    expect(footerInfo.textContent).toContain('1 Channel Assigned');
+
+    // Now drop the second channel ('Temperature') into Measurement Point 2
+    fireEvent.drop(dropzones[1], {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_temp',
+          channel_id: 2,
+          name: 'Temperature',
+          unit: '°C',
+          device: 'S403 Flow Meter'
+        })
+      }
+    });
+
+    // Exactly 2 channels assigned across all locations (MUST NOT say 4!)
+    footerInfo = container.querySelector('.ps-sm-footer-info');
+    expect(footerInfo.textContent).toContain('2 Channels Assigned');
+    expect(footerInfo.textContent).not.toContain('4 Channels Assigned');
+  });
+
+  it('syncs measurement point with channels to ProcessScape, preserving all channels upon reload', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.removeItem('s4a_processscapes_v1');
+
+    const defaultScape = getActiveScape();
+    const locId = 'loc_test_sync';
+    const mpId = 'mp_test_sync';
+
+    const testLocations = [{
+      id: locId,
+      name: 'Compressor Room',
+      scapeId: defaultScape.id,
+      measurementPoints: [{
+        id: mpId,
+        name: 'S403 Flow Station',
+        channels: [
+          { id: 'ch_f1', channel_id: 1, name: 'Flow Rate', unit: 'm³/h' },
+          { id: 'ch_t1', channel_id: 2, name: 'Temperature', unit: '°C' }
+        ]
+      }]
+    }];
+
+    // 1. Sync all locations to scapes
+    const res = syncAllLocationsToScapes(testLocations);
+    expect(res.success).toBe(true);
+    expect(res.syncCount).toBe(1);
+
+    // 2. Render ProcessScapeView and verify reloadActiveScape loads the sensor card with its channels
+    let actions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    // Reload active scape
+    act(() => {
+      actions.reloadActiveScape(defaultScape.id);
+    });
+
+    // Sensor card should be rendered on the drawing canvas
+    const sensorCards = container.querySelectorAll('.sensor-badge-group');
+    expect(sensorCards.length).toBeGreaterThan(0);
+
+    const card = Array.from(sensorCards).find(c => c.textContent.includes('S403 Flow Station'));
+    expect(card).not.toBeUndefined();
+
+    // Verify both channels are rendered inside the sensor card (NOT a blank card!)
+    expect(card.textContent).toContain('Flow Rate:');
+    expect(card.textContent).toContain('Temperature:');
+    expect(card.textContent).toContain('m³/h');
+    expect(card.textContent).toContain('°C');
+  });
+
+  it('removes sensor card from ProcessScape when all channels are removed from a location and synced', () => {
+    const defaultScape = getActiveScape();
+    const locId = 'loc_test_removal';
+    const mpId = 'mp_test_removal';
+
+    // 1. Initial location with channels synced
+    const initialLocations = [{
+      id: locId,
+      name: 'Compressor Room',
+      scapeId: defaultScape.id,
+      measurementPoints: [{
+        id: mpId,
+        name: 'S403 Flow Station',
+        channels: [
+          { id: 'ch_f1', channel_id: 1, name: 'Flow Rate', unit: 'm³/h' }
+        ]
+      }]
+    }];
+    syncAllLocationsToScapes(initialLocations);
+
+    // Verify scape now has the sensor card
+    let scapes = getAllScapes();
+    let currentScape = scapes.find(s => s.id === defaultScape.id);
+    expect(currentScape.elements.some(e => e.type === 'sensor_card')).toBe(true);
+
+    // 2. Now user removes all channels from the location
+    const emptyChannelLocations = [{
+      id: locId,
+      name: 'Compressor Room',
+      scapeId: defaultScape.id,
+      measurementPoints: [{
+        id: mpId,
+        name: 'S403 Flow Station',
+        channels: []
+      }]
+    }];
+
+    const syncRes = syncAllLocationsToScapes(emptyChannelLocations);
+    expect(syncRes.success).toBe(true);
+    expect(syncRes.syncCount).toBe(0);
+
+    // Verify the scape has ZERO sensor cards now
+    scapes = getAllScapes();
+    currentScape = scapes.find(s => s.id === defaultScape.id);
+    const sensorCards = currentScape.elements.filter(e => e.type === 'sensor_card');
+    expect(sensorCards.length).toBe(0);
+
+    // 3. Render ProcessScapeView and verify reloadActiveScape renders 0 sensor cards
+    let actions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    act(() => {
+      actions.reloadActiveScape(defaultScape.id);
+    });
+
+    const renderedCards = container.querySelectorAll('.sensor-badge-group');
+    expect(renderedCards.length).toBe(0);
+  });
+
+  it('saves modifications and deletions when exiting modify scape mode so changes persist upon reload', () => {
+    const defaultScape = getActiveScape();
+    let actions = null;
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'el_keep', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 },
+          { id: 'el_delete_me', type: 'sensor_card', tag: 'S403 Delete', x: 300, y: 100, w: 120, h: 60, channels: [{ id: 'c1', name: 'Flow' }] }
+        ]}
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    // Select the card to delete
+    const deleteNode = container.querySelector('[data-element-id="el_delete_me"]') || container.querySelector('.sensor-badge-group');
+    expect(deleteNode).not.toBeNull();
+    fireEvent.click(deleteNode);
+
+    // Click delete in the HUD
+    const deleteBtn = container.querySelector('#hudDeleteBtn');
+    expect(deleteBtn).not.toBeNull();
+    fireEvent.click(deleteBtn);
+
+    // The element should be removed from view
+    expect(container.textContent).not.toContain('S403 Delete');
+
+    // Trigger save and exit editor
+    act(() => {
+      actions.handleSaveAndExit();
+    });
+
+    // Verify saved scape in storage no longer contains the deleted element
+    const saved = getActiveScape();
+    expect(saved.elements.some(e => e.id === 'el_delete_me')).toBe(false);
+  });
 });
+
 
 

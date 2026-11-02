@@ -18,11 +18,11 @@ describe('App', () => {
     if (TestAPI.reset) TestAPI.reset();
     if (TestAPI.setMode) TestAPI.setMode('analyze');
   });
-  it('renders Welcome screen with File Analyze Mode and Device Monitor Mode', async () => {
+  it('renders Welcome screen with File Analyze Mode and Device connection', async () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByText('File Analyze Mode')).toBeDefined();
-      expect(screen.getByText('Device Monitor Mode')).toBeDefined();
+      expect(screen.getByText('Device connection')).toBeDefined();
       expect(screen.getByText('Detect & Connect Device')).toBeDefined();
     });
   });
@@ -91,7 +91,7 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(screen.getByText('File Analyze Mode')).toBeDefined();
-      expect(screen.getByText('Device Monitor Mode')).toBeDefined();
+      expect(screen.getByText('Device connection')).toBeDefined();
     });
   });
 
@@ -309,9 +309,74 @@ describe('App', () => {
     });
 
     // Ensure we stayed on the Welcome screen and did not navigate away
-    expect(screen.getByText('Device Monitor Mode')).toBeDefined();
+    expect(screen.getByText('Device connection')).toBeDefined();
     expect(screen.getByText('File Analyze Mode')).toBeDefined();
     expect(screen.queryByText('File Details & Metadata')).toBeNull();
+  });
+
+  it('renders clean ProcessScape header in runtime mode (no Modify Scape, no JSON/PNG import/export) and shows them only in editor mode', async () => {
+    const { container } = render(<App />);
+
+    // Wait for App to load past loading screen
+    await waitFor(() => {
+      expect(screen.getByText('Open ProcessScape')).toBeDefined();
+    });
+
+    // Click ProcessScape card on Landing Page
+    const psCardBtn = screen.getByText('Open ProcessScape');
+    fireEvent.click(psCardBtn);
+
+    // Now in ProcessScape runtime mode
+    await waitFor(() => {
+      expect(container.querySelector('.ps-header-actions')).not.toBeNull();
+    });
+
+    // In current runtime mode:
+    // 1. Center has Sensor Manager tab
+    expect(screen.getByText('Sensor Manager')).toBeDefined();
+    // 2. NO Modify Scape button
+    expect(screen.queryByLabelText('Modify Scape')).toBeNull();
+    // 3. NO Import JSON, Export JSON, Export PNG
+    expect(screen.queryByLabelText('Import JSON')).toBeNull();
+    expect(screen.queryByLabelText('Export JSON')).toBeNull();
+    expect(screen.queryByLabelText('Export PNG')).toBeNull();
+    // 4. Scape Manager button IS present
+    const scapeMgrBtn = screen.getByLabelText('Scape Manager');
+    expect(scapeMgrBtn).toBeDefined();
+
+    // Open Scape Manager
+    fireEvent.click(scapeMgrBtn);
+    expect(container.querySelector('.ps-mgr-modal')).not.toBeNull();
+
+    // Click "Modify Scape" inside Scape Manager
+    const editBtn = container.querySelector('.ps-mgr-action-btn.btn-edit');
+    expect(editBtn).not.toBeNull();
+    fireEvent.click(editBtn);
+
+    // Now switched to Editor mode!
+    await waitFor(() => {
+      expect(screen.getByLabelText('Live Runtime View')).toBeDefined();
+    });
+
+    // Editor mode buttons are now visible
+    expect(screen.getByLabelText('Undo')).toBeDefined();
+    expect(screen.getByLabelText('Redo')).toBeDefined();
+    expect(screen.getByLabelText('Import JSON')).toBeDefined();
+    expect(screen.getByLabelText('Export JSON')).toBeDefined();
+    expect(screen.getByLabelText('Export PNG')).toBeDefined();
+
+    // Click Live Runtime View button to return to runtime
+    const liveViewBtn = screen.getByLabelText('Live Runtime View');
+    fireEvent.click(liveViewBtn);
+
+    // Returns to clean runtime view: editor buttons disappear
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Live Runtime View')).toBeNull();
+    });
+    expect(screen.queryByLabelText('Import JSON')).toBeNull();
+    expect(screen.queryByLabelText('Export JSON')).toBeNull();
+    expect(screen.queryByLabelText('Export PNG')).toBeNull();
+    expect(screen.getByLabelText('Scape Manager')).toBeDefined();
   });
 });
 

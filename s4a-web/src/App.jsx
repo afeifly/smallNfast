@@ -17,6 +17,7 @@ import DownloadAppModal from './components/DownloadAppModal';
 import ReadoutView from './modules/readout/ReadoutView';
 import { clearReadoutCache } from './modules/readout/readoutSession';
 import ProcessScapeView from './modules/processscape/ProcessScapeView';
+import SensorManagerModal from './modules/processscape/SensorManagerModal';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
@@ -43,6 +44,12 @@ import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import AddIcon from '@mui/icons-material/Add';
 import ShareIcon from '@mui/icons-material/Share';
 import DeleteIcon from '@mui/icons-material/Delete';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import ImageIcon from '@mui/icons-material/Image';
+import EditIcon from '@mui/icons-material/Edit';
+import LayersIcon from '@mui/icons-material/Layers';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 const featureReport = import.meta.env.VITE_ENABLE_CONSUMPTION_REPORT === 'true';
 const featureCompressor = import.meta.env.VITE_ENABLE_COMPRESSOR_ANALYZE === 'true';
@@ -139,6 +146,8 @@ function App() {
   // ProcessScape states
   const [psTitle, setPsTitle] = React.useState('ProcessScape');
   const [psScreenSize, setPsScreenSize] = React.useState({ w: 1024, h: 800 });
+  const [psMode, setPsMode] = React.useState('runtime');
+  const [showSensorManagerModal, setShowSensorManagerModal] = React.useState(false);
   const psActionsRef = React.useRef(null);
 
   // Live value recording (header REC button)
@@ -365,6 +374,9 @@ function App() {
     };
 
     const handleNotification = (e) => {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
       const { title, message, type } = e.detail;
       setNotiTitle(title || 'Notification');
       setNotiMsg(message || '');
@@ -869,7 +881,21 @@ function App() {
           onMouseLeave={handleHeaderMouseUp}
         >
           {/* View Switcher Tabs */}
-        {appMode === 'processscape' ? null : appMode === 'monitor' ? (
+        {appMode === 'processscape' && psMode !== 'editor' ? (
+          <div className="header-tabs" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <button
+              className="tab-btn"
+              onClick={() => setShowSensorManagerModal(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+              title="Sensor Manager (Detect Devices, Locations, Measurement Points, Channels)"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+              </svg>
+              Sensor Manager
+            </button>
+          </div>
+        ) : appMode === 'monitor' ? (
           <div className="header-tabs">
             <button
               className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
@@ -962,25 +988,128 @@ function App() {
 
           {appMode === 'processscape' && (
             <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Tooltip title="Export JSON Topology (Includes Real Picture Size with 16px margin)">
-                <button
-                  type="button"
-                  className="tab-btn active"
-                  onClick={() => psActionsRef.current?.handleExportJson()}
+              {/* Only show Live Runtime View button when actively in Editor mode to return to runtime */}
+              {psMode === 'editor' && (
+                <Tooltip title="Live Runtime View (Save & Exit Editor)">
+                  <IconButton
+                    className="header-icon-btn"
+                    onClick={() => {
+                      if (psActionsRef.current?.handleSaveAndExit) {
+                        psActionsRef.current.handleSaveAndExit();
+                      } else {
+                        setPsMode('runtime');
+                        psActionsRef.current?.setScapeMode?.('runtime');
+                      }
+                    }}
+                    style={{ color: '#00ac86' }}
+                    aria-label="Live Runtime View"
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {/* Undo & Redo (Editor mode only) */}
+              {psMode === 'editor' && (
+                <>
+                  <Tooltip title="Undo (Cmd+Z / Ctrl+Z)">
+                    <IconButton
+                      className="header-icon-btn"
+                      onClick={() => psActionsRef.current?.handleUndo?.()}
+                      style={{ color: '#0f172a' }}
+                      aria-label="Undo"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 7v6h6" />
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                      </svg>
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Redo (Cmd+Y / Ctrl+Y)">
+                    <IconButton
+                      className="header-icon-btn"
+                      onClick={() => psActionsRef.current?.handleRedo?.()}
+                      style={{ color: '#0f172a' }}
+                      aria-label="Redo"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 7v6h-6" />
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+                      </svg>
+                    </IconButton>
+                  </Tooltip>
+                </>
+              )}
+
+              {/* Scape Manager (Shown in both runtime and editor mode) */}
+              <Tooltip title="Scape Manager (Switch / Create Scapes)">
+                <IconButton
+                  className="header-icon-btn"
+                  onClick={() => psActionsRef.current?.openScapeManager?.()}
+                  style={{ color: '#0f172a' }}
+                  aria-label="Scape Manager"
                 >
-                  📋 Export JSON
-                </button>
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                  </svg>
+                </IconButton>
               </Tooltip>
 
-              <Tooltip title="Export High-Resolution PNG Picture (Auto-cropped to real elements with 16px margin)">
-                <button
-                  type="button"
-                  className="tab-btn"
-                  onClick={() => psActionsRef.current?.handleExportPng()}
-                >
-                  🖼 Export PNG
-                </button>
-              </Tooltip>
+              {/* Import JSON, Export JSON, Export PNG (Only when Editor mode needs this) */}
+              {psMode === 'editor' && (
+                <>
+                  <Tooltip title="Import ProcessScape JSON">
+                    <IconButton
+                      className="header-icon-btn"
+                      onClick={() => psActionsRef.current?.handleImportJson?.()}
+                      style={{ color: '#0f172a' }}
+                      aria-label="Import JSON"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Export JSON Topology">
+                    <IconButton
+                      className="header-icon-btn"
+                      onClick={() => psActionsRef.current?.handleExportJson?.()}
+                      style={{ color: '#0f172a' }}
+                      aria-label="Export JSON"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Export High-Resolution PNG Picture">
+                    <IconButton
+                      className="header-icon-btn"
+                      onClick={() => psActionsRef.current?.handleExportPng?.()}
+                      style={{ color: '#0f172a' }}
+                      aria-label="Export PNG"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                      </svg>
+                    </IconButton>
+                  </Tooltip>
+                </>
+              )}
             </div>
           )}
 
@@ -1104,11 +1233,13 @@ function App() {
         {appMode === 'processscape' ? (
           <div className="view-content-wrapper" style={{ height: '100%', overflow: 'hidden' }}>
             <ProcessScapeView
+              initialMode="runtime"
               onBackToLanding={() => setAppMode(null)}
               onRegisterActions={(actions) => { psActionsRef.current = actions; }}
-              onStateChange={({ screenSize, projectTitle }) => {
+              onStateChange={({ screenSize, projectTitle, scapeMode }) => {
                 if (screenSize) setPsScreenSize(screenSize);
                 if (projectTitle != null) setPsTitle(projectTitle);
+                if (scapeMode) setPsMode(scapeMode);
               }}
             />
           </div>
@@ -1172,7 +1303,7 @@ function App() {
                   )}
                 </div>
 
-                {/* Mode Card 2: Device Monitor Mode */}
+                {/* Mode Card 2: Device connection */}
                 <div className="landing-mode-card">
                   <span className="mode-card-badge badge-monitor">Real-time SUTO Hardware</span>
                   <div className="mode-icon-box mode-icon-monitor">
@@ -1180,7 +1311,7 @@ function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   </div>
-                  <h2 className="mode-card-title">Device Monitor Mode</h2>
+                  <h2 className="mode-card-title">Device connection</h2>
                   <p className="mode-card-desc">
                     Connect to devices via direct USB driver or other communication for real-time monitoring and graphing.
                   </p>
@@ -1401,6 +1532,7 @@ function App() {
         maxWidth='sm' 
         onClose={() => setNotiOpen(false)} 
         open={notiOpen}
+        disableRestoreFocus
         PaperProps={{
           style: {
             borderRadius: '16px',
@@ -1940,6 +2072,21 @@ function App() {
         isOpen={showDownloadModal}
         onClose={() => setShowDownloadModal(false)}
         version={APP_VERSION}
+      />
+
+      {/* SUTO Sensor Manager Modal (Devices, Locations, Measurement Points, Channels) */}
+      <SensorManagerModal
+        isOpen={showSensorManagerModal}
+        onClose={() => setShowSensorManagerModal(false)}
+        onSyncToScape={(targetScapeId) => {
+          psActionsRef.current?.reloadActiveScape?.(targetScapeId);
+        }}
+        activeDeviceInfo={deviceInfo}
+        onDeviceConnected={(conn) => {
+          // Keep user in ProcessScape / Sensor Manager; do not navigate to online view
+          setDeviceInfo(conn);
+          TauriSutoAPI.logClientEvent('INFO', 'APP', `Hardware sensor collected in Sensor Manager via ${conn?.transport || 'SUTO'}`);
+        }}
       />
     </div>
   );

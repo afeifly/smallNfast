@@ -31,18 +31,10 @@ export function isSensorOrGateway(el) {
 
 // Get channels array from card
 export function getCardChannels(card) {
-  if (Array.isArray(card.channels) && card.channels.length > 0) {
+  if (Array.isArray(card?.channels)) {
     return card.channels;
   }
-  const defaultName = card.metric === 'pressure' ? 'Press' : (card.metric === 'temp' ? 'Temp' : 'Flow');
-  return [
-    {
-      id: 'ch_1',
-      name: defaultName,
-      val: card.val !== undefined ? card.val : 0,
-      unit: card.unit || 'm³/h'
-    }
-  ];
+  return [];
 }
 
 // --- SVG Asset Illustrators (Clean Flat Solid Colors, Zero Gradients) ---
@@ -579,7 +571,7 @@ export function drawChiller(node) {
     x: pnlX + 9, y: pnlY + 17, 'font-size': 9, 'font-weight': 900,
     fill: theme.light, 'font-family': 'JetBrains Mono, monospace'
   });
-  tempTxt.textContent = '7.2°C';
+  tempTxt.textContent = '--.-°C';
   g.appendChild(tempTxt);
 
   const chwTxt = svgEl('text', {
@@ -1564,7 +1556,7 @@ export function drawDewPointMeter(node) {
     x: -12, y: -32, 'font-size': 7.5, 'font-weight': 900,
     fill: '#38bdf8', 'font-family': 'JetBrains Mono, monospace'
   });
-  valText.textContent = '-49.2';
+  valText.textContent = '--.-';
   g.appendChild(valText);
 
   const unitText = svgEl('text', {
@@ -1719,14 +1711,14 @@ export function drawLeakDetector(node) {
     x: 6, y: -14, 'text-anchor': 'middle', 'font-size': 6.5, 'font-weight': 900,
     fill: '#22c55e', 'font-family': 'JetBrains Mono, monospace'
   });
-  dbTxt.textContent = '75 dB';
+  dbTxt.textContent = '-- dB';
   g.appendChild(dbTxt);
 
   const leakTxt = svgEl('text', {
     x: 6, y: -8, 'text-anchor': 'middle', 'font-size': 4, 'font-weight': 700,
     fill: '#94a3b8', 'font-family': 'JetBrains Mono, monospace'
   });
-  leakTxt.textContent = 'GRADE 3';
+  leakTxt.textContent = 'STANDBY';
   g.appendChild(leakTxt);
 
   // 4. Pushbutton Keypad: Yellow Action Buttons & D-Pad
@@ -1948,7 +1940,7 @@ export function drawCompactFlowMeter(node) {
     x: scrX + scrW / 2, y: scrY + scrH / 2 + 2.5, 'text-anchor': 'middle', 'font-size': 7.5, 'font-weight': 900,
     fill: '#ef4444', 'font-family': 'JetBrains Mono, monospace', 'letter-spacing': '0.5px'
   });
-  ledTxt.textContent = '183.6';
+  ledTxt.textContent = '---.-';
   g.appendChild(ledTxt);
 
   // Status LED dot indicator
@@ -2020,7 +2012,7 @@ export function drawFlowMeter(node) {
     x: -12, y: -50, 'font-size': 7.5, 'font-weight': 900,
     fill: '#38bdf8', 'font-family': 'JetBrains Mono, monospace'
   });
-  flowTxt.textContent = '37.3';
+  flowTxt.textContent = '--.-';
   g.appendChild(flowTxt);
 
   // Unit: m³/h
@@ -2031,12 +2023,12 @@ export function drawFlowMeter(node) {
   unitTxt.textContent = 'm³/h';
   g.appendChild(unitTxt);
 
-  // Secondary line: 6.2 bar
+  // Secondary line: --.- bar
   const secTxt = svgEl('text', {
     x: -12, y: -43.5, 'font-size': 4.2, 'font-weight': 700,
     fill: '#22c55e', 'font-family': 'JetBrains Mono, monospace'
   });
-  secTxt.textContent = '6.2 bar';
+  secTxt.textContent = '--.- bar';
   g.appendChild(secTxt);
 
   // 3. SUTO Brand Name below display
@@ -2273,7 +2265,7 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
         style: 'cursor: grab;'
       });
       anchorG.appendChild(svgEl('circle', { cx: 0, cy: 0, r: 16, fill: 'transparent' }));
-      anchorG.appendChild(svgEl('circle', { cx: 0, cy: 0, r: 6.5, fill: '#00ac86', stroke: '#ffffff', 'stroke-width': 2 }));
+      anchorG.appendChild(svgEl('circle', { class: 'anchor-handle-core', cx: 0, cy: 0, r: 6.5, fill: '#00ac86', stroke: '#ffffff', 'stroke-width': 2 }));
       anchorG.appendChild(svgEl('line', { x1: -3, y1: 0, x2: 3, y2: 0, stroke: '#ffffff', 'stroke-width': 1.2 }));
       anchorG.appendChild(svgEl('line', { x1: 0, y1: -3, x2: 0, y2: 3, stroke: '#ffffff', 'stroke-width': 1.2 }));
       tG.appendChild(anchorG);
@@ -2363,6 +2355,7 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
     });
     anchorG.appendChild(svgEl('circle', { cx: 0, cy: 0, r: 18, fill: 'transparent' }));
     anchorG.appendChild(svgEl('circle', {
+      class: 'anchor-handle-core',
       cx: 0, cy: 0, r: 8,
       fill: node.attachedPipeId ? '#00ac86' : '#0ea5e9',
       stroke: '#ffffff',
@@ -2378,17 +2371,18 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
 }
 
 // --- Sensor Card Renderer ---
-export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
-  const isSel = selectedIds.has(card.id);
+export function renderSensorCard(card, selectedIds = new Set(), elements = [], isLiveDnd = false) {
+  const isSel = selectedIds.has(card.id) || isLiveDnd;
   const g = svgEl('g', {
-    class: `sensor-badge-group ${isSel ? 'selected' : ''}`,
+    class: `sensor-badge-group ${isSel ? 'selected' : ''} ${isLiveDnd ? 'live-dnd-active' : ''}`,
     'data-card-id': card.id,
-    transform: `translate(${card.x}, ${card.y})`
+    transform: `translate(${card.x}, ${card.y})`,
+    style: isLiveDnd ? 'cursor: grab;' : ''
   });
 
-  // Attached to a real sensor or gateway
+  // Attached to an equipment item, tank, machine, or sensor (any item except pipe)
   if (card.attachedAssetId) {
-    const target = elements.find(e => e.id === card.attachedAssetId && isSensorOrGateway(e));
+    const target = elements.find(e => e.id === card.attachedAssetId);
     if (target) {
       const relX = target.x - card.x;
       const relY = target.y - card.y;
@@ -2409,10 +2403,11 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
   const channels = getCardChannels(card);
   const numChannels = channels.length;
 
-  const tagLines = card.tag.includes('\n') ? card.tag.split('\n') : (card.tag.includes('/') ? card.tag.split('/') : [card.tag]);
+  const tagStr = card.tag || card.name || 'Sensor';
+  const tagLines = tagStr.includes('\n') ? tagStr.split('\n') : (tagStr.includes('/') ? tagStr.split('/') : [tagStr]);
   const isMultiLine = tagLines.length > 1;
   const maxTagLen = Math.max(...tagLines.map(l => l.length));
-  const bw = Math.max(50, maxTagLen * 8 + 14);
+  const bw = Math.max(68, maxTagLen * 9.5 + 20);
 
   let maxNameLen = 4;
   let maxValLen = 4;
@@ -2426,35 +2421,35 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
     if (uLen > maxUnitLen) maxUnitLen = uLen;
   });
 
-  const nameColW = maxNameLen * 6.8 + 10;
-  const valColW = maxValLen * 7.2 + 8;
-  const unitColW = maxUnitLen * 6.5 + 4;
-  const isTop = card.titlePosition === 'top';
-  const rowH = 19;
-  const channelsH = Math.max(26, numChannels * rowH + 6);
+  const nameColW = Math.max(56, maxNameLen * 8.2 + 14);
+  const valColW = Math.max(54, maxValLen * 9.6 + 12);
+  const unitColW = Math.max(36, maxUnitLen * 8.2 + 8);
+  const isTop = card.titlePosition !== 'left';
+  const rowH = 26;
+  const channelsH = Math.max(34, numChannels * rowH + 10);
 
   let totalW, totalH, badgeX, badgeY, badgeW, badgeH, panelX, panelY, panelW, panelH;
 
   if (isTop) {
-    badgeH = 22;
-    totalW = Math.max(104, nameColW + valColW + unitColW + 28, maxTagLen * 8 + 24);
-    totalH = badgeH + 3 + channelsH;
+    badgeH = 28;
+    totalW = Math.max(148, nameColW + valColW + unitColW + 36, maxTagLen * 9.5 + 32);
+    totalH = badgeH + 4 + channelsH;
     badgeX = -totalW / 2;
     badgeY = -totalH / 2;
     badgeW = totalW;
     panelX = -totalW / 2;
-    panelY = -totalH / 2 + badgeH + 3;
+    panelY = -totalH / 2 + badgeH + 4;
     panelW = totalW;
     panelH = channelsH;
   } else {
-    const cw = Math.max(98, nameColW + valColW + unitColW + 28);
-    totalW = bw + 3 + cw;
+    const cw = Math.max(140, nameColW + valColW + unitColW + 36);
+    totalW = bw + 4 + cw;
     totalH = channelsH;
     badgeX = -totalW / 2;
     badgeY = -totalH / 2;
     badgeW = bw;
     badgeH = totalH;
-    panelX = -totalW / 2 + bw + 3;
+    panelX = -totalW / 2 + bw + 4;
     panelY = -totalH / 2;
     panelW = cw;
     panelH = totalH;
@@ -2466,10 +2461,10 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
     y: badgeY,
     width: badgeW,
     height: badgeH,
-    rx: 3,
+    rx: 4,
     fill: '#fed72a',
     stroke: '#eab308',
-    'stroke-width': 1,
+    'stroke-width': 1.2,
     filter: 'url(#badgeShadow)',
     class: 'badge-rect'
   });
@@ -2478,25 +2473,25 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
   if (isTop) {
     const tagTxt = svgEl('text', {
       x: badgeX + badgeW / 2,
-      y: badgeY + badgeH / 2 + 4,
+      y: badgeY + badgeH / 2 + 5,
       'text-anchor': 'middle',
-      'font-size': 11,
+      'font-size': 12.5,
       'font-weight': 800,
       fill: '#18181b',
-      'font-family': 'JetBrains Mono'
+      'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
-    tagTxt.textContent = card.tag.replace('\n', ' / ');
+    tagTxt.textContent = tagStr.replace('\n', ' / ');
     g.appendChild(tagTxt);
   } else if (isMultiLine) {
     tagLines.forEach((l, idx) => {
       const t = svgEl('text', {
         x: badgeX + badgeW / 2,
-        y: badgeY + (idx === 0 ? badgeH / 2 - 2 : badgeH / 2 + 10),
+        y: badgeY + (idx === 0 ? badgeH / 2 - 3 : badgeH / 2 + 11),
         'text-anchor': 'middle',
-        'font-size': 10,
+        'font-size': 11,
         'font-weight': 800,
         fill: '#18181b',
-        'font-family': 'JetBrains Mono'
+        'font-family': 'JetBrains Mono, ui-monospace, monospace'
       });
       t.textContent = l;
       g.appendChild(t);
@@ -2504,14 +2499,14 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
   } else {
     const tagTxt = svgEl('text', {
       x: badgeX + badgeW / 2,
-      y: badgeY + badgeH / 2 + 4,
+      y: badgeY + badgeH / 2 + 5,
       'text-anchor': 'middle',
-      'font-size': 11,
+      'font-size': 12.5,
       'font-weight': 800,
       fill: '#18181b',
-      'font-family': 'JetBrains Mono'
+      'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
-    tagTxt.textContent = card.tag;
+    tagTxt.textContent = tagStr;
     g.appendChild(tagTxt);
   }
 
@@ -2521,42 +2516,44 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
     y: panelY,
     width: panelW,
     height: panelH,
-    rx: 3,
+    rx: 4,
     fill: '#ffffff',
     stroke: isSel ? '#00a876' : '#cbd5e1',
-    'stroke-width': isSel ? 1.5 : 1,
+    'stroke-width': isSel ? 1.8 : 1.2,
     filter: 'url(#badgeShadow)'
   });
   g.appendChild(panel);
 
   // Channels
   channels.forEach((ch, idx) => {
-    const rowY = panelY + 13 + idx * rowH;
+    const rowY = panelY + 18 + idx * rowH;
     const chStatus = ch.status || 'normal';
     const chStatusColor = chStatus === 'alarm' ? '#dc2626' : (chStatus === 'warn' ? '#eab308' : '#16a34a');
     
     g.appendChild(svgEl('circle', {
-      cx: panelX + 9, cy: rowY - 3.5, r: 3.2, fill: chStatusColor
+      cx: panelX + 13, cy: rowY - 4.5, r: 4.2, fill: chStatusColor
     }));
 
     const nameTxt = svgEl('text', {
-      x: panelX + 17, y: rowY, 'font-size': 9, 'font-weight': 700,
-      fill: '#475569', 'font-family': 'JetBrains Mono'
+      x: panelX + 22, y: rowY, 'font-size': 11, 'font-weight': 700,
+      fill: '#475569', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
     nameTxt.textContent = `${ch.name}:`;
     g.appendChild(nameTxt);
 
+    const valStr = (ch.val !== undefined && ch.val !== null) ? String(ch.val) : '--';
     const valTxt = svgEl('text', {
-      x: panelX + 17 + nameColW, y: rowY, 'font-size': 9.5, 'font-weight': 800,
-      fill: '#0f172a', 'font-family': 'JetBrains Mono'
+      x: panelX + 22 + nameColW, y: rowY, 'font-size': 13.5, 'font-weight': 800,
+      fill: '#0f172a', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
-    valTxt.textContent = ch.val !== undefined ? String(ch.val) : '--';
+    valTxt.textContent = valStr;
     g.appendChild(valTxt);
 
     if (ch.unit) {
       const unitTxt = svgEl('text', {
-        x: panelX + 17 + nameColW + String(ch.val).length * 6.8 + 4,
-        y: rowY, 'font-size': 8.5, 'font-weight': 600, fill: '#64748b'
+        x: panelX + 22 + nameColW + valStr.length * 8.5 + 8,
+        y: rowY, 'font-size': 11, 'font-weight': 600, fill: '#64748b',
+        'font-family': 'JetBrains Mono, ui-monospace, monospace'
       });
       unitTxt.textContent = ch.unit;
       g.appendChild(unitTxt);
@@ -2565,36 +2562,25 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = []) {
 
   if (isSel) {
     let hX = 0, hY = 0;
-    let targetName = null;
     if (card.attachedAssetId) {
-      const target = elements.find(e => e.id === card.attachedAssetId && isSensorOrGateway(e));
+      const target = elements.find(e => e.id === card.attachedAssetId);
       if (target) {
         hX = target.x - card.x;
         hY = target.y - card.y;
-        targetName = target.tag || ASSET_DEFS[target.type]?.name || 'Sensor';
       }
     }
 
     const anchorG = svgEl('g', {
       class: 'element-anchor-handle',
       'data-element-id': card.id,
-      transform: `translate(${hX}, ${hY})`
+      transform: `translate(${hX}, ${hY})`,
+      style: isLiveDnd ? 'cursor: grab;' : ''
     });
     anchorG.appendChild(svgEl('circle', { cx: 0, cy: 0, r: 16, fill: 'transparent' }));
-    anchorG.appendChild(svgEl('circle', { cx: 0, cy: 0, r: 7.5, fill: '#00a876', stroke: '#ffffff', 'stroke-width': 2.5 }));
+    anchorG.appendChild(svgEl('circle', { class: 'anchor-handle-core', cx: 0, cy: 0, r: 7.5, fill: '#00a876', stroke: '#ffffff', 'stroke-width': 2.5 }));
     anchorG.appendChild(svgEl('line', { x1: -4, y1: 0, x2: 4, y2: 0, stroke: '#ffffff', 'stroke-width': 1.5 }));
     anchorG.appendChild(svgEl('line', { x1: 0, y1: -4, x2: 0, y2: 4, stroke: '#ffffff', 'stroke-width': 1.5 }));
 
-    const pillY = -18;
-    const pillTxt = targetName ? `⚓ ${targetName}` : '⚓ Drag to Sensor / Gateway';
-    const pW = pillTxt.length * 6.5 + 14;
-    anchorG.appendChild(svgEl('rect', { x: -pW / 2, y: pillY - 8, width: pW, height: 16, rx: 8, fill: '#00a876' }));
-    const pText = svgEl('text', {
-      x: 0, y: pillY + 3.5, 'text-anchor': 'middle', 'font-size': 9, 'font-weight': 800,
-      fill: '#ffffff', 'font-family': 'sans-serif'
-    });
-    pText.textContent = pillTxt;
-    anchorG.appendChild(pText);
     g.appendChild(anchorG);
   }
 

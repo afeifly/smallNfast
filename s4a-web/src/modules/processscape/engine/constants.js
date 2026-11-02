@@ -240,16 +240,12 @@ export const ASSET_DEFS = {
 export const SENSOR_CARD_TEMPLATES = {
   sensor: {
     tag: 'Sensor',
-    title: 'Sensor Mode',
-    desc: 'Flow , Velocity , Consumption',
-    channels: [
-      { id: 'ch_flow', name: 'Flow', val: 142.8, unit: 'm³/h', status: 'normal' },
-      { id: 'ch_vel', name: 'Velocity', val: 28.4, unit: 'm/s', status: 'normal' },
-      { id: 'ch_cons', name: 'Consumption', val: 156890, unit: 'm³', status: 'normal' }
-    ],
+    title: 'Live Telemetry Card',
+    desc: 'Binds to physical sensor channels',
+    channels: [],
     metric: 'flow',
     style: 'badge',
-    titlePosition: 'left'
+    titlePosition: 'top'
   }
 };
 

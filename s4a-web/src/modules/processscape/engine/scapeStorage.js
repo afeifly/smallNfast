@@ -10,6 +10,45 @@ import { pointsToPath } from './pipeUtils';
 const STORAGE_KEY_SCAPES = 's4a_processscapes_v1';
 const STORAGE_KEY_ACTIVE = 's4a_active_scape_id_v1';
 const STORAGE_KEY_LOCATIONS = 's4a_sensor_locations_v1';
+const STORAGE_KEY_VIEWS = 's4a_processscape_views_v1';
+
+/**
+ * Get saved canvas view (pan x, y, and zoom) for a given scape
+ */
+export function getSavedScapeView(scapeId) {
+  const storage = getStorage();
+  if (!storage || !scapeId) return null;
+  try {
+    const raw = storage.getItem(STORAGE_KEY_VIEWS);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    const v = map[scapeId];
+    if (v && typeof v.x === 'number' && typeof v.y === 'number' && typeof v.zoom === 'number') {
+      return { x: v.x, y: v.y, zoom: v.zoom };
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Save canvas view (pan x, y, and zoom) for a given scape
+ */
+export function saveScapeView(scapeId, view) {
+  const storage = getStorage();
+  if (!storage || !scapeId || !view) return;
+  try {
+    const raw = storage.getItem(STORAGE_KEY_VIEWS);
+    const map = raw ? JSON.parse(raw) : {};
+    map[scapeId] = {
+      x: Math.round(view.x || 0),
+      y: Math.round(view.y || 0),
+      zoom: Number((view.zoom || 1.0).toFixed(3))
+    };
+    storage.setItem(STORAGE_KEY_VIEWS, JSON.stringify(map));
+  } catch (_) {}
+}
 
 export function getExampleCompressorStationScape() {
   return {

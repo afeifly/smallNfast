@@ -43,6 +43,8 @@ import {
   setActiveScapeId,
   getAllScapes,
   saveScape,
+  getSavedScapeView,
+  saveScapeView,
   hasSavedLocations,
   DEFAULT_COMPRESSED_AIR_SCAPE
 } from './engine/scapeStorage.js';
@@ -300,7 +302,11 @@ export default function ProcessScapeView({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [currentTool, setCurrentTool] = useState('select'); // 'select' | 'pan' | 'draw_pipe'
   const [activePipeMedium, setActivePipeMedium] = useState('gas'); // 'gas' | 'liquid'
-  const [view, setView] = useState({ x: 20, y: 78, zoom: 1.0 });
+  const [view, setView] = useState(() => {
+    const saved = getSavedScapeView(activeScape.id);
+    if (saved) return saved;
+    return { x: 20, y: 78, zoom: 1.0 };
+  });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const isSpacePressedRef = useRef(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -518,15 +524,15 @@ export default function ProcessScapeView({
           elements: finalElements,
           pipes: finalPipes
         });
+        if (activeScapeId) {
+          saveScapeView(activeScapeId, view);
+        }
       }
       setIsBoundsResizerActive(false);
       setResizingBox(null);
       boundsBoxRef.current = null;
-      setTimeout(() => {
-        focusSelectedOrCenter();
-      }, 50);
     }
-  }, [isBoundsResizerActive, resizingBox, elements, pipes, activeScapeId, projectTitle, zones, focusSelectedOrCenter]);
+  }, [isBoundsResizerActive, resizingBox, elements, pipes, activeScapeId, projectTitle, zones, view]);
 
   // Layer Stacking (Front / Back)
   const bringToFront = useCallback(() => {
@@ -809,8 +815,9 @@ export default function ProcessScapeView({
         }
       }
 
-      // In runtime mode, left-click or middle-click pans the plant diagram smoothly
-      if (e.button === 0 || e.button === 1 || e.button === 2) {
+      // In runtime mode: The entire canvas position is completely fixed by default.
+      // Dragging and moving the canvas is disabled unless the user clicks the bounds resizer tool.
+      if (isBoundsResizerActive) {
         dragRef.current.isPanning = true;
         dragRef.current.didPan = false;
         dragRef.current.panStart = { x: e.clientX - view.x, y: e.clientY - view.y };
@@ -819,8 +826,8 @@ export default function ProcessScapeView({
       return;
     }
 
-    // Workspace Pan (Middle click, Right click, Spacebar held, or Pan Tool)
-    if (e.button === 1 || e.button === 2 || currentTool === 'pan' || isSpacePressedRef.current) {
+    // Workspace Pan (Middle click, Right click, Spacebar held, Pan Tool, or Bounds Resizer active)
+    if (e.button === 1 || e.button === 2 || currentTool === 'pan' || isSpacePressedRef.current || isBoundsResizerActive) {
       dragRef.current.isPanning = true;
       dragRef.current.didPan = false;
       dragRef.current.panStart = { x: e.clientX - view.x, y: e.clientY - view.y };
@@ -1537,6 +1544,9 @@ export default function ProcessScapeView({
           viewportRef.current.classList.remove('panning');
         }
       }
+      if (dragRef.current.didPan && activeScapeId) {
+        saveScapeView(activeScapeId, view);
+      }
     }
 
     if (dragRef.current.draggingBoundsHandle) {
@@ -1931,6 +1941,10 @@ export default function ProcessScapeView({
         const factor = e.deltaY < 0 ? 1.08 : 0.92;
         zoomAtPoint(e.clientX, e.clientY, factor);
       } else {
+        // In runtime mode, fix canvas position unless bounds resizer tool is active
+        if (scapeMode === 'runtime' && !isBoundsResizerActive) {
+          return;
+        }
         setView(v => ({
           ...v,
           x: v.x - e.deltaX,

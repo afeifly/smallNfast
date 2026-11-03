@@ -327,6 +327,13 @@
   gap: 6px;
 }
 
+.ps-runtime-page-tools {
+  top: 14px;
+  bottom: auto;
+  right: 16px;
+  z-index: 35;
+}
+
 /* Live DND Mode & Bounds Resizer */
 .live-dnd-active {
   cursor: grab !important;
@@ -975,6 +982,15 @@
 
 .element-anchor-handle:active {
   cursor: grabbing !important;
+}
+
+/* In final show (runtime mode), lock diagram items (equipment, pipes, text notes) from accidental drag & drop.
+   Only measurement cards and bounds resizer allow active interaction when their tools are explicitly turned on. */
+.mode-runtime .plant-node,
+.mode-runtime .plant-pipe-group,
+.mode-runtime .plant-text-group {
+  pointer-events: none;
+  user-select: none;
 }
 
 /* In final show (runtime mode), hide anchor dot connection lines for items attached to pipelines */

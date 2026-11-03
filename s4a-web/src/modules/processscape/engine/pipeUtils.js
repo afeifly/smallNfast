@@ -1,6 +1,6 @@
 import { ASSET_DEFS } from './constants.js';
 
-export function snap(val, step = 10) {
+export function snap(val, step = 2) {
   return Math.round(val / step) * step;
 }
 
@@ -35,7 +35,7 @@ export function translatePath(d, dx, dy) {
   });
 }
 
-export function getSnapExtensionPoint(extending, rawPt) {
+export function getSnapExtensionPoint(extending, rawPt, snapStep = 10) {
   if (!extending || !extending.pipe) return rawPt;
   const pipe = extending.pipe;
   if (!pipe.points || pipe.points.length < 2) return rawPt;
@@ -44,8 +44,8 @@ export function getSnapExtensionPoint(extending, rawPt) {
   const isHoriz = Math.abs(p1.y - p0.y) <= Math.abs(p1.x - p0.x);
   const pAnchor = extending.end === 'end' ? p1 : p0;
 
-  const sx = snap(rawPt.x);
-  const sy = snap(rawPt.y);
+  const sx = snap(rawPt.x, snapStep);
+  const sy = snap(rawPt.y, snapStep);
   const dx = sx - pAnchor.x;
   const dy = sy - pAnchor.y;
 
@@ -64,9 +64,9 @@ export function getSnapExtensionPoint(extending, rawPt) {
   }
 }
 
-export function getSnapOrthogonalPoint(pStart, rawPt) {
-  const sx = snap(rawPt.x);
-  const sy = snap(rawPt.y);
+export function getSnapOrthogonalPoint(pStart, rawPt, snapStep = 10) {
+  const sx = snap(rawPt.x, snapStep);
+  const sy = snap(rawPt.y, snapStep);
   const dx = sx - pStart.x;
   const dy = sy - pStart.y;
 
@@ -227,8 +227,13 @@ export function getElementBBox(el) {
   }
 
   const def = ASSET_DEFS[el.type];
-  const w = el.w || (def ? def.w : 100);
-  const h = el.h || (def ? def.h : 100);
+  const baseW = def ? def.w : (el.w || 100);
+  const baseH = def ? def.h : (el.h || 100);
+  const scale = (typeof el.scale === 'number' && el.scale > 0)
+    ? el.scale
+    : (el.w && def ? el.w / def.w : 1);
+  const w = Math.round(baseW * scale);
+  const h = Math.round(baseH * scale);
   return { x: el.x - w / 2, y: el.y - h / 2, w, h };
 }
 

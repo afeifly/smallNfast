@@ -977,6 +977,11 @@
   cursor: grabbing !important;
 }
 
+/* In final show (runtime mode), hide anchor dot connection lines for items attached to pipelines */
+.mode-runtime .element-anchor-line {
+  display: none !important;
+}
+
 /* Runtime Live HUD & Info Badges */
 .ps-runtime-hud {
   padding: 5px 12px;

@@ -8,7 +8,9 @@ import {
   getSavedDevices,
   saveDevices,
   buildDeviceFromRawChannels,
-  syncAllLocationsToScapes
+  syncAllLocationsToScapes,
+  getDeviceChannelAssignments,
+  removeDeviceAndUnassignChannels
 } from './engine/sensorManagerStorage';
 import { getAllScapes, createNewScape } from './engine/scapeStorage';
 
@@ -24,11 +26,14 @@ export default function SensorManagerModal({
   const [devices, setDevices] = useState(() => getSavedDevices());
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
+  const [connectInitialTab, setConnectInitialTab] = useState(null);
+  const [connectInitialMode, setConnectInitialMode] = useState('manual');
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOverMpId, setDragOverMpId] = useState(null);
   const [dragOverLocId, setDragOverLocId] = useState(null);
   const [collapsedDevices, setCollapsedDevices] = useState(new Set());
   const [syncFeedback, setSyncFeedback] = useState(null);
+  const [pendingDeleteDevice, setPendingDeleteDevice] = useState(null);
 
   // Set of channel IDs assigned anywhere across all locations (guarantees channel exclusivity)
   const assignedChannelIdSet = useMemo(() => {
@@ -117,12 +122,20 @@ export default function SensorManagerModal({
         ? `S332 API (${conn?.host || 'LAN'})`
         : 'Direct USB';
 
+      const connectionMeta = {
+        ...(conn || {}),
+        ...(sysInfo || {}),
+        host: conn?.host || conn?.ip || sysInfo?.ip || sysInfo?.host || null,
+        port: conn?.port || sysInfo?.port || (transportType === 'api' ? 8080 : (transportType === 'tcp' ? 502 : null)),
+        transport: conn?.transport || transport
+      };
+
       const newDevice = buildDeviceFromRawChannels(
         rawChs,
         devName,
         transportLabel,
         transportType,
-        sysInfo || conn
+        connectionMeta
       );
 
       // Append device to collected list (updating if already exists with same id/serial)
@@ -150,13 +163,88 @@ export default function SensorManagerModal({
     }
   };
 
-  const handleRemoveDevice = (devId, e) => {
-    e.stopPropagation();
+  /**
+   * Handle batch devices discovered from Ethernet / LAN auto-detection
+   */
+  const handleBatchDevicesConnected = (deviceItems) => {
+    setShowConnectModal(false);
+    if (!Array.isArray(deviceItems) || deviceItems.length === 0) return;
+
     setDevices(prev => {
-      const updated = prev.filter(d => d.id !== devId);
+      const existingMap = new Map(prev.map(d => [d.id, d]));
+      deviceItems.forEach(dev => {
+        existingMap.set(dev.id, dev);
+      });
+      const updated = Array.from(existingMap.values());
       saveDevices(updated);
       return updated;
     });
+
+    const totalChannels = deviceItems.reduce((acc, d) => {
+      return acc + (d.sensors || []).reduce((sAcc, s) => sAcc + (s.channels?.length || 0), 0);
+    }, 0);
+
+    setSyncFeedback(`✓ Collected ${deviceItems.length} network device(s) (${totalChannels} channels) via Ethernet Auto-Detect`);
+    setTimeout(() => setSyncFeedback(null), 5000);
+
+    if (typeof window !== 'undefined' && window.showAppNotification) {
+      window.showAppNotification(
+        'Sensors Collected',
+        `Successfully added ${deviceItems.length} network device(s) with ${totalChannels} channels to Sensor Manager.`,
+        'success'
+      );
+    }
+  };
+
+  const handleRequestRemoveDevice = (dev, e) => {
+    if (e) e.stopPropagation();
+    const assigned = getDeviceChannelAssignments(dev, locations);
+    setPendingDeleteDevice({
+      device: dev,
+      assignedChannels: assigned
+    });
+  };
+
+  const handleConfirmDeleteDevice = async () => {
+    if (!pendingDeleteDevice) return;
+    const { device, assignedChannels } = pendingDeleteDevice;
+
+    // 1. Close hardware connection
+    try {
+      if (typeof TauriSutoAPI.disconnect === 'function') {
+        await TauriSutoAPI.disconnect();
+      }
+    } catch (err) {
+      console.warn('[SensorManager] Disconnect on device removal note:', err);
+    }
+
+    // 2. Remove device and unassign its channels across all locations and scapes
+    const { updatedDevices, updatedLocations, unassignedCount } = removeDeviceAndUnassignChannels(device.id);
+
+    // 3. Update state in modal
+    setDevices(updatedDevices);
+    setLocations(updatedLocations);
+    setPendingDeleteDevice(null);
+
+    // 4. Trigger Scape sync so active scape refreshes sensor cards
+    if (onSyncToScape) {
+      const allScapes = getAllScapes();
+      if (allScapes[0]?.id) {
+        onSyncToScape(allScapes[0].id);
+      }
+    }
+
+    // 5. Toast / Notification feedback
+    const msg = unassignedCount > 0
+      ? `Disconnected "${device.name}" and removed ${unassignedCount} assigned channel(s).`
+      : `Disconnected and removed "${device.name}".`;
+
+    setSyncFeedback(`✓ ${msg}`);
+    setTimeout(() => setSyncFeedback(null), 4000);
+
+    if (typeof window !== 'undefined' && window.showAppNotification) {
+      window.showAppNotification('Device Removed', msg, 'info');
+    }
   };
 
   const handleUpdateLocations = useCallback((updated) => {
@@ -228,13 +316,162 @@ export default function SensorManagerModal({
     }));
   };
 
+  const getDragPayload = (e) => {
+    try {
+      if (e?.dataTransfer) {
+        const raw = e.dataTransfer.getData('text/plain') ||
+          e.dataTransfer.getData('text') ||
+          e.dataTransfer.getData('application/json');
+        if (raw) return JSON.parse(raw);
+      }
+    } catch (_) {}
+    if (typeof window !== 'undefined' && window.__ps_active_drag) {
+      return window.__ps_active_drag;
+    }
+    return null;
+  };
+
+  const handleStartDrag = (e, payload) => {
+    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+    if (e?.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'copyMove';
+      const jsonStr = JSON.stringify(payload);
+      try {
+        e.dataTransfer.setData('text/plain', jsonStr);
+        e.dataTransfer.setData('text', jsonStr);
+        e.dataTransfer.setData('application/json', jsonStr);
+      } catch (_) {}
+    }
+  };
+
+  const handleEndDrag = () => {
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.__ps_active_drag = null;
+      }, 200);
+    }
+  };
+
+  const handleQuickAssignChannel = (ch, sensorName, devName) => {
+    if (isChannelAssigned(ch)) return;
+
+    const cleanCh = {
+      id: ch.id || ch.channelId || `cid_${ch.channel_id}`,
+      channel_id: ch.channel_id ?? ch.channelId,
+      name: ch.name || ch.channelName || 'Channel',
+      unit: ch.unit,
+      device: ch.device || devName
+    };
+
+    const updatedLocs = [...locations];
+
+    if (updatedLocs.length === 0) {
+      let targetScapeId = scapes.find(s => !s.isExample)?.id;
+      if (!targetScapeId) {
+        const newScape = createNewScape('Plant Stage');
+        targetScapeId = newScape.id;
+        setScapes(getAllScapes());
+      }
+      const newLoc = {
+        id: `loc_${Date.now()}`,
+        name: 'Location 1',
+        scapeId: targetScapeId,
+        measurementPoints: [
+          {
+            id: `mp_${Date.now()}_1`,
+            name: sensorName || cleanCh.name || 'Measurement Point',
+            channels: [cleanCh]
+          }
+        ]
+      };
+      handleUpdateLocations([newLoc]);
+      setSyncFeedback(`✓ Created Location 1 and assigned "${cleanCh.name}"`);
+      setTimeout(() => setSyncFeedback(null), 3000);
+      return;
+    }
+
+    const targetLoc = updatedLocs[0];
+    const mps = targetLoc.measurementPoints || [];
+
+    if (mps.length === 0) {
+      const newMp = {
+        id: `mp_${Date.now()}_1`,
+        name: sensorName || cleanCh.name || 'Measurement Point',
+        channels: [cleanCh]
+      };
+      targetLoc.measurementPoints = [newMp];
+    } else {
+      const targetMp = mps[mps.length - 1];
+      const exists = (targetMp.channels || []).some(c => c.id === cleanCh.id);
+      if (!exists) {
+        targetMp.channels = [...(targetMp.channels || []), cleanCh];
+      }
+    }
+
+    handleUpdateLocations([...updatedLocs]);
+    setSyncFeedback(`✓ Assigned "${cleanCh.name}" to ${targetLoc.name}`);
+    setTimeout(() => setSyncFeedback(null), 3000);
+  };
+
+  const handleQuickAssignSensor = (sens, devName) => {
+    const unassignedChs = (sens.channels || []).filter(c => !isChannelAssigned(c));
+    if (unassignedChs.length === 0) return;
+
+    const chs = unassignedChs.map(c => ({
+      id: c.id || c.channelId || `cid_${c.channel_id}`,
+      channel_id: c.channel_id ?? c.channelId,
+      name: c.name || c.channelName,
+      unit: c.unit,
+      device: c.device || devName
+    }));
+
+    const updatedLocs = [...locations];
+
+    if (updatedLocs.length === 0) {
+      let targetScapeId = scapes.find(s => !s.isExample)?.id;
+      if (!targetScapeId) {
+        const newScape = createNewScape('Plant Stage');
+        targetScapeId = newScape.id;
+        setScapes(getAllScapes());
+      }
+      const newLoc = {
+        id: `loc_${Date.now()}`,
+        name: 'Location 1',
+        scapeId: targetScapeId,
+        measurementPoints: [
+          {
+            id: `mp_${Date.now()}_1`,
+            name: sens.name || 'Sensor',
+            channels: chs
+          }
+        ]
+      };
+      handleUpdateLocations([newLoc]);
+      setSyncFeedback(`✓ Created Location 1 with "${sens.name}" (${chs.length} channels)`);
+      setTimeout(() => setSyncFeedback(null), 3000);
+      return;
+    }
+
+    const targetLoc = updatedLocs[0];
+    const mps = targetLoc.measurementPoints || [];
+    const newMp = {
+      id: `mp_${Date.now()}_${mps.length + 1}`,
+      name: sens.name || 'Sensor',
+      channels: chs
+    };
+    targetLoc.measurementPoints = [...mps, newMp];
+
+    handleUpdateLocations([...updatedLocs]);
+    setSyncFeedback(`✓ Created Measurement Point "${sens.name}" with ${chs.length} channels`);
+    setTimeout(() => setSyncFeedback(null), 3000);
+  };
+
   const handleDropOnLocation = (locId, e) => {
     e.preventDefault();
     setDragOverLocId(null);
     try {
-      const dataStr = e.dataTransfer.getData('text/plain');
-      if (!dataStr) return;
-      const payload = JSON.parse(dataStr);
+      const payload = getDragPayload(e);
+      if (!payload) return;
 
       if (payload.type === 'move_channel') {
         const cleanCh = {
@@ -377,9 +614,8 @@ export default function SensorManagerModal({
     e.stopPropagation();
     setDragOverMpId(null);
     try {
-      const dataStr = e.dataTransfer.getData('text/plain');
-      if (!dataStr) return;
-      const payload = JSON.parse(dataStr);
+      const payload = getDragPayload(e);
+      if (!payload) return;
 
       if (payload.type === 'move_channel') {
         if (payload.fromLocId === locId && payload.fromMpId === mpId) return;
@@ -598,7 +834,7 @@ export default function SensorManagerModal({
               <button
                 type="button"
                 className="ps-sm-btn primary ps-sm-detect-btn ps-sm-connect-btn"
-                onClick={() => setShowConnectModal(true)}
+                onClick={() => { setConnectInitialTab(null); setConnectInitialMode('manual'); setShowConnectModal(true); }}
                 disabled={loadingDevices}
                 title="Detect sensors across USB, Ethernet TCP, and Bluetooth BLE"
               >
@@ -674,7 +910,7 @@ export default function SensorManagerModal({
                             <button
                               type="button"
                               className="ps-sm-device-del-btn"
-                              onClick={(e) => handleRemoveDevice(dev.id, e)}
+                              onClick={(e) => handleRequestRemoveDevice(dev, e)}
                               title="Remove device"
                             >
                               ✕
@@ -699,14 +935,15 @@ export default function SensorManagerModal({
                                         e.preventDefault();
                                         return;
                                       }
-                                      e.dataTransfer.setData('text/plain', JSON.stringify({
+                                      handleStartDrag(e, {
                                         type: 'sensor',
                                         sensorName: sens.name,
                                         device: dev.name,
                                         channels: unassignedChannels
-                                      }));
+                                      });
                                     }}
-                                    title={allAssigned ? 'All channels of this sensor are already assigned' : 'Drag unassigned channels to a Location on the right'}
+                                    onDragEnd={handleEndDrag}
+                                    title={allAssigned ? 'All channels of this sensor are already assigned' : 'Drag unassigned channels to a Location on the right, or click "+ Assign All"'}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                       <span className="ps-sm-ch-drag-handle">{allAssigned ? '🔒' : '⋮⋮'}</span>
@@ -717,9 +954,22 @@ export default function SensorManagerModal({
                                       {allAssigned ? (
                                         <span className="ps-sm-channel-assigned-badge">✓ All Assigned</span>
                                       ) : (
-                                        <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600 }}>
-                                          {unassignedChannels.length} chs (Drag)
-                                        </span>
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="ps-sm-quick-assign-btn sensor-btn"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleQuickAssignSensor(sens, dev.name);
+                                            }}
+                                            title="Quick-assign all unassigned channels to a measurement point"
+                                          >
+                                            + Assign All
+                                          </button>
+                                          <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600 }}>
+                                            {unassignedChannels.length} chs
+                                          </span>
+                                        </>
                                       )}
                                     </div>
                                   </div>
@@ -738,7 +988,7 @@ export default function SensorManagerModal({
                                               e.preventDefault();
                                               return;
                                             }
-                                            e.dataTransfer.setData('text/plain', JSON.stringify({
+                                            handleStartDrag(e, {
                                               type: 'channel',
                                               id: ch.id,
                                               channel_id: ch.channel_id,
@@ -746,18 +996,34 @@ export default function SensorManagerModal({
                                               unit: ch.unit,
                                               device: dev.name,
                                               sensorName: sens.name
-                                            }));
+                                            });
                                           }}
-                                          title={assigned ? 'Assigned to a Measurement Point (cannot be reused)' : 'Drag and drop onto a Measurement Point or Location on the right'}
+                                          onDragEnd={handleEndDrag}
+                                          title={assigned ? 'Assigned to a Measurement Point (cannot be reused)' : 'Drag and drop onto a Measurement Point on the right, or click "+ Assign"'}
                                         >
                                           <div className="ps-sm-ch-info">
                                             <span className="ps-sm-ch-drag-handle">{assigned ? '🔒' : '⋮⋮'}</span>
                                             <span className="ps-sm-ch-name">{ch.name}</span>
                                             {ch.unit && <span className="ps-sm-ch-unit">{ch.unit}</span>}
                                           </div>
-                                          {assigned && (
-                                            <span className="ps-sm-channel-assigned-badge">✓ Assigned</span>
-                                          )}
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            {!assigned && (
+                                              <button
+                                                type="button"
+                                                className="ps-sm-quick-assign-btn"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleQuickAssignChannel(ch, sens.name, dev.name);
+                                                }}
+                                                title="Quick-assign this channel to a Measurement Point"
+                                              >
+                                                + Assign
+                                              </button>
+                                            )}
+                                            {assigned && (
+                                              <span className="ps-sm-channel-assigned-badge">✓ Assigned</span>
+                                            )}
+                                          </div>
                                         </div>
                                       );
                                     })}
@@ -813,6 +1079,7 @@ export default function SensorManagerModal({
                         className={`ps-sm-location-card ${dragOverLocId === loc.id ? 'loc-drag-over' : ''}`}
                         onDragOver={(e) => {
                           e.preventDefault();
+                          if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
                           setDragOverLocId(loc.id);
                         }}
                         onDragLeave={(e) => {
@@ -872,6 +1139,7 @@ export default function SensorManagerModal({
                               className={`ps-sm-loc-empty-dropzone ${dragOverLocId === loc.id ? 'drag-over' : ''}`}
                               onDragOver={(e) => {
                                 e.preventDefault();
+                                if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
                                 setDragOverLocId(loc.id);
                               }}
                               onDragLeave={() => setDragOverLocId(null)}
@@ -912,7 +1180,11 @@ export default function SensorManagerModal({
 
                                 {/* HTML5 Dropzone for Channels */}
                                 <div
-                                  onDragOver={(e) => { e.preventDefault(); setDragOverMpId(mp.id); }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+                                    setDragOverMpId(mp.id);
+                                  }}
                                   onDragLeave={() => setDragOverMpId(null)}
                                   onDrop={(e) => handleDropChannel(loc.id, mp.id, e)}
                                   className={`ps-sm-dropzone ${dragOverMpId === mp.id ? 'drag-over' : ''}`}
@@ -929,7 +1201,7 @@ export default function SensorManagerModal({
                                         draggable={true}
                                         onDragStart={(e) => {
                                           e.stopPropagation();
-                                          e.dataTransfer.setData('text/plain', JSON.stringify({
+                                          handleStartDrag(e, {
                                             type: 'move_channel',
                                             id: ch.id,
                                             channel_id: ch.channel_id,
@@ -939,8 +1211,9 @@ export default function SensorManagerModal({
                                             sensorName: mp.name,
                                             fromLocId: loc.id,
                                             fromMpId: mp.id
-                                          }));
+                                          });
                                         }}
+                                        onDragEnd={handleEndDrag}
                                         title="Drag to move this channel to another Measurement Point"
                                       >
                                         <span className="ps-sm-tag-drag-handle">⋮⋮</span>
@@ -1020,7 +1293,110 @@ export default function SensorManagerModal({
         isOpen={showConnectModal}
         onClose={() => setShowConnectModal(false)}
         onConnected={handleHardwareConnected}
+        onAddMultipleDevices={handleBatchDevicesConnected}
+        initialTab={connectInitialTab}
+        initialMode={connectInitialMode}
       />
+
+      {/* Device Delete Confirmation & Active Channel Warning Dialog */}
+      {pendingDeleteDevice && (
+        <div
+          className="ps-sm-confirm-backdrop"
+          onClick={() => setPendingDeleteDevice(null)}
+        >
+          <div
+            className="ps-sm-confirm-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="ps-sm-confirm-header">
+              <div className="ps-sm-confirm-icon-danger">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="ps-sm-confirm-title">Remove Sensor Device</h3>
+                <div className="ps-sm-confirm-device-meta">
+                  <span>📡 {pendingDeleteDevice.device?.name}</span>
+                  <span className={`ps-sm-device-pill ${pendingDeleteDevice.device?.transportType || ''}`}>
+                    {pendingDeleteDevice.device?.transport}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="ps-sm-confirm-body">
+              {pendingDeleteDevice.assignedChannels?.length > 0 ? (
+                <>
+                  <div className="ps-sm-confirm-warning-banner">
+                    <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>⚠️</span>
+                      <span>Active Channels in Use ({pendingDeleteDevice.assignedChannels.length})</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#7f1d1d', lineHeight: 1.5 }}>
+                      This device currently has channels assigned to Measurement Points in your ProcessScape.
+                      If you delete this device, its connection will be closed, the device will be removed, and the following channels will be <strong>unassigned and removed from ProcessScape</strong>:
+                    </div>
+                  </div>
+
+                  <div className="ps-sm-confirm-assigned-list">
+                    {pendingDeleteDevice.assignedChannels.map((item, idx) => (
+                      <div key={idx} className="ps-sm-confirm-assigned-item">
+                        <div className="ps-sm-confirm-ch-title">
+                          <span className="ps-sm-assigned-ch-dot" />
+                          <span style={{ fontWeight: 700, color: '#0f172a' }}>{item.channelName}</span>
+                          {item.channelUnit && (
+                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>({item.channelUnit})</span>
+                          )}
+                        </div>
+                        <div className="ps-sm-confirm-ch-target">
+                          <span>📍 {item.locationName}</span>
+                          <span style={{ color: '#cbd5e1' }}>›</span>
+                          <span style={{ fontWeight: 600, color: '#00ac86' }}>{item.mpName}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="ps-sm-confirm-clean-notice">
+                  <p style={{ margin: 0, fontSize: 13, color: '#334155', lineHeight: 1.5 }}>
+                    Are you sure you want to remove <strong>{pendingDeleteDevice.device?.name}</strong>?
+                  </p>
+                  <p style={{ margin: '8px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+                    Its live hardware communication link will be closed and it will be removed from your detected sensors list.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="ps-sm-confirm-actions">
+              <button
+                type="button"
+                className="ps-sm-btn secondary"
+                onClick={() => setPendingDeleteDevice(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ps-sm-btn danger"
+                onClick={handleConfirmDeleteDevice}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+                {pendingDeleteDevice.assignedChannels?.length > 0
+                  ? 'Unassign & Delete Device'
+                  : 'Delete Device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

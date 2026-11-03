@@ -201,6 +201,9 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
     });
   }
 
+  const host = sysInfo?.ip || sysInfo?.host || null;
+  const port = sysInfo?.port || (safeTransport === 'api' ? 8080 : (safeTransport === 'tcp' ? 502 : null));
+
   return {
     id: devId,
     name: devName,
@@ -209,6 +212,14 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
     transport: transportLabel || safeTransport.toUpperCase(),
     transportType: safeTransport,
     isOnline: true,
+    connectionConfig: {
+      transport: safeTransport,
+      host,
+      port,
+      path: sysInfo?.path || null,
+      deviceId: sysInfo?.deviceId || sysInfo?.id || null,
+      name: devName
+    },
     sensors: Array.from(sensorsMap.values())
   };
 }
@@ -431,4 +442,182 @@ export function syncAllLocationsToScapes(customLocations = null) {
     syncCount,
     affectedScapeIds: Array.from(affectedScapeIds)
   };
+}
+
+/**
+ * Find all assignments of a device's channels across all locations and measurement points
+ * @param {Object} device - Device object to inspect
+ * @param {Array|null} customLocations - Optional locations list
+ * @returns {Array} List of { channelId, channelName, channelUnit, locationId, locationName, mpId, mpName }
+ */
+export function getDeviceChannelAssignments(device, customLocations = null) {
+  if (!device) return [];
+  const locations = customLocations || getLocations();
+
+  const devChannelIds = new Set();
+  (device.sensors || []).forEach(s => {
+    (s.channels || []).forEach(c => {
+      if (c.id) devChannelIds.add(String(c.id));
+      if (c.channel_id !== undefined && c.channel_id !== null) {
+        devChannelIds.add(String(c.channel_id));
+        devChannelIds.add(`cid_${c.channel_id}`);
+      }
+      if (c.channelId) devChannelIds.add(String(c.channelId));
+    });
+  });
+
+  const assignments = [];
+  locations.forEach(loc => {
+    (loc.measurementPoints || []).forEach(mp => {
+      (mp.channels || []).forEach(ch => {
+        const matchesId = (ch.id && devChannelIds.has(String(ch.id))) ||
+          (ch.channel_id !== undefined && devChannelIds.has(String(ch.channel_id))) ||
+          (ch.channelId && devChannelIds.has(String(ch.channelId)));
+        const matchesDeviceName = ch.device && device.name && ch.device === device.name;
+
+        if (matchesId || matchesDeviceName) {
+          assignments.push({
+            channelId: ch.id || ch.channel_id,
+            channelName: ch.name || ch.channelName || 'Channel',
+            channelUnit: ch.unit || '',
+            locationId: loc.id,
+            locationName: loc.name || 'Location',
+            mpId: mp.id,
+            mpName: mp.name || 'Measurement Point'
+          });
+        }
+      });
+    });
+  });
+
+  return assignments;
+}
+
+/**
+ * Remove a device from saved devices and unassign all of its channels from all measurement points.
+ * Also synchronizes the changes to all affected ProcessScapes.
+ * @param {string} deviceId - ID of device to delete
+ * @returns {Object} { updatedDevices, updatedLocations, unassignedCount }
+ */
+export function removeDeviceAndUnassignChannels(deviceId) {
+  const currentDevices = getSavedDevices();
+  const targetDev = currentDevices.find(d => d.id === deviceId);
+  if (!targetDev) {
+    return {
+      updatedDevices: currentDevices,
+      updatedLocations: getLocations(),
+      unassignedCount: 0
+    };
+  }
+
+  // 1. Gather all channel identifiers belonging to this device
+  const devChannelIds = new Set();
+  (targetDev.sensors || []).forEach(s => {
+    (s.channels || []).forEach(c => {
+      if (c.id) devChannelIds.add(String(c.id));
+      if (c.channel_id !== undefined && c.channel_id !== null) {
+        devChannelIds.add(String(c.channel_id));
+        devChannelIds.add(`cid_${c.channel_id}`);
+      }
+      if (c.channelId) devChannelIds.add(String(c.channelId));
+    });
+  });
+
+  // 2. Remove device from devices storage
+  const updatedDevices = currentDevices.filter(d => d.id !== deviceId);
+  saveDevices(updatedDevices);
+
+  // 3. Unassign its channels from all measurement points in all locations
+  const currentLocations = getLocations();
+  let unassignedCount = 0;
+
+  const updatedLocations = currentLocations.map(loc => {
+    const updatedMps = (loc.measurementPoints || []).map(mp => {
+      const remainingChannels = (mp.channels || []).filter(ch => {
+        const matchesId = (ch.id && devChannelIds.has(String(ch.id))) ||
+          (ch.channel_id !== undefined && devChannelIds.has(String(ch.channel_id))) ||
+          (ch.channelId && devChannelIds.has(String(ch.channelId)));
+        const matchesDeviceName = ch.device && targetDev.name && ch.device === targetDev.name;
+
+        if (matchesId || matchesDeviceName) {
+          unassignedCount++;
+          return false;
+        }
+        return true;
+      });
+
+      return {
+        ...mp,
+        channels: remainingChannels
+      };
+    });
+
+    return {
+      ...loc,
+      measurementPoints: updatedMps
+    };
+  });
+
+  saveLocations(updatedLocations);
+
+  // 4. Synchronize all locations with their ProcessScapes (prunes or updates sensor cards)
+  syncAllLocationsToScapes(updatedLocations);
+
+  return {
+    updatedDevices,
+    updatedLocations,
+    unassignedCount
+  };
+}
+
+let autoReconnectPromise = null;
+
+/**
+ * Automatically reconnect to saved devices on startup or page refresh.
+ * Restores hardware transport link and enables live polling data to flow immediately.
+ */
+export function autoReconnectSavedDevices() {
+  if (autoReconnectPromise) {
+    return autoReconnectPromise;
+  }
+
+  autoReconnectPromise = (async () => {
+    try {
+      if (typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
+        return { reconnected: true, alreadyConnected: true };
+      }
+
+      const devices = getSavedDevices();
+      if (!devices || devices.length === 0) {
+        return { reconnected: false, reason: 'no_saved_devices' };
+      }
+
+      for (const dev of devices) {
+        const config = dev.connectionConfig || {};
+        const transport = (config.transport || dev.transportType || dev.transport || '').toLowerCase();
+        const host = config.host || (typeof dev.transport === 'string' && dev.transport.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]);
+        const port = config.port;
+
+        try {
+          if (transport.includes('api') && host) {
+            await TauriSutoAPI.connectApi(host, port || 8080);
+            return { reconnected: true, device: dev.name, transport: 'API' };
+          } else if (transport.includes('tcp') && host) {
+            await TauriSutoAPI.connectTcp(host, port || 502);
+            return { reconnected: true, device: dev.name, transport: 'TCP' };
+          } else if (transport.includes('usb') && typeof TauriSutoAPI.isAvailable === 'function' && TauriSutoAPI.isAvailable()) {
+            await TauriSutoAPI.connectUsb();
+            return { reconnected: true, device: dev.name, transport: 'USB' };
+          }
+        } catch (err) {
+          console.warn(`[AutoReconnect] Could not reconnect to "${dev.name}":`, err?.message || err);
+        }
+      }
+      return { reconnected: false, reason: 'failed_all_devices' };
+    } finally {
+      autoReconnectPromise = null;
+    }
+  })();
+
+  return autoReconnectPromise;
 }

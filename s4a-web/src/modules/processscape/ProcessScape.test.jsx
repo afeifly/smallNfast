@@ -9,10 +9,13 @@ import {
   getActiveScape,
   saveScape,
   duplicateScape,
-  deleteScape
+  deleteScape,
+  createNewScape
 } from './engine/scapeStorage.js';
 import SensorManagerModal from './SensorManagerModal.jsx';
+import DeviceConnectModal from '../../components/DeviceConnectModal.jsx';
 import TauriSutoAPI from '../../api/TauriSutoAPI.js';
+import * as lanScannerModule from '../../api/lanScanner.js';
 import {
   getLocations,
   saveLocations,
@@ -20,9 +23,13 @@ import {
   syncMeasurementPointToScape,
   syncAllLocationsToScapes,
   buildDeviceFromRawChannels,
-  getSavedDevices
+  getSavedDevices,
+  getDeviceChannelAssignments,
+  removeDeviceAndUnassignChannels,
+  autoReconnectSavedDevices
 } from './engine/sensorManagerStorage.js';
 import {
+  snap,
   pointsToPath,
   getSnapExtensionPoint,
   getSnapOrthogonalPoint,
@@ -51,6 +58,7 @@ import {
   drawCase,
   renderPipe,
   renderAssetNode,
+  renderSensorCard,
   createFlangeInterface
 } from './engine/illustrators.js';
 
@@ -512,12 +520,10 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(dInput.value).toBe('26');
   });
 
-  it('initializes default canvas size to 1024x800', () => {
+  it('does not render boundaryGuide in canvas and default canvas renders viewport', () => {
     const { container } = render(<ProcessScapeView />);
     const boundaryGuide = container.querySelector('#boundaryGuide');
-    expect(boundaryGuide).not.toBeNull();
-    expect(boundaryGuide.getAttribute('width')).toBe('1024');
-    expect(boundaryGuide.getAttribute('height')).toBe('800');
+    expect(boundaryGuide).toBeNull();
   });
 
   it('supports mouse marquee selection over empty canvas space', () => {
@@ -920,11 +926,11 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     fireEvent.mouseDown(machineEl, { clientX: 190, clientY: 112, button: 0 });
     fireEvent.mouseUp(window);
 
-    // Inspector should open with Pipeline Anchor Binding section showing Free floating
+    // Inspector should open with Device Size slider and no Pipeline Anchor Binding section
     const inspector = container.querySelector('aside.ps-inspector');
     expect(inspector).not.toBeNull();
-    expect(inspector.textContent).toContain('Pipeline Anchor Binding');
-    expect(inspector.textContent).toContain('Free floating');
+    expect(inspector.textContent).toContain('Device Size');
+    expect(inspector.textContent).not.toContain('Pipeline Anchor Binding');
 
     // Anchor handle is rendered
     const anchorHandle = container.querySelector('.element-anchor-handle[data-element-id="machine_1"]');
@@ -935,14 +941,9 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     fireEvent.mouseMove(window, { clientX: 220, clientY: 178 });
     fireEvent.mouseUp(window, { clientX: 220, clientY: 178 });
 
-    // Machine is now bound at ~50% of pipe_branch_1
-    expect(inspector.textContent).toContain('Bound (50%)');
-    const detachBtn = Array.from(inspector.querySelectorAll('button')).find(b => b.textContent === 'Detach');
-    expect(detachBtn).not.toBeUndefined();
-
-    // Test Detach button
-    fireEvent.click(detachBtn);
-    expect(inspector.textContent).toContain('Free floating');
+    // Machine is now bound to pipe branch, showing anchor connection line
+    const anchorLine = container.querySelector('line.element-anchor-line[data-element-id="machine_1"]');
+    expect(anchorLine).not.toBeNull();
   });
 
   it('registers Import JSON, Export JSON, and Export PNG actions for pure icon buttons', () => {
@@ -1158,6 +1159,213 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const finalMachine = activeScape.elements.find(e => e.id === 'resizer_machine_1');
     expect(finalMachine).toBeDefined();
     expect(finalMachine.y).toBe(100);
+  });
+
+  it('resizes grouped pipeline height without breaking right-angle orthogonality or disconnecting junctions', () => {
+    // Pipeline group with a horizontal main header pipe and a vertical branch drop pipe connected at (300, 100)
+    const testPipes = [
+      {
+        id: 'group_pipe_main',
+        points: [{ x: 100, y: 100 }, { x: 500, y: 100 }],
+        d: 'M 100 100 L 500 100',
+        w: 20
+      },
+      {
+        id: 'group_pipe_branch',
+        points: [{ x: 300, y: 100 }, { x: 300, y: 300 }],
+        d: 'M 300 100 L 300 300',
+        w: 20
+      }
+    ];
+
+    const testElements = [
+      {
+        id: 'group_machine_1',
+        type: 'compressor',
+        name: 'Compressor 1',
+        x: 300,
+        y: 300,
+        w: 100,
+        h: 80
+      }
+    ];
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={testElements}
+        initialPipes={testPipes}
+      />
+    );
+
+    const boundsResizerBtn = container.querySelector('#toolRuntimeBoundsResizer');
+    expect(boundsResizerBtn).not.toBeNull();
+    fireEvent.click(boundsResizerBtn);
+
+    const resizerGroup = container.querySelector('#boundsResizerGroup');
+    expect(resizerGroup).not.toBeNull();
+
+    // Drag the South handle to stretch height by 150px
+    const southHandle = resizerGroup.querySelector('.ps-bounds-handle[data-handle="s"]');
+    expect(southHandle).not.toBeNull();
+
+    fireEvent.mouseDown(southHandle, { clientX: 300, clientY: 300, button: 0 });
+    fireEvent.mouseMove(window, { clientX: 300, clientY: 450 });
+    fireEvent.mouseUp(window);
+
+    // Confirm bounds resize
+    fireEvent.click(boundsResizerBtn);
+
+    // Fetch the updated pipes
+    const mainPipeEl = container.querySelector('.plant-pipe-group[data-pipe-id="group_pipe_main"]');
+    const branchPipeEl = container.querySelector('.plant-pipe-group[data-pipe-id="group_pipe_branch"]');
+    expect(mainPipeEl).not.toBeNull();
+    expect(branchPipeEl).not.toBeNull();
+
+    // Verify both pipes remain connected at the junction point
+    const mainPath = mainPipeEl.querySelector('path.pipe-metal-body').getAttribute('d');
+    const branchPath = branchPipeEl.querySelector('path.pipe-metal-body').getAttribute('d');
+
+    // Main pipe stays horizontal (y coordinates for start and end are identical)
+    const mainCoords = mainPath.match(/M\s*([\d.-]+)[,\s]+([\d.-]+)\s+L\s*([\d.-]+)[,\s]+([\d.-]+)/);
+    expect(mainCoords).not.toBeNull();
+    const [, mx1, my1, mx2, my2] = mainCoords;
+    expect(my1).toBe(my2); // Horizontal pipe remained strictly horizontal
+
+    // Branch pipe starts at junction on main pipe
+    const branchCoords = branchPath.match(/M\s*([\d.-]+)[,\s]+([\d.-]+)\s+L\s*([\d.-]+)[,\s]+([\d.-]+)/);
+    expect(branchCoords).not.toBeNull();
+    const [, bx1, by1, bx2, by2] = branchCoords;
+    expect(bx1).toBe(bx2); // Vertical pipe remained strictly vertical
+    expect(by1).toBe(my1); // Top of branch pipe touches main pipe at exactly the same y!
+    expect(Number(by2)).toBeGreaterThan(Number(by1)); // Branch pipe stretched downwards
+  });
+
+  it('keeps anchored sensor attached to horizontal pipe without drifting away when height grows', () => {
+    // Horizontal pipe from (100, 200) to (500, 200)
+    // Sensor anchored at t=0.5 (x=300), positioned 30px above the pipe at (300, 170)
+    const testPipes = [
+      {
+        id: 'h_pipe_1',
+        points: [{ x: 100, y: 200 }, { x: 500, y: 200 }],
+        d: 'M 100,200 L 500,200',
+        w: 20
+      }
+    ];
+
+    const testElements = [
+      {
+        id: 'anchored_sensor_1',
+        type: 'dew_point',
+        name: 'S220 Dew Point',
+        x: 300,
+        y: 170,
+        w: 60,
+        h: 60,
+        attachedPipeId: 'h_pipe_1',
+        pipeT: 0.5,
+        pipeOffsetX: 0,
+        pipeOffsetY: -30
+      }
+    ];
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={testElements}
+        initialPipes={testPipes}
+      />
+    );
+
+    const boundsResizerBtn = container.querySelector('#toolRuntimeBoundsResizer');
+    expect(boundsResizerBtn).not.toBeNull();
+    fireEvent.click(boundsResizerBtn);
+
+    const resizerGroup = container.querySelector('#boundsResizerGroup');
+    expect(resizerGroup).not.toBeNull();
+
+    // Drag the South handle down by 200px (Height grows significantly)
+    const southHandle = resizerGroup.querySelector('.ps-bounds-handle[data-handle="s"]');
+    expect(southHandle).not.toBeNull();
+
+    fireEvent.mouseDown(southHandle, { clientX: 300, clientY: 200, button: 0 });
+    fireEvent.mouseMove(window, { clientX: 300, clientY: 400 });
+    fireEvent.mouseUp(window);
+
+    // Confirm bounds resize
+    fireEvent.click(boundsResizerBtn);
+
+    // Find the updated pipe and sensor
+    const pipeGroup = container.querySelector('.plant-pipe-group[data-pipe-id="h_pipe_1"]');
+    expect(pipeGroup).not.toBeNull();
+    const pipePath = pipeGroup.querySelector('path.pipe-metal-body').getAttribute('d');
+    const pipeCoords = pipePath.match(/M\s*([\d.-]+)[,\s]+([\d.-]+)\s+L\s*([\d.-]+)[,\s]+([\d.-]+)/);
+    expect(pipeCoords).not.toBeNull();
+    const pipeY = Number(pipeCoords[2]);
+
+    const sensorNode = container.querySelector('[data-node-id="anchored_sensor_1"]');
+    expect(sensorNode).not.toBeNull();
+    const transform = sensorNode.getAttribute('transform');
+    const match = transform.match(/translate\(([\d.-]+)[,\s]+([\d.-]+)\)/);
+    expect(match).not.toBeNull();
+    const sensorY = Number(match[2]);
+
+    // The sensor must remain exactly 30px above the pipe (pipeY - sensorY === 30), NOT far away!
+    expect(pipeY - sensorY).toBe(30);
+  });
+
+  it('hides anchor dot connection lines in runtime mode (final show) and displays them when modifying in editor mode', () => {
+    let actions;
+    const testPipes = [
+      {
+        id: 'test_pipe_show',
+        points: [{ x: 100, y: 100 }, { x: 400, y: 100 }],
+        d: 'M 100,100 L 400,100',
+        w: 20
+      }
+    ];
+
+    const testElements = [
+      {
+        id: 'anchored_item_show',
+        type: 'compressor',
+        name: 'Compressor 1',
+        x: 250,
+        y: 50,
+        w: 100,
+        h: 80,
+        attachedPipeId: 'test_pipe_show',
+        pipeT: 0.5,
+        pipeOffsetX: 0,
+        pipeOffsetY: -50
+      }
+    ];
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={testElements}
+        initialPipes={testPipes}
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    // 1. In runtime mode (final show): anchor dotted lines MUST NOT be rendered
+    expect(container.querySelector('.element-anchor-line')).toBeNull();
+
+    // 2. Switch to editor mode (modify scape)
+    act(() => {
+      actions.setScapeMode('editor');
+    });
+
+    // In editor mode (when modifying): anchor dotted line is rendered so user can see and adjust attachment
+    expect(container.querySelector('.element-anchor-line')).not.toBeNull();
+
+    // 3. Switch back to runtime mode (final show): anchor dotted lines are hidden again
+    act(() => {
+      actions.setScapeMode('runtime');
+    });
+    expect(container.querySelector('.element-anchor-line')).toBeNull();
   });
 
   it('switches between Current Scape runtime and Scape Builder editor seamlessly', () => {
@@ -1849,14 +2057,14 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
         initialMode="editor"
         initialElements={[
           { id: 'el_keep', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 },
-          { id: 'el_delete_me', type: 'sensor_card', tag: 'S403 Delete', x: 300, y: 100, w: 120, h: 60, channels: [{ id: 'c1', name: 'Flow' }] }
+          { id: 'el_delete_me', type: 'tank_buffer', tag: 'Tank Delete', x: 300, y: 100, w: 120, h: 60 }
         ]}
         onRegisterActions={(a) => { actions = a; }}
       />
     );
 
-    // Select the card to delete
-    const deleteNode = container.querySelector('[data-element-id="el_delete_me"]') || container.querySelector('.sensor-badge-group');
+    // Select the asset to delete
+    const deleteNode = container.querySelector('[data-node-id="el_delete_me"]');
     expect(deleteNode).not.toBeNull();
     fireEvent.click(deleteNode);
 
@@ -1866,7 +2074,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     fireEvent.click(deleteBtn);
 
     // The element should be removed from view
-    expect(container.textContent).not.toContain('S403 Delete');
+    expect(container.textContent).not.toContain('Tank Delete');
 
     // Trigger save and exit editor
     act(() => {
@@ -1909,7 +2117,17 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     unmount();
 
-    // 2. Now user creates a real location in the system
+    // 2. Clicking dismiss button (✕) dismisses the demo notice
+    const { container: containerDismissable } = render(
+      <ProcessScapeView initialMode="runtime" />
+    );
+    expect(containerDismissable.querySelector('.ps-example-demo-banner')).not.toBeNull();
+    const dismissBtn = containerDismissable.querySelector('.ps-example-demo-dismiss-btn');
+    expect(dismissBtn).not.toBeNull();
+    fireEvent.click(dismissBtn);
+    expect(containerDismissable.querySelector('.ps-example-demo-banner')).toBeNull();
+
+    // 3. Now user creates a real location in the system
     saveLocations([{
       id: 'loc_real_1',
       name: 'Real Compressor Station',
@@ -1925,6 +2143,629 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     // Once a real location exists, the example demo notice banner is GONE
     expect(containerWithLocation.querySelector('.ps-example-demo-banner')).toBeNull();
+
+    // 4. Also, if a real scape exists (even without locations), the example demo banner is GONE
+    window.localStorage.clear();
+    createNewScape('Custom Factory Scape');
+    const { container: containerWithScape } = render(
+      <ProcessScapeView initialMode="runtime" />
+    );
+    expect(containerWithScape.querySelector('.ps-example-demo-banner')).toBeNull();
+  });
+
+  it('SensorManagerModal provides Auto Detect LAN mode to probe subnet and batch import multiple devices with checkboxes', async () => {
+    // Mock lanScanner.scanLanRange
+    const mockDiscovered = [
+      {
+        id: 'dev_192.168.5.28',
+        ip: '192.168.5.28',
+        port: 8080,
+        transport: 'API',
+        name: 'SUTO S332 Main Station',
+        serial: 'SN-332001',
+        firmware: '1.0.3-Atlas11',
+        channelCount: 3,
+        channels: [
+          { channelid: 1, channeldescription: 'Dew point', Unitascii: '°C Td' },
+          { channelid: 2, channeldescription: 'Temperature', Unitascii: '°C' },
+          { channelid: 3, channeldescription: 'Flow', Unitascii: 'm³/h' }
+        ]
+      },
+      {
+        id: 'dev_192.168.5.29',
+        ip: '192.168.5.29',
+        port: 8080,
+        transport: 'API',
+        name: 'SUTO S332 Dryer Station',
+        serial: 'SN-332002',
+        firmware: '1.0.3-Atlas11',
+        channelCount: 2,
+        channels: [
+          { channelid: 1, channeldescription: 'Humidity', Unitascii: '%rH' },
+          { channelid: 2, channeldescription: 'Pressure', Unitascii: 'bar' }
+        ]
+      }
+    ];
+
+    const broadcastSpy = vi.spyOn(lanScannerModule, 'discoverDevicesViaBroadcast').mockImplementation(async (opts) => {
+      for (const dev of mockDiscovered) {
+        opts.onDeviceFound(dev);
+      }
+      return mockDiscovered;
+    });
+
+    window.__TAURI_INTERNALS__ = { invoke: vi.fn() };
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // 1. Click "Detect" button in SensorManager header to open DeviceConnectModal
+    const detectBtn = Array.from(container.querySelectorAll('button')).find(
+      b => b.textContent.includes('Detect')
+    );
+    expect(detectBtn).not.toBeUndefined();
+    fireEvent.click(detectBtn);
+
+    // Switch to Ethernet TCP tab and select Auto Detect
+    const tcpTab = Array.from(document.querySelectorAll('.modal-tab-btn')).find(
+      t => t.textContent.includes('Ethernet TCP') || t.textContent.includes('Ethernet')
+    );
+    expect(tcpTab).not.toBeUndefined();
+    fireEvent.click(tcpTab);
+
+    const autoModeBtn = Array.from(document.querySelectorAll('.lan-detect-mode-btn')).find(
+      b => b.textContent.includes('Auto Detect')
+    );
+    expect(autoModeBtn).not.toBeUndefined();
+    fireEvent.click(autoModeBtn);
+
+    // DeviceConnectModal shows Auto Detect section active
+    expect(document.querySelector('.lan-auto-detect-section')).not.toBeNull();
+    expect(document.querySelector('.lan-scan-btn')).not.toBeNull();
+
+    // 2. Click "Scan LAN"
+    const scanBtn = document.querySelector('.lan-scan-btn');
+    await act(async () => {
+      fireEvent.click(scanBtn);
+    });
+
+    expect(broadcastSpy).toHaveBeenCalled();
+
+    // Discovered devices are rendered in the list with checkboxes
+    const cards = document.querySelectorAll('.lan-device-card');
+    expect(cards.length).toBe(2);
+    expect(document.body.textContent).toContain('192.168.5.28');
+    expect(document.body.textContent).toContain('192.168.5.29');
+    expect(document.body.textContent).toContain('SUTO S332 Main Station');
+    expect(document.body.textContent).toContain('SUTO S332 Dryer Station');
+
+    // "Get Sensors (2 Devices)" button is visible
+    const getSensorsBtn = Array.from(document.querySelectorAll('button')).find(
+      b => b.textContent.includes('Get Sensors')
+    );
+    expect(getSensorsBtn).not.toBeUndefined();
+    expect(getSensorsBtn.textContent).toContain('2 Devices');
+
+    // 3. User unchecks the second device (192.168.5.29)
+    const checkboxes = document.querySelectorAll('.lan-device-checkbox');
+    expect(checkboxes.length).toBe(2);
+    fireEvent.click(checkboxes[1]);
+
+    // Now button shows 1 Device
+    expect(getSensorsBtn.textContent).toContain('1 Device');
+
+    // 4. Click "Get Sensors"
+    await act(async () => {
+      fireEvent.click(getSensorsBtn);
+    });
+
+    // Modal closes and device is added to SensorManagerModal's device tree
+    await waitFor(() => {
+      expect(document.querySelector('.device-connect-overlay')).toBeNull();
+    });
+
+    expect(container.textContent).toContain('SUTO S332 Main Station');
+  });
+
+  it('DeviceConnectModal in web mode shows only Bluetooth BLE tab without S332 API (Dev)', () => {
+    delete window.__TAURI_INTERNALS__;
+    delete window.__TAURI__;
+
+    const { container } = render(
+      <DeviceConnectModal
+        isOpen={true}
+        onClose={() => {}}
+        onConnected={() => {}}
+      />
+    );
+
+    const tabs = Array.from(container.querySelectorAll('.modal-tab-btn'));
+    expect(tabs.length).toBe(1);
+    expect(tabs[0].textContent).toContain('Bluetooth (BLE)');
+    expect(container.textContent).not.toContain('S332 API (Dev)');
+  });
+
+  it('renders sensor card with seamless zero-gap header and aligned channel columns (name left, value right, unit left)', () => {
+    const card = {
+      id: 'sensor_align_1',
+      tag: 'Air Compressor 1 / Discharge',
+      x: 200,
+      y: 200,
+      channels: [
+        { name: 'Pressure', val: 7.25, unit: 'bar' },
+        { name: 'Flow', val: 1240.8, unit: 'm³/h' }
+      ]
+    };
+
+    const svgNode = renderSensorCard(card);
+    expect(svgNode).not.toBeNull();
+
+    // 1. Verify zero space between header badge and card body
+    const cardBorder = svgNode.querySelector('.sensor-card-border');
+    const badge = svgNode.querySelector('.badge-rect');
+    expect(cardBorder).not.toBeNull();
+    expect(badge).not.toBeNull();
+
+    // 2. Channel names have text-anchor="start" (align left)
+    const nameTexts = Array.from(svgNode.querySelectorAll('text')).filter(t => t.textContent.includes(':'));
+    expect(nameTexts.length).toBe(2);
+    expect(nameTexts[0].textContent).toBe('Pressure:');
+    expect(nameTexts[0].getAttribute('text-anchor')).toBe('start');
+    expect(nameTexts[1].textContent).toBe('Flow:');
+    expect(nameTexts[1].getAttribute('text-anchor')).toBe('start');
+    // Both start at the same X
+    expect(nameTexts[0].getAttribute('x')).toBe(nameTexts[1].getAttribute('x'));
+
+    // 3. Channel values have text-anchor="end" (align right)
+    const valTexts = Array.from(svgNode.querySelectorAll('text')).filter(t => t.textContent === '7.25' || t.textContent === '1240.8');
+    expect(valTexts.length).toBe(2);
+    expect(valTexts[0].getAttribute('text-anchor')).toBe('end');
+    expect(valTexts[1].getAttribute('text-anchor')).toBe('end');
+    // Both end at the exact same X
+    expect(valTexts[0].getAttribute('x')).toBe(valTexts[1].getAttribute('x'));
+
+    // 4. Channel units have text-anchor="start" (align left)
+    const unitTexts = Array.from(svgNode.querySelectorAll('text')).filter(t => t.textContent === 'bar' || t.textContent === 'm³/h');
+    expect(unitTexts.length).toBe(2);
+    expect(unitTexts[0].getAttribute('text-anchor')).toBe('start');
+    expect(unitTexts[1].getAttribute('text-anchor')).toBe('start');
+    // Both start at the exact same X
+    expect(unitTexts[0].getAttribute('x')).toBe(unitTexts[1].getAttribute('x'));
+  });
+
+  it('hides sensor mode cards in editor mode and displays them in runtime mode', () => {
+    const testElements = [
+      { id: 'el_comp', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 },
+      { id: 'el_sensor_card', type: 'sensor_card', tag: 'S403 Flow', x: 200, y: 200, channels: [{ id: 'c1', name: 'Flow', val: 120, unit: 'm³/h' }] }
+    ];
+
+    // In editor mode: sensor cards are hidden to keep diagram editing clean
+    const { container: editorContainer } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={testElements}
+      />
+    );
+    expect(editorContainer.querySelector('[data-node-id="el_comp"]')).not.toBeNull();
+    expect(editorContainer.querySelector('[data-card-id="el_sensor_card"]')).toBeNull();
+    expect(editorContainer.querySelector('.sensor-badge-group')).toBeNull();
+
+    // In runtime mode: sensor cards are rendered for live monitoring
+    const { container: runtimeContainer } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={testElements}
+      />
+    );
+    expect(runtimeContainer.querySelector('[data-node-id="el_comp"]')).not.toBeNull();
+    expect(runtimeContainer.querySelector('[data-card-id="el_sensor_card"]')).not.toBeNull();
+  });
+
+  it('supports proportional scaling slider for equipment items in inspector', () => {
+    const testElements = [
+      { id: 'el_comp', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 170, h: 140 }
+    ];
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={testElements}
+      />
+    );
+
+    // Select the machine
+    const compNode = container.querySelector('[data-node-id="el_comp"]');
+    expect(compNode).not.toBeNull();
+    fireEvent.click(compNode);
+
+    // Inspector should show the Device Size slider
+    const scaleSlider = container.querySelector('#itemScaleSlider');
+    expect(scaleSlider).not.toBeNull();
+    expect(scaleSlider.value).toBe('100'); // Default 100%
+
+    // Scale up to 150%
+    fireEvent.change(scaleSlider, { target: { value: '150' } });
+
+    // Slider value should now reflect 150%
+    expect(scaleSlider.value).toBe('150');
+    expect(container.textContent).toContain('150%');
+
+    // Pipeline Anchor Binding block should be removed
+    expect(container.textContent).not.toContain('Pipeline Anchor Binding');
+  });
+
+  it('renders asset with scale wrapper in renderAssetNode when scale is customized', () => {
+    const node = {
+      id: 'tank_1',
+      type: 'tank_buffer',
+      x: 100,
+      y: 100,
+      scale: 1.5
+    };
+    const rendered = renderAssetNode(node);
+    const wrapper = rendered.querySelector('.asset-scale-wrapper');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper.getAttribute('transform')).toBe('scale(1.5)');
+  });
+
+  it('keeps equipment tag font size constant on screen regardless of scale', () => {
+    const comp1 = {
+      id: 'comp_1',
+      type: 'machine_compressor',
+      x: 100,
+      y: 100,
+      scale: 1.0,
+      tag: 'Air Compressor'
+    };
+    const comp15 = {
+      id: 'comp_15',
+      type: 'machine_compressor',
+      x: 100,
+      y: 100,
+      scale: 1.5,
+      tag: 'Air Compressor'
+    };
+    const rendered1 = renderAssetNode(comp1);
+    const rendered15 = renderAssetNode(comp15);
+
+    const txt1 = Array.from(rendered1.querySelectorAll('text')).find(t => t.textContent === 'Air Compressor');
+    const txt15 = Array.from(rendered15.querySelectorAll('text')).find(t => t.textContent === 'Air Compressor');
+
+    expect(txt1).not.toBeNull();
+    expect(txt15).not.toBeNull();
+    expect(parseFloat(txt1.getAttribute('font-size'))).toBe(12);
+    // At scale 1.5, font-size is 12 / 1.5 = 8 so when scaled by 1.5 it renders at 12px ("text is text")
+    expect(parseFloat(txt15.getAttribute('font-size'))).toBe(8);
+  });
+
+  it('allows equipment tag to be null or empty string without rendering text', () => {
+    const emptyComp = {
+      id: 'comp_empty',
+      type: 'machine_compressor',
+      x: 100,
+      y: 100,
+      tag: '' // explicitly empty
+    };
+    const nullTank = {
+      id: 'tank_null',
+      type: 'tank_horizontal',
+      x: 200,
+      y: 200,
+      tag: null // explicitly null
+    };
+    const renderedComp = renderAssetNode(emptyComp);
+    const renderedTank = renderAssetNode(nullTank);
+
+    expect(renderedComp.textContent).not.toContain('Air Compressor');
+    expect(renderedTank.textContent).not.toContain('Horiz Tank');
+  });
+
+  it('uses finer 2px snap step for high precision dragging', () => {
+    // Default snap step is now 2
+    expect(snap(10.4)).toBe(10);
+    expect(snap(11.2)).toBe(12);
+    expect(snap(11.9)).toBe(12);
+    expect(snap(13.1)).toBe(14);
+  });
+
+  it('correctly tracks assigned channels for a device and unassigns them upon deletion', () => {
+    const testDev = {
+      id: 'dev_test_s403',
+      name: 'SUTO S403 Multi-Parameter',
+      transport: 'Ethernet (192.168.1.100)',
+      transportType: 'tcp',
+      connectionConfig: {
+        transport: 'tcp',
+        host: '192.168.1.100',
+        port: 502
+      },
+      sensors: [
+        {
+          id: 'sens_s403',
+          name: 'S403',
+          channels: [
+            { id: 'ch_s403_flow', channel_id: 1, name: 'Flow', unit: 'm³/h', device: 'SUTO S403 Multi-Parameter' },
+            { id: 'ch_s403_press', channel_id: 2, name: 'Pressure', unit: 'bar', device: 'SUTO S403 Multi-Parameter' }
+          ]
+        }
+      ]
+    };
+
+    const testLocations = [
+      {
+        id: 'loc_main',
+        name: 'Main Plant',
+        scapeId: 'scape_default',
+        measurementPoints: [
+          {
+            id: 'mp_1',
+            name: 'Inlet Point',
+            channels: [
+              { id: 'ch_s403_flow', channel_id: 1, name: 'Flow', unit: 'm³/h', device: 'SUTO S403 Multi-Parameter' }
+            ]
+          }
+        ]
+      }
+    ];
+
+    // 1. getDeviceChannelAssignments finds the active assignment
+    const assignments = getDeviceChannelAssignments(testDev, testLocations);
+    expect(assignments.length).toBe(1);
+    expect(assignments[0].channelName).toBe('Flow');
+    expect(assignments[0].locationName).toBe('Main Plant');
+    expect(assignments[0].mpName).toBe('Inlet Point');
+
+    // 2. Setup localStorage and test removeDeviceAndUnassignChannels
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([testDev]));
+    localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify(testLocations));
+
+    const result = removeDeviceAndUnassignChannels(testDev.id);
+    expect(result.unassignedCount).toBe(1);
+    expect(result.updatedDevices.length).toBe(0);
+    expect(result.updatedLocations[0].measurementPoints[0].channels.length).toBe(0);
+
+    // Verify localStorage was updated
+    expect(getSavedDevices().length).toBe(0);
+    expect(getLocations()[0].measurementPoints[0].channels.length).toBe(0);
+  });
+
+  it('auto-reconnects to saved devices on startup or refresh', async () => {
+    const savedTcpDev = {
+      id: 'dev_reconnect_tcp',
+      name: 'Plant Flow Sensor',
+      transport: 'Ethernet (192.168.1.200)',
+      transportType: 'tcp',
+      connectionConfig: {
+        transport: 'tcp',
+        host: '192.168.1.200',
+        port: 502
+      },
+      sensors: []
+    };
+
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([savedTcpDev]));
+
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockResolvedValue({
+      transport: 'TCP',
+      host: '192.168.1.200',
+      port: 502
+    });
+    const isConnectedSpy = vi.spyOn(TauriSutoAPI, 'isConnected').mockReturnValue(false);
+
+    const res = await autoReconnectSavedDevices();
+    expect(res.reconnected).toBe(true);
+    expect(res.transport).toBe('TCP');
+    expect(connectTcpSpy).toHaveBeenCalledWith('192.168.1.200', 502);
+
+    connectTcpSpy.mockRestore();
+    isConnectedSpy.mockRestore();
+  });
+
+  it('prompts confirmation warning when deleting a device with assigned channels in SensorManagerModal', async () => {
+    const testDev = {
+      id: 'dev_modal_test',
+      name: 'Active Plant Sensor',
+      transport: 'Ethernet (192.168.1.50)',
+      transportType: 'api',
+      sensors: [
+        {
+          id: 'sens_modal',
+          name: 'Sensor 1',
+          channels: [
+            { id: 'ch_modal_1', channel_id: 10, name: 'Dew Point', unit: '°Ctd', device: 'Active Plant Sensor' }
+          ]
+        }
+      ]
+    };
+
+    const testLocations = [
+      {
+        id: 'loc_comp',
+        name: 'Compressor Room',
+        scapeId: 'scape_default',
+        measurementPoints: [
+          {
+            id: 'mp_comp',
+            name: 'Dryer Output',
+            channels: [
+              { id: 'ch_modal_1', channel_id: 10, name: 'Dew Point', unit: '°Ctd', device: 'Active Plant Sensor' }
+            ]
+          }
+        ]
+      }
+    ];
+
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([testDev]));
+    localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify(testLocations));
+
+    const disconnectSpy = vi.spyOn(TauriSutoAPI, 'disconnect').mockResolvedValue(true);
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        onSyncToScape={() => {}}
+      />
+    );
+
+    // Find the delete button on the device header
+    const delBtn = container.querySelector('.ps-sm-device-del-btn');
+    expect(delBtn).not.toBeNull();
+
+    // Click remove device button
+    fireEvent.click(delBtn);
+
+    // Verify confirmation modal with warning banner is displayed
+    const confirmModal = container.querySelector('.ps-sm-confirm-dialog');
+    expect(confirmModal).not.toBeNull();
+    expect(confirmModal.textContent).toContain('Remove Sensor Device');
+    expect(confirmModal.textContent).toContain('Active Channels in Use');
+    expect(confirmModal.textContent).toContain('Dew Point');
+    expect(confirmModal.textContent).toContain('Compressor Room');
+    expect(confirmModal.textContent).toContain('Dryer Output');
+
+    // Confirm deletion
+    const confirmDeleteBtn = confirmModal.querySelector('.ps-sm-btn.danger');
+    expect(confirmDeleteBtn).not.toBeNull();
+    expect(confirmDeleteBtn.textContent).toContain('Unassign & Delete Device');
+
+    await act(async () => {
+      fireEvent.click(confirmDeleteBtn);
+    });
+
+    // Connection should be disconnected
+    expect(disconnectSpy).toHaveBeenCalled();
+
+    // Confirmation modal should close
+    expect(container.querySelector('.ps-sm-confirm-dialog')).toBeNull();
+
+    // Left side list should no longer show the device
+    expect(container.textContent).toContain('No Sensors Collected Yet');
+
+    disconnectSpy.mockRestore();
+  });
+
+  it('supports DND with memory fallback when e.dataTransfer.getData is empty in app mode', async () => {
+    const testDev = {
+      id: 'dev_dnd_test',
+      name: 'Pressure Sensor',
+      transport: 'USB',
+      transportType: 'usb',
+      sensors: [
+        {
+          id: 'sens_press',
+          name: 'S401',
+          channels: [
+            { id: 'ch_press_1', channel_id: 1, name: 'Pressure High', unit: 'bar', device: 'Pressure Sensor' }
+          ]
+        }
+      ]
+    };
+
+    const testLocations = [
+      {
+        id: 'loc_dnd',
+        name: 'Boiler Room',
+        scapeId: 'scape_default',
+        measurementPoints: []
+      }
+    ];
+
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([testDev]));
+    localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify(testLocations));
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        onSyncToScape={() => {}}
+      />
+    );
+
+    // 1. Drag start sets window.__ps_active_drag
+    const chItem = container.querySelector('.ps-sm-channel-item');
+    expect(chItem).not.toBeNull();
+
+    fireEvent.dragStart(chItem, {
+      dataTransfer: {
+        setData: () => {},
+        effectAllowed: 'all'
+      }
+    });
+
+    expect(window.__ps_active_drag).not.toBeNull();
+    expect(window.__ps_active_drag.name).toBe('Pressure High');
+
+    // 2. Drop target simulates Tauri WebKit where dataTransfer.getData returns ""
+    const dropzone = container.querySelector('.ps-sm-loc-empty-dropzone');
+    expect(dropzone).not.toBeNull();
+
+    fireEvent.drop(dropzone, {
+      dataTransfer: {
+        getData: () => '' // Tauri WebKit empty string
+      }
+    });
+
+    // Should successfully create measurement point using fallback payload
+    expect(container.textContent).toContain('Pressure High');
+    expect(container.textContent).toContain('✓ Assigned');
+  });
+
+  it('provides quick-assign (+ Assign) to bind channels directly without dragging', async () => {
+    const testDev = {
+      id: 'dev_quick_assign',
+      name: 'Flow Meter',
+      transport: 'TCP',
+      transportType: 'tcp',
+      sensors: [
+        {
+          id: 'sens_flow',
+          name: 'S401 Flow',
+          channels: [
+            { id: 'ch_quick_1', channel_id: 5, name: 'Flow Rate', unit: 'm³/h', device: 'Flow Meter' }
+          ]
+        }
+      ]
+    };
+
+    const testLocations = [
+      {
+        id: 'loc_quick',
+        name: 'Header Room',
+        scapeId: 'scape_default',
+        measurementPoints: [
+          {
+            id: 'mp_quick_1',
+            name: 'Main Pipe',
+            channels: []
+          }
+        ]
+      }
+    ];
+
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([testDev]));
+    localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify(testLocations));
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        onSyncToScape={() => {}}
+      />
+    );
+
+    const assignBtn = container.querySelector('.ps-sm-quick-assign-btn');
+    expect(assignBtn).not.toBeNull();
+    expect(assignBtn.textContent).toContain('+ Assign');
+
+    fireEvent.click(assignBtn);
+
+    // Channel is now assigned to the measurement point
+    expect(container.textContent).toContain('✓ Assigned');
   });
 });
 

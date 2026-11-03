@@ -41,6 +41,16 @@ export const TauriSutoAPI = {
     return activeTransport;
   },
 
+  isConnected() {
+    if (activeTransport === 'API') {
+      return Boolean(ApiDevice && ApiDevice.connected);
+    }
+    if (activeTransport === 'BLE_WEB') {
+      return Boolean(BleSutoAPI && BleSutoAPI.isConnected && BleSutoAPI.isConnected());
+    }
+    return Boolean(activeTransport && hasTauri());
+  },
+
   getCapabilities() {
     if (activeTransport === 'API') {
       return ApiDevice.getCapabilities();
@@ -110,6 +120,21 @@ export const TauriSutoAPI = {
       device: sInfo?.device_name,
       serial: sInfo?.serial_number,
     };
+  },
+
+  /**
+   * Discover Ethernet devices via CSLib UDP broadcast command (A1 15 02 00 00 FF to port 8800).
+   * Listens for 25-byte UDP response datagrams from SUTO Ethernet / iPort devices on the LAN.
+   */
+  async discoverEthernetBroadcast({ timeoutMs = 1500, subnetBroadcast } = {}) {
+    await this.logClientEvent('INFO', 'UDP_DISC', `Initiating CSLib UDP broadcast discovery (port 8800)...`);
+    if (!hasTauri()) {
+      return [];
+    }
+    return await invoke('suto_discover_ethernet_broadcast', {
+      timeoutMs,
+      subnetBroadcast: subnetBroadcast || null
+    });
   },
 
   /** List available BLE devices in Desktop mode */

@@ -37,6 +37,52 @@ export function getCardChannels(card) {
   return [];
 }
 
+// Render equipment tag label with constant visual font size regardless of equipment scale ("text is text")
+// Supports empty string or null to render nothing
+export function renderEquipmentTag(g, node, x, y, theme, defaultTag, extraAttrs = {}) {
+  // If tag is explicitly empty or null, do not render any tag text
+  if (node.tag === '' || node.tag === null) {
+    return null;
+  }
+  const tagText = (node.tag !== undefined) ? node.tag : defaultTag;
+  if (!tagText) return null;
+
+  const scale = (typeof node.scale === 'number' && node.scale > 0) ? node.scale : 1;
+  const baseFontSize = extraAttrs['font-size'] || 11;
+  // Keep constant visual font size on screen regardless of equipment scale ("text is text")
+  const effectiveFontSize = Math.round((baseFontSize / scale) * 100) / 100;
+
+  let adjustedY = y;
+  if (!extraAttrs.inside && typeof y === 'number') {
+    const baseH = node.h || 100;
+    const gap = 16;
+    if (y > 20) {
+      adjustedY = (baseH / 2) + (gap / scale);
+    } else if (y < -20) {
+      adjustedY = -(baseH / 2) - (gap / scale);
+    }
+  }
+
+  const { inside, ...domAttrs } = extraAttrs;
+
+  const attrs = {
+    x,
+    y: adjustedY,
+    'text-anchor': 'middle',
+    'font-size': effectiveFontSize,
+    'font-weight': 700,
+    fill: (theme?.id === 'white' || theme?.id === 'yellow') ? '#0f172a' : (theme?.dark || '#475569'),
+    'font-family': 'sans-serif',
+    ...domAttrs,
+    'font-size': effectiveFontSize
+  };
+
+  const tag = svgEl('text', attrs);
+  tag.textContent = tagText;
+  g.appendChild(tag);
+  return tag;
+}
+
 // --- SVG Asset Illustrators (Clean Flat Solid Colors, Zero Gradients) ---
 
 export function drawBufferTank(node) {
@@ -61,12 +107,12 @@ export function drawBufferTank(node) {
   g.appendChild(svgEl('line', { x1: 0, y1: h/2 - 35, x2: 0, y2: h/2 - 15, stroke: theme.dark, 'stroke-width': 4 }));
   g.appendChild(svgEl('circle', { cx: 0, cy: h/2 - 15, r: 6, fill: theme.dark }));
 
-  const tag = svgEl('text', {
-    x: 0, y: -h/2 + 55, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700,
-    fill: (theme.id === 'white' || theme.id === 'yellow') ? '#0f172a' : '#ffffff', 'font-family': 'sans-serif', 'letter-spacing': '1px'
+  renderEquipmentTag(g, node, 0, -h/2 + 55, theme, 'Air Receiver', {
+    inside: true,
+    'font-size': 13,
+    fill: (theme.id === 'white' || theme.id === 'yellow') ? '#0f172a' : '#ffffff',
+    'letter-spacing': '1px'
   });
-  tag.textContent = node.tag || 'Air Receiver';
-  g.appendChild(tag);
   return g;
 }
 
@@ -98,12 +144,7 @@ export function drawCylinderBank(node) {
     fill: '#cbd5e1', stroke: '#94a3b8'
   }));
 
-  const lbl = svgEl('text', {
-    x: 0, y: cylH / 2 + 18, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700,
-    fill: theme.dark, 'font-family': 'sans-serif'
-  });
-  lbl.textContent = node.tag || 'Air Cylinders';
-  g.appendChild(lbl);
+  renderEquipmentTag(g, node, 0, cylH / 2 + 18, theme, 'Air Cylinders', { 'font-size': 13, fill: theme.dark });
   return g;
 }
 
@@ -127,12 +168,7 @@ export function drawCNCMachine(node) {
   g.appendChild(svgEl('rect', { x: -w / 2 + 10, y: h / 2, width: 20, height: 8, fill: '#0f172a' }));
   g.appendChild(svgEl('rect', { x: w / 2 - 30, y: h / 2, width: 20, height: 8, fill: '#0f172a' }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 22, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Consumer';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 22, theme, 'Consumer', { 'font-size': 12, 'font-weight': 600, fill: '#475569' });
   return g;
 }
 
@@ -162,12 +198,7 @@ export function drawRobotCell(node) {
 
   g.appendChild(svgEl('rect', { x: -85, y: 34, width: 170, height: 6, rx: 2, fill: '#334155' }));
 
-  const tag = svgEl('text', {
-    x: 0, y: 56, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Consumer';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, 56, null, 'Consumer', { 'font-size': 12, 'font-weight': 600, fill: '#475569' });
   return g;
 }
 
@@ -235,12 +266,7 @@ export function drawHorizontalTank(node) {
     x: -26, y: -2, width: 52, height: 10, rx: 2, fill: theme.light
   }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Horiz Tank';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Horiz Tank', { 'font-size': 12, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -286,12 +312,7 @@ export function drawCryogenicTank(node) {
     d: `M -8,${-bodyH / 2 - 16} L 8,${-bodyH / 2 - 16} L 0,${-bodyH / 2 - 24} Z`, fill: '#ef4444'
   }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 18, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700,
-    fill: theme.main, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Cryo Tank';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 18, theme, 'Cryo Tank', { 'font-size': 12, fill: theme.main });
   return g;
 }
 
@@ -331,12 +352,7 @@ export function drawSphericalTank(node) {
     d: `M -6,${cy - r - 18} L 6,${cy - r - 18} L 0,${cy - r - 26} Z`, fill: '#ef4444'
   }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Sphere Tank';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Sphere Tank', { 'font-size': 12, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -367,12 +383,7 @@ export function drawSeparatorTank(node) {
     x1: 0, y1: drainY + 20, x2: 0, y2: drainY + 28, stroke: theme.main, 'stroke-width': 3
   }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Separator';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Separator', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -430,12 +441,7 @@ export function drawCompressor(node) {
   g.appendChild(svgEl('rect', { x: -w / 2 + 14, y: h / 2 - 14, width: 24, height: 8, rx: 1, fill: '#0f172a' }));
   g.appendChild(svgEl('rect', { x: w / 2 - 38, y: h / 2 - 14, width: 24, height: 8, rx: 1, fill: '#0f172a' }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Air Compressor';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Air Compressor', { 'font-size': 12, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -475,12 +481,7 @@ export function drawRefrigeratedDryer(node) {
     x1: -12, y1: -15, x2: 20, y2: -15, stroke: '#10b981', 'stroke-width': 1.5, 'stroke-linecap': 'round'
   }));
 
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Air Dryer';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Air Dryer', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -626,12 +627,7 @@ export function drawChiller(node) {
   g.appendChild(svgEl('circle', { cx: baseW / 2 + 8, cy: baseY + 27, r: 3, fill: '#94a3b8' }));
 
   // Equipment Label
-  const tag = svgEl('text', {
-    x: 0, y: baseY + baseH + 20, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Industrial Chiller';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, baseY + baseH + 20, theme, 'Industrial Chiller', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -699,12 +695,7 @@ export function drawInlineFilter(node) {
   }));
 
   // Label
-  const fTag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  fTag.textContent = node.tag || 'Air Filter';
-  g.appendChild(fTag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Air Filter', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -761,12 +752,7 @@ export function drawBoosterPump(node) {
   g.appendChild(svgEl('line', { x1: pumpCX + 14, y1: -h / 2 + 6, x2: pumpCX + 17, y2: -h / 2 + 3, stroke: '#ef4444', 'stroke-width': 1 }));
 
   // Label
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Booster Pump';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Booster Pump', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -848,12 +834,7 @@ export function drawPistonCompressor(node) {
   }));
 
   // Label
-  const pTag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  pTag.textContent = node.tag || 'Piston Compressor';
-  g.appendChild(pTag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Piston Compressor', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -916,12 +897,7 @@ export function drawFilterBank(node) {
   });
 
   // Label
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: theme.id === 'white' ? '#475569' : theme.dark, 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Filter Bank';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Filter Bank', { 'font-size': 11, fill: theme.id === 'white' ? '#475569' : theme.dark });
   return g;
 }
 
@@ -968,12 +944,7 @@ export function drawLaserCutter(node) {
   }));
 
   // Label
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#f59e0b', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Laser Cutter';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Laser Cutter', { 'font-size': 11, fill: '#f59e0b' });
   return g;
 }
 
@@ -1026,12 +997,7 @@ export function drawInjectionMolder(node) {
   }));
 
   // Label
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Injection Unit';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 16, theme, 'Injection Unit', { 'font-size': 11, fill: '#475569' });
   return g;
 }
 
@@ -1091,12 +1057,7 @@ export function drawTwinTowerDryer(node) {
   }));
 
   // Label
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 14, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Twin Towers';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 14, theme, 'Twin Towers', { 'font-size': 11, fill: '#475569' });
   return g;
 }
 
@@ -1294,12 +1255,7 @@ export function drawStationaryDisplay(node) {
   });
 
   // 7. Label
-  const tag = svgEl('text', {
-    x: 0, y: h / 2 + 36, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Stationary Display';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, h / 2 + 36, null, 'Stationary Display', { 'font-size': 11, fill: '#475569' });
 
   return g;
 }
@@ -1512,12 +1468,7 @@ export function drawCase(node) {
   }));
 
   // 9. Label
-  const tag = svgEl('text', {
-    x: 0, y: baseY + baseH + 22, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Portable Logger';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, baseY + baseH + 22, null, 'Portable Logger', { 'font-size': 11, fill: '#475569' });
 
   return g;
 }
@@ -1639,12 +1590,7 @@ export function drawDewPointMeter(node) {
   });
 
   // 10. Tag / Label (Shown at top of sensor)
-  const tag = svgEl('text', {
-    x: 0, y: -64, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Dew Point Meter';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, -64, null, 'Dew Point Meter', { 'font-size': 11, fill: '#475569' });
 
   return g;
 }
@@ -1763,12 +1709,7 @@ export function drawLeakDetector(node) {
   g.appendChild(svgEl('circle', { cx: 0, cy: 51, r: 1, fill: '#09090b' }));
 
   // 6. Tag / Label
-  const tag = svgEl('text', {
-    x: 0, y: 68, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Leak Detection';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, 68, null, 'Leak Detection', { 'font-size': 11, fill: '#475569' });
 
   return g;
 }
@@ -1968,12 +1909,7 @@ export function drawCompactFlowMeter(node) {
   }));
 
   // 6. Tag / Label
-  const tag = svgEl('text', {
-    x: 0, y: 40, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Compact Flow';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, 40, null, 'Compact Flow', { 'font-size': 11, fill: '#475569' });
 
   return g;
 }
@@ -2095,12 +2031,7 @@ export function drawFlowMeter(node) {
   }));
 
   // 8. Tag / Label (Shown at top of sensor)
-  const tag = svgEl('text', {
-    x: 0, y: -80, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
-    fill: '#475569', 'font-family': 'sans-serif'
-  });
-  tag.textContent = node.tag || 'Flow Meter';
-  g.appendChild(tag);
+  renderEquipmentTag(g, node, 0, -80, null, 'Flow Meter', { 'font-size': 11, fill: '#475569' });
 
   return g;
 }
@@ -2174,14 +2105,7 @@ export function drawBrickWallH(node) {
 
   g.appendChild(renderBrickMasonry(-w / 2, -h / 2, w, h, { brickW: 14, brickH: 7, mortar: 1 }));
 
-  if (node.tag) {
-    const txt = svgEl('text', {
-      x: 0, y: h / 2 + 13, 'text-anchor': 'middle', 'font-size': 9, 'font-weight': 700,
-      fill: '#64748b', 'font-family': 'sans-serif'
-    });
-    txt.textContent = node.tag;
-    g.appendChild(txt);
-  }
+  renderEquipmentTag(g, node, 0, h / 2 + 13, null, '', { 'font-size': 9, fill: '#64748b' });
   return g;
 }
 
@@ -2193,14 +2117,7 @@ export function drawBrickWallV(node) {
 
   g.appendChild(renderBrickMasonry(-w / 2, -h / 2, w, h, { brickW: 14, brickH: 7, mortar: 1 }));
 
-  if (node.tag) {
-    const txt = svgEl('text', {
-      x: 0, y: h / 2 + 13, 'text-anchor': 'middle', 'font-size': 9, 'font-weight': 700,
-      fill: '#64748b', 'font-family': 'sans-serif'
-    });
-    txt.textContent = node.tag;
-    g.appendChild(txt);
-  }
+  renderEquipmentTag(g, node, 0, h / 2 + 13, null, '', { 'font-size': 9, fill: '#64748b' });
   return g;
 }
 
@@ -2210,7 +2127,7 @@ export const drawMoistureSeparator = drawSeparatorTank;
 export const drawCncMachine = drawCNCMachine;
 
 // --- Node Renderer ---
-export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
+export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showAnchorLine = true) {
   const isSel = selectedIds.has(node.id);
 
   if (node.type === 'text_note') {
@@ -2228,8 +2145,8 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
     txtEl.textContent = node.text || 'Text Note';
     tG.appendChild(txtEl);
 
-    // Final dotted line connecting anchor point to the pipe branch
-    if (node.attachedPipeId && node.pipeT != null) {
+    // Dotted line connecting anchor point to the pipe branch (shown in modify/editor mode only)
+    if (showAnchorLine && node.attachedPipeId && node.pipeT != null) {
       const pipe = pipes.find(p => p.id === node.attachedPipeId);
       if (pipe) {
         const contactPt = getPointAlongPipe(pipe, node.pipeT);
@@ -2279,8 +2196,8 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
     transform: `translate(${node.x}, ${node.y})`
   });
 
-  // 1. Final dotted line for anchor point connecting to attached pipe branch
-  if (node.attachedPipeId && node.pipeT != null) {
+  // 1. Dotted line for anchor point connecting to attached pipe branch (shown in modify/editor mode only)
+  if (showAnchorLine && node.attachedPipeId && node.pipeT != null) {
     const pipe = pipes.find(p => p.id === node.attachedPipeId);
     if (pipe) {
       const contactPt = getPointAlongPipe(pipe, node.pipeT);
@@ -2303,43 +2220,55 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = []) {
   }
 
   // 2. Dispatch to equipment drawing functions (equipment rendered cleanly over lead line)
-  if (node.type === 'tank_buffer') g.appendChild(drawBufferTank(node));
-  else if (node.type === 'cylinder_bank') g.appendChild(drawCylinderBank(node));
-  else if (node.type === 'tank_horizontal') g.appendChild(drawHorizontalTank(node));
-  else if (node.type === 'tank_cryogenic') g.appendChild(drawCryogenicTank(node));
-  else if (node.type === 'tank_spherical') g.appendChild(drawSphericalTank(node));
-  else if (node.type === 'tank_separator') g.appendChild(drawSeparatorTank(node));
-  else if (node.type === 'tank_twin_tower') g.appendChild(drawTwinTowerDryer(node));
-  else if (node.type === 'machine_compressor') g.appendChild(drawCompressor(node));
-  else if (node.type === 'machine_compressor_piston') g.appendChild(drawPistonCompressor(node));
-  else if (node.type === 'machine_cnc') g.appendChild(drawCNCMachine(node));
-  else if (node.type === 'machine_robot') g.appendChild(drawRobotCell(node));
-  else if (node.type === 'machine_dryer') g.appendChild(drawRefrigeratedDryer(node));
-  else if (node.type === 'machine_chiller') g.appendChild(drawChiller(node));
-  else if (node.type === 'filter_line') g.appendChild(drawInlineFilter(node));
-  else if (node.type === 'filter_stage3') g.appendChild(drawFilterBank(node));
-  else if (node.type === 'machine_laser') g.appendChild(drawLaserCutter(node));
-  else if (node.type === 'machine_injection') g.appendChild(drawInjectionMolder(node));
-  else if (node.type === 'machine_pump') g.appendChild(drawBoosterPump(node));
-  else if (node.type === 'logger_cabinet') g.appendChild(drawCabinet(node));
-  else if (node.type === 'logger_case') g.appendChild(drawCase(node));
-  else if (node.type === 'leak_detector' || node.type === 'leak_detection') g.appendChild(drawLeakDetector(node));
-  else if (node.type === 'dewpoint_meter') g.appendChild(drawDewPointMeter(node));
-  else if (node.type === 'compact_flow_meter') g.appendChild(drawCompactFlowMeter(node));
-  else if (node.type === 'flow_meter') g.appendChild(drawFlowMeter(node));
-  else if (node.type === 'zone_ex') g.appendChild(drawExZone(node));
-  else if (node.type === 'wall_perimeter_h') g.appendChild(drawBrickWallH(node));
-  else if (node.type === 'wall_perimeter_v') g.appendChild(drawBrickWallV(node));
+  const def = ASSET_DEFS[node.type] || { w: 100, h: 100 };
+  const baseW = def.w || 100;
+  const baseH = def.h || 100;
+  const scale = (typeof node.scale === 'number' && node.scale > 0)
+    ? node.scale
+    : (node.w ? node.w / baseW : 1);
+  const w = Math.round(baseW * scale);
+  const h = Math.round(baseH * scale);
+
+  const baseNode = { ...node, w: baseW, h: baseH, scale };
+  const graphicGroup = svgEl('g', {
+    class: 'asset-scale-wrapper',
+    transform: scale !== 1 ? `scale(${scale})` : null
+  });
+
+  if (node.type === 'tank_buffer') graphicGroup.appendChild(drawBufferTank(baseNode));
+  else if (node.type === 'cylinder_bank') graphicGroup.appendChild(drawCylinderBank(baseNode));
+  else if (node.type === 'tank_horizontal') graphicGroup.appendChild(drawHorizontalTank(baseNode));
+  else if (node.type === 'tank_cryogenic') graphicGroup.appendChild(drawCryogenicTank(baseNode));
+  else if (node.type === 'tank_spherical') graphicGroup.appendChild(drawSphericalTank(baseNode));
+  else if (node.type === 'tank_separator') graphicGroup.appendChild(drawSeparatorTank(baseNode));
+  else if (node.type === 'tank_twin_tower') graphicGroup.appendChild(drawTwinTowerDryer(baseNode));
+  else if (node.type === 'machine_compressor') graphicGroup.appendChild(drawCompressor(baseNode));
+  else if (node.type === 'machine_compressor_piston') graphicGroup.appendChild(drawPistonCompressor(baseNode));
+  else if (node.type === 'machine_cnc') graphicGroup.appendChild(drawCNCMachine(baseNode));
+  else if (node.type === 'machine_robot') graphicGroup.appendChild(drawRobotCell(baseNode));
+  else if (node.type === 'machine_dryer') graphicGroup.appendChild(drawRefrigeratedDryer(baseNode));
+  else if (node.type === 'machine_chiller') graphicGroup.appendChild(drawChiller(baseNode));
+  else if (node.type === 'filter_line') graphicGroup.appendChild(drawInlineFilter(baseNode));
+  else if (node.type === 'filter_stage3') graphicGroup.appendChild(drawFilterBank(baseNode));
+  else if (node.type === 'machine_laser') graphicGroup.appendChild(drawLaserCutter(baseNode));
+  else if (node.type === 'machine_injection') graphicGroup.appendChild(drawInjectionMolder(baseNode));
+  else if (node.type === 'machine_pump') graphicGroup.appendChild(drawBoosterPump(baseNode));
+  else if (node.type === 'logger_cabinet') graphicGroup.appendChild(drawCabinet(baseNode));
+  else if (node.type === 'logger_case') graphicGroup.appendChild(drawCase(baseNode));
+  else if (node.type === 'leak_detector' || node.type === 'leak_detection') graphicGroup.appendChild(drawLeakDetector(baseNode));
+  else if (node.type === 'dewpoint_meter') graphicGroup.appendChild(drawDewPointMeter(baseNode));
+  else if (node.type === 'compact_flow_meter') graphicGroup.appendChild(drawCompactFlowMeter(baseNode));
+  else if (node.type === 'flow_meter') graphicGroup.appendChild(drawFlowMeter(baseNode));
+  else if (node.type === 'zone_ex') graphicGroup.appendChild(drawExZone(baseNode));
+  else if (node.type === 'wall_perimeter_h') graphicGroup.appendChild(drawBrickWallH(baseNode));
+  else if (node.type === 'wall_perimeter_v') graphicGroup.appendChild(drawBrickWallV(baseNode));
   else {
-    g.appendChild(drawCabinet(node));
+    graphicGroup.appendChild(drawCabinet(baseNode));
   }
+  g.appendChild(graphicGroup);
 
-  // 2. Selection frame & Anchor Handle appended LAST so they are rendered ON TOP of equipment
+  // 3. Selection frame & Anchor Handle appended LAST so they are rendered ON TOP of equipment
   if (isSel) {
-    const def = ASSET_DEFS[node.type] || { w: 100, h: 100 };
-    const w = node.w || def.w;
-    const h = node.h || def.h;
-
     // Selection dashed boundary
     g.appendChild(svgEl('rect', {
       x: -w / 2 - 6, y: -h / 2 - 6, width: w + 12, height: h + 12, rx: 6,
@@ -2411,71 +2340,122 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
 
   let maxNameLen = 4;
   let maxValLen = 4;
-  let maxUnitLen = 3;
+  let maxUnitLen = 0;
   channels.forEach(ch => {
     const nLen = (ch.name || '').length;
-    const vLen = String(ch.val !== undefined ? ch.val : '').length;
+    const vLen = String(ch.val !== undefined && ch.val !== null ? ch.val : '--').length;
     const uLen = (ch.unit || '').length;
     if (nLen > maxNameLen) maxNameLen = nLen;
     if (vLen > maxValLen) maxValLen = vLen;
     if (uLen > maxUnitLen) maxUnitLen = uLen;
   });
 
-  const nameColW = Math.max(56, maxNameLen * 8.2 + 14);
-  const valColW = Math.max(54, maxValLen * 9.6 + 12);
-  const unitColW = Math.max(36, maxUnitLen * 8.2 + 8);
+  const nameColW = Math.max(50, maxNameLen * 8.2 + 8);
+  const valColW = Math.max(46, maxValLen * 9.6 + 6);
+  const unitColW = maxUnitLen > 0 ? Math.max(28, maxUnitLen * 8.2 + 4) : 0;
   const isTop = card.titlePosition !== 'left';
   const rowH = 26;
   const channelsH = Math.max(34, numChannels * rowH + 10);
+
+  const minChannelsW = 24 + nameColW + valColW + (unitColW > 0 ? 6 + unitColW : 0) + 14;
 
   let totalW, totalH, badgeX, badgeY, badgeW, badgeH, panelX, panelY, panelW, panelH;
 
   if (isTop) {
     badgeH = 28;
-    totalW = Math.max(148, nameColW + valColW + unitColW + 36, maxTagLen * 9.5 + 32);
-    totalH = badgeH + 4 + channelsH;
+    totalW = Math.max(148, minChannelsW, maxTagLen * 9.5 + 32);
+    totalH = badgeH + channelsH; // Seamless: 0 space between header and body
     badgeX = -totalW / 2;
     badgeY = -totalH / 2;
     badgeW = totalW;
     panelX = -totalW / 2;
-    panelY = -totalH / 2 + badgeH + 4;
+    panelY = badgeY + badgeH; // Directly attached at bottom of header badge
     panelW = totalW;
     panelH = channelsH;
   } else {
-    const cw = Math.max(140, nameColW + valColW + unitColW + 36);
-    totalW = bw + 4 + cw;
+    const cw = Math.max(140, minChannelsW);
+    totalW = bw + cw; // Seamless: 0 space between left header and right body
     totalH = channelsH;
     badgeX = -totalW / 2;
     badgeY = -totalH / 2;
     badgeW = bw;
     badgeH = totalH;
-    panelX = -totalW / 2 + bw + 4;
+    panelX = badgeX + bw;
     panelY = -totalH / 2;
     panelW = cw;
     panelH = totalH;
   }
 
-  // Tag Badge (Yellow Industrial Accent)
-  const badge = svgEl('rect', {
-    x: badgeX,
-    y: badgeY,
-    width: badgeW,
-    height: badgeH,
+  // Unified Card Background Container (White card with shadow and outer border)
+  const cardBorder = svgEl('rect', {
+    x: -totalW / 2,
+    y: -totalH / 2,
+    width: totalW,
+    height: totalH,
     rx: 4,
-    fill: '#fed72a',
-    stroke: '#eab308',
-    'stroke-width': 1.2,
+    fill: '#ffffff',
+    stroke: isSel ? '#00ac86' : '#cbd5e1',
+    'stroke-width': isSel ? 1.8 : 1.2,
     filter: 'url(#badgeShadow)',
-    class: 'badge-rect'
+    class: 'sensor-card-border'
   });
-  g.appendChild(badge);
+  g.appendChild(cardBorder);
+
+  // Tag Badge (Yellow Industrial Accent) - seamlessly attached to body with 0 space
+  if (isTop) {
+    const badge = svgEl('path', {
+      d: `M ${badgeX + 4},${badgeY} ` +
+         `L ${badgeX + badgeW - 4},${badgeY} ` +
+         `Q ${badgeX + badgeW},${badgeY} ${badgeX + badgeW},${badgeY + 4} ` +
+         `L ${badgeX + badgeW},${badgeY + badgeH} ` +
+         `L ${badgeX},${badgeY + badgeH} ` +
+         `L ${badgeX},${badgeY + 4} ` +
+         `Q ${badgeX},${badgeY} ${badgeX + 4},${badgeY} Z`,
+      fill: '#fed72a',
+      class: 'badge-rect'
+    });
+    g.appendChild(badge);
+
+    // Subtle header bottom divider line
+    g.appendChild(svgEl('line', {
+      x1: badgeX,
+      y1: badgeY + badgeH,
+      x2: badgeX + badgeW,
+      y2: badgeY + badgeH,
+      stroke: '#eab308',
+      'stroke-width': 1
+    }));
+  } else {
+    const badge = svgEl('path', {
+      d: `M ${badgeX + 4},${badgeY} ` +
+         `L ${badgeX + badgeW},${badgeY} ` +
+         `L ${badgeX + badgeW},${badgeY + badgeH} ` +
+         `L ${badgeX + 4},${badgeY + badgeH} ` +
+         `Q ${badgeX},${badgeY + badgeH} ${badgeX},${badgeY + badgeH - 4} ` +
+         `L ${badgeX},${badgeY + 4} ` +
+         `Q ${badgeX},${badgeY} ${badgeX + 4},${badgeY} Z`,
+      fill: '#fed72a',
+      class: 'badge-rect'
+    });
+    g.appendChild(badge);
+
+    // Subtle header right divider line
+    g.appendChild(svgEl('line', {
+      x1: badgeX + badgeW,
+      y1: badgeY,
+      x2: badgeX + badgeW,
+      y2: badgeY + badgeH,
+      stroke: '#eab308',
+      'stroke-width': 1
+    }));
+  }
 
   if (isTop) {
     const tagTxt = svgEl('text', {
       x: badgeX + badgeW / 2,
-      y: badgeY + badgeH / 2 + 5,
+      y: badgeY + badgeH / 2 + 4.5,
       'text-anchor': 'middle',
-      'font-size': 12.5,
+      'font-size': 12,
       'font-weight': 800,
       fill: '#18181b',
       'font-family': 'JetBrains Mono, ui-monospace, monospace'
@@ -2499,9 +2479,9 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
   } else {
     const tagTxt = svgEl('text', {
       x: badgeX + badgeW / 2,
-      y: badgeY + badgeH / 2 + 5,
+      y: badgeY + badgeH / 2 + 4.5,
       'text-anchor': 'middle',
-      'font-size': 12.5,
+      'font-size': 12,
       'font-weight': 800,
       fill: '#18181b',
       'font-family': 'JetBrains Mono, ui-monospace, monospace'
@@ -2510,50 +2490,48 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
     g.appendChild(tagTxt);
   }
 
-  // Channels Panel (White Card)
-  const panel = svgEl('rect', {
-    x: panelX,
-    y: panelY,
-    width: panelW,
-    height: panelH,
-    rx: 4,
-    fill: '#ffffff',
-    stroke: isSel ? '#00a876' : '#cbd5e1',
-    'stroke-width': isSel ? 1.8 : 1.2,
-    filter: 'url(#badgeShadow)'
-  });
-  g.appendChild(panel);
+  // Channel Row Column Layout:
+  // - Channel name starts at panelX + 24 (align left)
+  // - Channel value ends at valRightX (align right)
+  // - Channel unit starts at unitLeftX (align left)
+  const unitLeftX = unitColW > 0 ? (panelX + panelW - unitColW - 14) : 0;
+  const valRightX = unitColW > 0 ? (unitLeftX - 6) : (panelX + panelW - 16);
 
-  // Channels
   channels.forEach((ch, idx) => {
     const rowY = panelY + 18 + idx * rowH;
     const chStatus = ch.status || 'normal';
     const chStatusColor = chStatus === 'alarm' ? '#dc2626' : (chStatus === 'warn' ? '#eab308' : '#16a34a');
     
+    // Status dot
     g.appendChild(svgEl('circle', {
-      cx: panelX + 13, cy: rowY - 4.5, r: 4.2, fill: chStatusColor
+      cx: panelX + 14, cy: rowY - 4.5, r: 4.2, fill: chStatusColor
     }));
 
+    // 1. Channel Name (align left)
     const nameTxt = svgEl('text', {
-      x: panelX + 22, y: rowY, 'font-size': 11, 'font-weight': 700,
+      x: panelX + 24, y: rowY, 'font-size': 11, 'font-weight': 700,
+      'text-anchor': 'start',
       fill: '#475569', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
     nameTxt.textContent = `${ch.name}:`;
     g.appendChild(nameTxt);
 
+    // 2. Channel Value (align right)
     const valStr = (ch.val !== undefined && ch.val !== null) ? String(ch.val) : '--';
     const valTxt = svgEl('text', {
-      x: panelX + 22 + nameColW, y: rowY, 'font-size': 13.5, 'font-weight': 800,
+      x: valRightX, y: rowY, 'font-size': 13.5, 'font-weight': 800,
+      'text-anchor': 'end',
       fill: '#0f172a', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
     valTxt.textContent = valStr;
     g.appendChild(valTxt);
 
+    // 3. Channel Unit (align left)
     if (ch.unit) {
       const unitTxt = svgEl('text', {
-        x: panelX + 22 + nameColW + valStr.length * 8.5 + 8,
-        y: rowY, 'font-size': 11, 'font-weight': 600, fill: '#64748b',
-        'font-family': 'JetBrains Mono, ui-monospace, monospace'
+        x: unitLeftX, y: rowY, 'font-size': 11, 'font-weight': 600,
+        'text-anchor': 'start',
+        fill: '#64748b', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
       });
       unitTxt.textContent = ch.unit;
       g.appendChild(unitTxt);

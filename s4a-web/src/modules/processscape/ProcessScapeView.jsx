@@ -197,6 +197,9 @@ export default function ProcessScapeView({
   const [isBannerMinimized, setIsBannerMinimized] = useState(false);
 
   // Load active scape from storage if custom elements/pipes not explicitly passed
+  const [scapeVersion, setScapeVersion] = useState(0);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
+
   const activeScape = useMemo(() => {
     if (initialElements.length > 0 || initialPipes.length > 0) {
       return {
@@ -208,7 +211,7 @@ export default function ProcessScapeView({
       };
     }
     return getActiveScape();
-  }, [initialElements, initialPipes]);
+  }, [initialElements, initialPipes, scapeVersion]);
 
   const [activeScapeId, setActiveScapeIdState] = useState(() => activeScape.id);
   const [projectTitle, setProjectTitle] = useState(() => activeScape.title || 'ProcessScape');
@@ -222,9 +225,15 @@ export default function ProcessScapeView({
   const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape.elements || [])));
 
   const isExampleShow = useMemo(() => {
+    if (isBannerDismissed) return false;
     if (initialElements.length > 0 || initialPipes.length > 0) return false;
-    return !hasSavedLocations();
-  }, [initialElements, initialPipes, activeScapeId]);
+    if (hasSavedLocations()) return false;
+    const all = getAllScapes();
+    const hasRealScapes = all.some(s => !s.isExample && s.id !== 'scape_example_demo');
+    if (hasRealScapes) return false;
+    if (activeScape && !activeScape.isExample && activeScape.id !== 'scape_example_demo') return false;
+    return true;
+  }, [isBannerDismissed, initialElements, initialPipes, activeScape, activeScapeId, scapeVersion]);
 
   const handleSelectActiveScape = useCallback((scape) => {
     setActiveScapeIdState(scape.id);
@@ -235,6 +244,7 @@ export default function ProcessScapeView({
     setPipes(scape.pipes || []);
     setSelectedIds(new Set());
     setScapeMode('runtime');
+    setScapeVersion(v => v + 1);
   }, []);
 
   const handleEditScapeFromManager = useCallback((scape) => {
@@ -246,6 +256,7 @@ export default function ProcessScapeView({
     setPipes(scape.pipes || []);
     setSelectedIds(new Set());
     setScapeMode('editor');
+    setScapeVersion(v => v + 1);
   }, []);
 
   const handleSaveAndExitEditor = useCallback(() => {
@@ -582,9 +593,10 @@ export default function ProcessScapeView({
         dLayer.appendChild(renderPipe(d.item, activeSelectedIds, pipes, flowDirections));
       } else if (d.kind === 'element') {
         if (d.item.type === 'sensor_card') {
+          if (scapeMode === 'editor') return; // Hide sensor mode card when editing scape
           dLayer.appendChild(renderSensorCard(d.item, activeSelectedIds, elements, (scapeMode === 'runtime' && isLiveDndActive)));
         } else {
-          dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes));
+          dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes, scapeMode === 'editor'));
         }
       }
     });
@@ -593,12 +605,14 @@ export default function ProcessScapeView({
   // --- Drag & Drop from Sidebar ---
   const handleDragOver = (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       if (file.name.endsWith('.json') || file.type === 'application/json') {
         const reader = new FileReader();
@@ -614,10 +628,21 @@ export default function ProcessScapeView({
         return;
       }
     }
-    const rawData = e.dataTransfer.getData('application/json');
-    if (!rawData) return;
+    let data = null;
     try {
-      const data = JSON.parse(rawData);
+      const rawData = e.dataTransfer ? (
+        e.dataTransfer.getData('application/json') ||
+        e.dataTransfer.getData('text/plain')
+      ) : null;
+      if (rawData) {
+        data = JSON.parse(rawData);
+      }
+    } catch (_) {}
+    if (!data && typeof window !== 'undefined' && window.__ps_active_drag) {
+      data = window.__ps_active_drag;
+    }
+    if (!data) return;
+    try {
       saveHistory('Add Item');
       const w = clientToWorld(e.clientX, e.clientY);
       const dropX = snap(w.x);
@@ -1137,33 +1162,14 @@ export default function ProcessScapeView({
       const shiftX = updatedBox.x - origBox.x;
       const shiftY = updatedBox.y - origBox.y;
 
-      // Helper: check if a pipe is horizontal
-      const isPipeHoriz = (p) => {
-        if (!p.points || p.points.length < 2) return false;
-        return p.points.every(pt => Math.abs(pt.y - p.points[0].y) <= 3);
-      };
-
-      // 1. Automatically extend or contract pipe lengths along horizontal and vertical axes
-      // Horizontal pipes extend their length horizontally, while preserving V position (no vertical drift)
+      // 1. Proportional 2D affine scaling for all pipes
+      // Scales all pipe points proportionally along both X (sx) and Y (sy) axes,
+      // preserving 100% 90-degree orthogonality, horizontal and vertical segment alignment,
+      // and maintaining seamless pipe-to-pipe junctions in grouped pipeline layouts.
       const updatedPipes = origPipes.map(p => {
-        const pipeIsHoriz = isPipeHoriz(p);
-        const newPoints = (p.points || []).map((pt, ptIdx, pts) => {
+        const newPoints = (p.points || []).map((pt) => {
           const px = Math.round(updatedBox.x + (pt.x - origBox.x) * sx);
-          let py;
-          if (pipeIsHoriz) {
-            // Horizontal pipe: V position does not change (only translates if top box boundary shifts)
-            py = Math.round(pt.y + shiftY);
-          } else {
-            const prev = pts[ptIdx - 1];
-            const next = pts[ptIdx + 1];
-            const segHoriz = (prev && Math.abs(prev.y - pt.y) <= 2) || (next && Math.abs(next.y - pt.y) <= 2);
-            const segVert = (prev && Math.abs(prev.x - pt.x) <= 2) || (next && Math.abs(next.x - pt.x) <= 2);
-            if (segHoriz && !segVert) {
-              py = Math.round(pt.y + shiftY);
-            } else {
-              py = Math.round(updatedBox.y + (pt.y - origBox.y) * sy);
-            }
-          }
+          const py = Math.round(updatedBox.y + (pt.y - origBox.y) * sy);
           return { x: px, y: py };
         });
 
@@ -1177,54 +1183,65 @@ export default function ProcessScapeView({
       setPipes(updatedPipes);
 
       // 2. Reposition elements:
-      // A machine touching a horizontal pipe line:
-      // - In H direction: follows percent size (sx) along the pipe ("very good")
-      // - In V direction: does NOT change V position ("it should not change the V position")
+      // Elements anchored or attached to a pipe (e.g. sensors, transmitters, attached assets):
+      // - Track their anchor point along the scaled pipe (maintaining proportional pipeT position)
+      // - Maintain their exact relative offset from the pipe line
+      //   (i.e. vertical distance from a horizontal pipe line does NOT drift when H grows!)
       const posMap = new Map();
 
       origElements.forEach(el => {
         if (el.type === 'sensor_card' && el.attachedAssetId) return; // Follows parent asset in pass 2
 
-        const elW = el.w || 100;
-        const elH = el.h || 80;
-        const elLeft = el.x - elW / 2;
-        const elRight = el.x + elW / 2;
+        let targetPipe = null;
+        let tVal = null;
+        let offX = 0;
+        let offY = 0;
 
-        let touchesHorizPipe = false;
-        for (const p of origPipes) {
-          if (!p.points || p.points.length < 2) continue;
-          const isExplicitAttached = el.attachedPipeId && el.attachedPipeId === p.id;
-
-          for (let i = 0; i < p.points.length - 1; i++) {
-            const p1 = p.points[i];
-            const p2 = p.points[i + 1];
-            if (Math.abs(p1.y - p2.y) > 3) continue;
-
-            const pipeY = (p1.y + p2.y) / 2;
-            const pMinX = Math.min(p1.x, p2.x) - 30;
-            const pMaxX = Math.max(p1.x, p2.x) + 30;
-
-            if (elRight >= pMinX && elLeft <= pMaxX) {
-              const pipeThickness = p.w || 20;
-              const distY = Math.abs(el.y - pipeY);
-              if (isExplicitAttached || distY <= (elH / 2 + pipeThickness / 2 + 30)) {
-                touchesHorizPipe = true;
-                break;
-              }
+        if (el.attachedPipeId) {
+          targetPipe = origPipes.find(p => p.id === el.attachedPipeId);
+          if (targetPipe) {
+            tVal = el.pipeT != null ? el.pipeT : null;
+            if (tVal == null) {
+              const cp = getClosestPointOnPipe(targetPipe, { x: el.x, y: el.y });
+              if (cp) tVal = cp.t;
+            }
+            if (tVal != null) {
+              const origContactPt = getPointAlongPipe(targetPipe, tVal);
+              offX = el.pipeOffsetX !== undefined && el.pipeOffsetX !== null ? el.pipeOffsetX : (origContactPt ? el.x - origContactPt.x : 0);
+              offY = el.pipeOffsetY !== undefined && el.pipeOffsetY !== null ? el.pipeOffsetY : (origContactPt ? el.y - origContactPt.y : 0);
             }
           }
-          if (touchesHorizPipe) break;
+        }
+
+        // If not explicitly attached, check if sensor or equipment is close / anchored to a nearby pipe
+        if (!targetPipe && origPipes.length > 0) {
+          let minD = 48;
+          origPipes.forEach(p => {
+            const cp = getClosestPointOnPipe(p, { x: el.x, y: el.y });
+            if (cp && cp.distance < minD) {
+              minD = cp.distance;
+              targetPipe = p;
+              tVal = cp.t;
+              offX = el.x - cp.point.x;
+              offY = el.y - cp.point.y;
+            }
+          });
+        }
+
+        const updatedPipe = targetPipe ? updatedPipes.find(p => p.id === targetPipe.id) : null;
+        if (updatedPipe && tVal != null) {
+          const newContactPt = getPointAlongPipe(updatedPipe, tVal);
+          if (newContactPt) {
+            posMap.set(el.id, {
+              x: Math.round(newContactPt.x + offX),
+              y: Math.round(newContactPt.y + offY)
+            });
+            return;
+          }
         }
 
         const newX = Math.round(updatedBox.x + (el.x - origBox.x) * sx);
-        let newY;
-        if (touchesHorizPipe) {
-          // Machine touching horizontal pipe: V position does NOT change
-          newY = Math.round(el.y + shiftY);
-        } else {
-          newY = Math.round(updatedBox.y + (el.y - origBox.y) * sy);
-        }
-
+        const newY = Math.round(updatedBox.y + (el.y - origBox.y) * sy);
         posMap.set(el.id, { x: newX, y: newY });
       });
 
@@ -1263,8 +1280,8 @@ export default function ProcessScapeView({
     // Live DND Measurement Point dragging in runtime mode
     if (dragRef.current.draggingLiveCard) {
       const { cardId, startMouse, origPos } = dragRef.current.draggingLiveCard;
-      const dx = snap(w.x - startMouse.x, 5);
-      const dy = snap(w.y - startMouse.y, 5);
+      const dx = snap(w.x - startMouse.x, 2);
+      const dy = snap(w.y - startMouse.y, 2);
       setElements(prev => prev.map(el => {
         if (el.id === cardId) {
           return { ...el, x: origPos.x + dx, y: origPos.y + dy };
@@ -1812,6 +1829,7 @@ export default function ProcessScapeView({
       if (mw > 4 || mh > 4) {
         const nextSelected = new Set(e.shiftKey ? selectedIds : []);
         elements.forEach(el => {
+          if (scapeMode === 'editor' && el.type === 'sensor_card') return;
           const bbox = getElementBBox(el);
           if (rectsIntersect(x1, y1, mw, mh, bbox.x, bbox.y, bbox.w, bbox.h)) {
             nextSelected.add(el.id);
@@ -2230,6 +2248,7 @@ export default function ProcessScapeView({
     clone.querySelectorAll('.pipe-extend-group')?.forEach(e => e.remove());
     clone.querySelectorAll('.pipe-drag-handle')?.forEach(e => e.remove());
     clone.querySelectorAll('.element-anchor-handle')?.forEach(e => e.remove());
+    clone.querySelectorAll('.element-anchor-line')?.forEach(e => e.remove());
 
     const scale = 2;
     clone.setAttribute('width', finalW * scale);
@@ -2429,6 +2448,7 @@ export default function ProcessScapeView({
     if (active) {
       loadProcessScapeConfig(active, false);
     }
+    setScapeVersion(v => v + 1);
   }, [loadProcessScapeConfig]);
 
   // Register actions & notify state to parent header
@@ -2476,7 +2496,7 @@ export default function ProcessScapeView({
   }, [screenSize, contentBounds, projectTitle, scapeMode, activeScapeId, onStateChange]);
 
   return (
-    <div className={`processscape-root ${isDarkMode ? 'theme-dark' : ''}`}>
+    <div className={`processscape-root ${isDarkMode ? 'theme-dark' : ''} mode-${scapeMode}`}>
       {/* Main 3-Column Workbench */}
       <div className="ps-workbench">
         {/* Left Sidebar Palette (Editor Mode only) */}
@@ -2503,7 +2523,21 @@ export default function ProcessScapeView({
                   className="ps-palette-card"
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData('application/json', JSON.stringify({ kind: 'asset', key: type }));
+                    const payload = { kind: 'asset', key: type };
+                    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                    if (e.dataTransfer) {
+                      e.dataTransfer.effectAllowed = 'copyMove';
+                      const s = JSON.stringify(payload);
+                      try {
+                        e.dataTransfer.setData('application/json', s);
+                        e.dataTransfer.setData('text/plain', s);
+                      } catch (_) {}
+                    }
+                  }}
+                  onDragEnd={() => {
+                    if (typeof window !== 'undefined') {
+                      setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                    }
                   }}
                 >
                   <div className="ps-card-icon-box">
@@ -2522,7 +2556,21 @@ export default function ProcessScapeView({
                   className="ps-palette-card"
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData('application/json', JSON.stringify({ kind: 'sensor_card', key }));
+                    const payload = { kind: 'sensor_card', key };
+                    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                    if (e.dataTransfer) {
+                      e.dataTransfer.effectAllowed = 'copyMove';
+                      const s = JSON.stringify(payload);
+                      try {
+                        e.dataTransfer.setData('application/json', s);
+                        e.dataTransfer.setData('text/plain', s);
+                      } catch (_) {}
+                    }
+                  }}
+                  onDragEnd={() => {
+                    if (typeof window !== 'undefined') {
+                      setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                    }
                   }}
                 >
                   <div
@@ -2554,7 +2602,21 @@ export default function ProcessScapeView({
                     className="ps-palette-card"
                     draggable
                     onDragStart={(e) => {
-                      e.dataTransfer.setData('application/json', JSON.stringify({ kind: 'pipe_preset', key: p.id }));
+                      const payload = { kind: 'pipe_preset', key: p.id };
+                      if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                      if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                        const s = JSON.stringify(payload);
+                        try {
+                          e.dataTransfer.setData('application/json', s);
+                          e.dataTransfer.setData('text/plain', s);
+                        } catch (_) {}
+                      }
+                    }}
+                    onDragEnd={() => {
+                      if (typeof window !== 'undefined') {
+                        setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                      }
                     }}
                   >
                     <div
@@ -2610,7 +2672,21 @@ export default function ProcessScapeView({
                   className="ps-palette-card"
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData('application/json', JSON.stringify({ kind: 'text_note', key: 'text_note' }));
+                    const payload = { kind: 'text_note', key: 'text_note' };
+                    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                    if (e.dataTransfer) {
+                      e.dataTransfer.effectAllowed = 'copyMove';
+                      const s = JSON.stringify(payload);
+                      try {
+                        e.dataTransfer.setData('application/json', s);
+                        e.dataTransfer.setData('text/plain', s);
+                      } catch (_) {}
+                    }
+                  }}
+                  onDragEnd={() => {
+                    if (typeof window !== 'undefined') {
+                      setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                    }
                   }}
                 >
                   <div
@@ -2744,6 +2820,7 @@ export default function ProcessScapeView({
                   type="button"
                   className="ps-example-demo-btn-primary"
                   onClick={() => {
+                    setIsBannerDismissed(true);
                     if (onOpenSensorManager) onOpenSensorManager();
                   }}
                   title="Open Sensor Manager to create your own location and scape stage"
@@ -2757,11 +2834,11 @@ export default function ProcessScapeView({
                 <button
                   type="button"
                   className="ps-example-demo-dismiss-btn"
-                  onClick={() => setIsBannerMinimized(v => !v)}
-                  title={isBannerMinimized ? "Expand notice" : "Minimize notice"}
-                  aria-label={isBannerMinimized ? "Expand notice" : "Minimize notice"}
+                  onClick={() => setIsBannerDismissed(true)}
+                  title="Dismiss example notice"
+                  aria-label="Dismiss example notice"
                 >
-                  {isBannerMinimized ? "＋" : "✕"}
+                  ✕
                 </button>
               </div>
             </div>
@@ -3186,20 +3263,6 @@ export default function ProcessScapeView({
             </defs>
 
             <g id="worldGroup" transform={`translate(${view.x}, ${view.y}) scale(${view.zoom})`}>
-              {/* Screen Boundary Guide (Temporary canvas drawing area in editor mode) */}
-              {scapeMode !== 'runtime' && (
-                <rect
-                  id="boundaryGuide"
-                  x={0} y={0}
-                  width={screenSize.w} height={screenSize.h}
-                  rx={12}
-                  fill="#ffffff"
-                  stroke={isDarkMode ? '#1e293b' : '#cbd5e1'}
-                  strokeWidth={2}
-                  strokeDasharray="8 6"
-                />
-              )}
-
               {/* Dynamic Real Picture Bounds Guide (Shown only when holding 'Real Size' button) */}
               {isRealSizePreview && contentBounds.hasContent && (
                 <g className="ps-real-bounds-guide" pointerEvents="none">
@@ -3511,7 +3574,8 @@ export default function ProcessScapeView({
                   <label className="ps-form-label">Equipment Tag Name</label>
                   <input
                     className="ps-input"
-                    value={singleSelectedElement.tag || ''}
+                    value={singleSelectedElement.tag ?? ''}
+                    placeholder="(Optional tag / empty)"
                     onChange={(e) => updateSelectedElement({ tag: e.target.value })}
                   />
                 </div>
@@ -3536,81 +3600,54 @@ export default function ProcessScapeView({
                   </div>
                 </div>
 
-                {/* Pipeline Anchor Binding (Branch Percentage Binding) */}
+                {/* Proportional Size Control Slider */}
                 <div className="ps-form-group">
-                  <label className="ps-form-label">Pipeline Anchor Binding</label>
-                  {singleSelectedElement.attachedPipeId ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: 12,
-                        background: 'rgba(0, 172, 134, 0.08)',
-                        border: '1px solid rgba(0, 172, 134, 0.25)',
-                        borderRadius: 6,
-                        padding: '6px 10px'
-                      }}>
-                        <span style={{ fontWeight: 600, color: '#00ac86' }}>
-                          ⚓ Bound ({Math.round((singleSelectedElement.pipeT || 0) * 100)}%)
-                        </span>
-                        <button
-                          type="button"
-                          className="hud-btn-sm"
-                          style={{ fontSize: 10, height: 22, padding: '0 8px' }}
-                          onClick={() => {
-                            saveHistory('Detach Anchor');
-                            updateSelectedElement({
-                              attachedPipeId: null,
-                              pipeT: null,
-                              pipeOffsetX: null,
-                              pipeOffsetY: null
-                            });
-                          }}
-                        >
-                          Detach
-                        </button>
-                      </div>
-
-                      {/* Percentage slider along specific pipe branch */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                        <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>0%</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="1"
-                          style={{ flex: 1, accentColor: '#00ac86' }}
-                          value={Math.round((singleSelectedElement.pipeT || 0) * 100)}
-                          onChange={(e) => {
-                            const newPct = parseInt(e.target.value, 10);
-                            const newT = newPct / 100;
-                            const pipe = pipes.find(p => p.id === singleSelectedElement.attachedPipeId);
-                            if (pipe) {
-                              const newPt = getPointAlongPipe(pipe, newT);
-                              const oldPt = getPointAlongPipe(pipe, singleSelectedElement.pipeT || 0);
-                              const dx = (newPt && oldPt) ? newPt.x - oldPt.x : 0;
-                              const dy = (newPt && oldPt) ? newPt.y - oldPt.y : 0;
-                              updateSelectedElement({
-                                pipeT: newT,
-                                x: singleSelectedElement.x + dx,
-                                y: singleSelectedElement.y + dy
-                              });
-                            } else {
-                              updateSelectedElement({ pipeT: newT });
-                            }
-                          }}
-                        />
-                        <span style={{ fontSize: 11, color: '#64748b', minWidth: 36, textAlign: 'right', fontWeight: 600 }}>
-                          {Math.round((singleSelectedElement.pipeT || 0) * 100)}%
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 11.5, color: '#64748b', fontStyle: 'italic', padding: '4px 0' }}>
-                      Free floating. Drag the ⚓ anchor handle onto any pipe branch to bind.
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label className="ps-form-label" style={{ margin: 0 }}>Device Size</label>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
+                      {Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}%
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>40%</span>
+                    <input
+                      id="itemScaleSlider"
+                      type="range"
+                      min="40"
+                      max="250"
+                      step="5"
+                      style={{ flex: 1, accentColor: '#00ac86' }}
+                      value={Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}
+                      onChange={(e) => {
+                        const pct = parseInt(e.target.value, 10);
+                        const newScale = Math.round((pct / 100) * 100) / 100;
+                        const def = ASSET_DEFS[singleSelectedElement.type] || { w: 100, h: 80 };
+                        const newW = Math.round(def.w * newScale);
+                        const newH = Math.round(def.h * newScale);
+                        saveHistory('Resize Device');
+                        updateSelectedElement({ scale: newScale, w: newW, h: newH });
+                      }}
+                    />
+                    <span style={{ fontSize: 11, color: '#64748b', minWidth: 32, textAlign: 'right' }}>250%</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11, color: '#64748b' }}>
+                    <span>
+                      {Math.round(singleSelectedElement.w || (ASSET_DEFS[singleSelectedElement.type]?.w || 100) * (singleSelectedElement.scale || 1))} × {Math.round(singleSelectedElement.h || (ASSET_DEFS[singleSelectedElement.type]?.h || 80) * (singleSelectedElement.scale || 1))} px
+                    </span>
+                    <button
+                      type="button"
+                      className="hud-btn-sm"
+                      style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+                      onClick={() => {
+                        const def = ASSET_DEFS[singleSelectedElement.type] || { w: 100, h: 80 };
+                        saveHistory('Reset Device Size');
+                        updateSelectedElement({ scale: 1, w: def.w, h: def.h });
+                      }}
+                      title="Reset to 100% standard size"
+                    >
+                      Reset (100%)
+                    </button>
+                  </div>
                 </div>
 
                 <button

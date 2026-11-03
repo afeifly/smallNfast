@@ -123,6 +123,20 @@ pub async fn suto_connect_usb(
 }
 
 #[tauri::command]
+pub async fn suto_discover_ethernet_broadcast(
+    timeout_ms: Option<u64>,
+    subnet_broadcast: Option<String>,
+) -> Result<Vec<driver_tcp::DiscoveredEthernetDevice>, String> {
+    log_event("INFO", "SUTO_IPC", "suto_discover_ethernet_broadcast called (CSLib protocol)", None);
+    let duration = timeout_ms.unwrap_or(1500);
+    tokio::task::spawn_blocking(move || {
+        driver_tcp::discover_ethernet_broadcast(duration, subnet_broadcast)
+    })
+    .await
+    .map_err(|e| format!("Broadcast discovery task error: {}", e))?
+}
+
+#[tauri::command]
 pub async fn suto_connect_tcp(
     host: String,
     port: u16,

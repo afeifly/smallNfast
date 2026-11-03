@@ -20,6 +20,7 @@ pub fn run() {
             suto::suto_list_usb_devices,
             suto::suto_connect_usb,
             suto::suto_connect_tcp,
+            suto::suto_discover_ethernet_broadcast,
             suto::suto_list_ble_devices,
             suto::suto_connect_ble,
             suto::suto_disconnect,

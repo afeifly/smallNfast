@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { subscribeLive, setViewDemand } from '../../../util/liveDataSource';
 import { formatChannelValue, resolveChannelResolution } from '../../../util/resolution';
+import { autoReconnectSavedDevices } from './sensorManagerStorage';
 
 function formatVal(val, resolution = 2) {
   if (val === -8888 || val === -9999 || val === null || val === undefined || isNaN(val)) {
@@ -127,6 +128,16 @@ export function useProcessScapeTelemetry({
       channelCount: rawList.length
     });
   }, [setElements, setPipes]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' && !window.__ENABLE_AUTO_RECONNECT_TEST__) {
+      return;
+    }
+    autoReconnectSavedDevices().catch((err) => {
+      console.warn('[ProcessScapeTelemetry] Auto-reconnect note:', err);
+    });
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return;

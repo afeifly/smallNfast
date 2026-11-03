@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BleSutoAPI } from './BleSutoAPI';
 import TauriSutoAPI from './TauriSutoAPI';
 
@@ -64,5 +64,48 @@ describe('BleSutoAPI channel parsing & normalization', () => {
       expect(ch.sensorDescription).toBeDefined();
       expect(ch.sensor_id).toBeDefined();
     }
+  });
+
+  it('resumeBleConnection finds matching authorized device from navigator.bluetooth.getDevices', async () => {
+    const mockDevice = {
+      id: 'mock-ble-guid-123',
+      name: 'SUTO S401',
+      gatt: {
+        connect: async () => ({
+          getPrimaryServices: async () => []
+        })
+      },
+      addEventListener: () => {}
+    };
+
+    // Spy on _setupGattAndIdentify
+    const setupSpy = vi.spyOn(BleSutoAPI, '_setupGattAndIdentify').mockResolvedValue({
+      address: 1,
+      device: 'SUTO S401',
+      name: 'SUTO S401',
+      serial: '12345678',
+      serial_number: '12345678',
+      deviceId: 'mock-ble-guid-123',
+      type: 'BLE',
+      transport: 'BLE'
+    });
+
+    // Mock navigator.bluetooth
+    const origNav = global.navigator;
+    global.navigator = {
+      ...origNav,
+      bluetooth: {
+        getDevices: async () => [mockDevice]
+      }
+    };
+
+    const res = await BleSutoAPI.resumeBleConnection({ deviceId: 'mock-ble-guid-123' });
+    expect(res).toBeDefined();
+    expect(res.deviceId).toBe('mock-ble-guid-123');
+    expect(res.serial_number).toBe('12345678');
+    expect(setupSpy).toHaveBeenCalledWith(mockDevice);
+
+    setupSpy.mockRestore();
+    global.navigator = origNav;
   });
 });

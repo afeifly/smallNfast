@@ -110,10 +110,57 @@ export function getSavedDevices() {
 
       return { ...d, sensors: cleanSensors };
     });
-    if (JSON.stringify(cleaned) !== raw) {
-      storage.setItem(STORAGE_KEY_SENSOR_DEVICES, JSON.stringify(cleaned));
+
+    // Auto-heal: If any saved device has 0 channels, but locations still hold assigned channels for it,
+    // restore those channels so the user never loses their device configuration.
+    const locations = getLocations();
+    const healed = cleaned.map(d => {
+      const totalChannels = (d.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
+      if (totalChannels > 0) return d;
+
+      // Find all channels assigned to any measurement point in any location for this device
+      const recoveredChannels = [];
+      locations.forEach(loc => {
+        (loc.measurementPoints || []).forEach(mp => {
+          (mp.channels || []).forEach(ch => {
+            const matchesDev = (ch.device && d.name && (ch.device === d.name || ch.device.toLowerCase() === d.name.toLowerCase())) ||
+              (ch.id && String(ch.id).includes(d.id)) ||
+              (ch.deviceId && ch.deviceId === d.id);
+            if (matchesDev && !recoveredChannels.some(rc => rc.id === ch.id || rc.channel_id === ch.channel_id)) {
+              recoveredChannels.push({
+                id: ch.id,
+                channel_id: ch.channel_id ?? (recoveredChannels.length + 1),
+                name: ch.name || 'Channel',
+                unit: ch.unit || '',
+                device: d.name,
+                desc: ch.desc || ''
+              });
+            }
+          });
+        });
+      });
+
+      if (recoveredChannels.length > 0) {
+        const sensName = d.sensors?.[0]?.name || d.name || 'Sensor';
+        return {
+          ...d,
+          sensors: [
+            {
+              id: d.sensors?.[0]?.id || `sens_${d.id}_1`,
+              name: sensName,
+              desc: d.serial ? `SN: ${d.serial}` : 'Industrial Multi-Parameter Sensor',
+              channels: recoveredChannels
+            }
+          ]
+        };
+      }
+      return d;
+    });
+
+    if (JSON.stringify(healed) !== raw) {
+      storage.setItem(STORAGE_KEY_SENSOR_DEVICES, JSON.stringify(healed));
     }
-    return cleaned;
+    return healed;
   } catch (err) {
     console.warn('[SensorManager] Error loading devices:', err);
     return [];
@@ -134,11 +181,206 @@ export function saveDevices(devices) {
 }
 
 /**
+ * Generate a deterministic, consistent device ID based on hardware identifiers.
+ * Prevents duplicate device entries when reconnecting or re-scanning.
+ */
+export function generateDeterministicDeviceId(transportType, sysInfo = {}, devName = '') {
+  const safeTransport = (transportType || 'usb').toLowerCase();
+
+  // 1. Web Bluetooth persistent ID (device.id)
+  const bleId = sysInfo.deviceId || (safeTransport.includes('ble') && sysInfo.id);
+  if (bleId) {
+    return `dev_${safeTransport}_ble_${String(bleId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  }
+
+  // 2. Hardware Serial Number (if valid and not generic)
+  const sn = sysInfo.serial_number || sysInfo.serial;
+  const isGenericSn = (s) => !s || /^SN-(USB|TCP|BLE|API)-/i.test(String(s)) || String(s).length < 3;
+  if (sn && !isGenericSn(sn)) {
+    return `dev_${safeTransport}_sn_${String(sn).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  }
+
+  // 3. Network IP & Port (for TCP or API)
+  const host = sysInfo.ip || sysInfo.host;
+  if (host) {
+    const port = sysInfo.port || (safeTransport === 'api' ? 8080 : 502);
+    return `dev_${safeTransport}_${String(host).replace(/[^a-zA-Z0-9_-]/g, '_')}_${port}`;
+  }
+
+  // 4. USB Port Path
+  if (sysInfo.path) {
+    return `dev_${safeTransport}_${String(sysInfo.path).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  }
+
+  // 5. Hardware Device / Model ID
+  if (sysInfo.device_id) {
+    return `dev_${safeTransport}_devid_${sysInfo.device_id}`;
+  }
+
+  // Fallback to normalized device name
+  const safeName = (devName || 'sensor').toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `dev_${safeTransport}_${safeName}`;
+}
+
+/**
+ * Determine if two device records represent the exact same physical hardware.
+ */
+export function isSameDevice(d1, d2) {
+  if (!d1 || !d2) return false;
+
+  // 1. Exact ID match
+  if (d1.id && d2.id && d1.id === d2.id) return true;
+
+  // 2. Hardware Serial Number match (ignore generic placeholders like 'SN-USB-...')
+  const extractSn = (d) => {
+    const raw = String(d.serial || d.serial_number || d.connectionConfig?.serial || '').trim();
+    if (raw && !/^SN-(USB|TCP|BLE|API)-/i.test(raw) && raw.length >= 3) return raw;
+    const fromName = (d.name || d.connectionConfig?.name || '').match(/(\d{6,10})/);
+    return fromName ? fromName[1] : '';
+  };
+
+  const sn1 = extractSn(d1);
+  const sn2 = extractSn(d2);
+  if (sn1 && sn2 && sn1 === sn2) {
+    return true;
+  }
+
+  // 3. Web Bluetooth persistent device ID match
+  const bleId1 = d1.connectionConfig?.deviceId || d1.deviceId;
+  const bleId2 = d2.connectionConfig?.deviceId || d2.deviceId;
+  if (bleId1 && bleId2 && bleId1 === bleId2) {
+    return true;
+  }
+
+  // 4. Match by specific device name & transport (e.g. 'S403-12345678' via BLE)
+  const n1 = (d1.name || d1.connectionConfig?.name || '').trim().toLowerCase();
+  const n2 = (d2.name || d2.connectionConfig?.name || '').trim().toLowerCase();
+  const t1 = (d1.transportType || d1.connectionConfig?.transport || d1.transport || '').toLowerCase();
+  const t2 = (d2.transportType || d2.connectionConfig?.transport || d2.transport || '').toLowerCase();
+  const sameTransport = t1 === t2 || (t1.includes('ble') && t2.includes('ble')) || (t1.includes('tcp') && t2.includes('tcp')) || (t1.includes('usb') && t2.includes('usb')) || (t1.includes('api') && t2.includes('api'));
+  if (n1 && n2 && n1 === n2 && !['suto sensor', 'connected suto device', 'suto ble device'].includes(n1) && sameTransport) {
+    return true;
+  }
+
+  // 5. Network IP / Host & Port match (for TCP / API)
+  const host1 = d1.connectionConfig?.host || d1.host;
+  const host2 = d2.connectionConfig?.host || d2.host;
+  const isNet1 = t1.includes('tcp') || t1.includes('api');
+  const isNet2 = t2.includes('tcp') || t2.includes('api');
+  if (host1 && host2 && host1 === host2 && isNet1 && isNet2) {
+    const port1 = d1.connectionConfig?.port || d1.port;
+    const port2 = d2.connectionConfig?.port || d2.port;
+    if (!port1 || !port2 || String(port1) === String(port2)) {
+      return true;
+    }
+  }
+
+  // 6. USB serial port path match
+  const path1 = d1.connectionConfig?.path || d1.path;
+  const path2 = d2.connectionConfig?.path || d2.path;
+  if (path1 && path2 && path1 === path2 && t1.includes('usb') && t2.includes('usb')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Deduplicate and merge an incoming list of devices into an existing devices list.
+ * Preserves existing device IDs and channel IDs so any existing measurement point
+ * and ProcessScape bindings remain completely unbroken.
+ */
+export function upsertDeviceList(existingDevices = [], newDevices = []) {
+  const result = [...existingDevices];
+
+  for (const newDev of newDevices) {
+    const matchIdx = result.findIndex(existing => isSameDevice(existing, newDev));
+
+    if (matchIdx >= 0) {
+      const existing = result[matchIdx];
+
+      const newTotalChannels = (newDev.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
+      const existingTotalChannels = (existing.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
+
+      // CRITICAL SAFEGUARD: If incoming scan yielded 0 channels, but the existing device already has channels,
+      // DO NOT wipe them out! Retain the existing configured sensors and channels.
+      if (newTotalChannels === 0 && existingTotalChannels > 0) {
+        result[matchIdx] = {
+          ...existing,
+          isOnline: true,
+          connectionConfig: {
+            ...existing.connectionConfig,
+            ...newDev.connectionConfig
+          }
+        };
+        continue;
+      }
+
+      // Build a map of existing channels by their channel_id or name or index
+      const existingChannelsMap = new Map();
+      (existing.sensors || []).forEach(s => {
+        (s.channels || []).forEach((c, idx) => {
+          if (c.channel_id !== undefined && c.channel_id !== null) {
+            existingChannelsMap.set(`id_${c.channel_id}`, c);
+          }
+          if (c.name) {
+            existingChannelsMap.set(`name_${c.name.toLowerCase()}`, c);
+          }
+          existingChannelsMap.set(`idx_${idx}`, c);
+        });
+      });
+
+      // Map new sensors and preserve existing channel IDs if matched
+      const mergedSensors = (newDev.sensors || []).map((newSens, sIdx) => {
+        const mergedChannels = (newSens.channels || []).map((newCh, chIdx) => {
+          const matchedCh =
+            (newCh.channel_id !== undefined && existingChannelsMap.get(`id_${newCh.channel_id}`)) ||
+            (newCh.name && existingChannelsMap.get(`name_${newCh.name.toLowerCase()}`)) ||
+            existingChannelsMap.get(`idx_${chIdx}`);
+
+          return {
+            ...newCh,
+            // Retain original channel id so any existing measurement point assignments in locations stay linked!
+            id: matchedCh?.id || newCh.id,
+            device: existing.name || newDev.name
+          };
+        });
+
+        return {
+          ...newSens,
+          id: existing.sensors?.[sIdx]?.id || newSens.id,
+          channels: mergedChannels
+        };
+      });
+
+      // Update the existing device in place, retaining existing.id and preserving location links
+      result[matchIdx] = {
+        ...existing,
+        ...newDev,
+        id: existing.id, // KEEP existing device id
+        name: existing.name || newDev.name,
+        isOnline: true,
+        connectionConfig: {
+          ...existing.connectionConfig,
+          ...newDev.connectionConfig
+        },
+        sensors: (mergedSensors.length > 0 && newTotalChannels > 0) ? mergedSensors : existing.sensors
+      };
+    } else {
+      // New device: append to list
+      result.push(newDev);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Build device structure from real hardware channels array
  */
 export function buildDeviceFromRawChannels(list, devName, transportLabel, transportType, sysInfo = {}) {
   const safeTransport = (transportType || 'usb').toLowerCase();
-  const devId = `dev_${safeTransport}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const devId = generateDeterministicDeviceId(safeTransport, sysInfo, devName);
   const sensorsMap = new Map();
   const rawList = Array.isArray(list) ? list : (list?.channels || list?.logging_chs || []);
 
@@ -191,11 +433,12 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
       if (/^ressure/i.test(chName)) chName = 'P' + chName;
 
       sens.channels.push({
-        id: `ch_${safeTransport}_${ch.channel_id ?? ch.id ?? idx + 1}_${idx}`,
+        id: `ch_${devId}_${ch.channel_id ?? ch.id ?? idx + 1}_${idx}`,
         channel_id: ch.channel_id ?? ch.id ?? (idx + 1),
         name: chName,
         unit,
         device: devName,
+        deviceId: devId,
         desc: ch.description || ch.fullName || ''
       });
     });
@@ -217,8 +460,9 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
       host,
       port,
       path: sysInfo?.path || null,
-      deviceId: sysInfo?.deviceId || sysInfo?.id || null,
-      name: devName
+      deviceId: sysInfo?.deviceId || (safeTransport.includes('ble') ? sysInfo?.id : null) || null,
+      name: devName,
+      serial: serial || null
     },
     sensors: Array.from(sensorsMap.values())
   };
@@ -393,7 +637,9 @@ export function syncAllLocationsToScapes(customLocations = null) {
 
       const formattedChannels = mp.channels.map(ch => ({
         id: ch.id || `ch_${ch.channel_id}`,
-        name: ch.name || ch.channelName || 'Channel',
+        name: ch.displayName || ch.name || ch.channelName || 'Channel',
+        rawName: ch.name || ch.channelName,
+        displayName: ch.displayName,
         unit: ch.unit || '',
         val: (ch.val !== undefined && ch.val !== null) ? ch.val : '--.-',
         status: ch.status || 'normal',
@@ -608,6 +854,18 @@ export function autoReconnectSavedDevices() {
           } else if (transport.includes('usb') && typeof TauriSutoAPI.isAvailable === 'function' && TauriSutoAPI.isAvailable()) {
             await TauriSutoAPI.connectUsb();
             return { reconnected: true, device: dev.name, transport: 'USB' };
+          } else if (transport.includes('ble')) {
+            try {
+              const bleRes = await TauriSutoAPI.resumeBleConnection({
+                deviceId: config.deviceId || dev.id,
+                name: config.name || dev.name
+              });
+              dev.isOnline = true;
+              return { reconnected: true, device: dev.name, transport: 'BLE', ...bleRes };
+            } catch (bleErr) {
+              dev.isOnline = false;
+              console.info(`[AutoReconnect] BLE device "${dev.name}" not in range currently (${bleErr?.message || bleErr}). Connect via "Detect" or ↻ when in range.`);
+            }
           }
         } catch (err) {
           console.warn(`[AutoReconnect] Could not reconnect to "${dev.name}":`, err?.message || err);

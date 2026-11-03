@@ -188,6 +188,54 @@ export const TauriSutoAPI = {
     return { ...conn, transport: 'BLE' };
   },
 
+  /**
+   * Resume BLE connection to an authorized device without opening the device picker.
+   * Dispatches to native Tauri BLE in desktop mode, or BleSutoAPI.resumeBleConnection in Web mode.
+   */
+  async resumeBleConnection(options = {}) {
+    if (this.isConnected()) {
+      return { reconnected: true, transport: activeTransport || 'BLE' };
+    }
+
+    if (hasTauri()) {
+      let targetDeviceId = options.deviceId;
+      if (!targetDeviceId && options.name) {
+        const devs = await this.listBleDevices({ timeoutMs: 2000 }).catch(() => []);
+        const found = devs.find(d => d.name === options.name || d.id === options.deviceId);
+        if (found) targetDeviceId = found.id;
+      }
+      if (targetDeviceId) {
+        const res = await invoke('suto_connect_ble', { deviceId: targetDeviceId });
+        activeTransport = 'BLE';
+        let sInfo = null;
+        try {
+          sInfo = await invoke('suto_get_system_info');
+        } catch (_) {}
+        return {
+          address: res,
+          transport: 'BLE',
+          deviceId: sInfo?.device_id || targetDeviceId,
+          device_id: sInfo?.device_id,
+          name: options.name || sInfo?.device_name || 'SUTO BLE Device',
+          device: options.name || sInfo?.device_name || 'SUTO BLE Device',
+          serial: sInfo?.serial_number,
+          reconnected: true,
+        };
+      }
+      throw new Error('No matching BLE device found to resume');
+    }
+
+    // Web Bluetooth environment
+    activeTransport = 'BLE_WEB';
+    await this.logClientEvent('INFO', 'BLE_CONN', 'Resuming Web Bluetooth (BLE) connection...');
+    const conn = await BleSutoAPI.resumeBleConnection(options);
+    if (!conn) {
+      activeTransport = null;
+      throw new Error('No authorized BLE device was available to resume');
+    }
+    return { ...conn, transport: 'BLE', reconnected: true };
+  },
+
   /** Connect to SUTO S332 WebAPI device over HTTP */
   async connectApi(host = '192.168.1.100', port = 8080) {
     activeTransport = 'API';

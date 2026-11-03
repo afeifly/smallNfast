@@ -26,7 +26,10 @@ import {
   getSavedDevices,
   getDeviceChannelAssignments,
   removeDeviceAndUnassignChannels,
-  autoReconnectSavedDevices
+  autoReconnectSavedDevices,
+  generateDeterministicDeviceId,
+  isSameDevice,
+  upsertDeviceList
 } from './engine/sensorManagerStorage.js';
 import {
   snap,
@@ -1929,6 +1932,183 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(footerInfo.textContent).not.toContain('4 Channels Assigned');
   });
 
+  it('allows distinct sensors with identical channel names and indices to be assigned independently without collision', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([
+      {
+        id: 'dev_sensor_A',
+        name: 'Sensor Alpha',
+        transport: 'BLE',
+        transportType: 'ble',
+        sensors: [{
+          id: 'sens_A',
+          name: 'Alpha',
+          channels: [
+            { id: 'ch_dev_sensor_A_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h', device: 'Sensor Alpha' }
+          ]
+        }]
+      },
+      {
+        id: 'dev_sensor_B',
+        name: 'Sensor Beta',
+        transport: 'BLE',
+        transportType: 'ble',
+        sensors: [{
+          id: 'sens_B',
+          name: 'Beta',
+          channels: [
+            { id: 'ch_dev_sensor_B_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h', device: 'Sensor Beta' }
+          ]
+        }]
+      }
+    ]));
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Initial state: both channels from Alpha and Beta are unassigned
+    let channelItems = container.querySelectorAll('.ps-sm-channel-item');
+    expect(channelItems.length).toBe(2);
+    expect(channelItems[0].classList.contains('is-assigned')).toBe(false);
+    expect(channelItems[1].classList.contains('is-assigned')).toBe(false);
+
+    // Add Location
+    const addLocBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Location'));
+    fireEvent.click(addLocBtn);
+
+    // Add Measurement Point 1
+    const addPtBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Measurement Point'));
+    fireEvent.click(addPtBtn);
+
+    let dropzones = container.querySelectorAll('.ps-sm-dropzone');
+    expect(dropzones.length).toBe(1);
+
+    // Drop Alpha's 'Flow' channel into Measurement Point 1
+    fireEvent.drop(dropzones[0], {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_dev_sensor_A_1_0',
+          channel_id: 1,
+          name: 'Flow',
+          unit: 'm³/h',
+          device: 'Sensor Alpha'
+        })
+      }
+    });
+
+    // Check tree items: Alpha's Flow should be assigned, but Beta's Flow MUST NOT be locked out or assigned
+    channelItems = container.querySelectorAll('.ps-sm-channel-item');
+    expect(channelItems[0].classList.contains('is-assigned')).toBe(true);
+    expect(channelItems[1].classList.contains('is-assigned')).toBe(false);
+
+    // Add Measurement Point 2
+    fireEvent.click(addPtBtn);
+    dropzones = container.querySelectorAll('.ps-sm-dropzone');
+    expect(dropzones.length).toBe(2);
+
+    // Drop Beta's 'Flow' into Measurement Point 2
+    fireEvent.drop(dropzones[1], {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_dev_sensor_B_1_0',
+          channel_id: 1,
+          name: 'Flow',
+          unit: 'm³/h',
+          device: 'Sensor Beta'
+        })
+      }
+    });
+
+    // Both should now be assigned independently to their respective measurement points
+    channelItems = container.querySelectorAll('.ps-sm-channel-item');
+    expect(channelItems[0].classList.contains('is-assigned')).toBe(true);
+    expect(channelItems[1].classList.contains('is-assigned')).toBe(true);
+
+    const assignedTags = container.querySelectorAll('.ps-sm-assigned-tag');
+    expect(assignedTags.length).toBe(2);
+  });
+
+  it('allows user to customize display name of assigned channels in location measurement point', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([
+      {
+        id: 'dev_custom_name_test',
+        name: 'SUTO S401 Flow Meter',
+        transport: 'USB',
+        transportType: 'usb',
+        sensors: [{
+          id: 'sens_s401',
+          name: 'S401',
+          channels: [
+            { id: 'ch_s401_1', channel_id: 1, name: 'Flow', unit: 'm³/h' }
+          ]
+        }]
+      }
+    ]));
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // 1. Add Location and Measurement Point
+    const addLocBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Location'));
+    fireEvent.click(addLocBtn);
+
+    const addPtBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Measurement Point'));
+    fireEvent.click(addPtBtn);
+
+    const dropzone = container.querySelector('.ps-sm-dropzone');
+    expect(dropzone).not.toBeNull();
+
+    // 2. Drop Flow channel into the measurement point
+    fireEvent.drop(dropzone, {
+      dataTransfer: {
+        getData: () => JSON.stringify({
+          type: 'channel',
+          id: 'ch_s401_1',
+          channel_id: 1,
+          name: 'Flow',
+          unit: 'm³/h',
+          device: 'SUTO S401 Flow Meter'
+        })
+      }
+    });
+
+    // 3. Verify channel tag has an editable input with default value 'Flow'
+    const nameInput = container.querySelector('.ps-sm-tag-name-input');
+    expect(nameInput).not.toBeNull();
+    expect(nameInput.value).toBe('Flow');
+
+    // 4. Change display name to 'Main Header Flow'
+    fireEvent.change(nameInput, { target: { value: 'Main Header Flow' } });
+    expect(nameInput.value).toBe('Main Header Flow');
+
+    // 5. Verify locations storage reflects modified displayName
+    const currentLocs = getLocations();
+    const assignedCh = currentLocs[0].measurementPoints[0].channels[0];
+    expect(assignedCh.displayName).toBe('Main Header Flow');
+    expect(assignedCh.name).toBe('Flow');
+
+    // 6. Verify sync to ProcessScape incorporates custom displayName for display and preserves rawName for telemetry
+    const syncRes = syncAllLocationsToScapes(currentLocs);
+    expect(syncRes.success).toBe(true);
+
+    const activeScape = getActiveScape();
+    const sensorCard = activeScape.elements.find(e => e.type === 'sensor_card');
+    expect(sensorCard).toBeDefined();
+    expect(sensorCard.channels[0].name).toBe('Main Header Flow');
+    expect(sensorCard.channels[0].rawName).toBe('Flow');
+  });
+
   it('syncs measurement point with channels to ProcessScape, preserving all channels upon reload', () => {
     window.localStorage.removeItem('s4a_sensor_locations_v1');
     window.localStorage.removeItem('s4a_processscapes_v1');
@@ -2563,6 +2743,196 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     connectTcpSpy.mockRestore();
     isConnectedSpy.mockRestore();
+  });
+
+  it('automatically resumes connection for saved Bluetooth (BLE) devices on startup', async () => {
+    const savedBleDev = {
+      id: 'dev_ble_mock_1',
+      name: 'SUTO S401 BLE',
+      transport: 'Bluetooth (BLE)',
+      transportType: 'ble',
+      connectionConfig: {
+        transport: 'ble',
+        deviceId: 'ble-guid-saved-456',
+        name: 'SUTO S401 BLE'
+      },
+      sensors: []
+    };
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([savedBleDev]));
+
+    const resumeBleSpy = vi.spyOn(TauriSutoAPI, 'resumeBleConnection').mockResolvedValue({
+      address: 1,
+      device: 'SUTO S401 BLE',
+      transport: 'BLE',
+      deviceId: 'ble-guid-saved-456'
+    });
+    const isConnectedSpy = vi.spyOn(TauriSutoAPI, 'isConnected').mockReturnValue(false);
+
+    const res = await autoReconnectSavedDevices();
+    expect(res.reconnected).toBe(true);
+    expect(res.transport).toBe('BLE');
+    expect(resumeBleSpy).toHaveBeenCalledWith({
+      deviceId: 'ble-guid-saved-456',
+      name: 'SUTO S401 BLE'
+    });
+
+    resumeBleSpy.mockRestore();
+    isConnectedSpy.mockRestore();
+  });
+
+  it('generates deterministic device IDs and correctly detects duplicate devices with isSameDevice', () => {
+    // BLE ID determinism
+    const bleId1 = generateDeterministicDeviceId('ble', { deviceId: 'ble-guid-abc' }, 'SUTO S401');
+    const bleId2 = generateDeterministicDeviceId('ble', { deviceId: 'ble-guid-abc' }, 'SUTO S401');
+    expect(bleId1).toBe(bleId2);
+    expect(bleId1).toContain('ble-guid-abc');
+
+    // TCP ID determinism
+    const tcpId1 = generateDeterministicDeviceId('tcp', { host: '192.168.1.100', port: 502 }, 'S330');
+    const tcpId2 = generateDeterministicDeviceId('tcp', { host: '192.168.1.100', port: 502 }, 'S330');
+    expect(tcpId1).toBe(tcpId2);
+
+    // isSameDevice tests
+    const devA = { id: 'dev_1', serial: '12345678', transportType: 'ble' };
+    const devB = { id: 'dev_2', serial: '12345678', transportType: 'ble' };
+    expect(isSameDevice(devA, devB)).toBe(true);
+
+    const devTcpA = { id: 'dev_tcp_1', transportType: 'tcp', connectionConfig: { host: '192.168.1.50', port: 502 } };
+    const devTcpB = { id: 'dev_tcp_2', transportType: 'tcp', connectionConfig: { host: '192.168.1.50', port: 502 } };
+    expect(isSameDevice(devTcpA, devTcpB)).toBe(true);
+
+    // Generic serial numbers should not falsely match
+    const devGen1 = { id: 'dev_gen_1', serial: 'SN-USB-123456', transportType: 'usb' };
+    const devGen2 = { id: 'dev_gen_2', serial: 'SN-USB-987654', transportType: 'usb' };
+    expect(isSameDevice(devGen1, devGen2)).toBe(false);
+  });
+
+  it('upsertDeviceList updates existing devices in-place and preserves existing device and channel IDs', () => {
+    const existingList = [
+      {
+        id: 'dev_original_id',
+        name: 'SUTO S401',
+        serial: '88776655',
+        transportType: 'ble',
+        isOnline: false,
+        sensors: [
+          {
+            id: 'sens_orig_1',
+            name: 'S401',
+            channels: [
+              { id: 'ch_orig_flow_1', channel_id: 1, name: 'Flow Rate', unit: 'm³/h' }
+            ]
+          }
+        ]
+      }
+    ];
+
+    const reDetectedDev = {
+      id: 'dev_new_random_id',
+      name: 'SUTO S401',
+      serial: '88776655',
+      transportType: 'ble',
+      sensors: [
+        {
+          id: 'sens_new_1',
+          name: 'S401',
+          channels: [
+            { id: 'ch_new_flow_1', channel_id: 1, name: 'Flow Rate Refreshed', unit: 'm³/h' }
+          ]
+        }
+      ]
+    };
+
+    const merged = upsertDeviceList(existingList, [reDetectedDev]);
+    expect(merged.length).toBe(1);
+    expect(merged[0].id).toBe('dev_original_id'); // Preserved!
+    expect(merged[0].isOnline).toBe(true);
+    expect(merged[0].sensors[0].channels[0].id).toBe('ch_orig_flow_1'); // Channel ID preserved for locations!
+    expect(merged[0].sensors[0].channels[0].name).toBe('Flow Rate Refreshed');
+  });
+
+  it('upsertDeviceList does not wipe out existing channels if a subsequent scan returns 0 channels', () => {
+    const existingList = [
+      {
+        id: 'dev_s403_id',
+        name: 'S403-12345678',
+        serial: '12345678',
+        transportType: 'ble',
+        isOnline: false,
+        sensors: [
+          {
+            id: 'sens_s403',
+            name: 'S403',
+            channels: [
+              { id: 'ch_s403_flow', channel_id: 2, name: 'Flow', unit: 'm³/h' },
+              { id: 'ch_s403_press', channel_id: 3, name: 'Pressure', unit: 'bar' }
+            ]
+          }
+        ]
+      }
+    ];
+
+    // Re-detection where channel scan returned empty (e.g. timeout)
+    const scanWithZeroChannels = {
+      id: 'dev_new_ble_id',
+      name: 'S403-12345678',
+      serial: '12345678',
+      transportType: 'ble',
+      sensors: [
+        {
+          id: 'sens_s403_empty',
+          name: 'S403',
+          channels: []
+        }
+      ]
+    };
+
+    const merged = upsertDeviceList(existingList, [scanWithZeroChannels]);
+    expect(merged.length).toBe(1);
+    expect(merged[0].id).toBe('dev_s403_id');
+    expect(merged[0].isOnline).toBe(true);
+    expect(merged[0].sensors[0].channels.length).toBe(2);
+    expect(merged[0].sensors[0].channels[0].name).toBe('Flow');
+  });
+
+  it('getSavedDevices auto-heals and recovers device channels from locations if device lost channels', () => {
+    const emptyDev = {
+      id: 'dev_ble_heal',
+      name: 'S403-12345678',
+      serial: '12345678',
+      transport: 'Bluetooth (BLE)',
+      transportType: 'ble',
+      sensors: [
+        {
+          id: 'sens_empty',
+          name: 'S403',
+          channels: []
+        }
+      ]
+    };
+    const testLoc = [
+      {
+        id: 'loc_main',
+        name: 'Main Plant',
+        measurementPoints: [
+          {
+            id: 'mp_flow',
+            name: 'Main Flow',
+            channels: [
+              { id: 'ch_recovered_1', channel_id: 2, name: 'Flow Rate', unit: 'm³/h', device: 'S403-12345678' }
+            ]
+          }
+        ]
+      }
+    ];
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([emptyDev]));
+    localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify(testLoc));
+
+    const saved = getSavedDevices();
+    expect(saved.length).toBe(1);
+    expect(saved[0].sensors[0].channels.length).toBe(1);
+    expect(saved[0].sensors[0].channels[0].name).toBe('Flow Rate');
+    expect(saved[0].sensors[0].channels[0].id).toBe('ch_recovered_1');
   });
 
   it('prompts confirmation warning when deleting a device with assigned channels in SensorManagerModal', async () => {

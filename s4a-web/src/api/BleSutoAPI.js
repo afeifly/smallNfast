@@ -148,6 +148,8 @@ export class BleSutoManager {
     this._bleLock = Promise.resolve();
     this._pendingRxCallback = null;
     this.historyBuffer = new Map();
+    this._isManualDisconnect = false;
+    this._reconnectTimer = null;
   }
 
   isSupported() {
@@ -219,12 +221,123 @@ export class BleSutoManager {
           };
 
       const device = await navigator.bluetooth.requestDevice(requestOptions);
+      return await this._setupGattAndIdentify(device);
+    } catch (err) {
+      TauriSutoAPI.logClientEvent('ERROR', 'BLE_CONN', `BLE connection failed: ${err.message}`);
+      throw err;
+    }
+  }
 
+  /**
+   * Resume Bluetooth connection to a previously authorized BLE device without
+   * prompting the user with the device picker dialog.
+   * Utilizes navigator.bluetooth.getDevices() (supported in Chrome 85+).
+   *
+   * @param {Object} [options]
+   * @param {string} [options.deviceId] - Specific Web Bluetooth device ID / UUID to match
+   * @param {string} [options.name] - Device name to match
+   * @returns {Promise<Object|null>} Device connection info or null if no authorized device was found/resumed
+   */
+  async resumeBleConnection(options = {}) {
+    if (this.isConnected()) {
+      return {
+        address: this.devAddr,
+        device: this.systemInfo?.device_name || this.getDeviceName(),
+        name: this.device?.name || this.getDeviceName(),
+        serial: this.systemInfo?.serial_number,
+        serial_number: this.systemInfo?.serial_number,
+        deviceId: this.device?.id,
+        device_id: this.systemInfo?.device_id,
+        type: 'BLE',
+        transport: 'BLE',
+      };
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') {
+      const msg = 'Web Bluetooth getDevices() is not supported in this browser environment.';
+      TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', msg);
+      return null;
+    }
+
+    const permittedDevices = await navigator.bluetooth.getDevices().catch(err => {
+      TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', `navigator.bluetooth.getDevices() note: ${err.message}`);
+      return [];
+    });
+
+    if (!Array.isArray(permittedDevices) || permittedDevices.length === 0) {
+      TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', 'No authorized Bluetooth devices found in browser permissions to resume.');
+      return null;
+    }
+
+    let targetDevice = null;
+    if (options.deviceId) {
+      targetDevice = permittedDevices.find(d => d.id === options.deviceId);
+    }
+    if (!targetDevice && options.name) {
+      const targetNameLower = options.name.toLowerCase();
+      targetDevice = permittedDevices.find(d => d.name && d.name.toLowerCase() === targetNameLower) ||
+        permittedDevices.find(d => d.name && (d.name.toLowerCase().includes(targetNameLower) || targetNameLower.includes(d.name.toLowerCase())));
+    }
+    if (!targetDevice) {
+      // Pick first device matching SUTO branding or first authorized device
+      targetDevice = permittedDevices.find(d => d.name && (d.name.toLowerCase().includes('suto') || /S\d{3}/i.test(d.name))) ||
+        permittedDevices[0];
+    }
+
+    if (!targetDevice) {
+      return null;
+    }
+
+    TauriSutoAPI.logClientEvent(
+      'INFO',
+      'BLE_CONN',
+      `Found authorized BLE device "${targetDevice.name || 'Unnamed'}" (ID: ${targetDevice.id}). Resuming connection...`
+    );
+
+    return await this._setupGattAndIdentify(targetDevice);
+  }
+
+  /**
+   * Schedule auto-reconnect attempt for a disconnected device if not manually disconnected.
+   */
+  _scheduleAutoReconnect(device) {
+    if (this._isManualDisconnect || !device) return;
+    if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
+
+    TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', `Scheduling auto-reconnect for BLE device "${device.name}" in 3s...`);
+    this._reconnectTimer = setTimeout(async () => {
+      this._reconnectTimer = null;
+      if (this._isManualDisconnect || this.isConnected()) return;
+      try {
+        TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', `Attempting auto-reconnect to BLE device "${device.name}"...`);
+        await this._setupGattAndIdentify(device);
+        TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', `🎉 Auto-reconnected to BLE device "${device.name}"!`);
+      } catch (err) {
+        TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', `Auto-reconnect attempt note (${err.message}).`);
+      }
+    }, 3000);
+  }
+
+  /**
+   * Set up GATT connection, characteristic listeners, and device identification
+   * on an acquired BluetoothDevice (from requestDevice or getDevices).
+   *
+   * @param {BluetoothDevice} device
+   * @returns {Promise<Object>} Device connection info
+   */
+  async _setupGattAndIdentify(device) {
+    this._isManualDisconnect = false;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+
+    try {
       this.device = device;
       TauriSutoAPI.logClientEvent(
         'INFO',
         'BLE_CONN',
-        `User selected BLE device: "${device.name || 'Unnamed'}" (ID: ${device.id})`
+        `Connecting to BLE device: "${device.name || 'Unnamed'}" (ID: ${device.id})`
       );
 
       device.addEventListener('gattserverdisconnected', () => {
@@ -232,131 +345,150 @@ export class BleSutoManager {
         this.server = null;
         this.rxChar = null;
         this.txChar = null;
+        if (!this._isManualDisconnect) {
+          this._scheduleAutoReconnect(device);
+        }
       });
+
+      if (device.gatt?.connected) {
+        try {
+          device.gatt.disconnect();
+          await new Promise(r => setTimeout(r, 100));
+        } catch (_) {}
+      }
 
       TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', 'Connecting to GATT server...');
       const server = await device.gatt.connect();
       this.server = server;
+      await new Promise(r => setTimeout(r, 100));
 
-      // Locate serial communication service & characteristics matching SUTO hardware
-      let writeChar = null;
-      let notifyChar = null;
-      const scannedChars = [];
+    // Locate serial communication service & characteristics matching SUTO hardware
+    let writeChar = null;
+    let notifyChar = null;
+    const scannedChars = [];
 
-      try {
-        const services = await server.getPrimaryServices();
-        for (const s of services) {
-          try {
-            const chars = await s.getCharacteristics();
-            for (const c of chars) {
-              const u = c.uuid.toLowerCase();
-              scannedChars.push({ uuid: u, char: c, properties: c.properties });
+    try {
+      const services = await server.getPrimaryServices();
+      for (const s of services) {
+        try {
+          const chars = await s.getCharacteristics();
+          for (const c of chars) {
+            const u = c.uuid.toLowerCase();
+            scannedChars.push({ uuid: u, char: c, properties: c.properties });
 
-              if (!writeChar && SUTO_BLE_CONFIG.WRITE_PREFIXES.some(prefix => u.includes(prefix.toLowerCase()))) {
-                writeChar = c;
-              }
-              if (!notifyChar && SUTO_BLE_CONFIG.READ_NOTIFY_PREFIXES.some(prefix => u.includes(prefix.toLowerCase()))) {
-                notifyChar = c;
-              }
+            if (!writeChar && SUTO_BLE_CONFIG.WRITE_PREFIXES.some(prefix => u.includes(prefix.toLowerCase()))) {
+              writeChar = c;
             }
-          } catch (cErr) {
-            TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', `Service ${s.uuid} char probe note: ${cErr.message}`);
+            if (!notifyChar && SUTO_BLE_CONFIG.READ_NOTIFY_PREFIXES.some(prefix => u.includes(prefix.toLowerCase()))) {
+              notifyChar = c;
+            }
           }
+        } catch (cErr) {
+          TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', `Service ${s.uuid} char probe note: ${cErr.message}`);
         }
-      } catch (svcErr) {
-        TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', `getPrimaryServices note: ${svcErr.message}`);
       }
+    } catch (svcErr) {
+      TauriSutoAPI.logClientEvent('DEBUG', 'BLE_CONN', `getPrimaryServices note: ${svcErr.message}`);
+    }
 
-      // Fallback: If characteristics were not found by prefix, check standard GATT characteristics
-      if (!writeChar) {
-        writeChar = scannedChars.find(item => item.properties.write || item.properties.writeWithoutResponse)?.char;
+    // Fallback: If characteristics were not found by prefix, check standard GATT characteristics
+    if (!writeChar) {
+      writeChar = scannedChars.find(item => item.properties.write || item.properties.writeWithoutResponse)?.char;
+    }
+    if (!notifyChar) {
+      notifyChar = scannedChars.find(item => (item.properties.notify || item.properties.indicate) && item.char !== writeChar)?.char;
+    }
+    // Single characteristic fallback (for HM-10 0xffe1 dual write/notify)
+    if (!notifyChar && writeChar && (writeChar.properties.notify || writeChar.properties.indicate)) {
+      notifyChar = writeChar;
+    }
+
+    this.rxChar = writeChar;  // Outgoing write characteristic
+    this.txChar = notifyChar; // Incoming notify characteristic
+
+    if (!this.rxChar || !this.txChar) {
+      throw new Error(
+        `Could not identify SUTO RX/TX characteristics on BLE device "${device.name}". ` +
+        `Found ${scannedChars.length} characteristic(s). Please verify sensor BLE UART service.`
+      );
+    }
+
+    // Enable notifications on TX
+    await this.txChar.startNotifications();
+    this.txChar.addEventListener('characteristicvaluechanged', (e) => {
+      const dv = e.target.value;
+      const val = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+      const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      TauriSutoAPI.logClientEvent('DEBUG', 'BLE_RX', `BLE chunk received (${val.length} bytes): ${hex}`);
+      for (let i = 0; i < val.length; i++) {
+        this.rxBuffer.push(val[i]);
       }
-      if (!notifyChar) {
-        notifyChar = scannedChars.find(item => (item.properties.notify || item.properties.indicate) && item.char !== writeChar)?.char;
+      if (this._pendingRxCallback) {
+        this._pendingRxCallback();
       }
-      // Single characteristic fallback (for HM-10 0xffe1 dual write/notify)
-      if (!notifyChar && writeChar && (writeChar.properties.notify || writeChar.properties.indicate)) {
-        notifyChar = writeChar;
+    });
+
+    // Brief stabilization pause after starting notifications before issuing commands
+    await new Promise(r => setTimeout(r, 150));
+
+    TauriSutoAPI.logClientEvent(
+      'INFO',
+      'BLE_CONN',
+      `🎉 BLE connected and notifications active on "${device.name}"`
+    );
+
+    // Perform Device Identification ('A')
+    // SUTO BLE sensors operate point-to-point on Address 1 by default (suto_lib SUTOProtocol.DEVICE_ADDR = 1).
+    TauriSutoAPI.logClientEvent('INFO', 'BLE_DISC', "Sending Device Information query ('A') over BLE...");
+    let activeAddr = 1;
+    let devInfo = null;
+
+    try {
+      const discPkt1 = this._packPacket(1, [0x41]); // 'A' on address 1
+      const reply1 = await this.writeAndRead(discPkt1, 2000);
+      devInfo = this._parseDeviceIdResponse(reply1);
+      activeAddr = (reply1 && reply1.length && reply1[0] !== 0) ? reply1[0] : 1;
+    } catch (errAddr1) {
+      TauriSutoAPI.logClientEvent('DEBUG', 'BLE_DISC', `Address 1 query note: ${errAddr1.message}, trying address 0...`);
+      try {
+        const discPkt0 = this._packPacket(0, [0x41]); // 'A' on broadcast address 0
+        const reply0 = await this.writeAndRead(discPkt0, 2000);
+        devInfo = this._parseDeviceIdResponse(reply0);
+        activeAddr = (reply0 && reply0.length && reply0[0] !== 0) ? reply0[0] : 1;
+      } catch (errAddr0) {
+        TauriSutoAPI.logClientEvent('WARN', 'BLE_DISC', `Address discovery fallback: ${errAddr0.message}`);
       }
+    }
 
-      this.rxChar = writeChar;  // Outgoing write characteristic
-      this.txChar = notifyChar; // Incoming notify characteristic
-
-      if (!this.rxChar || !this.txChar) {
-        throw new Error(
-          `Could not identify SUTO RX/TX characteristics on BLE device "${device.name}". ` +
-          `Found ${scannedChars.length} characteristic(s). Please verify sensor BLE UART service.`
-        );
-      }
-
-      // Enable notifications on TX
-      await this.txChar.startNotifications();
-      this.txChar.addEventListener('characteristicvaluechanged', (e) => {
-        const dv = e.target.value;
-        const val = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
-        const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
-        TauriSutoAPI.logClientEvent('DEBUG', 'BLE_RX', `BLE chunk received (${val.length} bytes): ${hex}`);
-        for (let i = 0; i < val.length; i++) {
-          this.rxBuffer.push(val[i]);
-        }
-        if (this._pendingRxCallback) {
-          this._pendingRxCallback();
-        }
-      });
-
+    this.devAddr = activeAddr;
+    if (devInfo) {
+      this.systemInfo = devInfo;
       TauriSutoAPI.logClientEvent(
         'INFO',
-        'BLE_CONN',
-        `🎉 BLE connected and notifications active on "${device.name}"`
+        'BLE_DISC',
+        `🎉 SUTO BLE Identified! Device: ${devInfo.device_name}, SN: ${devInfo.serial_number}, FW: ${devInfo.firmware_version}`
       );
-
-      // Perform Device Identification ('A')
-      // SUTO BLE sensors operate point-to-point on Address 1 by default (suto_lib SUTOProtocol.DEVICE_ADDR = 1).
-      TauriSutoAPI.logClientEvent('INFO', 'BLE_DISC', "Sending Device Information query ('A') over BLE...");
-      let activeAddr = 1;
-      let devInfo = null;
-
-      try {
-        const discPkt1 = this._packPacket(1, [0x41]); // 'A' on address 1
-        const reply1 = await this.writeAndRead(discPkt1, 2000);
-        devInfo = this._parseDeviceIdResponse(reply1);
-        activeAddr = (reply1 && reply1.length && reply1[0] !== 0) ? reply1[0] : 1;
-      } catch (errAddr1) {
-        TauriSutoAPI.logClientEvent('DEBUG', 'BLE_DISC', `Address 1 query note: ${errAddr1.message}, trying address 0...`);
-        try {
-          const discPkt0 = this._packPacket(0, [0x41]); // 'A' on broadcast address 0
-          const reply0 = await this.writeAndRead(discPkt0, 2000);
-          devInfo = this._parseDeviceIdResponse(reply0);
-          activeAddr = (reply0 && reply0.length && reply0[0] !== 0) ? reply0[0] : 1;
-        } catch (errAddr0) {
-          TauriSutoAPI.logClientEvent('WARN', 'BLE_DISC', `Address discovery fallback: ${errAddr0.message}`);
-        }
-      }
-
-      this.devAddr = activeAddr;
-      if (devInfo) {
-        this.systemInfo = devInfo;
-        TauriSutoAPI.logClientEvent(
-          'INFO',
-          'BLE_DISC',
-          `🎉 SUTO BLE Identified! Device: ${devInfo.device_name}, SN: ${devInfo.serial_number}, FW: ${devInfo.firmware_version}`
-        );
-      } else {
-        this.systemInfo = {
-          serial_number: (device.id || 'BLE-SUTO').slice(-8).toUpperCase(),
-          device_id: 0,
-          device_name: device.name || 'SUTO BLE Device',
-          firmware_version: 'v1.0',
-          hardware_version: 'v1.0',
-        };
-      }
-
-      return {
-        address: activeAddr,
-        device: this.systemInfo.device_name,
-        serial_number: this.systemInfo.serial_number,
-        type: 'BLE',
+    } else {
+      this.systemInfo = {
+        serial_number: (device.id || 'BLE-SUTO').slice(-8).toUpperCase(),
+        device_id: 0,
+        device_name: device.name || 'SUTO BLE Device',
+        firmware_version: 'v1.0',
+        hardware_version: 'v1.0',
       };
+    }
+
+    return {
+      address: activeAddr,
+      device: this.systemInfo.device_name,
+      name: device.name || this.systemInfo.device_name,
+      serial: this.systemInfo.serial_number,
+      serial_number: this.systemInfo.serial_number,
+      deviceId: device.id,
+      device_id: this.systemInfo.device_id,
+      type: 'BLE',
+      transport: 'BLE',
+    };
     } catch (err) {
       TauriSutoAPI.logClientEvent('ERROR', 'BLE_CONN', `BLE connection failed: ${err.message}`);
       throw err;
@@ -420,6 +552,11 @@ export class BleSutoManager {
   }
 
   async disconnect() {
+    this._isManualDisconnect = true;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     TauriSutoAPI.logClientEvent('INFO', 'BLE_CONN', 'Disconnecting BLE session...');
     if (this._pendingRxCallback) {
       try { this._pendingRxCallback(); } catch (_) {}
@@ -831,8 +968,8 @@ export class BleSutoManager {
 
     let channels = await scanWithPrefix(primaryPrefix);
 
-    // If primary prefix returned no channels and device is S330/S331, try the alternate prefix
-    if (channels.length === 0 && isS330orS331) {
+    // If primary prefix returned no channels, try alternate prefix (e.g. 0x0B or 0x02)
+    if (channels.length === 0) {
       const altPrefix = primaryPrefix === 0x0B ? 0x02 : 0x0B;
       TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Trying alternate channel prefix 0x${altPrefix.toString(16).padStart(2, '0')}...`);
       channels = await scanWithPrefix(altPrefix);
@@ -840,6 +977,12 @@ export class BleSutoManager {
 
     // Sort by logical channel id
     channels.sort((a, b) => a.channel_id - b.channel_id);
+
+    // SAFEGUARD: If scan returned 0 channels, but we have cached channels, do NOT wipe them out!
+    if (channels.length === 0 && Array.isArray(this.cachedChannels) && this.cachedChannels.length > 0) {
+      TauriSutoAPI.logClientEvent('INFO', 'BLE_CH', `Scan yielded 0 channels, preserving ${this.cachedChannels.length} cached channels`);
+      return this.cachedChannels;
+    }
 
     // Only synthesize fallback dummy channels if explicitly requested (e.g. mock test harnesses)
     if (channels.length === 0 && options.allowFallback) {

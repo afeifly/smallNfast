@@ -65,9 +65,10 @@ export function useProcessScapeTelemetry({
         const updatedChannels = el.channels.map(ch => {
           const chKey = String(ch.channel_id || ch.id || '').toLowerCase();
           const chNameKey = (ch.name || '').trim().toLowerCase();
+          const chRawNameKey = (ch.rawName || '').trim().toLowerCase();
 
-          // Try match by explicit channel ID, then by channel name
-          const liveItem = byId.get(chKey) || byId.get(Number(chKey)) || byName.get(chNameKey);
+          // Try match by explicit channel ID, then by original channel name or display name
+          const liveItem = byId.get(chKey) || byId.get(Number(chKey)) || byName.get(chRawNameKey) || byName.get(chNameKey);
           if (liveItem) {
             const rawVal = liveItem.current_value !== undefined ? liveItem.current_value : liveItem.value;
             const res = (typeof liveItem.resolution === 'number' && liveItem.resolution >= 0)

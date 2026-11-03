@@ -217,7 +217,9 @@
 }
 
 .ps-sm-col-header {
-  padding: 10px 14px;
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 14px;
   border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
@@ -366,6 +368,32 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.ps-sm-device-reconnect-btn {
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  line-height: 1;
+  color: #00ac86;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ps-sm-device-reconnect-btn:hover:not(:disabled) {
+  color: #008769;
+  background: rgba(0, 172, 134, 0.12);
+  transform: rotate(60deg) scale(1.1);
+}
+
+.ps-sm-device-reconnect-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .ps-sm-device-del-btn {
@@ -727,131 +755,291 @@
 
 .ps-sm-mp-list {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
 }
 
+/* Measurement Point Card Styled Identical to ProcessScape Sensor Mode Card (2/5 width grid) */
 .ps-sm-mp-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  width: calc((100% - 12px) * 0.4);
+  min-width: 260px;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
 }
 
 .theme-dark .ps-sm-mp-card {
-  background: #1e293b;
+  background: #0f172a;
   border-color: #334155;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
+.ps-sm-mp-card:hover {
+  border-color: #94a3b8;
+}
+
+/* Yellow Industrial Header Badge (0 Space, Seamless Header) */
 .ps-sm-mp-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  background: #ffe000;
+  padding: 4px 8px;
+  border-bottom: 1px solid #eab308;
+}
+
+.theme-dark .ps-sm-mp-top {
+  background: #eab308;
+  border-bottom-color: #ca8a04;
 }
 
 .ps-sm-mp-name-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  flex: 1;
+}
+
+.ps-sm-mp-badge-tag-icon {
+  font-size: 11px;
+  color: #18181b;
+  opacity: 0.85;
 }
 
 .ps-sm-mp-name-input {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  color: #18181b;
   border: 1px solid transparent;
-  padding: 2px 4px;
+  padding: 2px 5px;
   border-radius: 4px;
   background: transparent;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: -0.2px;
+  width: 100%;
+  max-width: 240px;
+  transition: all 0.15s ease;
 }
 
-.theme-dark .ps-sm-mp-name-input {
-  color: #f8fafc;
+.ps-sm-mp-name-input:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .ps-sm-mp-name-input:focus {
-  border-color: #cbd5e1;
+  border-color: rgba(0, 0, 0, 0.25);
   background: #ffffff;
+  outline: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Droppable Target */
+.ps-sm-mp-del-btn {
+  color: #713f12 !important;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.ps-sm-mp-del-btn:hover {
+  background: rgba(0, 0, 0, 0.1) !important;
+  color: #b91c1c !important;
+}
+
+/* Droppable Target: Sensor Card Body with Channel Rows */
 .ps-sm-dropzone {
-  min-height: 34px;
-  border: 1.5px dashed #cbd5e1;
-  border-radius: 5px;
+  min-height: 40px;
+  background: #ffffff;
   padding: 4px 6px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  background: #ffffff;
+  flex-direction: column;
+  gap: 2px;
   transition: all 0.15s ease;
 }
 
 .theme-dark .ps-sm-dropzone {
   background: #0f172a;
-  border-color: #475569;
 }
 
 .ps-sm-dropzone.drag-over {
-  border-color: #00ac86;
   background: rgba(0, 172, 134, 0.08);
+  outline: 2px dashed #00ac86;
+  outline-offset: -2px;
 }
 
 .ps-sm-dropzone-empty {
-  font-size: 10.5px;
+  font-size: 11px;
   color: #94a3b8;
   font-style: italic;
-  padding: 2px 4px;
+  padding: 10px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
+/* Channel Row Item: Aligned Table-like Row Matching Sensor Mode */
 .ps-sm-assigned-tag {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 6px;
   background: #ffffff;
-  border: 1px solid #cbd5e1;
+  border: 1px solid transparent;
   border-radius: 4px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: #0f172a;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: all 0.12s ease;
 }
 
 .theme-dark .ps-sm-assigned-tag {
-  background: #1e293b;
-  border-color: #475569;
+  background: #0f172a;
   color: #f8fafc;
+}
+
+.ps-sm-assigned-tag:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.theme-dark .ps-sm-assigned-tag:hover {
+  background: #1e293b;
+  border-color: #334155;
 }
 
 /* Assigned tag is draggable between measurement points */
 .ps-sm-assigned-tag.draggable-tag {
   cursor: grab;
   user-select: none;
-  transition: all 0.12s ease;
 }
 
 .ps-sm-assigned-tag.draggable-tag:hover {
   border-color: #00ac86;
-  background: rgba(0, 172, 134, 0.06);
-  box-shadow: 0 1px 3px rgba(0, 172, 134, 0.2);
+  background: rgba(0, 172, 134, 0.05);
 }
 
 .ps-sm-assigned-tag.draggable-tag:active {
   cursor: grabbing;
 }
 
-.ps-sm-tag-drag-handle {
-  color: #94a3b8;
-  font-size: 9.5px;
-  letter-spacing: -1px;
+.ps-sm-tag-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
 }
 
-.ps-sm-tag-name {
+.ps-sm-tag-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ps-sm-tag-drag-handle {
+  color: #cbd5e1;
+  font-size: 9.5px;
+  letter-spacing: -1px;
+  cursor: grab;
+}
+
+.ps-sm-tag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+}
+
+.ps-sm-tag-name-input {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 3px;
+  width: 70px;
+  max-width: 110px;
+  flex: 1;
+  min-width: 0;
+  transition: all 0.15s ease;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.ps-sm-tag-name-input:hover {
+  background: rgba(0, 172, 134, 0.06);
+  border-color: rgba(0, 172, 134, 0.3);
+}
+
+.ps-sm-tag-name-input:focus {
+  background: #ffffff;
+  border-color: #00ac86;
+  color: #0f172a;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 172, 134, 0.2);
+  width: 90px;
+}
+
+.theme-dark .ps-sm-tag-name-input {
+  color: #94a3b8;
+}
+
+.theme-dark .ps-sm-tag-name-input:focus {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.ps-sm-tag-val {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #0f172a;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  min-width: 38px;
+  text-align: right;
+}
+
+.theme-dark .ps-sm-tag-val {
+  color: #f8fafc;
+}
+
+.ps-sm-ch-unit {
+  font-size: 10px;
   font-weight: 600;
+  color: #64748b;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  min-width: 28px;
+  text-align: left;
+}
+
+.theme-dark .ps-sm-ch-unit {
+  color: #94a3b8;
+}
+
+.ps-sm-tag-del {
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.12s ease;
+}
+
+.ps-sm-tag-del:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .ps-sm-tag-del {

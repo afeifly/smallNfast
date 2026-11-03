@@ -568,6 +568,43 @@
   color: #00ac86;
 }
 
+.ps-header-location-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px 8px;
+  height: 30px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.15s ease;
+}
+
+.ps-header-location-picker:hover {
+  border-color: #94a3b8;
+}
+
+.ps-header-location-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ps-header-location-select {
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+  outline: none;
+  padding-right: 4px;
+}
+
+.ps-header-location-select:focus {
+  color: #00ac86;
+}
+
 .landing-cta-btn {
   display: inline-flex;
   align-items: center;

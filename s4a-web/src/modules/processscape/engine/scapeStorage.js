@@ -4,81 +4,36 @@
  * active scape selection, and ships with an out-of-the-box realistic industrial plant default.
  */
 
+import exampleLayoutJson from '../templates/example-compressor-station-layout.json';
+import { pointsToPath } from './pipeUtils';
+
 const STORAGE_KEY_SCAPES = 's4a_processscapes_v1';
 const STORAGE_KEY_ACTIVE = 's4a_active_scape_id_v1';
+const STORAGE_KEY_LOCATIONS = 's4a_sensor_locations_v1';
 
-export const DEFAULT_COMPRESSED_AIR_SCAPE = {
-  id: 'scape_default_plant',
-  title: 'Main Compressor Station',
-  description: 'Rotary screw air compressor, buffer receiver tank, refrigerated dryer, and S401 flow meter loop',
-  isDefault: true,
-  createdAt: 1715000000000,
-  updatedAt: 1715000000000,
-  tempCanvasSize: { width: 1024, height: 800 },
-  zones: [],
-  elements: [
-    {
-      id: 'elem_compressor_1',
-      type: 'machine_compressor',
-      tag: 'Air Compressor 1',
-      desc: 'Rotary screw main compressor unit',
-      x: 120,
-      y: 190,
-      w: 140,
-      h: 120,
-      status: 'normal',
-      zIndex: 20
-    },
-    {
-      id: 'elem_buffer_tank_1',
-      type: 'tank_buffer',
-      tag: 'Buffer Tank 1',
-      desc: 'Wet air receiver storage (1500L)',
-      x: 300,
-      y: 190,
-      w: 90,
-      h: 140,
-      zIndex: 20
-    },
-    {
-      id: 'elem_dryer_1',
-      type: 'machine_dryer',
-      tag: 'Refrig Dryer 1',
-      desc: 'Refrigerated condensation air dryer',
-      x: 460,
-      y: 190,
-      w: 110,
-      h: 110,
-      zIndex: 20
-    },
-    {
-      id: 'elem_flow_meter_1',
-      type: 'flow_meter',
-      tag: 'S401 Main Header',
-      desc: 'S401 Insertion thermal mass flow sensor',
-      x: 610,
-      y: 190,
-      w: 50,
-      h: 50,
-      zIndex: 20
-    }
-  ],
-  pipes: [
-    {
-      id: 'pipe_main_loop',
-      groupId: 'pipe_group_main',
-      medium: 'gas',
-      w: 18,
-      flow: 'forward',
-      zIndex: 10,
-      points: [
-        { x: 100, y: 190 },
-        { x: 720, y: 190 }
-      ],
-      d: 'M 100,190 L 720,190'
-    }
-  ]
-};
+export function getExampleCompressorStationScape() {
+  return {
+    id: 'scape_example_demo',
+    title: exampleLayoutJson.project || 'Main Compressor Station',
+    description: 'Example industrial plant layout (Demonstration)',
+    isExample: true,
+    createdAt: 1715000000000,
+    updatedAt: 1715000000000,
+    tempCanvasSize: exampleLayoutJson.tempCanvasSize ? { ...exampleLayoutJson.tempCanvasSize } : { width: 1024, height: 800 },
+    screenSize: exampleLayoutJson.screenSize ? { ...exampleLayoutJson.screenSize } : { width: 913, height: 677 },
+    viewBox: exampleLayoutJson.viewBox || '93 29 913 677',
+    zones: exampleLayoutJson.zones ? JSON.parse(JSON.stringify(exampleLayoutJson.zones)) : [],
+    elements: exampleLayoutJson.elements ? JSON.parse(JSON.stringify(exampleLayoutJson.elements)) : [],
+    pipes: (exampleLayoutJson.pipes || []).map((p, idx) => ({
+      ...JSON.parse(JSON.stringify(p)),
+      id: p.id || `pipe_ex_${idx}`,
+      d: p.d || (p.points ? pointsToPath(p.points) : '')
+    }))
+  };
+}
+
+export const EXAMPLE_COMPRESSOR_STATION_SCAPE = getExampleCompressorStationScape();
+export const DEFAULT_COMPRESSED_AIR_SCAPE = EXAMPLE_COMPRESSOR_STATION_SCAPE;
 
 function getStorage() {
   if (typeof window === 'undefined' || !window.localStorage) {
@@ -88,26 +43,56 @@ function getStorage() {
 }
 
 /**
- * Get all scapes from localStorage. If none exist, initializes with default.
+ * Check if the user has any saved locations in the system
+ */
+export function hasSavedLocations() {
+  const storage = getStorage();
+  if (!storage) return false;
+  try {
+    const raw = storage.getItem(STORAGE_KEY_LOCATIONS);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Get all scapes from localStorage.
+ * If no real scapes exist in storage, returns the example demo layout
+ * without permanently saving it to localStorage.
  */
 export function getAllScapes() {
   const storage = getStorage();
-  if (!storage) return [DEFAULT_COMPRESSED_AIR_SCAPE];
+  if (!storage) return [getExampleCompressorStationScape()];
 
   try {
     const raw = storage.getItem(STORAGE_KEY_SCAPES);
     if (!raw) {
-      storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify([DEFAULT_COMPRESSED_AIR_SCAPE]));
-      storage.setItem(STORAGE_KEY_ACTIVE, DEFAULT_COMPRESSED_AIR_SCAPE.id);
-      return [DEFAULT_COMPRESSED_AIR_SCAPE];
+      return [getExampleCompressorStationScape()];
     }
+
     let list = JSON.parse(raw);
     if (!Array.isArray(list) || list.length === 0) {
-      storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify([DEFAULT_COMPRESSED_AIR_SCAPE]));
-      storage.setItem(STORAGE_KEY_ACTIVE, DEFAULT_COMPRESSED_AIR_SCAPE.id);
-      return [DEFAULT_COMPRESSED_AIR_SCAPE];
+      return [getExampleCompressorStationScape()];
     }
-    // Auto-migrate legacy scapes: remove zone_comp_room, fake sensor cards, and heal disconnected 3-part pipes
+
+    // Auto-clean: purge old hardcoded starter plant if present
+    const cleaned = list.filter(s => s.id !== 'scape_default_plant');
+    if (cleaned.length !== list.length) {
+      list = cleaned;
+      if (list.length > 0) {
+        storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(list));
+      } else {
+        storage.removeItem(STORAGE_KEY_SCAPES);
+      }
+    }
+    if (list.length === 0) {
+      return [getExampleCompressorStationScape()];
+    }
+
+    // Auto-migrate legacy scapes: remove zone_comp_room, fake sensor cards
     let modified = false;
     list = list.map(scape => {
       let sc = { ...scape };
@@ -119,35 +104,15 @@ export function getAllScapes() {
         sc.zones = sc.zones.filter(z => z.id !== 'zone_comp_room');
         modified = true;
       }
-      if (sc.pipes && sc.pipes.some(p => p.id === 'pipe_main_loop_1')) {
-        const hasLegacy3 = sc.pipes.some(p => p.id === 'pipe_main_loop_2') || sc.pipes.some(p => p.id === 'pipe_main_loop_3');
-        if (hasLegacy3) {
-          const healedPipe = {
-            id: 'pipe_main_loop',
-            groupId: 'pipe_group_main',
-            medium: 'gas',
-            w: 18,
-            flow: 'forward',
-            zIndex: 10,
-            points: [
-              { x: 100, y: 190 },
-              { x: 720, y: 190 }
-            ],
-            d: 'M 100,190 L 720,190'
-          };
-          sc.pipes = sc.pipes.filter(p => !['pipe_main_loop_1', 'pipe_main_loop_2', 'pipe_main_loop_3'].includes(p.id)).concat(healedPipe);
-          modified = true;
-        }
-      }
       return sc;
     });
     if (modified) {
       storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(list));
     }
-    return list;
+    return list.length > 0 ? list : [getExampleCompressorStationScape()];
   } catch (err) {
     console.warn('[ScapeStorage] Error loading scapes, fallback to default:', err);
-    return [DEFAULT_COMPRESSED_AIR_SCAPE];
+    return [getExampleCompressorStationScape()];
   }
 }
 
@@ -156,13 +121,20 @@ export function getAllScapes() {
  */
 export function getActiveScapeId() {
   const storage = getStorage();
-  if (!storage) return DEFAULT_COMPRESSED_AIR_SCAPE.id;
+  if (!storage) return EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
   const activeId = storage.getItem(STORAGE_KEY_ACTIVE);
-  if (activeId) return activeId;
   const all = getAllScapes();
-  const firstId = all[0]?.id || DEFAULT_COMPRESSED_AIR_SCAPE.id;
-  storage.setItem(STORAGE_KEY_ACTIVE, firstId);
-  return firstId;
+  const realScapes = all.filter(s => !s.isExample);
+  if (realScapes.length > 0) {
+    if (activeId && realScapes.some(s => s.id === activeId)) {
+      return activeId;
+    }
+    return realScapes[0].id;
+  }
+  if (hasSavedLocations()) {
+    return 'scape_loc_active';
+  }
+  return EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
 }
 
 /**
@@ -179,9 +151,23 @@ export function setActiveScapeId(id) {
  */
 export function getActiveScape() {
   const all = getAllScapes();
-  const activeId = getActiveScapeId();
-  const found = all.find(s => s.id === activeId);
-  return found || all[0] || DEFAULT_COMPRESSED_AIR_SCAPE;
+  const realScapes = all.filter(s => !s.isExample);
+  if (realScapes.length > 0) {
+    const activeId = getActiveScapeId();
+    const found = realScapes.find(s => s.id === activeId);
+    return found ? JSON.parse(JSON.stringify(found)) : JSON.parse(JSON.stringify(realScapes[0]));
+  }
+  if (hasSavedLocations()) {
+    return {
+      id: 'scape_loc_active',
+      title: 'Plant Stage',
+      tempCanvasSize: { width: 1024, height: 800 },
+      zones: [],
+      elements: [],
+      pipes: []
+    };
+  }
+  return getExampleCompressorStationScape();
 }
 
 /**
@@ -198,6 +184,7 @@ export function saveScape(scape) {
     ...scape,
     updatedAt: now
   };
+  delete updatedScape.isExample; // Once explicitly saved, it's a real user scape
 
   const idx = all.findIndex(s => s.id === scape.id);
   let newList;
@@ -205,10 +192,11 @@ export function saveScape(scape) {
     newList = [...all];
     newList[idx] = updatedScape;
   } else {
-    newList = [...all, { ...updatedScape, createdAt: updatedScape.createdAt || now }];
+    newList = [...all.filter(s => !s.isExample), { ...updatedScape, createdAt: updatedScape.createdAt || now }];
   }
 
   storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(newList));
+  setActiveScapeId(updatedScape.id);
   return updatedScape;
 }
 

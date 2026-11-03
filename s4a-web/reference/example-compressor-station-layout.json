@@ -1,0 +1,429 @@
+{
+  "project": "Main Compressor Station",
+  "screenSize": {
+    "width": 913,
+    "height": 677
+  },
+  "tempCanvasSize": {
+    "width": 1024,
+    "height": 800
+  },
+  "viewBox": "93 29 913 677",
+  "margin": 16,
+  "zones": [],
+  "sensors": [],
+  "pipes": [
+    {
+      "id": "pipe_main_loop",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "points": [
+        {
+          "x": 230,
+          "y": 590
+        },
+        {
+          "x": 700,
+          "y": 590
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 137,
+          "y": 561
+        },
+        {
+          "x": 607,
+          "y": 561
+        }
+      ]
+    },
+    {
+      "id": "pipe_1793666314792_03gy",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "label": "",
+      "points": [
+        {
+          "x": 700,
+          "y": 590
+        },
+        {
+          "x": 700,
+          "y": 510
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 607,
+          "y": 561
+        },
+        {
+          "x": 607,
+          "y": 481
+        }
+      ]
+    },
+    {
+      "id": "pipe_1793666319034_m5q7",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "label": "",
+      "points": [
+        {
+          "x": 700,
+          "y": 510
+        },
+        {
+          "x": 880,
+          "y": 510
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 607,
+          "y": 481
+        },
+        {
+          "x": 787,
+          "y": 481
+        }
+      ]
+    },
+    {
+      "id": "pipe_1793666515340_enrr",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "label": "",
+      "points": [
+        {
+          "x": 880,
+          "y": 510
+        },
+        {
+          "x": 880,
+          "y": 280
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 787,
+          "y": 481
+        },
+        {
+          "x": 787,
+          "y": 251
+        }
+      ]
+    },
+    {
+      "id": "pipe_1793666526532_k16d",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "label": "",
+      "points": [
+        {
+          "x": 880,
+          "y": 280
+        },
+        {
+          "x": 380,
+          "y": 280
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 787,
+          "y": 251
+        },
+        {
+          "x": 287,
+          "y": 251
+        }
+      ]
+    },
+    {
+      "id": "pipe_1793666533340_f9mp",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "label": "",
+      "points": [
+        {
+          "x": 880,
+          "y": 280
+        },
+        {
+          "x": 880,
+          "y": 130
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 787,
+          "y": 251
+        },
+        {
+          "x": 787,
+          "y": 101
+        }
+      ]
+    },
+    {
+      "id": "pipe_1793666537181_euiu",
+      "groupId": "pipe_group_main",
+      "medium": "gas",
+      "label": "",
+      "points": [
+        {
+          "x": 880,
+          "y": 130
+        },
+        {
+          "x": 480,
+          "y": 130
+        }
+      ],
+      "w": 18,
+      "flow": "forward",
+      "zIndex": 10,
+      "finalPoints": [
+        {
+          "x": 787,
+          "y": 101
+        },
+        {
+          "x": 387,
+          "y": 101
+        }
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "id": "elem_compressor_1",
+      "type": "machine_compressor",
+      "tag": "Air Compressor",
+      "text": "Air Compressor",
+      "colorTheme": "blue",
+      "x": 179,
+      "y": 600,
+      "w": 140,
+      "h": 120,
+      "zIndex": 20,
+      "finalX": 86,
+      "finalY": 571,
+      "xPercent": "9.42%",
+      "yPercent": "84.34%",
+      "attachedPipeId": "pipe_main_loop",
+      "pipeT": 0.0862,
+      "pipeTPercent": "8.6%",
+      "pipeOffsetX": -91.51400000000001,
+      "pipeOffsetY": 10
+    },
+    {
+      "id": "elem_buffer_tank_1",
+      "type": "tank_buffer",
+      "tag": "Buffer Tank 1",
+      "text": "Buffer Tank 1",
+      "colorTheme": "blue",
+      "x": 692,
+      "y": 540,
+      "w": 90,
+      "h": 140,
+      "zIndex": 20,
+      "finalX": 599,
+      "finalY": 511,
+      "xPercent": "65.61%",
+      "yPercent": "75.48%",
+      "attachedPipeId": "pipe_1793666314792_03gy",
+      "pipeT": 0.375,
+      "pipeTPercent": "37.5%",
+      "pipeOffsetX": -8,
+      "pipeOffsetY": -20
+    },
+    {
+      "id": "elem_dryer_1",
+      "type": "machine_dryer",
+      "tag": "Refrig Dryer",
+      "text": "Refrig Dryer",
+      "colorTheme": "blue",
+      "x": 345,
+      "y": 580,
+      "w": 110,
+      "h": 110,
+      "zIndex": 20,
+      "finalX": 252,
+      "finalY": 551,
+      "xPercent": "27.60%",
+      "yPercent": "81.39%",
+      "attachedPipeId": "pipe_main_loop",
+      "pipeT": 0.234,
+      "pipeTPercent": "23.4%",
+      "pipeOffsetX": 5.019999999999982,
+      "pipeOffsetY": -10
+    },
+    {
+      "id": "elem_flow_meter_1",
+      "type": "flow_meter",
+      "tag": " ",
+      "text": " ",
+      "colorTheme": "blue",
+      "x": 822,
+      "y": 440,
+      "w": 50,
+      "h": 50,
+      "zIndex": 20,
+      "finalX": 729,
+      "finalY": 411,
+      "xPercent": "79.85%",
+      "yPercent": "60.71%",
+      "attachedPipeId": "pipe_1793666319034_m5q7",
+      "pipeT": 0.6667,
+      "pipeTPercent": "66.7%",
+      "pipeOffsetX": 1.9940000000000282,
+      "pipeOffsetY": -70
+    },
+    {
+      "id": "asset_1793666372828_ljt9",
+      "type": "wall_perimeter_v",
+      "text": "",
+      "colorTheme": "blue",
+      "x": 500,
+      "y": 580,
+      "w": 36,
+      "h": 220,
+      "zIndex": 20,
+      "finalX": 407,
+      "finalY": 551,
+      "xPercent": "44.58%",
+      "yPercent": "81.39%",
+      "attachedPipeId": "pipe_main_loop",
+      "pipeT": 0.6383,
+      "pipeTPercent": "63.8%",
+      "pipeOffsetX": -30.000999999999976,
+      "pipeOffsetY": -10
+    },
+    {
+      "id": "asset_1793666564860_59i9",
+      "type": "machine_cnc",
+      "tag": "CNC Machine",
+      "text": "CNC Machine",
+      "colorTheme": "blue",
+      "x": 410,
+      "y": 110,
+      "w": 160,
+      "h": 130,
+      "zIndex": 20,
+      "finalX": 317,
+      "finalY": 81,
+      "xPercent": "34.72%",
+      "yPercent": "11.96%",
+      "attachedPipeId": "pipe_1793666537181_euiu",
+      "pipeT": 0.775,
+      "pipeTPercent": "77.5%",
+      "pipeOffsetX": -160,
+      "pipeOffsetY": -20
+    },
+    {
+      "id": "asset_1793666586661_desv",
+      "type": "leak_detection",
+      "tag": "Leak Detection",
+      "text": "Leak Detection",
+      "colorTheme": "blue",
+      "x": 540,
+      "y": 350,
+      "w": 64,
+      "h": 124,
+      "zIndex": 20,
+      "finalX": 447,
+      "finalY": 321,
+      "xPercent": "48.96%",
+      "yPercent": "47.42%",
+      "attachedPipeId": "pipe_1793666526532_k16d",
+      "pipeT": 0.7,
+      "pipeTPercent": "70.0%",
+      "pipeOffsetX": 10,
+      "pipeOffsetY": 70
+    },
+    {
+      "id": "asset_1793666623648_f5xq",
+      "type": "compact_flow_meter",
+      "tag": "Compact Flow",
+      "text": "Compact Flow",
+      "colorTheme": "blue",
+      "x": 650,
+      "y": 110,
+      "w": 124,
+      "h": 80,
+      "zIndex": 20,
+      "finalX": 557,
+      "finalY": 81,
+      "xPercent": "61.01%",
+      "yPercent": "11.96%",
+      "attachedPipeId": "pipe_1793666537181_euiu",
+      "pipeT": 0.575,
+      "pipeTPercent": "57.5%",
+      "pipeOffsetX": 0,
+      "pipeOffsetY": -20
+    },
+    {
+      "id": "asset_1793666643631_itig",
+      "type": "wall_perimeter_h",
+      "text": "",
+      "colorTheme": "blue",
+      "x": 880,
+      "y": 320,
+      "w": 220,
+      "h": 36,
+      "zIndex": 20,
+      "finalX": 787,
+      "finalY": 291,
+      "xPercent": "86.20%",
+      "yPercent": "42.98%",
+      "attachedPipeId": "pipe_1793666515340_enrr",
+      "pipeT": 0.9565,
+      "pipeTPercent": "95.7%",
+      "pipeOffsetX": 0,
+      "pipeOffsetY": 29.995000000000005
+    },
+    {
+      "id": "asset_1793666703980_dl7s",
+      "type": "machine_laser",
+      "tag": "Laser Cutter",
+      "text": "Laser Cutter",
+      "colorTheme": "blue",
+      "x": 290,
+      "y": 290,
+      "w": 180,
+      "h": 130,
+      "zIndex": 20,
+      "finalX": 197,
+      "finalY": 261,
+      "xPercent": "21.58%",
+      "yPercent": "38.55%",
+      "attachedPipeId": "pipe_1793666526532_k16d",
+      "pipeT": 0.94,
+      "pipeTPercent": "94.0%",
+      "pipeOffsetX": -120,
+      "pipeOffsetY": 10
+    }
+  ]
+}

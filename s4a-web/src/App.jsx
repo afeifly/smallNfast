@@ -18,6 +18,8 @@ import ReadoutView from './modules/readout/ReadoutView';
 import { clearReadoutCache } from './modules/readout/readoutSession';
 import ProcessScapeView from './modules/processscape/ProcessScapeView';
 import SensorManagerModal from './modules/processscape/SensorManagerModal';
+import { getLocations } from './modules/processscape/engine/sensorManagerStorage';
+import { getAllScapes, setActiveScapeId } from './modules/processscape/engine/scapeStorage';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
@@ -149,6 +151,58 @@ function App() {
   const [psMode, setPsMode] = React.useState('runtime');
   const [showSensorManagerModal, setShowSensorManagerModal] = React.useState(false);
   const psActionsRef = React.useRef(null);
+  const [locationsList, setLocationsList] = React.useState(() => {
+    try { return getLocations(); } catch (_) { return []; }
+  });
+  const [selectedLocationId, setSelectedLocationId] = React.useState('');
+
+  React.useEffect(() => {
+    if (appMode === 'processscape') {
+      try {
+        const locs = getLocations();
+        const prevCount = locationsList.length;
+        setLocationsList(locs);
+        if (locs.length > 0) {
+          const currentValid = locs.some(l => l.id === selectedLocationId);
+          const activeLocId = currentValid ? selectedLocationId : locs[0].id;
+          setSelectedLocationId(activeLocId);
+          const activeLoc = locs.find(l => l.id === activeLocId);
+          if (activeLoc?.scapeId) {
+            psActionsRef.current?.switchScape?.(activeLoc.scapeId);
+          } else if (prevCount === 0) {
+            psActionsRef.current?.reloadActiveScape?.();
+          }
+        } else {
+          setSelectedLocationId('example_demo');
+          if (prevCount > 0) {
+            psActionsRef.current?.reloadActiveScape?.();
+          }
+        }
+      } catch (_) {}
+    }
+  }, [appMode, showSensorManagerModal]);
+
+  const locationOptions = React.useMemo(() => {
+    if (locationsList.length > 0) {
+      return locationsList.map(l => ({ id: l.id, name: l.name, scapeId: l.scapeId }));
+    }
+    return [{ id: 'example_demo', name: 'Example: Main Compressor Station (Demo)' }];
+  }, [locationsList]);
+
+  const handleLocationSelectChange = (e) => {
+    const locId = e.target.value;
+    setSelectedLocationId(locId);
+    if (locId === 'example_demo') {
+      psActionsRef.current?.reloadActiveScape?.();
+      return;
+    }
+    const found = locationOptions.find(o => o.id === locId);
+    if (found?.scapeId) {
+      try { setActiveScapeId(found.scapeId); } catch (_) {}
+      psActionsRef.current?.switchScape?.(found.scapeId);
+    }
+    psActionsRef.current?.setActiveLocationId?.(locId);
+  };
 
   // Live value recording (header REC button)
   const [recState, setRecState] = React.useState(() => liveRecorder.getRecorderState());
@@ -854,20 +908,7 @@ function App() {
             <span className="header-mode-indicator monitor">Device Studio</span>
           )}
           {appMode === 'processscape' && (
-            <>
-              <span className="header-mode-indicator processscape">ProcessScape</span>
-              <input
-                className="ps-title-input"
-                style={{ marginLeft: 8, height: 26, fontSize: 12, padding: '2px 8px', width: 180 }}
-                value={psTitle}
-                onChange={(e) => {
-                  setPsTitle(e.target.value);
-                  psActionsRef.current?.setProjectTitle(e.target.value);
-                }}
-                placeholder="Plant SCADA Title"
-                title="Rename Plant SCADA Project"
-              />
-            </>
+            <span className="header-mode-indicator processscape">ProcessScape</span>
           )}
         </div>
 
@@ -988,6 +1029,25 @@ function App() {
 
           {appMode === 'processscape' && (
             <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* Location Switcher Dropdown (Only shown when locations exist in the system) */}
+              {locationsList.length > 0 && (
+                <div className="ps-header-location-picker" title="Toggle Plant Location">
+                  <span className="ps-header-location-icon">📍</span>
+                  <select
+                    className="ps-header-location-select"
+                    value={selectedLocationId}
+                    onChange={handleLocationSelectChange}
+                    aria-label="Select Location"
+                  >
+                    {locationOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Only show Live Runtime View button when actively in Editor mode to return to runtime */}
               {psMode === 'editor' && (
                 <Tooltip title="Live Runtime View (Save & Exit Editor)">
@@ -1236,6 +1296,7 @@ function App() {
               initialMode="runtime"
               onBackToLanding={() => setAppMode(null)}
               onRegisterActions={(actions) => { psActionsRef.current = actions; }}
+              onOpenSensorManager={() => setShowSensorManagerModal(true)}
               onStateChange={({ screenSize, projectTitle, scapeMode }) => {
                 if (screenSize) setPsScreenSize(screenSize);
                 if (projectTitle != null) setPsTitle(projectTitle);

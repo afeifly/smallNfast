@@ -290,7 +290,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(pageTools).not.toBeNull();
     expect(pageTools.querySelector('#toolZoomReset').textContent).toMatch(/\d+%/);
     expect(pageTools.querySelector('#toolZoomFit')).not.toBeNull();
-    expect(pageTools.querySelector('.ps-canvas-size-badge')).not.toBeNull();
+    expect(pageTools.querySelector('.ps-canvas-size-badge')).toBeNull();
     // toolSelect and toolPan are strictly in top-hud, not in zoom-hud
     expect(pageTools.querySelector('#toolSelect')).toBeNull();
     expect(pageTools.querySelector('#toolPan')).toBeNull();
@@ -1033,7 +1033,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(runtimeTools.querySelector('#toolRuntimeZoomOut')).not.toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeZoomReset')).not.toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeZoomIn')).not.toBeNull();
-    expect(runtimeTools.querySelector('#toolRuntimeZoomFit')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomFit')).toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeDndToggle')).not.toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeBoundsResizer')).not.toBeNull();
   });
@@ -1877,7 +1877,57 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const saved = getActiveScape();
     expect(saved.elements.some(e => e.id === 'el_delete_me')).toBe(false);
   });
+
+  it('displays example compressor station layout with demo notice when no locations exist, and removes it once a location is created', () => {
+    // 1. Ensure clean state with 0 locations and 0 real scapes
+    window.localStorage.clear();
+
+    let openSensorManagerTriggered = false;
+    const { container, unmount } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        onOpenSensorManager={() => { openSensorManagerTriggered = true; }}
+      />
+    );
+
+    // Verify demo notice banner is present with message prompting location creation
+    const banner = container.querySelector('.ps-example-demo-banner');
+    expect(banner).not.toBeNull();
+    expect(banner.textContent).toContain('DEMO PREVIEW');
+    expect(banner.textContent).toContain('Example Plant Layout');
+    expect(banner.textContent).toContain('Create your own location and ProcessScape stage');
+
+    // Clicking CTA button triggers sensor manager callback
+    const ctaBtn = container.querySelector('.ps-example-demo-btn-primary');
+    expect(ctaBtn).not.toBeNull();
+    fireEvent.click(ctaBtn);
+    expect(openSensorManagerTriggered).toBe(true);
+
+    // Example station elements from example-compressor-station-layout.json are rendered
+    expect(container.textContent).toContain('Air Compressor');
+    expect(container.textContent).toContain('Buffer Tank 1');
+
+    unmount();
+
+    // 2. Now user creates a real location in the system
+    saveLocations([{
+      id: 'loc_real_1',
+      name: 'Real Compressor Station',
+      scapeId: 'scape_real_1',
+      measurementPoints: []
+    }]);
+
+    const { container: containerWithLocation } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+      />
+    );
+
+    // Once a real location exists, the example demo notice banner is GONE
+    expect(containerWithLocation.querySelector('.ps-example-demo-banner')).toBeNull();
+  });
 });
+
 
 
 

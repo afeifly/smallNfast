@@ -10,7 +10,7 @@ import {
   buildDeviceFromRawChannels,
   syncAllLocationsToScapes
 } from './engine/sensorManagerStorage';
-import { getAllScapes } from './engine/scapeStorage';
+import { getAllScapes, createNewScape } from './engine/scapeStorage';
 
 export default function SensorManagerModal({
   isOpen,
@@ -165,10 +165,16 @@ export default function SensorManagerModal({
   }, []);
 
   const handleAddLocation = () => {
+    let targetScapeId = scapes.find(s => !s.isExample)?.id;
+    if (!targetScapeId) {
+      const newScape = createNewScape(`Location ${locations.length + 1} Stage`);
+      targetScapeId = newScape.id;
+      setScapes(getAllScapes());
+    }
     const newLoc = {
       id: `loc_${Date.now()}`,
       name: `Location ${locations.length + 1}`,
-      scapeId: scapes[0]?.id || '',
+      scapeId: targetScapeId,
       measurementPoints: []
     };
     handleUpdateLocations([...locations, newLoc]);

@@ -43,6 +43,7 @@ import {
   setActiveScapeId,
   getAllScapes,
   saveScape,
+  hasSavedLocations,
   DEFAULT_COMPRESSED_AIR_SCAPE
 } from './engine/scapeStorage.js';
 import ScapeManagerModal from './ScapeManagerModal.jsx';
@@ -160,13 +161,13 @@ const HudIcons = {
     </svg>
   ),
   LiveDnd: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="5 9 2 12 5 15" />
-      <polyline points="9 5 12 2 15 5" />
-      <polyline points="15 19 12 22 9 19" />
-      <polyline points="19 9 22 12 19 15" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <line x1="12" y1="2" x2="12" y2="22" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="13" height="13" rx="2" strokeWidth="1.8" />
+      <circle cx="7" cy="7.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="11.5" cy="7.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="11.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="11.5" cy="11.5" r="1" fill="currentColor" stroke="none" />
+      <path d="M15 15l6 6m0 0v-4.5m0 4.5h-4.5" strokeWidth="2" />
     </svg>
   ),
   BoundsScale: () => (
@@ -184,6 +185,7 @@ export default function ProcessScapeView({
   onBackToLanding,
   onRegisterActions,
   onStateChange,
+  onOpenSensorManager,
   initialElements = [],
   initialPipes = [],
   initialMode
@@ -192,6 +194,7 @@ export default function ProcessScapeView({
   const defaultMode = initialMode || (isTest ? 'editor' : 'runtime');
   const [scapeMode, setScapeMode] = useState(defaultMode); // 'runtime' | 'editor'
   const [isScapeManagerOpen, setIsScapeManagerOpen] = useState(false);
+  const [isBannerMinimized, setIsBannerMinimized] = useState(false);
 
   // Load active scape from storage if custom elements/pipes not explicitly passed
   const activeScape = useMemo(() => {
@@ -217,6 +220,11 @@ export default function ProcessScapeView({
   const [zones, setZones] = useState(() => activeScape.zones || []);
   const [pipes, setPipes] = useState(() => (initialPipes.length > 0 ? initialPipes : (activeScape.pipes || [])));
   const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape.elements || [])));
+
+  const isExampleShow = useMemo(() => {
+    if (initialElements.length > 0 || initialPipes.length > 0) return false;
+    return !hasSavedLocations();
+  }, [initialElements, initialPipes, activeScapeId]);
 
   const handleSelectActiveScape = useCallback((scape) => {
     setActiveScapeIdState(scape.id);
@@ -2442,10 +2450,18 @@ export default function ProcessScapeView({
         setProjectTitle,
         openScapeManager: () => setIsScapeManagerOpen(true),
         setScapeMode: changeScapeMode,
-        reloadActiveScape
+        reloadActiveScape,
+        switchScape: (scapeId) => {
+          const all = getAllScapes();
+          const target = all.find(s => s.id === scapeId);
+          if (target) {
+            setActiveScapeId(target.id);
+            handleSelectActiveScape(target);
+          }
+        }
       });
     }
-  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape]);
+  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape, handleSelectActiveScape]);
 
   useEffect(() => {
     if (onStateChange) {
@@ -2453,10 +2469,11 @@ export default function ProcessScapeView({
         screenSize,
         finalSize: { width: contentBounds.width, height: contentBounds.height },
         projectTitle,
-        scapeMode
+        scapeMode,
+        activeScapeId
       });
     }
-  }, [screenSize, contentBounds, projectTitle, scapeMode, onStateChange]);
+  }, [screenSize, contentBounds, projectTitle, scapeMode, activeScapeId, onStateChange]);
 
   return (
     <div className={`processscape-root ${isDarkMode ? 'theme-dark' : ''}`}>
@@ -2696,6 +2713,59 @@ export default function ProcessScapeView({
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
+          {/* Example Demo Show Notice Banner */}
+          {isExampleShow && (
+            <div className={`ps-example-demo-banner ${isBannerMinimized ? 'minimized' : ''}`} role="alert">
+              <div className="ps-example-demo-badge">
+                <span className="ps-demo-pulse-dot" />
+                DEMO PREVIEW
+              </div>
+              {!isBannerMinimized && (
+                <div className="ps-example-demo-content">
+                  <div className="ps-example-demo-title">
+                    Example Plant Layout (Demonstration)
+                  </div>
+                  <div className="ps-example-demo-desc">
+                    No real locations are configured in the system yet. Create your own location and ProcessScape stage to design custom piping, bind measurement points, and monitor live sensor telemetry.
+                  </div>
+                </div>
+              )}
+              {isBannerMinimized && (
+                <div
+                  className="ps-example-demo-desc"
+                  style={{ cursor: 'pointer', color: '#f8fafc', fontWeight: 500 }}
+                  onClick={() => setIsBannerMinimized(false)}
+                >
+                  Example layout preview &middot; Click to expand notice
+                </div>
+              )}
+              <div className="ps-example-demo-actions">
+                <button
+                  type="button"
+                  className="ps-example-demo-btn-primary"
+                  onClick={() => {
+                    if (onOpenSensorManager) onOpenSensorManager();
+                  }}
+                  title="Open Sensor Manager to create your own location and scape stage"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  <span>Create Location &amp; Stage</span>
+                </button>
+                <button
+                  type="button"
+                  className="ps-example-demo-dismiss-btn"
+                  onClick={() => setIsBannerMinimized(v => !v)}
+                  title={isBannerMinimized ? "Expand notice" : "Minimize notice"}
+                  aria-label={isBannerMinimized ? "Expand notice" : "Minimize notice"}
+                >
+                  {isBannerMinimized ? "＋" : "✕"}
+                </button>
+              </div>
+            </div>
+          )}
           {/* Top Floating HUD Toolbar in Editor Mode */}
           {scapeMode === 'editor' && (
             <div className="canvas-floating-hud top-hud ps-hud-bar">
@@ -3019,15 +3089,6 @@ export default function ProcessScapeView({
               >
                 <HudIcons.BoundsScale />
               </button>
-
-              <div className="hud-divider" />
-
-              <span
-                className="ps-canvas-size-badge"
-                title={`Whole Canvas Size: ${screenSize.w} × ${screenSize.h} px`}
-              >
-                {screenSize.w}×{screenSize.h}
-              </span>
             </div>
           )}
 
@@ -3081,20 +3142,7 @@ export default function ProcessScapeView({
 
               <div className="hud-divider" />
 
-              <button
-                id="toolRuntimeZoomFit"
-                type="button"
-                className="hud-icon-btn"
-                onClick={focusSelectedOrCenter}
-                title="Focus / Fit Whole Canvas (F)"
-                aria-label="Focus / Fit Whole Canvas"
-              >
-                <HudIcons.ZoomFit />
-              </button>
-
-              <div className="hud-divider" />
-
-              {/* Status toggle to enable/disable DND of measurement point card & anchor position */}
+              {/* Status toggle to enable/disable dragging of measurement point cards */}
               <button
                 id="toolRuntimeDndToggle"
                 type="button"
@@ -3103,8 +3151,8 @@ export default function ProcessScapeView({
                   e.currentTarget.blur();
                   setIsLiveDndActive(prev => !prev);
                 }}
-                title={isLiveDndActive ? "Disable Card & Anchor Dragging" : "Enable Card & Anchor Dragging (Live DND)"}
-                aria-label="Toggle Measurement Point DND"
+                title={isLiveDndActive ? "Lock Measurement Cards Position" : "Reposition Cards (Enable Card Dragging)"}
+                aria-label="Reposition Measurement Cards"
               >
                 <HudIcons.LiveDnd />
               </button>
@@ -3123,15 +3171,6 @@ export default function ProcessScapeView({
               >
                 <HudIcons.BoundsScale />
               </button>
-
-              <div className="hud-divider" />
-
-              <span
-                className="ps-canvas-size-badge"
-                title={`Current Diagram Size: ${screenSize.w} × ${screenSize.h} px`}
-              >
-                {screenSize.w}×{screenSize.h}
-              </span>
             </div>
           )}
 

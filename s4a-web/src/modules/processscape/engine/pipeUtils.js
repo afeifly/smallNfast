@@ -421,17 +421,20 @@ export function resolvePipelineFlowDirections(allPipes = []) {
 
     if (componentPipes.length === 1) {
       const p = componentPipes[0];
-      flowMap.set(p.id, p.flow === 'none' ? 'none' : (isGlobalReverse ? 'reverse' : (p.flow || 'forward')));
+      const norm = p.flow === 'none' ? 'none' : (p.flow === 'reverse' || isGlobalReverse ? 'reverse' : 'forward');
+      flowMap.set(p.id, norm);
       continue;
     }
 
     // Identify the best root / inlet pipe for this connected network:
-    // Prefer the first pipe that has an open start terminal (inflow)
-    let rootPipe = componentPipes[0];
+    // Prefer pipes with active flow and an open start terminal (inflow)
+    const activeFlowPipes = componentPipes.filter(p => p.flow !== 'none' && p.flow !== 'off');
+    const searchPipes = activeFlowPipes.length > 0 ? activeFlowPipes : componentPipes;
+    let rootPipe = searchPipes[0];
     let rootInNode = rootPipe.points[0];
     let foundInlet = false;
 
-    for (const p of componentPipes) {
+    for (const p of searchPipes) {
       const open0 = isPipeEndpointOpen(p, 0, allPipes);
       const openN = isPipeEndpointOpen(p, p.points.length - 1, allPipes);
 
@@ -465,57 +468,57 @@ export function resolvePipelineFlowDirections(allPipes = []) {
     while (queue.length > 0) {
       const { pipe, inNode } = queue.shift();
 
+      const p0 = pipe.points[0];
+      const pN = pipe.points[pipe.points.length - 1];
+      const d0 = Math.hypot(inNode.x - p0.x, inNode.y - p0.y);
+      const dN = Math.hypot(inNode.x - pN.x, inNode.y - pN.y);
+
       if (pipe.flow === 'none') {
         flowMap.set(pipe.id, 'none');
       } else {
-        const p0 = pipe.points[0];
-        const pN = pipe.points[pipe.points.length - 1];
-        const d0 = Math.hypot(inNode.x - p0.x, inNode.y - p0.y);
-        const dN = Math.hypot(inNode.x - pN.x, inNode.y - pN.y);
-
         // Fluid enters at inNode and flows towards the opposite terminal
         const dir = d0 <= dN ? 'forward' : 'reverse';
         flowMap.set(pipe.id, dir);
+      }
 
-        // The exit terminal where fluid leaves this pipe segment
-        const outNode = dir === 'forward' ? pN : p0;
+      // The exit terminal where fluid leaves this pipe segment
+      const outNode = d0 <= dN ? pN : p0;
 
-        // Find all connected branch pipes
-        for (const nextPipe of componentPipes) {
-          if (pipeTraversed.has(nextPipe.id)) continue;
+      // Find all connected branch pipes and propagate outward
+      for (const nextPipe of componentPipes) {
+        if (pipeTraversed.has(nextPipe.id)) continue;
 
-          const np0 = nextPipe.points[0];
-          const npN = nextPipe.points[nextPipe.points.length - 1];
+        const np0 = nextPipe.points[0];
+        const npN = nextPipe.points[nextPipe.points.length - 1];
 
-          // Check if nextPipe connects to this pipe's exit node
-          const touch0 = Math.hypot(outNode.x - np0.x, outNode.y - np0.y) <= 15;
-          const touchN = Math.hypot(outNode.x - npN.x, outNode.y - npN.y) <= 15;
+        // Check if nextPipe connects to this pipe's exit node
+        const touch0 = Math.hypot(outNode.x - np0.x, outNode.y - np0.y) <= 15;
+        const touchN = Math.hypot(outNode.x - npN.x, outNode.y - npN.y) <= 15;
 
-          let branchJunctionPt = null;
-          if (touch0) {
-            branchJunctionPt = np0;
-          } else if (touchN) {
-            branchJunctionPt = npN;
-          } else {
-            // Check T-junction along the pipe body
-            const pad = (pipe.w || 20) / 2 + 6;
-            for (let i = 0; i < pipe.points.length - 1; i++) {
-              if (distToSegment(np0, pipe.points[i], pipe.points[i + 1]) <= pad) {
-                branchJunctionPt = np0;
-                break;
-              }
-              if (distToSegment(npN, pipe.points[i], pipe.points[i + 1]) <= pad) {
-                branchJunctionPt = npN;
-                break;
-              }
+        let branchJunctionPt = null;
+        if (touch0) {
+          branchJunctionPt = np0;
+        } else if (touchN) {
+          branchJunctionPt = npN;
+        } else {
+          // Check T-junction along the pipe body
+          const pad = (pipe.w || 20) / 2 + 6;
+          for (let i = 0; i < pipe.points.length - 1; i++) {
+            if (distToSegment(np0, pipe.points[i], pipe.points[i + 1]) <= pad) {
+              branchJunctionPt = np0;
+              break;
+            }
+            if (distToSegment(npN, pipe.points[i], pipe.points[i + 1]) <= pad) {
+              branchJunctionPt = npN;
+              break;
             }
           }
+        }
 
-          if (branchJunctionPt) {
-            pipeTraversed.add(nextPipe.id);
-            // Fluid enters nextPipe at branchJunctionPt and radiates outward along the branch
-            queue.push({ pipe: nextPipe, inNode: branchJunctionPt });
-          }
+        if (branchJunctionPt) {
+          pipeTraversed.add(nextPipe.id);
+          // Fluid enters nextPipe at branchJunctionPt and radiates outward along the branch
+          queue.push({ pipe: nextPipe, inNode: branchJunctionPt });
         }
       }
     }
@@ -523,7 +526,13 @@ export function resolvePipelineFlowDirections(allPipes = []) {
     // Fallback for any unvisited pipes in component
     componentPipes.forEach(p => {
       if (!flowMap.has(p.id)) {
-        flowMap.set(p.id, p.flow === 'none' ? 'none' : (isGlobalReverse ? 'reverse' : (p.flow || 'forward')));
+        if (p.flow === 'none') {
+          flowMap.set(p.id, 'none');
+        } else if (p.flow === 'reverse') {
+          flowMap.set(p.id, 'reverse');
+        } else {
+          flowMap.set(p.id, isGlobalReverse ? 'reverse' : 'forward');
+        }
       }
     });
   }

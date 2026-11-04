@@ -1,26 +1,26 @@
-# SUTO S331 Device Simulator
+# SUTO Multi-Device Simulator
 
-A zero-dependency Node.js TCP server that emulates a **SUTO S331 display / data-logger** speaking the SUTO CS-Bus protocol over Ethernet — so the s4a-web desktop app (Tauri) can be exercised end-to-end without real hardware: discovery, system info, online values, logger file list, and screenshot download.
+A zero-dependency Node.js TCP server that emulates **multiple SUTO display / data-loggers** (SUTO S331 series) speaking the SUTO CS-Bus protocol over Ethernet — allowing the s4a-web desktop app (Tauri) to connect to up to 3 independent virtual hardware devices simultaneously across ports **502, 503, and 504**.
 
 > **中文速览**
-> 启动：`npm run sim:s331`（默认 502 端口；macOS 10.14+ 直接可用，Linux 需 `sudo -E env "PATH=$PATH" node scripts/s331-simulator.mjs`，Windows 直接可用；也可 `-- --port 1502` 换非特权端口）。
-> App 内：连接 → Ethernet TCP → 主机 `127.0.0.1`（跨电脑用本机局域网 IP）→ 端口默认 502 不用改 → 连接后可用 Online Values / Readout / Screenshots。
-> 自检：`npm run sim:s331:test`（45 项）；Rust 引擎端到端：`cd src-tauri && cargo test --test s331_simulator`。
+> 启动：`npm run sim:s331`（默认同时在 **502、503、504** 端口监听 3 台设备；macOS 10.14+ 直接可用）。
+> App 内：Sensor Manager → Click `+ Connect Device` → `Ethernet TCP` → 主机 `127.0.0.1`：
+>   - 端口 `502`：连接 Device 1（SUTO S331，8 通道，SN 12344321）
+>   - 端口 `503`：连接 Device 2（SUTO S331 #2，3 通道，SN 12344322）
+>   - 端口 `504`：连接 Device 3（SUTO S331 #3，5 通道，SN 12344323）
 
 ---
 
-## 1. Simulated device
+## 1. Simulated Devices
 
-| Property | Value |
-|---|---|
-| Model | SUTO S331 |
-| Identification (discovery) | `0x1065` → app maps it to "SUTO S331", `ds310` logger type |
-| Firmware | 1.80 (`0xB4`; ≥ 1.54 ⇒ app uses the transformed `0x0B` channel-settings command) |
-| Bus address | 1 |
-| **Serial number** | **12344321** |
-| Channels | 8 (see §3) |
-| Logger sessions | 2 × 7 days @ 60 s (see §4) |
-| Screenshots | 3 virtual BMPs (see §5) |
+| Property | Device 1 (Port 502) | Device 2 (Port 503) | Device 3 (Port 504) |
+|---|---|---|---|
+| Model | SUTO S331 | SUTO S331 #2 | SUTO S331 #3 |
+| Serial Number | **12344321** | **12344322** | **12344323** |
+| Channel Count | **8 Channels** | **3 Channels** | **5 Channels** |
+| Channels | Flow, Velocity, Consumption, Temp, Pressure, Current A·B·C | Flow, Temperature, Pressure | Flow, Velocity, Temp, Pressure, Dew Point |
+| Identification | `0x1065` | `0x1065` | `0x1065` |
+| Firmware | 1.80 | 1.80 | 1.80 |
 
 ## 2. Run it
 

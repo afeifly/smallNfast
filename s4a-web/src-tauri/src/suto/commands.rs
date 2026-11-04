@@ -301,6 +301,14 @@ pub struct MeasurementValue {
     pub unit_index: u8,
     pub resolution: u8,
     pub status: String, // "normal", "invalid", "overrange"
+    #[serde(default)]
+    pub device: Option<String>,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub serial_number: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -506,6 +514,10 @@ pub fn parse_measurement_values(payload: &[u8], channels: &[ChannelInfo]) -> Vec
             unit_index,
             resolution: final_resolution,
             status: status_str,
+            device: None,
+            device_id: None,
+            serial_number: None,
+            port: None,
         });
     }
 

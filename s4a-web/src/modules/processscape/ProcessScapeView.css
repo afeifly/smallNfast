@@ -702,20 +702,93 @@
   margin: 0 2px;
 }
 
-/* --- Right Inspector Panel --- */
+/* --- Floating Inspector Panel (Fixed Width, Auto Height, DND Movable, Default Top-Right) --- */
 .ps-inspector {
-  width: 320px;
-  min-width: 320px;
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 290px;
+  min-width: 290px;
+  max-width: 290px;
+  height: auto;
+  max-height: calc(100% - 28px);
   background: var(--ps-card);
-  border-left: 1px solid var(--ps-border);
+  border: 1px solid var(--ps-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  z-index: 20;
+  overflow: hidden;
+  z-index: 35;
+  transition: box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.theme-dark .ps-inspector {
+  background: rgba(19, 25, 34, 0.96);
+  border-color: #334155;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .ps-inspector.collapsed {
   display: none !important;
+}
+
+.ps-inspector.is-dragging {
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.12);
+  opacity: 0.95;
+}
+
+.ps-inspector-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ps-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: grab;
+  user-select: none;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.ps-inspector-header:active,
+.ps-inspector.is-dragging .ps-inspector-header {
+  cursor: grabbing;
+}
+
+.ps-inspector-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.ps-inspector-drag-grip {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ps-text-dim);
+  opacity: 0.7;
+  cursor: grab;
+  user-select: none;
+  display: inline-block;
+  letter-spacing: -1px;
+}
+
+.ps-inspector-header:active .ps-inspector-drag-grip,
+.ps-inspector.is-dragging .ps-inspector-drag-grip {
+  cursor: grabbing;
+  color: var(--ps-primary);
+  opacity: 1;
+}
+
+.ps-inspector-title {
+  font-weight: 800;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ps-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ps-inspector-close-btn {
@@ -725,13 +798,15 @@
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.12s ease;
+  flex-shrink: 0;
+  margin-left: 6px;
 }
 
 .ps-inspector-close-btn:hover {
@@ -747,27 +822,15 @@
   z-index: 25;
 }
 
-.ps-inspector-header {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--ps-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.ps-inspector-title {
-  font-weight: 800;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--ps-primary);
-}
-
 .ps-inspector-body {
-  padding: 14px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .ps-empty-inspector {
@@ -810,7 +873,45 @@
   border-color: var(--ps-primary);
 }
 
-/* Color theme swatches (8 lightened themes) */
+/* Color theme swatches (Single-line compact circles) */
+.ps-swatches-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.ps-swatch-circle-btn {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, outline 0.12s ease;
+}
+
+.ps-swatch-circle-btn:hover {
+  transform: scale(1.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+
+.ps-swatch-circle-btn.active {
+  outline: 2px solid var(--ps-primary);
+  outline-offset: 2px;
+  transform: scale(1.15);
+}
+
+.theme-dark .ps-swatch-circle-btn {
+  border-color: #1e293b;
+}
+
+/* Color theme swatches (8 lightened themes legacy grid) */
 .ps-swatches-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

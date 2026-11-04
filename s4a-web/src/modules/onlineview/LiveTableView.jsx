@@ -118,9 +118,14 @@ export default function LiveTableView() {
     .map((id) => {
       const c = cacheChannels.find((x) => x && x.channel_id === id);
       const m = session.channelMeta[id] || {};
+      const lmPrefix = (m.location && m.measurementPoint)
+        ? `${m.location} / ${m.measurementPoint}`
+        : (m.location || m.measurementPoint ? `${m.location || m.measurementPoint}` : '');
+      const fullTitle = lmPrefix ? `${lmPrefix} · ${m.name || `Channel ${id}`}` : (c?.channel_name || m.name || `Channel ${id}`);
       return {
         id,
-        name: (c && (c.channel_name || c.sensor_description)) || `Channel ${id}`,
+        name: (c && (c.channel_name || c.sensor_description)) || m.name || `Channel ${id}`,
+        fullTitle,
         unit: (c && c.unit) || m.unit || '',
         resolution: (c && typeof c.resolution === 'number' && c.resolution >= 0 ? c.resolution : m.resolution) ?? 2,
       };
@@ -169,7 +174,7 @@ export default function LiveTableView() {
               <tr>
                 <th className="live-table-time">Date Time</th>
                 {columns.map((c) => (
-                  <th key={c.id} title={c.name}>
+                  <th key={c.id} title={c.fullTitle || c.name}>
                     {c.unit ? `${c.name} (${c.unit})` : c.name}
                   </th>
                 ))}

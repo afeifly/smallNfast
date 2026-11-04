@@ -18,12 +18,13 @@ import ReadoutView from './modules/readout/ReadoutView';
 import { clearReadoutCache } from './modules/readout/readoutSession';
 import ProcessScapeView from './modules/processscape/ProcessScapeView';
 import SensorManagerModal from './modules/processscape/SensorManagerModal';
-import { getLocations } from './modules/processscape/engine/sensorManagerStorage';
-import { getAllScapes, setActiveScapeId } from './modules/processscape/engine/scapeStorage';
+import ProcessScapeRecordModal from './modules/processscape/ProcessScapeRecordModal';
+import { getLocations, autoReconnectSavedDevices, getSavedDevices, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
+import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/processscape/engine/scapeStorage';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
-import { clearLiveSelection } from './util/liveSelection';
+import { clearLiveSelection, setLiveSelection } from './util/liveSelection';
 
 import intl from 'react-intl-universal';
 import locales from './locales/en-US';
@@ -151,6 +152,7 @@ function App() {
   const [psMode, setPsMode] = React.useState('runtime');
   const [showSensorManagerModal, setShowSensorManagerModal] = React.useState(false);
   const psActionsRef = React.useRef(null);
+  const currentActiveScapeIdRef = React.useRef(null);
   const [locationsList, setLocationsList] = React.useState(() => {
     try { return getLocations(); } catch (_) { return []; }
   });
@@ -158,6 +160,11 @@ function App() {
 
   React.useEffect(() => {
     if (appMode === 'processscape') {
+      try {
+        autoReconnectSavedDevices((conn) => {
+          if (conn) setDeviceInfo(conn);
+        }).catch(() => {});
+      } catch (_) {}
       try {
         const locs = getLocations();
         const prevCount = locationsList.length;
@@ -172,8 +179,10 @@ function App() {
           } else if (prevCount === 0) {
             psActionsRef.current?.reloadActiveScape?.();
           }
+          psActionsRef.current?.setActiveLocationId?.(activeLocId);
         } else {
           setSelectedLocationId('example_demo');
+          psActionsRef.current?.setActiveLocationId?.('example_demo');
           if (prevCount > 0) {
             psActionsRef.current?.reloadActiveScape?.();
           }
@@ -181,6 +190,20 @@ function App() {
       } catch (_) {}
     }
   }, [appMode, showSensorManagerModal]);
+
+  // Keep locationsList updated whenever locations are saved
+  React.useEffect(() => {
+    const handleLocChanged = (e) => {
+      const locs = e.detail || getLocations();
+      setLocationsList(locs);
+    };
+    window.addEventListener('sensor-locations-changed', handleLocChanged);
+    return () => window.removeEventListener('sensor-locations-changed', handleLocChanged);
+  }, []);
+
+  const hasAssignedChannels = React.useMemo(() => {
+    return hasAssignedChannelsStorage(locationsList);
+  }, [locationsList]);
 
   const locationOptions = React.useMemo(() => {
     if (locationsList.length > 0) {
@@ -193,6 +216,7 @@ function App() {
     const locId = e.target.value;
     setSelectedLocationId(locId);
     if (locId === 'example_demo') {
+      psActionsRef.current?.setActiveLocationId?.('example_demo');
       psActionsRef.current?.reloadActiveScape?.();
       return;
     }
@@ -208,6 +232,7 @@ function App() {
   const [recState, setRecState] = React.useState(() => liveRecorder.getRecorderState());
   const [recNow, setRecNow] = React.useState(0);
   const [recStartOpen, setRecStartOpen] = React.useState(false);
+  const [showPsRecordModal, setShowPsRecordModal] = React.useState(false);
   const [recIntervalInput, setRecIntervalInput] = React.useState('10');
   // { action: 'home' | 'close' } while a recording blocks leaving the app
   const [exitConfirm, setExitConfirm] = React.useState(null);
@@ -378,6 +403,15 @@ function App() {
         }
       }).catch(() => {});
     }
+
+    try {
+      const savedDevs = getSavedDevices();
+      if (savedDevs && savedDevs.length > 0) {
+        autoReconnectSavedDevices((conn) => {
+          if (conn) setDeviceInfo(conn);
+        }).catch(() => {});
+      }
+    } catch (_) {}
   }, [initDone]);
 
   const handleCsdExportConfirmed = async () => {
@@ -531,6 +565,9 @@ function App() {
   const handleToggleRecording = async () => {
     if (liveRecorder.getRecorderState().recording) {
       const result = liveRecorder.stop();
+      if (appMode === 'processscape') {
+        setActiveTab('processscape');
+      }
       if (!result) {
         TauriSutoAPI.logClientEvent('WARN', 'RECORDER', 'Recording stopped but no samples had been captured');
         if (window.showAppNotification) {
@@ -544,10 +581,48 @@ function App() {
       }
       await saveRecordingResult(result);
     } else {
-      // Ask for the sampling interval first (default 10 s).
-      setRecIntervalInput('10');
-      setRecStartOpen(true);
+      if (appMode === 'processscape') {
+        if (!hasAssignedChannels) {
+          if (window.showAppNotification) {
+            window.showAppNotification(
+              'No Assigned Channels',
+              'No location or measurement point channels are assigned to record.',
+              'warning'
+            );
+          }
+          return;
+        }
+        setShowPsRecordModal(true);
+      } else {
+        // Ask for the sampling interval first (default 10 s).
+        setRecIntervalInput('10');
+        setRecStartOpen(true);
+      }
     }
+  };
+
+  React.useEffect(() => {
+    if (appMode === 'processscape' && !recState.recording && (activeTab === 'livegraphic' || activeTab === 'livetable')) {
+      setActiveTab('processscape');
+    }
+  }, [appMode, recState.recording, activeTab]);
+
+  const handleStartPsRecording = ({ intervalSec, selectedChannels }) => {
+    setShowPsRecordModal(false);
+    const channelKeys = (selectedChannels || []).map((ch, idx) => ch.key || ch.id || ch.channel_id || `ch_${idx + 1}`);
+    setLiveSelection(channelKeys);
+    liveRecorder.start({
+      deviceName: 'ProcessScape',
+      selectedChannels,
+      intervalSec,
+    });
+    TauriSutoAPI.logClientEvent(
+      'INFO',
+      'RECORDER',
+      `ProcessScape live recording started with ${selectedChannels.length} channels (interval ${intervalSec}s)`
+    );
+    // Switch to graphic view on start so live curves are immediately visible
+    setActiveTab('livegraphic');
   };
 
   const handleStartRecordingFromDialog = async () => {
@@ -621,9 +696,9 @@ function App() {
   const performReturnHome = () => {
     TauriSutoAPI.logClientEvent('INFO', 'APP', 'Navigated back to Welcome Home');
     setAnalyzingFromReadout(false);
-    if (appMode === 'monitor') {
+    if (appMode === 'monitor' || appMode === 'processscape') {
       // Same session teardown as the Disconnect button — returning home ends
-      // the monitor session, so the live Graphic/Table views reset fully.
+      // the live session, so the live Graphic/Table views reset fully.
       if (liveRecorder.getRecorderState().recording) {
         const result = liveRecorder.stop();
         if (result) saveRecordingResult(result);
@@ -632,7 +707,9 @@ function App() {
       clearLiveSelection();
       clearReadoutCache();
       clearOnlineCache();
-      TauriSutoAPI.disconnect().catch(console.warn);
+      if (appMode === 'monitor') {
+        TauriSutoAPI.disconnect().catch(console.warn);
+      }
       TestAPI.setMode('analyze');
       setDeviceInfo(null);
     }
@@ -892,9 +969,33 @@ function App() {
           {appMode && (
             <button
               className="header-home-btn"
-              onClick={analyzingFromReadout ? handleBackToReadout : handleReturnHome}
-              title={analyzingFromReadout ? "Back to Readout" : "Back to Home"}
-              aria-label={analyzingFromReadout ? "Back to Readout" : "Back to Home"}
+              onClick={() => {
+                if (appMode === 'processscape' && psMode === 'editor') {
+                  // In modify scape mode, back button returns to live scape instead of directly to home
+                  if (psActionsRef.current?.handleSaveAndExit) {
+                    psActionsRef.current.handleSaveAndExit();
+                  } else {
+                    setPsMode('runtime');
+                    psActionsRef.current?.setScapeMode?.('runtime');
+                  }
+                  return;
+                }
+                if (analyzingFromReadout) {
+                  handleBackToReadout();
+                } else {
+                  handleReturnHome();
+                }
+              }}
+              title={
+                appMode === 'processscape' && psMode === 'editor'
+                  ? "Back to Live Scape"
+                  : (analyzingFromReadout ? "Back to Readout" : "Back to Home")
+              }
+              aria-label={
+                appMode === 'processscape' && psMode === 'editor'
+                  ? "Back to Live Scape"
+                  : (analyzingFromReadout ? "Back to Readout" : "Back to Home")
+              }
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -908,7 +1009,14 @@ function App() {
             <span className="header-mode-indicator monitor">Device Studio</span>
           )}
           {appMode === 'processscape' && (
-            <span className="header-mode-indicator processscape">ProcessScape</span>
+            <button
+              type="button"
+              className={`header-mode-indicator processscape ${activeTab === 'processscape' ? 'is-active active' : ''}`}
+              onClick={() => switchTab('processscape')}
+              title="Click to view ProcessScape canvas"
+            >
+              ProcessScape
+            </button>
           )}
         </div>
 
@@ -923,18 +1031,36 @@ function App() {
         >
           {/* View Switcher Tabs */}
         {appMode === 'processscape' && psMode !== 'editor' ? (
-          <div className="header-tabs" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <button
-              className="tab-btn"
-              onClick={() => setShowSensorManagerModal(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-              title="Sensor Manager (Detect Devices, Locations, Measurement Points, Channels)"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-              </svg>
-              Sensor Manager
-            </button>
+          <div className="header-tabs" style={{ display: 'flex', alignItems: 'center' }}>
+            {recState.recording && (
+              <>
+                <button
+                  className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
+                  onClick={() => switchTab('livegraphic')}
+                >
+                  Graphic View
+                </button>
+                <button
+                  className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
+                  onClick={() => switchTab('livetable')}
+                >
+                  Table View
+                </button>
+              </>
+            )}
+            {!recState.recording && (
+              <button
+                className="tab-btn"
+                onClick={() => setShowSensorManagerModal(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+                title="Sensor Manager (Detect Devices, Locations, Measurement Points, Channels)"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+                </svg>
+                Sensor Manager
+              </button>
+            )}
           </div>
         ) : appMode === 'monitor' ? (
           <div className="header-tabs">
@@ -943,13 +1069,6 @@ function App() {
               onClick={() => switchTab('online')}
             >
               Online View
-            </button>
-            <button
-              className="tab-btn"
-              onClick={() => setAppMode('processscape')}
-              title="Switch to Multi-Device ProcessScape"
-            >
-              ProcessScape (Multi)
             </button>
             {recState.hasSession && (
               <button
@@ -1029,8 +1148,44 @@ function App() {
 
           {appMode === 'processscape' && (
             <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {/* Location Switcher Dropdown (Only shown when locations exist in the system) */}
-              {locationsList.length > 0 && (
+              {/* Record button shown directly to the left of Location only when assigned channels exist or currently recording */}
+              {psMode !== 'editor' && (recState.recording || hasAssignedChannels) && (
+                <Tooltip
+                  title={recState.recording
+                    ? `Stop recording & save CSV (${recState.samples} samples, ${recState.channels} channels)`
+                    : 'Record ProcessScape live values to CSV'}
+                >
+                  <button
+                    className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
+                    onClick={handleToggleRecording}
+                  >
+                    {recState.recording ? (
+                      <>
+                        <span className="rec-pulse-dot" />
+                        <span className="rec-btn-time">
+                          REC&nbsp;
+                          {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 60000)).padStart(2, '0')}
+                          :
+                          {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
+                        </span>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                          <rect x="5" y="5" width="14" height="14" rx="2" />
+                        </svg>
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        Record
+                      </>
+                    )}
+                  </button>
+                </Tooltip>
+              )}
+
+              {/* Location Switcher Dropdown (Only shown in runtime mode when locations exist) */}
+              {locationsList.length > 0 && psMode !== 'editor' && (
                 <div className="ps-header-location-picker" title="Toggle Plant Location">
                   <span className="ps-header-location-icon">📍</span>
                   <select
@@ -1292,17 +1447,41 @@ function App() {
       <main className="app-main-content">
         {appMode === 'processscape' ? (
           <div className="view-content-wrapper" style={{ height: '100%', overflow: 'hidden' }}>
-            <ProcessScapeView
-              initialMode="runtime"
-              onBackToLanding={() => setAppMode(null)}
-              onRegisterActions={(actions) => { psActionsRef.current = actions; }}
-              onOpenSensorManager={() => setShowSensorManagerModal(true)}
-              onStateChange={({ screenSize, projectTitle, scapeMode }) => {
-                if (screenSize) setPsScreenSize(screenSize);
-                if (projectTitle != null) setPsTitle(projectTitle);
-                if (scapeMode) setPsMode(scapeMode);
-              }}
-            />
+            {recState.recording && activeTab === 'livegraphic' && <LiveGraphicView />}
+            {recState.recording && activeTab === 'livetable' && <LiveTableView />}
+            <div style={{ height: '100%', display: (recState.recording && (activeTab === 'livegraphic' || activeTab === 'livetable')) ? 'none' : 'block' }}>
+              <ProcessScapeView
+                initialMode="runtime"
+                activeLocationId={selectedLocationId}
+                onBackToLanding={() => {
+                  TestAPI.setMode('analyze');
+                  setAppMode(null);
+                }}
+                onRegisterActions={(actions) => { psActionsRef.current = actions; }}
+                onOpenSensorManager={() => {
+                  if (!recState.recording) {
+                    setShowSensorManagerModal(true);
+                  }
+                }}
+                onDeviceConnected={(conn) => {
+                  if (conn) setDeviceInfo(conn);
+                }}
+                onStateChange={({ screenSize, projectTitle, scapeMode, activeScapeId: newActiveScapeId }) => {
+                  if (screenSize) setPsScreenSize(screenSize);
+                  if (projectTitle != null) setPsTitle(projectTitle);
+                  if (scapeMode) setPsMode(scapeMode);
+                  if (newActiveScapeId && newActiveScapeId !== currentActiveScapeIdRef.current) {
+                    currentActiveScapeIdRef.current = newActiveScapeId;
+                    const locs = getLocations();
+                    const matchedLoc = locs.find(l => l.scapeId === newActiveScapeId);
+                    if (matchedLoc && matchedLoc.id !== selectedLocationId) {
+                      setSelectedLocationId(matchedLoc.id);
+                      psActionsRef.current?.setActiveLocationId?.(matchedLoc.id);
+                    }
+                  }
+                }}
+              />
+            </div>
           </div>
         ) : !appMode ? (
           /* Welcome Landing Page with 3 modes */
@@ -1420,6 +1599,11 @@ function App() {
                     className="landing-cta-btn landing-cta-processscape"
                     onClick={() => {
                       TauriSutoAPI.logClientEvent('INFO', 'APP', 'ProcessScape mode activated');
+                      autoReconnectSavedDevices((conn) => {
+                        if (conn) setDeviceInfo(conn);
+                      }).catch(() => {});
+                      TestAPI.setMode('processscape');
+                      setActiveTab('processscape');
                       setAppMode('processscape');
                     }}
                   >
@@ -2027,6 +2211,14 @@ function App() {
         </DialogActions>
       </Dialog>
 
+      {/* ProcessScape Multi-Device Recording Setup Modal */}
+      <ProcessScapeRecordModal
+        isOpen={showPsRecordModal}
+        onClose={() => setShowPsRecordModal(false)}
+        onStart={handleStartPsRecording}
+        onOpenSensorManager={() => setShowSensorManagerModal(true)}
+      />
+
 
       {/* Status Bar */}
       <footer className="app-status-bar">
@@ -2139,7 +2331,16 @@ function App() {
       <SensorManagerModal
         isOpen={showSensorManagerModal}
         onClose={() => setShowSensorManagerModal(false)}
-        onSyncToScape={(targetScapeId) => {
+        activeLocationId={selectedLocationId}
+        onSyncToScape={(targetScapeId, targetLocId) => {
+          if (targetLocId) {
+            setSelectedLocationId(targetLocId);
+            psActionsRef.current?.setActiveLocationId?.(targetLocId);
+          }
+          if (targetScapeId) {
+            try { setActiveScapeId(targetScapeId); } catch (_) {}
+            psActionsRef.current?.switchScape?.(targetScapeId);
+          }
           psActionsRef.current?.reloadActiveScape?.(targetScapeId);
         }}
         activeDeviceInfo={deviceInfo}

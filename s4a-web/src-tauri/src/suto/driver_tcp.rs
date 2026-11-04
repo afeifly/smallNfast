@@ -217,6 +217,15 @@ impl TcpTransport {
         );
         Ok(())
     }
+
+    pub fn try_clone(&self) -> Result<Self, String> {
+        let stream = self.stream.as_ref().ok_or("Stream not open")?;
+        let cloned_stream = stream.try_clone().map_err(|e| e.to_string())?;
+        Ok(Self {
+            stream: Some(cloned_stream),
+            endpoint: self.endpoint.clone(),
+        })
+    }
 }
 
 impl SutoTransport for TcpTransport {

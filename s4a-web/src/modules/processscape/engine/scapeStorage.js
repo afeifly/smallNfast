@@ -131,7 +131,7 @@ export function getAllScapes() {
       return [getExampleCompressorStationScape()];
     }
 
-    // Auto-migrate legacy scapes: remove zone_comp_room, fake sensor cards
+    // Auto-migrate legacy scapes: remove zone_comp_room, fake sensor cards, heal pipe flow
     let modified = false;
     list = list.map(scape => {
       let sc = { ...scape };
@@ -142,6 +142,15 @@ export function getAllScapes() {
       if (sc.zones && sc.zones.some(z => z.id === 'zone_comp_room')) {
         sc.zones = sc.zones.filter(z => z.id !== 'zone_comp_room');
         modified = true;
+      }
+      if (Array.isArray(sc.pipes)) {
+        sc.pipes = sc.pipes.map(p => {
+          if (p.flow === 'off' || !p.flow) {
+            modified = true;
+            return { ...p, flow: 'forward' };
+          }
+          return p;
+        });
       }
       return sc;
     });
@@ -163,17 +172,14 @@ export function getActiveScapeId() {
   if (!storage) return EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
   const activeId = storage.getItem(STORAGE_KEY_ACTIVE);
   const all = getAllScapes();
+  if (activeId && all.some(s => s.id === activeId)) {
+    return activeId;
+  }
   const realScapes = all.filter(s => !s.isExample);
   if (realScapes.length > 0) {
-    if (activeId && realScapes.some(s => s.id === activeId)) {
-      return activeId;
-    }
     return realScapes[0].id;
   }
-  if (hasSavedLocations()) {
-    return 'scape_loc_active';
-  }
-  return EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
+  return all[0]?.id || EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
 }
 
 /**
@@ -190,21 +196,14 @@ export function setActiveScapeId(id) {
  */
 export function getActiveScape() {
   const all = getAllScapes();
+  const activeId = getActiveScapeId();
+  const found = all.find(s => s.id === activeId);
+  if (found) {
+    return JSON.parse(JSON.stringify(found));
+  }
   const realScapes = all.filter(s => !s.isExample);
   if (realScapes.length > 0) {
-    const activeId = getActiveScapeId();
-    const found = realScapes.find(s => s.id === activeId);
-    return found ? JSON.parse(JSON.stringify(found)) : JSON.parse(JSON.stringify(realScapes[0]));
-  }
-  if (hasSavedLocations()) {
-    return {
-      id: 'scape_loc_active',
-      title: 'Plant Stage',
-      tempCanvasSize: { width: 1024, height: 800 },
-      zones: [],
-      elements: [],
-      pipes: []
-    };
+    return JSON.parse(JSON.stringify(realScapes[0]));
   }
   return getExampleCompressorStationScape();
 }
@@ -219,8 +218,16 @@ export function saveScape(scape) {
 
   const all = getAllScapes();
   const now = Date.now();
+  const sanitizedPipes = Array.isArray(scape.pipes)
+    ? scape.pipes.map(p => ({
+        ...p,
+        flow: (p.flow === 'off' || !p.flow) ? 'forward' : p.flow
+      }))
+    : scape.pipes;
+
   const updatedScape = {
     ...scape,
+    pipes: sanitizedPipes,
     updatedAt: now
   };
   delete updatedScape.isExample; // Once explicitly saved, it's a real user scape

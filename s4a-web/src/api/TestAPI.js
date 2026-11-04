@@ -2,6 +2,7 @@ import RequestUtil from '../util/RequestUtil';
 import MockAPI from './MockAPI';
 import CsdAPI from './CsdAPI';
 import TauriSutoAPI from './TauriSutoAPI';
+import * as liveRecorder from '../util/liveRecorder';
 
 const API_URL = `${RequestUtil.HOST}/device`;
 
@@ -342,17 +343,18 @@ const FinalAPI = new Proxy(BaseAPI, {
     if (prop === 'getMode') {
       return () => currentApiMode;
     }
-    if (currentApiMode === 'monitor') {
+    if (currentApiMode === 'monitor' || currentApiMode === 'processscape') {
       if (prop === 'getLocations') {
         // The stock ChannelList groups channels under locations; live devices
         // have no server location tree, so expose a single synthetic one that
         // matches the location_id stamped on device channels.
         return async (callback) => {
+          const isPs = currentApiMode === 'processscape';
           const locations = {
             locations: [
               {
                 location_id: 1,
-                description: 'SUTO Live Sensor',
+                description: isPs ? 'ProcessScape Telemetry' : 'SUTO Live Sensor',
                 location_index: 0,
                 background_img: '',
                 sensors: []
@@ -365,6 +367,57 @@ const FinalAPI = new Proxy(BaseAPI, {
       }
       if (prop === 'getChannels') {
         return async (callback) => {
+          if (currentApiMode === 'processscape') {
+            const session = liveRecorder.getSessionSnapshot();
+            if (session.channelIds && session.channelIds.length > 0 && session.channelMeta && Object.keys(session.channelMeta).length > 0) {
+              const groupMap = new Map();
+              let nextGroupId = 1;
+
+              const list = session.channelIds.map((id) => {
+                const meta = session.channelMeta[id] || {};
+                const chName = meta.name || `Channel ${id}`;
+                const unit = meta.unit || '';
+
+                let sDesc;
+                if (meta.location && meta.measurementPoint) {
+                  sDesc = `${meta.location} / ${meta.measurementPoint}`;
+                } else if (meta.location || meta.measurementPoint) {
+                  sDesc = `${meta.location || meta.measurementPoint}`;
+                } else {
+                  sDesc = meta.sensor || 'SUTO';
+                }
+
+                const groupKey = `${meta.location || ''}__${meta.measurementPoint || ''}__${sDesc}`;
+                if (!groupMap.has(groupKey)) {
+                  groupMap.set(groupKey, nextGroupId++);
+                }
+                const sensorId = groupMap.get(groupKey);
+
+                return {
+                  channel_id: id,
+                  id,
+                  location_id: 1,
+                  locationId: 1,
+                  channel_name: chName,
+                  name: chName,
+                  fullName: chName,
+                  full_channel_name: chName,
+                  logic_channel_description: chName,
+                  unit_in_ascii: unit,
+                  unit: unit,
+                  resolution: typeof meta.resolution === 'number' ? meta.resolution : 2,
+                  device_description: sDesc,
+                  sensor_description: sDesc,
+                  sensor_name: sDesc,
+                  sensor_id: sensorId,
+                  active: true,
+                  selected: true,
+                };
+              });
+              if (callback) callback({ logging_chs: list });
+              return list;
+            }
+          }
           const raw = await TauriSutoAPI.getChannels();
           const list = Array.isArray(raw) ? raw : (raw?.logging_chs || []);
           if (callback) callback({ logging_chs: list });
@@ -388,10 +441,10 @@ const FinalAPI = new Proxy(BaseAPI, {
         };
       }
       if (prop === 'isFileLoaded') {
-        return () => true;
+        return () => currentApiMode === 'monitor';
       }
       if (prop === 'getLoadedFileName') {
-        return () => 'SUTO Live Sensor';
+        return () => currentApiMode === 'processscape' ? 'ProcessScape' : 'SUTO Live Sensor';
       }
     }
     return target[prop];

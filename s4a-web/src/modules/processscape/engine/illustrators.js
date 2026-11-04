@@ -2736,8 +2736,15 @@ export function renderPipe(pipe, selectedIds = new Set(), allPipes = [], flowDir
     flowDir = flowDirections.get(pipe.id);
   } else if (allPipes && allPipes.length > 1) {
     const computed = resolvePipelineFlowDirections(allPipes);
-    flowDir = computed.get(pipe.id) || pipe.flow || 'forward';
-  } else if (!flowDir) {
+    flowDir = computed.get(pipe.id);
+  }
+
+  // Normalize flow direction: only 'none' turns it off, otherwise 'reverse' or default 'forward'
+  if (flowDir === 'none' || pipe.flow === 'none') {
+    flowDir = 'none';
+  } else if (flowDir === 'reverse' || pipe.flow === 'reverse') {
+    flowDir = 'reverse';
+  } else {
     flowDir = 'forward';
   }
 

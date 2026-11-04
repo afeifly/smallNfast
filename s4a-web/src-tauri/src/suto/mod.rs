@@ -50,11 +50,23 @@ type NativeUsb = driver_macos::MacUsbTransport;
 #[cfg(all(not(target_os = "windows"), not(target_os = "android"), not(target_os = "macos")))]
 type NativeUsb = driver_stub::StubUsbTransport;
 
+pub struct TcpDeviceSession {
+    pub endpoint: String,
+    pub host: String,
+    pub port: u16,
+    pub transport: Box<dyn SutoTransport>,
+    pub dev_addr: u8,
+    pub channels: Vec<ChannelInfo>,
+    pub serial_number: Option<String>,
+    pub device_name: Option<String>,
+}
+
 pub struct SutoState {
     pub transport: Mutex<Option<Box<dyn SutoTransport>>>,
     pub dev_addr: Mutex<u8>,
     pub cached_channels: Mutex<Vec<ChannelInfo>>,
     pub device_info: Mutex<Option<DeviceInfo>>,
+    pub tcp_devices: Mutex<std::collections::HashMap<String, TcpDeviceSession>>,
 }
 
 impl SutoState {
@@ -64,6 +76,7 @@ impl SutoState {
             dev_addr: Mutex::new(1),
             cached_channels: Mutex::new(Vec::new()),
             device_info: Mutex::new(None),
+            tcp_devices: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
@@ -165,15 +178,67 @@ pub async fn suto_connect_tcp(
         None,
     );
 
+    let parsed_info = parse_device_info(&reply);
+
+    // Query system info directly on this device socket (serial number and device name)
+    let mut sn = None;
+    let mut dev_name = None;
+    let cmd_sn = [CTY_SYS_INFO, SUB_NONE, ACT_GET_SERIAL_NUMBER];
+    if let Ok(sn_raw) = tcp.write_and_read(&pack_packet(active_addr, &cmd_sn), 1500) {
+        if let Ok(deframed) = deframe_multi_frame(&sn_raw) {
+            if deframed.len() >= 4 {
+                let n = u32::from_le_bytes([deframed[0], deframed[1], deframed[2], deframed[3]]);
+                sn = Some(n.to_string());
+            }
+        }
+    }
+    let cmd_name = [CTY_SYS_INFO, SUB_NONE, ACT_GET_DEVICE_NAME];
+    if let Ok(name_raw) = tcp.write_and_read(&pack_packet(active_addr, &cmd_name), 1500) {
+        if let Ok(deframed) = deframe_multi_frame(&name_raw) {
+            let n = String::from_utf8_lossy(&deframed).trim().to_string();
+            if !n.is_empty() {
+                dev_name = Some(n);
+            }
+        }
+    }
+
+    let chs: Vec<ChannelInfo> = Vec::new();
+    let cloned_tcp = tcp.try_clone().ok();
+    let endpoint = format!("{}:{}", host, port);
+
     {
-        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
-        *t_lock = Some(Box::new(tcp));
+        let mut tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+        tcp_map.insert(
+            endpoint.clone(),
+            TcpDeviceSession {
+                endpoint,
+                host: host.clone(),
+                port,
+                transport: Box::new(tcp),
+                dev_addr: active_addr,
+                channels: chs.clone(),
+                serial_number: sn,
+                device_name: dev_name,
+            },
+        );
+    }
+
+    {
+        if let Some(c_tcp) = cloned_tcp {
+            let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
+            *t_lock = Some(Box::new(c_tcp));
+        }
 
         let mut addr_lock = state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
         *addr_lock = active_addr;
 
         let mut info_lock = state.device_info.lock().unwrap_or_else(|p| p.into_inner());
-        *info_lock = parse_device_info(&reply);
+        *info_lock = parsed_info;
+
+        if !chs.is_empty() {
+            let mut ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
+            *ch_lock = chs;
+        }
     }
 
     Ok(active_addr)
@@ -247,6 +312,10 @@ pub fn suto_disconnect(state: State<'_, SutoState>) -> Result<(), String> {
     let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(mut t) = t_lock.take() {
         let _ = t.close();
+    }
+    let mut tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+    for (_, mut dev) in tcp_map.drain() {
+        let _ = dev.transport.close();
     }
     log_event("INFO", "SUTO_IPC", "Device disconnected successfully", None);
     Ok(())
@@ -362,29 +431,50 @@ pub async fn suto_get_channels(
     {
         let mut ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
         *ch_lock = channels.clone();
+
+        let mut tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+        for dev in tcp_map.values_mut() {
+            if dev.dev_addr == addr && dev.channels.is_empty() {
+                dev.channels = channels.clone();
+            }
+        }
     }
 
     Ok(channels)
 }
 
-#[tauri::command]
-pub async fn suto_get_values(
-    state: State<'_, SutoState>,
-) -> Result<Vec<MeasurementValue>, String> {
-    let (addr, channels) = {
-        let addr = *state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
-        let ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
-        let mut chans = ch_lock.clone();
-        chans.sort_by_key(|c| c.id);
-        (addr, chans)
-    };
+fn poll_device_channels_values(
+    transport: &mut Box<dyn SutoTransport>,
+    addr: u8,
+    channels: &[ChannelInfo],
+) -> Vec<MeasurementValue> {
+    let mut detected_count = 0u8;
+    if channels.is_empty() {
+        if let Ok(reply) = transport.write_and_read(&pack_packet(addr, &CMD_GET_CH_COUNT), 1500) {
+            if let Ok(deframed) = deframe_multi_frame(&reply) {
+                if let Some(c) = deframed.first() {
+                    if *c > 0 && *c <= 128 {
+                        detected_count = *c;
+                    }
+                }
+            }
+        }
+        if detected_count == 0 {
+            if let Ok(reply) = transport.write_and_read(&pack_packet(addr, &CMD_GET_MAX_CHANNELS), 1500) {
+                if let Ok(deframed) = deframe_multi_frame(&reply) {
+                    if let Some(c) = deframed.first() {
+                        if *c > 0 && *c <= 128 {
+                            detected_count = *c;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-    // Determine target channel ranges to query.
-    // Group configured channels into contiguous or near-contiguous clusters (gap <= 3)
-    // so we only query the channels that actually exist on the device, avoiding
-    // transferring dozens of unused channels across the wire.
     let ranges: Vec<(u8, u8)> = if channels.is_empty() {
-        vec![(1u8, 4u8)]
+        let count = if detected_count > 0 { detected_count } else { 16u8 };
+        vec![(1u8, count)]
     } else {
         let mut list: Vec<(u8, u8)> = Vec::new();
         let mut r_start = channels[0].id;
@@ -403,13 +493,16 @@ pub async fn suto_get_values(
         list
     };
 
-    let mut all_values = Vec::new();
-    {
-        let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
-        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+    let mut vals = Vec::new();
+    const MAX_BATCH: u8 = 16;
 
-        for (start, count) in ranges {
-            let ordered: Vec<ChannelInfo> = (start..start + count)
+    for (range_start, total_count) in ranges {
+        let mut s = range_start;
+        let mut remaining = total_count;
+
+        while remaining > 0 {
+            let count = remaining.min(MAX_BATCH);
+            let ordered: Vec<ChannelInfo> = (s..s + count)
                 .map(|id| {
                     channels
                         .iter()
@@ -423,32 +516,85 @@ pub async fn suto_get_values(
                 .collect();
 
             let mut get_val_cmd = Vec::from(CMD_GET_ONLINE_VAL_PREFIX);
-            get_val_cmd.push(start);
+            get_val_cmd.push(s);
             get_val_cmd.push(count);
 
             let pkt = pack_packet(addr, &get_val_cmd);
             match transport.write_and_read(&pkt, 2500) {
                 Ok(reply) => {
                     if let Ok(deframed) = deframe_multi_frame(&reply) {
-                        let mut vals = parse_measurement_values(&deframed, &ordered);
-                        all_values.append(&mut vals);
+                        let mut chunk = parse_measurement_values(&deframed, &ordered);
+                        vals.append(&mut chunk);
                     }
                 }
                 Err(e) => {
                     log_event(
                         "WARN",
                         "SUTO_VAL",
-                        &format!("Poll failed for channel range {}..={}: {}", start, start + count - 1, e),
+                        &format!("Poll failed for channel range {}..={}: {}", s, s + count - 1, e),
                         None,
                     );
                 }
             }
+
+            s = s.saturating_add(count);
+            remaining -= count;
         }
     }
 
-    // Retain only channels that correspond to real configured channels on the device
     if !channels.is_empty() {
-        all_values.retain(|v| channels.iter().any(|c| c.id == v.id));
+        vals.retain(|v| channels.iter().any(|c| c.id == v.id));
+    }
+    vals
+}
+
+#[tauri::command]
+pub async fn suto_get_values(
+    state: State<'_, SutoState>,
+) -> Result<Vec<MeasurementValue>, String> {
+    // 1. If we have multiple TCP devices connected (e.g. 502, 503, 504), poll each connected device
+    let has_tcp_devices = {
+        let tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+        !tcp_map.is_empty()
+    };
+
+    if has_tcp_devices {
+        let mut all_values = Vec::new();
+        let mut tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+        for (_endpoint, dev) in tcp_map.iter_mut() {
+            let mut dev_vals = poll_device_channels_values(&mut dev.transport, dev.dev_addr, &dev.channels);
+            let dev_id_str = dev.serial_number.as_ref()
+                .map(|sn| format!("dev_tcp_sn_{}", sn))
+                .unwrap_or_else(|| format!("dev_tcp_{}_{}", dev.host.replace('.', "_"), dev.port));
+            for v in dev_vals.iter_mut() {
+                v.device = dev.device_name.clone();
+                v.device_id = Some(dev_id_str.clone());
+                v.serial_number = dev.serial_number.clone();
+                v.port = Some(dev.port);
+            }
+            all_values.append(&mut dev_vals);
+        }
+        return Ok(all_values);
+    }
+
+    // 2. Fallback to single transport (USB / BLE / single active connection)
+    let (addr, channels) = {
+        let addr = *state.dev_addr.lock().unwrap_or_else(|p| p.into_inner());
+        let ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
+        let mut chans = ch_lock.clone();
+        chans.sort_by_key(|c| c.id);
+        (addr, chans)
+    };
+
+    let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
+    let transport = t_lock.as_mut().ok_or("Device not connected")?;
+    let mut all_values = poll_device_channels_values(transport, addr, &channels);
+
+    let dev_info = { state.device_info.lock().unwrap_or_else(|p| p.into_inner()).clone() };
+    for v in all_values.iter_mut() {
+        if v.device_id.is_none() {
+            v.device_id = dev_info.as_ref().map(|d| format!("dev_single_{}", d.identification));
+        }
     }
 
     log_event(

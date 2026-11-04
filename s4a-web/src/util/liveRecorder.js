@@ -66,22 +66,47 @@ export function getRecorderState() {
  * @param {string}  [opts.deviceName]   Device name for the CSV header / filename
  * @param {function} [opts.getChannels] () => channel list (online cache) for
  *        channel names / sensors / units in the CSV header
+ * @param {Array}   [opts.selectedChannels] Optional explicit list of assigned channels
+ *        for ProcessScape multi-device recording. Each item:
+ *        { key, channel_id, name, unit, resolution, locationName, measurementPointName, deviceName }
  * @param {number}  [opts.intervalSec]  Sampling interval in seconds. A row is
  *        recorded by the first poll at/after each interval boundary (default
  *        10 → first row at 09:00:01, next at 09:00:11…). 0 records every poll.
  */
 export function start(opts = {}) {
   if (state.recording) return;
+
+  const selectedChannels = Array.isArray(opts.selectedChannels) ? opts.selectedChannels : null;
+  const channelIds = [];
+  const channelMeta = {};
+
+  if (selectedChannels && selectedChannels.length > 0) {
+    selectedChannels.forEach((ch, idx) => {
+      const idKey = ch.key || ch.id || ch.channel_id || `ch_${idx + 1}`;
+      channelIds.push(idKey);
+      channelMeta[idKey] = {
+        name: ch.name || ch.customName || ch.displayName || `Channel ${ch.channel_id ?? idx + 1}`,
+        sensor: ch.deviceName || ch.device || ch.sensor || 'SUTO',
+        unit: ch.unit || '',
+        resolution: typeof ch.resolution === 'number' ? ch.resolution : 2,
+        location: ch.locationName || ch.location || '',
+        measurementPoint: ch.measurementPointName || ch.measurementPoint || '',
+        channel_id: ch.channel_id ?? ch.channelId ?? ch.id,
+      };
+    });
+  }
+
   state = {
     recording: true,
     deviceName: opts.deviceName || 'SUTO Device',
     getChannels: typeof opts.getChannels === 'function' ? opts.getChannels : () => [],
+    selectedChannels,
     startedAt: Date.now(),
     intervalMs: Math.max(0, Math.round(Number(opts.intervalSec) || 0)) * 1000,
     lastRowT: 0,
     rows: [],
-    channelIds: [],
-    channelMeta: {},
+    channelIds,
+    channelMeta,
   };
   unsubscribe = subscribeLive(feed);
   setRecordingDemand(true);
@@ -128,21 +153,132 @@ export function feed(resultArray) {
   }
 
   const values = {};
-  for (const v of resultArray) {
-    const id = v?.channel_id ?? v?.id;
-    if (id === undefined || id === null) continue;
-    const raw = v.current_value ?? v.value;
-    values[id] = raw === null || raw === undefined || Number.isNaN(raw) ? null : raw;
-    if (!state.channelIds.includes(id)) state.channelIds.push(id);
-    const prev = state.channelMeta[id];
-    state.channelMeta[id] = {
-      unit: v.unit || (prev ? prev.unit : '') || '',
-      resolution:
-        typeof v.resolution === 'number' && v.resolution >= 0
-          ? v.resolution
-          : (prev ? prev.resolution : 2),
-    };
+  if (state.selectedChannels && state.selectedChannels.length > 0) {
+    // Map incoming telemetry array by device scoping, channel_id, id, and normalized name
+    const byDevId = new Map();
+    const byId = new Map();
+    const byName = new Map();
+
+    resultArray.forEach((v, idx) => {
+      const id = v?.channel_id ?? v?.id;
+      const devKeys = [
+        v?.deviceId,
+        v?.device_id,
+        v?.serial,
+        v?.serial_number,
+        v?.port ? String(v.port) : null,
+        v?.device
+      ].filter(Boolean);
+
+      devKeys.forEach(dk => {
+        const k = String(dk).toLowerCase();
+        if (id !== undefined && id !== null) {
+          byDevId.set(`${k}_${id}`, v);
+          byDevId.set(`${k}_idx_${idx + 1}`, v);
+        }
+      });
+
+      if (id !== undefined && id !== null) {
+        byId.set(String(id), v);
+        byId.set(Number(id), v);
+      }
+      byId.set(`idx_${idx + 1}`, v);
+      const name = v?.name || v?.channel_name || v?.description;
+      if (name) {
+        byName.set(name.trim().toLowerCase(), v);
+        devKeys.forEach(dk => {
+          byName.set(`${String(dk).toLowerCase()}_${name.trim().toLowerCase()}`, v);
+        });
+      }
+    });
+
+    state.selectedChannels.forEach(ch => {
+      const idKey = ch.key || ch.id || ch.channel_id;
+      const targetId = ch.channel_id ?? ch.channelId ?? ch.id;
+
+      let parsedDevId = null;
+      let parsedSn = null;
+      let parsedPort = null;
+      if (typeof ch.id === 'string') {
+        const m = ch.id.match(/^ch_(dev_[a-zA-Z0-9_-]+?)_\d+(?:_\d+)?$/);
+        if (m) {
+          parsedDevId = m[1];
+          const pm = parsedDevId.match(/_(\d{2,5})$/);
+          if (pm) parsedPort = pm[1];
+          const snm = parsedDevId.match(/_sn_([a-zA-Z0-9_-]+)/);
+          if (snm) parsedSn = snm[1];
+        }
+      }
+
+      const targetDevKeys = [
+        ch.deviceId,
+        ch.deviceSerial,
+        ch.devicePort ? String(ch.devicePort) : null,
+        ch.deviceName,
+        ch.device,
+        parsedDevId,
+        parsedSn,
+        parsedPort
+      ].filter(Boolean);
+
+      let matched = null;
+      // 1. Device-scoped matching first (avoids cross-device collisions for same channel numbers or names)
+      for (const dk of targetDevKeys) {
+        const k = String(dk).toLowerCase();
+        matched = byDevId.get(`${k}_${targetId}`) ||
+                  byName.get(`${k}_${(ch.name || '').trim().toLowerCase()}`) ||
+                  byName.get(`${k}_${(ch.originalName || '').trim().toLowerCase()}`);
+        if (matched) break;
+      }
+
+      // 2. Fallback to un-scoped lookup ONLY if candidate does not conflict with a different device
+      if (!matched) {
+        let candidate = byId.get(String(targetId)) || byId.get(Number(targetId));
+        if (!candidate && ch.name) {
+          candidate = byName.get(ch.name.trim().toLowerCase());
+        }
+        if (!candidate && ch.originalName) {
+          candidate = byName.get(ch.originalName.trim().toLowerCase());
+        }
+        if (candidate) {
+          const candDev = (candidate.deviceId || candidate.serial || candidate.port ? String(candidate.port) : candidate.device || '').toLowerCase();
+          const chDev = (ch.deviceId || ch.deviceSerial || ch.devicePort ? String(ch.devicePort) : ch.device || '').toLowerCase();
+          if (!candDev || !chDev || candDev === chDev || candDev.includes(chDev) || chDev.includes(candDev)) {
+            matched = candidate;
+          }
+        }
+      }
+      if (matched) {
+        const raw = matched.current_value ?? matched.value;
+        values[idKey] = raw === null || raw === undefined || Number.isNaN(raw) ? null : raw;
+        if (matched.unit && state.channelMeta[idKey] && !state.channelMeta[idKey].unit) {
+          state.channelMeta[idKey].unit = matched.unit;
+        }
+        if (typeof matched.resolution === 'number' && matched.resolution >= 0 && state.channelMeta[idKey]) {
+          state.channelMeta[idKey].resolution = matched.resolution;
+        }
+      } else {
+        values[idKey] = null;
+      }
+    });
+  } else {
+    for (const v of resultArray) {
+      const id = v?.channel_id ?? v?.id;
+      if (id === undefined || id === null) continue;
+      const raw = v.current_value ?? v.value;
+      values[id] = raw === null || raw === undefined || Number.isNaN(raw) ? null : raw;
+      if (!state.channelIds.includes(id)) state.channelIds.push(id);
+      const prev = state.channelMeta[id];
+      state.channelMeta[id] = {
+        unit: v.unit || (prev ? prev.unit : '') || '',
+        resolution:
+          typeof v.resolution === 'number' && v.resolution >= 0
+            ? v.resolution
+            : (prev ? prev.resolution : 2),
+      };
+    }
   }
+
   state.rows.push({ t: rowT, values });
   state.lastRowT = rowT;
   notify('sample');
@@ -220,26 +356,45 @@ function sanitizeName(name) {
 }
 
 function buildResult(s) {
-  const channelIds = [...s.channelIds].sort((a, b) => a - b);
-  const cacheChannels = [];
-  try {
-    const cached = s.getChannels();
-    if (Array.isArray(cached)) cacheChannels.push(...cached);
-  } catch { /* cache unavailable — fall back to feed metadata */ }
+  let channels;
+  if (s.selectedChannels && s.selectedChannels.length > 0) {
+    channels = s.selectedChannels.map((ch, idx) => {
+      const idKey = ch.key || ch.id || ch.channel_id || `ch_${idx + 1}`;
+      const meta = s.channelMeta[idKey] || {};
+      return {
+        id: idKey,
+        name: meta.name || ch.name || ch.customName || `Channel ${ch.channel_id ?? idx + 1}`,
+        sensor: meta.sensor || ch.deviceName || ch.device || 'SUTO',
+        unit: meta.unit || ch.unit || '',
+        resolution: typeof meta.resolution === 'number' ? meta.resolution : (ch.resolution ?? 2),
+        location: meta.location || ch.locationName || ch.location || '',
+        measurementPoint: meta.measurementPoint || ch.measurementPointName || ch.measurementPoint || ''
+      };
+    });
+  } else {
+    const channelIds = [...s.channelIds].sort((a, b) => a - b);
+    const cacheChannels = [];
+    try {
+      const cached = s.getChannels();
+      if (Array.isArray(cached)) cacheChannels.push(...cached);
+    } catch { /* cache unavailable — fall back to feed metadata */ }
 
-  const channels = channelIds.map((id) => {
-    const cached = cacheChannels.find((c) => c && c.channel_id === id);
-    const meta = s.channelMeta[id] || {};
-    return {
-      id,
-      name: (cached && (cached.channel_name || cached.sensor_description)) || `Channel ${id}`,
-      sensor: (cached && (cached.sensor_name || cached.sensor_description)) || 'SUTO',
-      unit: (cached && cached.unit) || meta.unit || '',
-      resolution:
-        (cached && typeof cached.resolution === 'number' && cached.resolution >= 0 && cached.resolution) ??
-        (meta.resolution ?? 2),
-    };
-  });
+    channels = channelIds.map((id) => {
+      const cached = cacheChannels.find((c) => c && c.channel_id === id);
+      const meta = s.channelMeta[id] || {};
+      return {
+        id,
+        name: (cached && (cached.channel_name || cached.sensor_description)) || `Channel ${id}`,
+        sensor: (cached && (cached.sensor_name || cached.sensor_description)) || 'SUTO',
+        unit: (cached && cached.unit) || meta.unit || '',
+        resolution:
+          (cached && typeof cached.resolution === 'number' && cached.resolution >= 0 && cached.resolution) ??
+          (meta.resolution ?? 2),
+        location: '',
+        measurementPoint: ''
+      };
+    });
+  }
 
   const first = s.rows[0];
   const last = s.rows[s.rows.length - 1];
@@ -257,7 +412,10 @@ function buildResult(s) {
   lines.push('');
   lines.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
   channels.forEach((ch, idx) => {
-    lines.push(`${idx + 1},${ch.name},${ch.sensor},${ch.unit},${resolutionString(ch.resolution)},Location ${idx + 1}/${ch.name}`);
+    const locMp = (ch.location || ch.measurementPoint)
+      ? `${ch.location || 'Location'}/${ch.measurementPoint || ch.name}`
+      : `Location ${idx + 1}/${ch.name}`;
+    lines.push(`${idx + 1},${ch.name},${ch.sensor},${ch.unit},${resolutionString(ch.resolution)},${locMp}`);
   });
   lines.push('');
   lines.push(['Date Time', ...channels.map((ch) => (ch.unit ? `${ch.name} - ${ch.unit}` : ch.name))].join(','));

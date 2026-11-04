@@ -1,12 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, renderHook } from '@testing-library/react';
 import ProcessScapeView from './ProcessScapeView.jsx';
 import { ASSET_DEFS, PIPE_PRESETS, SENSOR_CARD_TEMPLATES } from './engine/constants.js';
 import { renderAssetPaletteIcon } from './engine/paletteIcons.jsx';
 import {
   getAllScapes,
   getActiveScape,
+  getActiveScapeId,
+  setActiveScapeId,
   saveScape,
   duplicateScape,
   deleteScape,
@@ -15,6 +17,7 @@ import {
 import SensorManagerModal from './SensorManagerModal.jsx';
 import DeviceConnectModal from '../../components/DeviceConnectModal.jsx';
 import TauriSutoAPI from '../../api/TauriSutoAPI.js';
+import BleSutoAPI from '../../api/BleSutoAPI.js';
 import * as lanScannerModule from '../../api/lanScanner.js';
 import {
   getLocations,
@@ -24,12 +27,15 @@ import {
   syncAllLocationsToScapes,
   buildDeviceFromRawChannels,
   getSavedDevices,
+  saveDevices,
   getDeviceChannelAssignments,
   removeDeviceAndUnassignChannels,
   autoReconnectSavedDevices,
   generateDeterministicDeviceId,
   isSameDevice,
-  upsertDeviceList
+  upsertDeviceList,
+  hasAssignedChannels,
+  countAssignedChannels
 } from './engine/sensorManagerStorage.js';
 import {
   snap,
@@ -46,6 +52,12 @@ import {
   getPipeLength,
   adjustPipeLength
 } from './engine/pipeUtils.js';
+import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
+import ProcessScapeRecordModal from './ProcessScapeRecordModal.jsx';
+import App from '../../App.jsx';
+import TestAPI from '../../api/TestAPI.js';
+import * as liveRecorder from '../../util/liveRecorder.js';
+import * as liveDataSourceModule from '../../util/liveDataSource.js';
 import {
   drawBufferTank,
   drawCompressor,
@@ -687,7 +699,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(parseFloat(elbowHalo.getAttribute('r'))).toBe((20 + 8) / 2); // 14px
   });
 
-  it('keeps inspector open and allows changing medium type and pipe thickness for grouped pipeline', () => {
+  it('keeps inspector open and allows changing pipe thickness for grouped pipeline, with Medium Type removed from inspector', () => {
     const { container } = render(<ProcessScapeView />);
 
     // Select a pipe via click
@@ -696,17 +708,14 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
       fireEvent.click(pipeEl);
       const inspector = container.querySelector('aside.ps-inspector');
       expect(inspector.textContent).not.toContain('No Item Selected');
-      expect(inspector.textContent).toMatch(/Medium Type|Gas \(Grey\)/);
+      // Medium Type is removed as requested
+      expect(inspector.textContent).not.toContain('Medium Type');
 
       // Pipeline Label input is removed as requested (users can use text notes instead)
       expect(inspector.textContent).not.toContain('Pipeline Label');
 
-      // Click Liquid button
-      const liquidBtn = Array.from(inspector.querySelectorAll('button')).find(b => b.textContent.includes('Liquid'));
-      if (liquidBtn) {
-        fireEvent.click(liquidBtn);
-        expect(liquidBtn.classList.contains('btn-primary')).toBe(true);
-      }
+      // Thickness slider remains present and active
+      expect(inspector.textContent).toContain('Pipe Thickness');
     }
   });
 
@@ -751,9 +760,18 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const pipeOff = { ...pipeForward, flow: 'none' };
     const svgOff = renderPipe(pipeOff);
     expect(svgOff.querySelector('.pipe-flow-dash')).toBeNull();
+
+    // Auto-heals legacy 'off' or undefined to 'forward' so flow is never lost
+    const pipeLegacyOff = { ...pipeForward, flow: 'off' };
+    const svgLegacy = renderPipe(pipeLegacyOff);
+    expect(svgLegacy.querySelector('.pipe-flow-dash.flow-forward')).not.toBeNull();
+
+    const pipeMissing = { ...pipeForward, flow: undefined };
+    const svgMissing = renderPipe(pipeMissing);
+    expect(svgMissing.querySelector('.pipe-flow-dash.flow-forward')).not.toBeNull();
   });
 
-  it('allows setting length on a single pipe and has removed the Flip Flow Direction button', () => {
+  it('removes Pipe Length and Medium Type from pipeline inspector while retaining flow direction controls', () => {
     const { container } = render(<ProcessScapeView />);
 
     // Drop a pipe preset onto the canvas viewport to create and select a single pipe
@@ -776,13 +794,17 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const inspector = container.querySelector('aside.ps-inspector');
     expect(inspector).not.toBeNull();
 
-    // 1. Check that "Flip Flow Direction" button is NOT in the inspector
+    // 1. Medium Type and Pipe Length are removed from inspector
+    expect(inspector.textContent).not.toContain('Medium Type');
+    expect(inspector.textContent).not.toContain('Pipe Length');
+
+    // 2. Check that "Flip Flow Direction" button is NOT in the inspector
     const flipBtn = Array.from(inspector.querySelectorAll('button')).find(b =>
       b.textContent.includes('Flip Flow Direction')
     );
     expect(flipBtn).toBeUndefined();
 
-    // 2. Check that Forward, Reverse, Off buttons exist and can be toggled
+    // 3. Check that Forward, Reverse, Off buttons exist and can be toggled
     const fwdBtn = Array.from(inspector.querySelectorAll('button')).find(b => b.textContent.includes('Forward'));
     const revBtn = Array.from(inspector.querySelectorAll('button')).find(b => b.textContent.includes('Reverse'));
     const offBtn = Array.from(inspector.querySelectorAll('button')).find(b => b.textContent.includes('Off'));
@@ -795,26 +817,6 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     fireEvent.click(fwdBtn);
     expect(fwdBtn.classList.contains('btn-primary')).toBe(true);
-
-    // 3. Check Pipe Length setting is rendered for single pipe
-    expect(inspector.textContent).toContain('Pipe Length');
-    const lengthInput = inspector.querySelector('input[type="number"]');
-    expect(lengthInput).not.toBeNull();
-    const initialLen = parseInt(lengthInput.value, 10);
-    expect(initialLen).toBeGreaterThan(0);
-
-    // Update pipe length via number input
-    fireEvent.change(lengthInput, { target: { value: '450' } });
-    expect(inspector.textContent).toContain('450px');
-    expect(lengthInput.value).toBe('450');
-
-    // Verify pipe in SVG was updated with the new length
-    const pipeGroup = container.querySelector('.plant-pipe-group');
-    expect(pipeGroup).not.toBeNull();
-    const pipePath = pipeGroup.querySelector('path.pipe-metal-body');
-    expect(pipePath).not.toBeNull();
-    const d = pipePath.getAttribute('d');
-    expect(d).toContain('L ');
   });
 
   it('splits flow direction outward to both branches when branching from one node', () => {
@@ -1038,7 +1040,8 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(runtimeTools.querySelector('#toolRuntimeZoomReset')).not.toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeZoomIn')).not.toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeZoomFit')).toBeNull();
-    expect(runtimeTools.querySelector('#toolRuntimeDndToggle')).not.toBeNull();
+    // Combined into single resizer & card move tool button
+    expect(runtimeTools.querySelector('#toolRuntimeDndToggle')).toBeNull();
     expect(runtimeTools.querySelector('#toolRuntimeBoundsResizer')).not.toBeNull();
   });
 
@@ -1062,7 +1065,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
       />
     );
 
-    const dndToggleBtn = container.querySelector('#toolRuntimeDndToggle');
+    const dndToggleBtn = container.querySelector('#toolRuntimeBoundsResizer');
     expect(dndToggleBtn).not.toBeNull();
     expect(dndToggleBtn.classList.contains('active')).toBe(false);
 
@@ -2164,6 +2167,50 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(card.textContent).toContain('°C');
   });
 
+  it('lays out newly confirmed sensor cards with padding gaps and wraps to new line when exceeding row limit', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.removeItem('s4a_processscapes_v1');
+
+    const defaultScape = getActiveScape();
+    const locId = 'loc_test_grid';
+
+    // 5 measurement points
+    const testLocations = [{
+      id: locId,
+      name: 'Main Plant',
+      scapeId: defaultScape.id,
+      measurementPoints: [1, 2, 3, 4, 5].map(i => ({
+        id: `mp_grid_${i}`,
+        name: `Sensor Point ${i}`,
+        channels: [
+          { id: `ch_g_${i}`, channel_id: i, name: `Metric ${i}`, val: 10 * i, unit: 'bar' }
+        ]
+      }))
+    }];
+
+    const res = syncAllLocationsToScapes(testLocations);
+    expect(res.success).toBe(true);
+    expect(res.syncCount).toBe(5);
+
+    const activeScape = getActiveScape();
+    const cards = activeScape.elements.filter(e => e.type === 'sensor_card');
+    expect(cards.length).toBe(5);
+
+    // Cards 0, 1, 2 are in the first row with horizontal padding gap (>= 260px center-to-center)
+    expect(cards[1].x - cards[0].x).toBeGreaterThanOrEqual(260);
+    expect(cards[2].x - cards[1].x).toBeGreaterThanOrEqual(260);
+    expect(cards[0].y).toBe(cards[1].y);
+    expect(cards[1].y).toBe(cards[2].y);
+
+    // Card 3 wraps to a new line (row 1)
+    expect(cards[3].y - cards[0].y).toBeGreaterThanOrEqual(150);
+    expect(cards[3].x).toBe(cards[0].x);
+
+    // Card 4 is in row 1 alongside Card 3
+    expect(cards[4].y).toBe(cards[3].y);
+    expect(cards[4].x).toBe(cards[1].x);
+  });
+
   it('removes sensor card from ProcessScape when all channels are removed from a location and synced', () => {
     const defaultScape = getActiveScape();
     const locId = 'loc_test_removal';
@@ -2264,6 +2311,142 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     // Verify saved scape in storage no longer contains the deleted element
     const saved = getActiveScape();
     expect(saved.elements.some(e => e.id === 'el_delete_me')).toBe(false);
+  });
+
+  it('preserves and displays location sensor mode cards after modifying and saving a scape without opening Sensor Manager', () => {
+    window.localStorage.clear();
+    const defaultScape = getActiveScape();
+
+    // 1. Create a location with a measurement point and channels
+    const locId = 'loc_prod_line_1';
+    const initialLocs = [{
+      id: locId,
+      name: 'Production Line 1',
+      scapeId: defaultScape.id,
+      measurementPoints: [{
+        id: 'mp_press_1',
+        name: 'Header Pressure',
+        channels: [{
+          id: 'ch_press_1',
+          name: 'Pressure',
+          val: '7.2',
+          unit: 'bar',
+          channel_id: 1
+        }]
+      }]
+    }];
+    saveLocations(initialLocs);
+    syncAllLocationsToScapes(initialLocs);
+
+    let actions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        activeLocationId={locId}
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    // Initial runtime mode: sensor card is visible
+    let cards = container.querySelectorAll('.sensor-badge-group');
+    expect(cards.length).toBe(1);
+    expect(container.textContent).toContain('Header Pressure');
+
+    // 2. Enter editor / modify scape mode
+    act(() => {
+      actions.setScapeMode('editor');
+    });
+
+    // In editor mode, sensor card is hidden
+    cards = container.querySelectorAll('.sensor-badge-group');
+    expect(cards.length).toBe(0);
+
+    // 3. Save and exit editor mode back to runtime
+    act(() => {
+      actions.handleSaveAndExit();
+    });
+
+    // Sensor mode card must be immediately visible again without opening Sensor Manager
+    cards = container.querySelectorAll('.sensor-badge-group');
+    expect(cards.length).toBe(1);
+    expect(container.textContent).toContain('Header Pressure');
+
+    // Verify storage has the sensor card preserved
+    const saved = getActiveScape();
+    const cardEl = saved.elements.find(e => e.type === 'sensor_card');
+    expect(cardEl).toBeDefined();
+    expect(cardEl.locationId).toBe(locId);
+    expect(cardEl.channels.length).toBe(1);
+  });
+
+  it('keeps two locations strictly bound to their respective scapes without accidentally merging to the same scape', () => {
+    window.localStorage.clear();
+
+    // Create 2 scapes
+    const scape1 = saveScape({ id: 'scape_plant_alpha', title: 'Plant Alpha', elements: [], pipes: [] });
+    const scape2 = saveScape({ id: 'scape_plant_beta', title: 'Plant Beta', elements: [], pipes: [] });
+
+    // Create 2 locations, each mapped to its own scape
+    const loc1 = {
+      id: 'loc_alpha',
+      name: 'Alpha Room',
+      scapeId: scape1.id,
+      measurementPoints: [{
+        id: 'mp_alpha_1',
+        name: 'Alpha Flow',
+        channels: [{ id: 'ch_a1', name: 'Flow', val: 120, unit: 'm3/h' }]
+      }]
+    };
+    const loc2 = {
+      id: 'loc_beta',
+      name: 'Beta Room',
+      scapeId: scape2.id,
+      measurementPoints: [{
+        id: 'mp_beta_1',
+        name: 'Beta Pressure',
+        channels: [{ id: 'ch_b1', name: 'Pressure', val: 6.8, unit: 'bar' }]
+      }]
+    };
+
+    saveLocations([loc1, loc2]);
+    setActiveScapeId(scape2.id);
+
+    // Sync locations to scapes
+    syncAllLocationsToScapes();
+
+    // Verify locations retain their distinct scape mappings
+    const locsAfterSync = getLocations();
+    expect(locsAfterSync.find(l => l.id === 'loc_alpha')?.scapeId).toBe(scape1.id);
+    expect(locsAfterSync.find(l => l.id === 'loc_beta')?.scapeId).toBe(scape2.id);
+
+    // Verify scape 1 has loc1's cards and scape 2 has loc2's cards
+    const allScapes = getAllScapes();
+    const reloadedScape1 = allScapes.find(s => s.id === scape1.id);
+    const reloadedScape2 = allScapes.find(s => s.id === scape2.id);
+
+    expect(reloadedScape1.elements.some(e => e.locationId === 'loc_alpha')).toBe(true);
+    expect(reloadedScape1.elements.some(e => e.locationId === 'loc_beta')).toBe(false);
+
+    expect(reloadedScape2.elements.some(e => e.locationId === 'loc_beta')).toBe(true);
+    expect(reloadedScape2.elements.some(e => e.locationId === 'loc_alpha')).toBe(false);
+
+    // Now render ProcessScapeView in editor mode on Scape 2, modify it and save
+    let actions = null;
+    render(
+      <ProcessScapeView
+        initialMode="editor"
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    act(() => {
+      actions.handleSaveAndExit();
+    });
+
+    // Verify locations STILL retain their distinct scape mappings and never merged
+    const locsAfterModify = getLocations();
+    expect(locsAfterModify.find(l => l.id === 'loc_alpha')?.scapeId).toBe(scape1.id);
+    expect(locsAfterModify.find(l => l.id === 'loc_beta')?.scapeId).toBe(scape2.id);
   });
 
   it('displays example compressor station layout with demo notice when no locations exist, and removes it once a location is created', () => {
@@ -2801,6 +2984,21 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const devTcpB = { id: 'dev_tcp_2', transportType: 'tcp', connectionConfig: { host: '192.168.1.50', port: 502 } };
     expect(isSameDevice(devTcpA, devTcpB)).toBe(true);
 
+    // Multi-device simulator on different ports (e.g. 502, 503, 504 on 127.0.0.1) MUST be distinguished by IP + Port!
+    const devTcp502 = { id: 'dev_tcp_502', name: 'SUTO S331', transportType: 'tcp', connectionConfig: { host: '127.0.0.1', port: 502 } };
+    const devTcp503 = { id: 'dev_tcp_503', name: 'SUTO S331', transportType: 'tcp', connectionConfig: { host: '127.0.0.1', port: 503 } };
+    const devTcp504 = { id: 'dev_tcp_504', name: 'SUTO S331', transportType: 'tcp', connectionConfig: { host: '127.0.0.1', port: 504 } };
+    expect(isSameDevice(devTcp502, devTcp503)).toBe(false);
+    expect(isSameDevice(devTcp502, devTcp504)).toBe(false);
+    expect(isSameDevice(devTcp503, devTcp504)).toBe(false);
+
+    // Deterministic IDs must include port to prevent collision on same IP
+    const tcpId502 = generateDeterministicDeviceId('tcp', { host: '127.0.0.1', port: 502 }, 'SUTO S331');
+    const tcpId503 = generateDeterministicDeviceId('tcp', { host: '127.0.0.1', port: 503 }, 'SUTO S331');
+    expect(tcpId502).not.toBe(tcpId503);
+    expect(tcpId502).toContain('502');
+    expect(tcpId503).toContain('503');
+
     // Generic serial numbers should not falsely match
     const devGen1 = { id: 'dev_gen_1', serial: 'SN-USB-123456', transportType: 'usb' };
     const devGen2 = { id: 'dev_gen_2', serial: 'SN-USB-987654', transportType: 'usb' };
@@ -3136,6 +3334,1291 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     // Channel is now assigned to the measurement point
     expect(container.textContent).toContain('✓ Assigned');
+  });
+
+  it('displays progress spinner in ps-sm-tree-container and disables dialog operations while loadingDevices is true', async () => {
+    window.__TAURI_INTERNALS__ = { invoke: vi.fn() };
+    let resolveChannels;
+    const channelsPromise = new Promise(resolve => {
+      resolveChannels = resolve;
+    });
+    vi.spyOn(TauriSutoAPI, 'getChannels').mockImplementation(() => channelsPromise);
+    vi.spyOn(TauriSutoAPI, 'getSystemInfo').mockResolvedValue({ device_name: 'SUTO BLE S120' });
+
+    // Mock BLE list and connect
+    vi.spyOn(TauriSutoAPI, 'listBleDevices').mockResolvedValue([
+      { id: 'ble_test_dev', name: 'SUTO BLE S120', is_suto: true, rssi: -60 }
+    ]);
+    vi.spyOn(TauriSutoAPI, 'connectBle').mockResolvedValue({
+      id: 'ble_test_dev',
+      name: 'SUTO BLE S120',
+      transport: 'ble'
+    });
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        onSyncToScape={() => {}}
+      />
+    );
+
+    // Click Detect to open DeviceConnectModal
+    const detectBtn = container.querySelector('.ps-sm-detect-btn');
+    fireEvent.click(detectBtn);
+
+    // BLE tab
+    const bleTab = screen.getByText('Bluetooth (BLE)');
+    fireEvent.click(bleTab);
+
+    const scanBtn = screen.getByText(/Scan SUTO BLE Sensors/);
+    fireEvent.click(scanBtn);
+
+    const connectBleBtn = await screen.findByText('Connect');
+    fireEvent.click(connectBleBtn);
+
+    // DeviceConnectModal closes, and SensorManagerModal is loading!
+    await waitFor(() => {
+      expect(container.querySelector('.ps-sm-tree-loading-overlay')).not.toBeNull();
+      expect(container.querySelector('.ps-sm-spinner-circle')).not.toBeNull();
+      expect(container.querySelector('.ps-sensor-mgr-dialog.is-loading-busy')).not.toBeNull();
+    });
+
+    // Verify all operations/buttons are disabled
+    expect(container.querySelector('.ps-sm-close-btn').disabled).toBe(true);
+    expect(container.querySelector('.ps-sm-detect-btn').disabled).toBe(true);
+    expect(container.querySelector('.ps-sm-search-input').disabled).toBe(true);
+    expect(container.querySelector('.ps-sm-footer-cancel-btn').disabled).toBe(true);
+    expect(container.querySelector('.ps-sm-footer-confirm-btn').disabled).toBe(true);
+
+    // Now resolve channels
+    resolveChannels([
+      { id: 1, name: 'Flow', unit: 'm³/h' }
+    ]);
+
+    // Spinner disappears after loading finishes
+    await waitFor(() => {
+      expect(container.querySelector('.ps-sm-tree-loading-overlay')).toBeNull();
+      expect(container.querySelector('.ps-sensor-mgr-dialog.is-loading-busy')).toBeNull();
+    });
+
+    // Buttons are re-enabled
+    expect(container.querySelector('.ps-sm-close-btn').disabled).toBe(false);
+    expect(container.querySelector('.ps-sm-detect-btn').disabled).toBe(false);
+  });
+
+  it('SensorManagerModal has concise Locations header, removes subtitle, and provides search clear button', () => {
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={vi.fn()}
+      />
+    );
+
+    // Verify subtitle is removed to save space
+    expect(container.querySelector('.ps-sm-subtitle')).toBeNull();
+
+    // Verify right column title is simply "Locations"
+    const colRightTitle = container.querySelector('.ps-sm-col-right .ps-sm-col-title');
+    expect(colRightTitle.textContent.trim()).toBe('Locations');
+
+    // Test search input and clear button
+    const searchInput = container.querySelector('.ps-sm-search-input');
+    expect(container.querySelector('.ps-sm-search-clear-btn')).toBeNull();
+
+    fireEvent.change(searchInput, { target: { value: 'flow' } });
+    const clearBtn = container.querySelector('.ps-sm-search-clear-btn');
+    expect(clearBtn).not.toBeNull();
+
+    fireEvent.click(clearBtn);
+    expect(searchInput.value).toBe('');
+    expect(container.querySelector('.ps-sm-search-clear-btn')).toBeNull();
+  });
+
+  it('allows selecting active target location and quick-assigns to the active location', () => {
+    // Setup two locations
+    saveLocations([
+      { id: 'loc_1', name: 'Location 1', measurementPoints: [] },
+      { id: 'loc_2', name: 'Location 2', measurementPoints: [] }
+    ]);
+    saveDevices([
+      {
+        id: 'dev_1',
+        name: 'S401 Sensor',
+        sensors: [
+          {
+            id: 'sens_1',
+            name: 'Flow Sensor',
+            channels: [{ id: 'ch_1', channel_id: 1, name: 'Flow', unit: 'm³/h' }]
+          }
+        ]
+      }
+    ]);
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={vi.fn()}
+        activeLocationId="loc_2"
+      />
+    );
+
+    // Both location cards rendered, loc_2 is active target
+    const locCards = container.querySelectorAll('.ps-sm-location-card');
+    expect(locCards.length).toBe(2);
+    expect(locCards[1].classList.contains('is-active-target')).toBe(true);
+
+    // Click "+ Assign All" on Flow Sensor
+    const assignAllBtn = screen.getByText('+ Assign All');
+    fireEvent.click(assignAllBtn);
+
+    // Verify sensor assigned to loc_2 (the active target location)
+    const updatedLocs = getLocations();
+    const loc2 = updatedLocs.find(l => l.id === 'loc_2');
+    expect(loc2.measurementPoints.length).toBe(1);
+    expect(loc2.measurementPoints[0].name).toBe('Flow Sensor');
+  });
+
+  it('ProcessScapeView filters sensor cards by activeLocationId', () => {
+    const customElements = [
+      { id: 'sc_1', type: 'sensor_card', tag: 'Sensor Loc 1', locationId: 'loc_1', x: 100, y: 100, channels: [] },
+      { id: 'sc_2', type: 'sensor_card', tag: 'Sensor Loc 2', locationId: 'loc_2', x: 200, y: 200, channels: [] }
+    ];
+
+    let actionsRef = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={customElements}
+        activeLocationId="loc_1"
+        onRegisterActions={(act) => { actionsRef = act; }}
+      />
+    );
+
+    // Initially only loc_1 card is visible
+    expect(container.textContent).toContain('Sensor Loc 1');
+    expect(container.textContent).not.toContain('Sensor Loc 2');
+
+    // Switch active location to loc_2
+    act(() => {
+      actionsRef.setActiveLocationId('loc_2');
+    });
+
+    expect(container.textContent).not.toContain('Sensor Loc 1');
+    expect(container.textContent).toContain('Sensor Loc 2');
+  });
+
+  it('automatically focuses and fits imported diagram items on screen when uploading a scape JSON', async () => {
+    let capturedActions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        onRegisterActions={(act) => { capturedActions = act; }}
+      />
+    );
+
+    const fileInput = container.querySelector('input[type="file"][accept*=".json"]');
+    expect(fileInput).not.toBeNull();
+
+    // Diagram positioned at offset coordinates (e.g. 500, 400)
+    const mockDiagram = {
+      projectTitle: 'Off-Center Plant Diagram',
+      elements: [
+        { id: 'off_chiller', type: 'machine_chiller', tag: 'Chiller', x: 500, y: 400, w: 120, h: 120 }
+      ],
+      pipes: [
+        { id: 'off_pipe', medium: 'gas', points: [{ x: 450, y: 400 }, { x: 750, y: 400 }], d: 'M 450,400 L 750,400', w: 16 }
+      ]
+    };
+
+    const originalFileReader = global.FileReader;
+    class MockFileReader {
+      readAsText() {
+        setTimeout(() => {
+          if (this.onload) {
+            this.onload({ target: { result: JSON.stringify(mockDiagram) } });
+          }
+        }, 10);
+      }
+    }
+    global.FileReader = MockFileReader;
+
+    try {
+      const file = new File([JSON.stringify(mockDiagram)], 'plant.json', { type: 'application/json' });
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(container.querySelector('.plant-node[data-node-id="off_chiller"]')).not.toBeNull();
+      });
+
+      // The worldGroup transform MUST be automatically calculated and translated so items are centered
+      const worldGroup = container.querySelector('#worldGroup');
+      const transform = worldGroup.getAttribute('transform');
+      expect(transform).toMatch(/translate\(-?\d+,\s*-?\d+\)\s*scale\(\d+(\.\d+)?\)/);
+      // Ensure it is not stuck at default initial offset (20, 78) scale(1)
+      expect(transform).not.toBe('translate(20, 78) scale(1)');
+    } finally {
+      global.FileReader = originalFileReader;
+    }
+  });
+
+  it('useProcessScapeTelemetry only refreshes sensor cards belonging to the active location and leaves background locations untouched', () => {
+    let currentElements = [
+      {
+        id: 'card_loc1',
+        type: 'sensor_card',
+        locationId: 'loc_1',
+        channels: [{ id: 'ch_1', channel_id: 1, name: 'Flow', val: '--.-', unit: 'm³/h' }]
+      },
+      {
+        id: 'card_loc2',
+        type: 'sensor_card',
+        locationId: 'loc_2',
+        channels: [{ id: 'ch_2', channel_id: 2, name: 'Pressure', val: '--.-', unit: 'bar' }]
+      }
+    ];
+
+    let capturedLiveCallback = null;
+    vi.spyOn(liveDataSourceModule, 'subscribeLive').mockImplementation((cb) => {
+      capturedLiveCallback = cb;
+      return () => {};
+    });
+
+    function TestComponent({ activeLocId }) {
+      const [, setForceUpdate] = React.useState(0);
+      useProcessScapeTelemetry({
+        elements: currentElements,
+        pipes: [],
+        setElements: (updater) => {
+          currentElements = typeof updater === 'function' ? updater(currentElements) : updater;
+          setForceUpdate(v => v + 1);
+        },
+        setPipes: vi.fn(),
+        enabled: true,
+        activeLocationId: activeLocId
+      });
+      return <div>Active: {activeLocId}</div>;
+    }
+
+    const { rerender } = render(<TestComponent activeLocId="loc_1" />);
+    expect(capturedLiveCallback).not.toBeNull();
+
+    // 1. Simulate incoming telemetry data with updates for both channels
+    act(() => {
+      capturedLiveCallback([
+        { channel_id: 1, current_value: 55.2, unit: 'm³/h' },
+        { channel_id: 2, current_value: 6.8, unit: 'bar' }
+      ]);
+    });
+
+    // card_loc1 (active location) MUST be updated to 55.2
+    expect(currentElements.find(e => e.id === 'card_loc1').channels[0].val).toBe('55.2');
+    // card_loc2 (background location) MUST NOT update and remain '--.-'
+    expect(currentElements.find(e => e.id === 'card_loc2').channels[0].val).toBe('--.-');
+
+    // 2. Switch active location to loc_2
+    rerender(<TestComponent activeLocId="loc_2" />);
+
+    // Reset card_loc1 to check it doesn't get updated anymore
+    currentElements[0].channels[0].val = '55.2';
+
+    act(() => {
+      capturedLiveCallback([
+        { channel_id: 1, current_value: 99.9, unit: 'm³/h' },
+        { channel_id: 2, current_value: 7.4, unit: 'bar' }
+      ]);
+    });
+
+    // card_loc2 (now active) MUST be updated to 7.4
+    expect(currentElements.find(e => e.id === 'card_loc2').channels[0].val).toBe('7.40');
+    // card_loc1 (now background) MUST NOT be updated to 99.9, remains 55.2
+    expect(currentElements.find(e => e.id === 'card_loc1').channels[0].val).toBe('55.2');
+  });
+
+  it('automatically reconnects saved Ethernet devices on app startup and marks them online in storage', async () => {
+    const savedEthernetDev = {
+      id: 'dev_eth_192_168_1_100',
+      name: 'SUTO S331 Main Inflow',
+      transport: 'Ethernet (192.168.1.100)',
+      isOnline: false,
+      host: '192.168.1.100',
+      port: 502,
+      sensors: []
+    };
+    saveDevices([savedEthernetDev]);
+
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockResolvedValue({
+      transport: 'TCP',
+      host: '192.168.1.100',
+      port: 502
+    });
+    const isConnectedSpy = vi.spyOn(TauriSutoAPI, 'isConnected').mockReturnValue(false);
+
+    let callbackDevice = null;
+    const res = await autoReconnectSavedDevices((conn) => {
+      callbackDevice = conn;
+    });
+
+    expect(res.reconnected).toBe(true);
+    expect(res.transport).toBe('TCP');
+    expect(connectTcpSpy).toHaveBeenCalledWith('192.168.1.100', 502);
+    expect(callbackDevice).toEqual(expect.objectContaining({
+      transport: 'TCP',
+      host: '192.168.1.100',
+      port: 502
+    }));
+
+    // Verify storage was updated to isOnline: true
+    const updatedDevices = getSavedDevices();
+    expect(updatedDevices[0].isOnline).toBe(true);
+
+    connectTcpSpy.mockRestore();
+    isConnectedSpy.mockRestore();
+  });
+
+  it('triggers auto-recovery of saved Ethernet device via useProcessScapeTelemetry on entering ProcessScape', async () => {
+    window.__ENABLE_AUTO_RECONNECT_TEST__ = true;
+    const savedEthernetDev = {
+      id: 'dev_eth_192_168_1_105',
+      name: 'SUTO S401 Air Receiver',
+      transport: 'Ethernet (192.168.1.105)',
+      isOnline: false,
+      host: '192.168.1.105',
+      port: 502,
+      sensors: []
+    };
+    saveDevices([savedEthernetDev]);
+
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockResolvedValue({
+      transport: 'TCP',
+      host: '192.168.1.105',
+      port: 502
+    });
+    const isConnectedSpy = vi.spyOn(TauriSutoAPI, 'isConnected').mockReturnValue(false);
+
+    let connectedReported = null;
+    function TelemetryTest() {
+      useProcessScapeTelemetry({
+        elements: [],
+        pipes: [],
+        setElements: vi.fn(),
+        setPipes: vi.fn(),
+        enabled: true,
+        onDeviceConnected: (conn) => {
+          connectedReported = conn;
+        }
+      });
+      return <div>Telemetry Mounted</div>;
+    }
+
+    render(<TelemetryTest />);
+
+    await waitFor(() => {
+      expect(connectedReported).not.toBeNull();
+    });
+
+    expect(connectedReported.host).toBe('192.168.1.105');
+    expect(getSavedDevices()[0].isOnline).toBe(true);
+
+    delete window.__ENABLE_AUTO_RECONNECT_TEST__;
+    connectTcpSpy.mockRestore();
+    isConnectedSpy.mockRestore();
+  });
+
+  it('does not get blocked by stale isConnected state when reconnecting saved Ethernet devices', async () => {
+    const savedEthernetDev = {
+      id: 'dev_eth_192_168_1_220',
+      name: 'SUTO S430 Nitrogen Inflow',
+      transport: 'Ethernet (192.168.1.220)',
+      isOnline: false,
+      host: '192.168.1.220',
+      port: 502,
+      sensors: []
+    };
+    saveDevices([savedEthernetDev]);
+
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockResolvedValue({
+      transport: 'TCP',
+      host: '192.168.1.220',
+      port: 502
+    });
+    // Simulate isConnected returning true but activeTransport being 'USB'
+    const isConnectedSpy = vi.spyOn(TauriSutoAPI, 'isConnected').mockReturnValue(true);
+    const getActiveTransportSpy = vi.spyOn(TauriSutoAPI, 'getActiveTransport').mockReturnValue('USB');
+
+    let receivedConn = null;
+    const res = await autoReconnectSavedDevices((conn) => {
+      receivedConn = conn;
+    });
+
+    expect(res.reconnected).toBe(true);
+    expect(res.transport).toBe('TCP');
+    expect(connectTcpSpy).toHaveBeenCalledWith('192.168.1.220', 502);
+    expect(receivedConn).not.toBeNull();
+
+    connectTcpSpy.mockRestore();
+    isConnectedSpy.mockRestore();
+    getActiveTransportSpy.mockRestore();
+  });
+
+  it('successfully updates and refreshes all 6 channels simultaneously in useProcessScapeTelemetry without truncating at 4', () => {
+    let capturedTelemetryCallback = null;
+    vi.spyOn(liveDataSourceModule, 'subscribeLive').mockImplementation((cb) => {
+      capturedTelemetryCallback = cb;
+      return () => {};
+    });
+
+    const sixChannels = [
+      { id: 'ch_1', channel_id: 1, name: 'Flow', unit: 'm³/h', val: '--.-' },
+      { id: 'ch_2', channel_id: 2, name: 'Pressure', unit: 'bar', val: '--.-' },
+      { id: 'ch_3', channel_id: 3, name: 'Dew Point', unit: '°Ctd', val: '--.-' },
+      { id: 'ch_4', channel_id: 4, name: 'Delta T', unit: '℃', val: '--.-' },
+      { id: 'ch_5', channel_id: 5, name: 'Temperature inlet', unit: '℃', val: '--.-' },
+      { id: 'ch_6', channel_id: 6, name: 'Temperature outlet', unit: '℃', val: '--.-' },
+    ];
+
+    let currentElements = [{
+      id: 'sc_six_channels',
+      type: 'sensor_card',
+      locationId: 'loc_main',
+      channels: sixChannels
+    }];
+
+    function SixChannelTest() {
+      useProcessScapeTelemetry({
+        elements: currentElements,
+        pipes: [],
+        setElements: (updater) => {
+          currentElements = typeof updater === 'function' ? updater(currentElements) : updater;
+        },
+        setPipes: vi.fn(),
+        enabled: true,
+        activeLocationId: 'loc_main'
+      });
+      return <div>Six Channel Active</div>;
+    }
+
+    render(<SixChannelTest />);
+
+    // Push 6 telemetry data points
+    act(() => {
+      capturedTelemetryCallback([
+        { channel_id: 1, current_value: 145.2, unit: 'm³/h' },
+        { channel_id: 2, current_value: 6.85, unit: 'bar' },
+        { channel_id: 3, current_value: -38.4, unit: '°Ctd' },
+        { channel_id: 4, current_value: 3.84, unit: '℃' },
+        { channel_id: 5, current_value: 28.6, unit: '℃' },
+        { channel_id: 6, current_value: 24.76, unit: '℃' },
+      ]);
+    });
+
+    const card = currentElements[0];
+    expect(card.channels[0].val).toBe('145.2');
+    expect(card.channels[1].val).toBe('6.85');
+    expect(card.channels[2].val).toBe('-38.4');
+    expect(card.channels[3].val).toBe('3.84');
+    expect(card.channels[4].val).toBe('28.60');
+    expect(card.channels[5].val).toBe('24.76');
+  });
+
+  it('renders floating DND ps-inspector with drag grip, draggable to any place within workbench, and resets position on double click', () => {
+    const { container } = render(<ProcessScapeView />);
+    const viewport = container.querySelector('.ps-canvas-viewport');
+    const workbench = container.querySelector('.ps-workbench');
+    const inspector = container.querySelector('aside.ps-inspector');
+
+    expect(inspector).not.toBeNull();
+    expect(workbench).not.toBeNull();
+
+    // Select an element to show the inspector
+    fireEvent.drop(viewport, {
+      clientX: 200,
+      clientY: 200,
+      dataTransfer: {
+        getData: (type) => type === 'application/json' ? JSON.stringify({ kind: 'asset', key: 'tank_buffer' }) : ''
+      }
+    });
+
+    expect(inspector.classList.contains('collapsed')).toBe(false);
+
+    // Inspector has header with drag grip ⠿ and title
+    const header = inspector.querySelector('.ps-inspector-header');
+    const dragGrip = inspector.querySelector('.ps-inspector-drag-grip');
+    expect(header).not.toBeNull();
+    expect(dragGrip).not.toBeNull();
+    expect(dragGrip.textContent).toBe('⠿');
+
+    // Initially inspectorPos is null, so inline left/top are not set (default CSS top-right)
+    expect(inspector.style.left).toBe('');
+    expect(inspector.style.top).toBe('');
+
+    // Mock getBoundingClientRect for workbench and inspector
+    workbench.getBoundingClientRect = () => ({
+      left: 100,
+      top: 50,
+      right: 1300,
+      bottom: 850,
+      width: 1200,
+      height: 800,
+      x: 100,
+      y: 50
+    });
+
+    inspector.getBoundingClientRect = () => ({
+      left: 994, // 100 + 1200 - 290 - 16 = 994
+      top: 64,  // 50 + 14 = 64
+      right: 1284,
+      bottom: 484,
+      width: 290,
+      height: 420,
+      x: 994,
+      y: 64
+    });
+
+    // 1. Mouse down on header to initiate drag
+    fireEvent.mouseDown(header, { clientX: 1050, clientY: 75, button: 0 });
+
+    // Drag move by (-200, +150)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 850, clientY: 225 }));
+    });
+
+    // Inspector position updated: initial (994 - 100 = 894, 64 - 50 = 14) + (-200, +150) = (694, 164)
+    expect(inspector.style.left).toBe('694px');
+    expect(inspector.style.top).toBe('164px');
+
+    // Mouse up to end drag
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup'));
+    });
+
+    // Position remains persisted
+    expect(inspector.style.left).toBe('694px');
+    expect(inspector.style.top).toBe('164px');
+
+    // 2. Double click header to reset to default top-right
+    fireEvent.doubleClick(header);
+
+    expect(inspector.style.left).toBe('');
+    expect(inspector.style.top).toBe('');
+
+    // 3. Clicking close button does not start dragging
+    const closeBtn = inspector.querySelector('.ps-inspector-close-btn');
+    fireEvent.mouseDown(closeBtn, { clientX: 1270, clientY: 75, button: 0 });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 500, clientY: 200 }));
+    });
+    // Still reset (not dragged)
+    expect(inspector.style.left).toBe('');
+    expect(inspector.style.top).toBe('');
+  });
+
+  it('renders Color Theme swatches in a compact single-line row with circle buttons', () => {
+    const { container } = render(<ProcessScapeView />);
+    const viewport = container.querySelector('.ps-canvas-viewport');
+
+    // Drop an equipment asset
+    fireEvent.drop(viewport, {
+      clientX: 200,
+      clientY: 200,
+      dataTransfer: {
+        getData: (type) => type === 'application/json' ? JSON.stringify({ kind: 'asset', key: 'tank_buffer' }) : ''
+      }
+    });
+
+    const inspector = container.querySelector('aside.ps-inspector');
+    expect(inspector).not.toBeNull();
+
+    // Verify single-line swatches row
+    const swatchesRow = inspector.querySelector('.ps-swatches-row');
+    expect(swatchesRow).not.toBeNull();
+
+    const swatchBtns = swatchesRow.querySelectorAll('.ps-swatch-circle-btn');
+    expect(swatchBtns.length).toBe(8); // 8 color themes
+
+    // Initially Industrial Blue is active
+    expect(swatchBtns[0].classList.contains('active')).toBe(true);
+
+    // Click Green swatch (index 2)
+    fireEvent.click(swatchBtns[2]);
+    expect(swatchBtns[2].classList.contains('active')).toBe(true);
+    expect(swatchBtns[0].classList.contains('active')).toBe(false);
+  });
+
+  it('ProcessScapeRecordModal renders assigned channels table (Log, Location, MP, Channel) with device sensor tooltip and triggers recording', () => {
+    // 1. Prepare sample devices and locations with assigned channels
+    const mockDevices = [
+      {
+        id: 'dev_s401',
+        name: 'SUTO S401',
+        serial: 'SN-401-9988',
+        transportType: 'ble',
+        isOnline: true
+      },
+      {
+        id: 'dev_s430',
+        name: 'SUTO S430',
+        ip: '192.168.1.120',
+        serial: 'SN-430-1122',
+        transportType: 'ethernet',
+        isOnline: true
+      }
+    ];
+
+    const mockLocations = [
+      {
+        id: 'loc_compressor_room',
+        name: 'Compressor Room 1',
+        measurementPoints: [
+          {
+            id: 'mp_main_out',
+            name: 'Main Discharge Line',
+            channels: [
+              {
+                id: 'ch_s401_flow',
+                channel_id: 1,
+                name: 'Flow Rate',
+                customName: 'Discharge Flow',
+                unit: 'm³/h',
+                deviceId: 'dev_s401',
+                device: 'SUTO S401'
+              },
+              {
+                id: 'ch_s401_press',
+                channel_id: 2,
+                name: 'Pressure',
+                unit: 'bar',
+                deviceId: 'dev_s401',
+                device: 'SUTO S401'
+              }
+            ]
+          },
+          {
+            id: 'mp_header',
+            name: 'Ring Main Header',
+            channels: [
+              {
+                id: 'ch_s430_vel',
+                channel_id: 1,
+                name: 'Velocity',
+                unit: 'm/s',
+                deviceId: 'dev_s430',
+                device: 'SUTO S430'
+              }
+            ]
+          }
+        ]
+      }
+    ];
+
+    saveDevices(mockDevices);
+    saveLocations(mockLocations);
+
+    const onStartMock = vi.fn();
+    const onCloseMock = vi.fn();
+
+    const { rerender } = render(
+      <ProcessScapeRecordModal
+        isOpen={true}
+        onClose={onCloseMock}
+        onStart={onStartMock}
+      />
+    );
+
+    // Verify modal title and badge (MUI Dialog portals to document.body)
+    expect(document.body.textContent).toContain('ProcessScape Live Recording');
+    expect(document.body.textContent).toContain('Multi-Device SCADA');
+
+    // Verify table structure with Log, Location, Measurement Point, Channel columns
+    const table = document.body.querySelector('.ps-rec-table');
+    expect(table).not.toBeNull();
+    expect(table.textContent).toContain('Log');
+    expect(table.textContent).toContain('Location');
+    expect(table.textContent).toContain('Measurement Point');
+    expect(table.textContent).toContain('Channel');
+
+    // Verify Sampling interval section
+    const intervalInput = document.body.querySelector('#ps-rec-interval-input');
+    expect(intervalInput).not.toBeNull();
+    expect(intervalInput.value).toBe('10');
+
+    // Click preset chip '30s'
+    const chip30 = Array.from(document.body.querySelectorAll('.ps-rec-chip')).find(c => c.textContent === '30s');
+    expect(chip30).not.toBeUndefined();
+    fireEvent.click(chip30);
+    expect(intervalInput.value).toBe('30');
+
+    // Verify channel hierarchy displayed in table cells
+    expect(document.body.textContent).toContain('Compressor Room 1');
+    expect(document.body.textContent).toContain('Main Discharge Line');
+    expect(document.body.textContent).toContain('Ring Main Header');
+
+    // Verify custom name and original channels
+    expect(document.body.textContent).toContain('Discharge Flow');
+    expect(document.body.textContent).toContain('Pressure');
+    expect(document.body.textContent).toContain('Velocity');
+
+    // Verify channel cells exist and support device sensor tooltips
+    const chCells = document.body.querySelectorAll('.ps-rec-cell-ch');
+    expect(chCells.length).toBe(3);
+
+    // All 3 assigned channels are selected by default
+    expect(document.body.textContent).toContain('(3 of 3 selected)');
+
+    // Start Recording button shows (3)
+    const startBtn = document.body.querySelector('.ps-rec-start-btn');
+    expect(startBtn).not.toBeNull();
+    expect(startBtn.textContent).toContain('Start Recording (3)');
+
+    // Toggle off Velocity channel
+    const velRow = Array.from(document.body.querySelectorAll('.ps-rec-row')).find(r => r.textContent.includes('Velocity'));
+    expect(velRow).not.toBeUndefined();
+    fireEvent.click(velRow);
+
+    // Selected count should decrease to 2
+    expect(document.body.textContent).toContain('(2 of 3 selected)');
+    expect(startBtn.textContent).toContain('Start Recording (2)');
+
+    // Click Start Recording
+    fireEvent.click(startBtn);
+
+    expect(onStartMock).toHaveBeenCalledTimes(1);
+    const startPayload = onStartMock.mock.calls[0][0];
+    expect(startPayload.intervalSec).toBe(30);
+    expect(startPayload.selectedChannels.length).toBe(2);
+    expect(startPayload.selectedChannels[0].name).toBe('Discharge Flow');
+    expect(startPayload.selectedChannels[0].locationName).toBe('Compressor Room 1');
+    expect(startPayload.selectedChannels[0].measurementPointName).toBe('Main Discharge Line');
+  });
+
+  it('liveRecorder records selectedChannels with Location/Measurement Point in CSV header', () => {
+    liveRecorder.clearSession();
+
+    const selectedChannels = [
+      {
+        key: 'ch_rec_1',
+        channel_id: 1,
+        name: 'Header Flow',
+        unit: 'm³/h',
+        resolution: 1,
+        deviceName: 'SUTO S401',
+        locationName: 'Factory North',
+        measurementPointName: 'Compressor 1 Out'
+      },
+      {
+        key: 'ch_rec_2',
+        channel_id: 2,
+        name: 'Header Pressure',
+        unit: 'bar',
+        resolution: 2,
+        deviceName: 'SUTO S401',
+        locationName: 'Factory North',
+        measurementPointName: 'Compressor 1 Out'
+      }
+    ];
+
+    liveRecorder.start({
+      deviceName: 'ProcessScape',
+      selectedChannels,
+      intervalSec: 1
+    });
+
+    // Feed telemetry sample
+    liveRecorder.feed([
+      { channel_id: 1, current_value: 185.4, unit: 'm³/h' },
+      { channel_id: 2, current_value: 7.25, unit: 'bar' }
+    ]);
+
+    const result = liveRecorder.stop();
+    expect(result).not.toBeNull();
+    expect(result.rowCount).toBe(1);
+
+    // CSV text must contain ProcessScape Raw Data and Location/Measurement Point headers
+    expect(result.csvText).toContain('ProcessScape Raw Data');
+    expect(result.csvText).toContain('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
+    expect(result.csvText).toContain('1,Header Flow,SUTO S401,m³/h,0.1,Factory North/Compressor 1 Out');
+    expect(result.csvText).toContain('2,Header Pressure,SUTO S401,bar,0.01,Factory North/Compressor 1 Out');
+    expect(result.csvText).toContain('Date Time,Header Flow - m³/h,Header Pressure - bar');
+    expect(result.csvText).toContain('185.4,7.25');
+
+    liveRecorder.clearSession();
+  });
+
+  it('ProcessScape recording shows Graphic View and Table View in top bar while recording, and hides them when stopped', async () => {
+    localStorage.clear();
+    liveRecorder.clearSession();
+
+    // Seed dummy location and channel for recording
+    saveLocations([
+      {
+        id: 'loc_main',
+        name: 'Main Plant',
+        scapeId: 'scape_1',
+        measurementPoints: [
+          {
+            id: 'mp_1',
+            name: 'Flow Meter Point',
+            channels: [
+              { id: 'ch_1', channel_id: 1, name: 'Flow Rate', unit: 'm³/h', device: 'SUTO S401' }
+            ]
+          }
+        ]
+      }
+    ]);
+
+    render(<App />);
+
+    // Click Open ProcessScape
+    const openPsBtn = await screen.findByText('Open ProcessScape');
+    fireEvent.click(openPsBtn);
+
+    // Verify ProcessScape mode top bar: Sensor Manager is present, Graphic & Table are NOT present
+    await waitFor(() => {
+      expect(screen.getByText('Sensor Manager')).toBeDefined();
+      expect(screen.queryByRole('button', { name: 'Graphic View' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Table View' })).toBeNull();
+    });
+
+    // Record button is present in ProcessScape top bar
+    const recBtn = screen.getByRole('button', { name: /Record/i });
+    expect(recBtn).toBeDefined();
+
+    // Click Record button to open modal
+    fireEvent.click(recBtn);
+
+    // Modal opens
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('ProcessScape Live Recording');
+    });
+
+    // Click Start Recording in modal
+    const startRecBtn = document.body.querySelector('.ps-rec-start-btn');
+    expect(startRecBtn).not.toBeNull();
+    fireEvent.click(startRecBtn);
+
+    // Recording is now active!
+    // Top bar contains Graphic View and Table View tabs (no redundant ProcessScape tab in header-tabs),
+    // Sensor Manager is HIDDEN, and ProcessScape mode indicator is a button that returns to canvas!
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Graphic View' })).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Table View' })).toBeDefined();
+      expect(document.querySelector('.header-mode-indicator.processscape')).not.toBeNull();
+      expect(screen.queryByRole('button', { name: /Sensor Manager/i })).toBeNull();
+    });
+
+    // Verify channel list format for ProcessScape recording uses Location / Measurement Point format without 'L/M:'
+    const channels = await TestAPI.getChannels();
+    expect(channels.length).toBe(1);
+    expect(channels[0].sensor_description).toBe('Main Plant / Flow Meter Point');
+
+    // Click Table View tab
+    const tableViewTab = screen.getByRole('button', { name: 'Table View' });
+    fireEvent.click(tableViewTab);
+    expect(tableViewTab.classList.contains('active')).toBe(true);
+
+    // Click header-mode-indicator ProcessScape to return to scape canvas
+    const scapeIndicatorBtn = document.querySelector('.header-mode-indicator.processscape');
+    fireEvent.click(scapeIndicatorBtn);
+    expect(scapeIndicatorBtn.classList.contains('is-active')).toBe(true);
+
+    // Now stop recording: click REC button in header
+    const stopRecBtn = document.querySelector('.header-rec-btn.is-recording');
+    expect(stopRecBtn).not.toBeNull();
+    fireEvent.click(stopRecBtn);
+
+    // Graphic View and Table View MUST now be hidden, and Sensor Manager reappears!
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Graphic View' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Table View' })).toBeNull();
+      expect(screen.getByRole('button', { name: /Sensor Manager/i })).toBeDefined();
+    });
+
+    liveRecorder.clearSession();
+  });
+
+  it('hides Record button when no location, measurement point or assigned channels exist, and shows it when assigned channels exist', async () => {
+    localStorage.clear();
+    liveRecorder.clearSession();
+
+    // 1. Verify storage helper logic directly
+    expect(hasAssignedChannels([])).toBe(false);
+    expect(hasAssignedChannels([{ id: 'loc1', name: 'Plant A', measurementPoints: [] }])).toBe(false);
+    expect(hasAssignedChannels([{ id: 'loc1', name: 'Plant A', measurementPoints: [{ id: 'mp1', name: 'Point 1', channels: [] }] }])).toBe(false);
+    expect(hasAssignedChannels([{ id: 'loc1', name: 'Plant A', measurementPoints: [{ id: 'mp1', name: 'Point 1', channels: [{ id: 'ch1', channel_id: 1, name: 'Flow' }] }] }])).toBe(true);
+    expect(countAssignedChannels([{ id: 'loc1', name: 'Plant A', measurementPoints: [{ id: 'mp1', name: 'Point 1', channels: [{ id: 'ch1', channel_id: 1, name: 'Flow' }] }] }])).toBe(1);
+
+    // 2. Clear storage so there are 0 locations / assigned channels
+    saveLocations([]);
+
+    render(<App />);
+
+    // Click Open ProcessScape
+    const openPsBtn = await screen.findByText('Open ProcessScape');
+    fireEvent.click(openPsBtn);
+
+    // Verify in ProcessScape top bar: Sensor Manager is present, but Record button is NOT present!
+    await waitFor(() => {
+      expect(screen.getByText('Sensor Manager')).toBeDefined();
+      expect(screen.queryByRole('button', { name: /Record/i })).toBeNull();
+    });
+
+    // 3. Now assign a channel to a measurement point and save locations
+    saveLocations([
+      {
+        id: 'loc_test',
+        name: 'Test Location',
+        measurementPoints: [
+          {
+            id: 'mp_test',
+            name: 'Test MP',
+            channels: [
+              { id: 'ch_test', channel_id: 1, name: 'Pressure', unit: 'bar' }
+            ]
+          }
+        ]
+      }
+    ]);
+
+    // Record button MUST now be rendered in the top bar!
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Record/i })).toBeDefined();
+    });
+
+    liveRecorder.clearSession();
+  });
+
+  it('distinguishes multiple simulated devices on the same IP by port (502 vs 503 vs 504) and keeps all devices without disappearing', () => {
+    // 1. Generate IDs for 502, 503, and 504 on 127.0.0.1
+    // Prioritizes serial number (SN) from getSN / sysInfo.serial_number
+    const dev502Id = generateDeterministicDeviceId('tcp', { host: '127.0.0.1', port: 502, deviceId: 4197, device_id: 4197, serial: 12344321 }, 'SUTO S331');
+    const dev503Id = generateDeterministicDeviceId('tcp', { host: '127.0.0.1', port: 503, deviceId: 4197, device_id: 4197, serial: 12344322 }, 'SUTO S331 #2');
+    const dev504Id = generateDeterministicDeviceId('tcp', { host: '127.0.0.1', port: 504, deviceId: 4197, device_id: 4197, serial: 12344323 }, 'SUTO S331 #3');
+
+    expect(dev502Id).toBe('dev_tcp_sn_12344321');
+    expect(dev503Id).toBe('dev_tcp_sn_12344322');
+    expect(dev504Id).toBe('dev_tcp_sn_12344323');
+    expect(dev502Id).not.toBe(dev503Id);
+
+    // If SN is absent or generic, it falls back to IP + Port
+    const fallbackId = generateDeterministicDeviceId('tcp', { host: '127.0.0.1', port: 502 }, 'SUTO S331');
+    expect(fallbackId).toBe('dev_tcp_127_0_0_1_502');
+
+    // 2. Build device structures
+    const dev502 = {
+      id: dev502Id,
+      name: 'SUTO S331',
+      transport: 'Ethernet (127.0.0.1:502)',
+      transportType: 'tcp',
+      connectionConfig: { host: '127.0.0.1', port: 502, transport: 'tcp' },
+      serial: '12344321',
+      sensors: [
+        {
+          id: 'sens_502_1',
+          name: 'S331',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_502_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h', deviceId: dev502Id }
+          ]
+        }
+      ]
+    };
+
+    const dev503 = {
+      id: dev503Id,
+      name: 'SUTO S331 #2',
+      transport: 'Ethernet (127.0.0.1:503)',
+      transportType: 'tcp',
+      connectionConfig: { host: '127.0.0.1', port: 503, transport: 'tcp' },
+      serial: '12344322',
+      sensors: [
+        {
+          id: 'sens_503_1',
+          name: 'S331 #2',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_503_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h', deviceId: dev503Id }
+          ]
+        }
+      ]
+    };
+
+    // Different serial numbers ALWAYS represent different devices
+    expect(isSameDevice(dev502, dev503)).toBe(false);
+
+    // Same serial number represents the same physical hardware reconnecting (even if IP/port changed)
+    const dev502ReconnectedOnNewPort = {
+      ...dev502,
+      id: dev502Id,
+      transport: 'Ethernet (127.0.0.1:1502)',
+      connectionConfig: { host: '127.0.0.1', port: 1502, transport: 'tcp' }
+    };
+    expect(isSameDevice(dev502, dev502ReconnectedOnNewPort)).toBe(true);
+
+    // 4. upsertDeviceList: adding 503 when 502 exists MUST retain both!
+    const initialList = [dev502];
+    const updatedList = upsertDeviceList(initialList, [dev503]);
+    expect(updatedList.length).toBe(2);
+    expect(updatedList.some(d => d.id === dev502Id)).toBe(true);
+    expect(updatedList.some(d => d.id === dev503Id)).toBe(true);
+
+    // Adding 504 retains all 3
+    const dev504 = {
+      id: dev504Id,
+      name: 'SUTO S331 #3',
+      transport: 'Ethernet (127.0.0.1:504)',
+      transportType: 'tcp',
+      connectionConfig: { host: '127.0.0.1', port: 504, transport: 'tcp' },
+      sensors: []
+    };
+    const threeDevs = upsertDeviceList(updatedList, [dev504]);
+    expect(threeDevs.length).toBe(3);
+
+    // 5. Test auto-heal in getSavedDevices for legacy corrupted IDs (dev_tcp_ble_4197)
+    localStorage.setItem('s4a_sensor_devices_v1', JSON.stringify([
+      {
+        id: 'dev_tcp_ble_4197',
+        name: 'SUTO S331',
+        transport: 'Ethernet (127.0.0.1:502)',
+        transportType: 'tcp',
+        connectionConfig: { host: '127.0.0.1', port: 502, transport: 'tcp' },
+        sensors: []
+      }
+    ]));
+    const healed = getSavedDevices();
+    expect(healed.length).toBe(1);
+    expect(healed[0].id).toBe('dev_tcp_127_0_0_1_502');
+  });
+
+  it('multi-device telemetry updates 6 channels on 502 and 3 channels on 503 without channel cross-talk or missing values', () => {
+    // Sensor card 1: Measurement point on Device 502 (6 channels)
+    const card502 = {
+      id: 'sc_502',
+      type: 'sensor_card',
+      locationId: 'loc_main',
+      deviceId: 'dev_tcp_sn_12344321',
+      deviceSerial: '12344321',
+      devicePort: 502,
+      channels: [
+        { id: 'ch_502_1', channel_id: 1, name: 'Flow', unit: 'm³/h', deviceId: 'dev_tcp_sn_12344321', devicePort: 502, val: '--.-' },
+        { id: 'ch_502_2', channel_id: 2, name: 'Temperature', unit: '°C', deviceId: 'dev_tcp_sn_12344321', devicePort: 502, val: '--.-' },
+        { id: 'ch_502_3', channel_id: 3, name: 'Pressure', unit: 'bar', deviceId: 'dev_tcp_sn_12344321', devicePort: 502, val: '--.-' },
+        { id: 'ch_502_4', channel_id: 4, name: 'Current A', unit: 'A', deviceId: 'dev_tcp_sn_12344321', devicePort: 502, val: '--.-' },
+        { id: 'ch_502_5', channel_id: 5, name: 'Current B', unit: 'A', deviceId: 'dev_tcp_sn_12344321', devicePort: 502, val: '--.-' },
+        { id: 'ch_502_6', channel_id: 6, name: 'Current C', unit: 'A', deviceId: 'dev_tcp_sn_12344321', devicePort: 502, val: '--.-' },
+      ]
+    };
+
+    // Sensor card 2: Measurement point on Device 503 (3 channels)
+    const card503 = {
+      id: 'sc_503',
+      type: 'sensor_card',
+      locationId: 'loc_main',
+      deviceId: 'dev_tcp_sn_12344322',
+      deviceSerial: '12344322',
+      devicePort: 503,
+      channels: [
+        { id: 'ch_503_1', channel_id: 1, name: 'Flow', unit: 'm³/h', deviceId: 'dev_tcp_sn_12344322', devicePort: 503, val: '--.-' },
+        { id: 'ch_503_2', channel_id: 2, name: 'Temperature', unit: '°C', deviceId: 'dev_tcp_sn_12344322', devicePort: 503, val: '--.-' },
+        { id: 'ch_503_3', channel_id: 3, name: 'Pressure', unit: 'bar', deviceId: 'dev_tcp_sn_12344322', devicePort: 503, val: '--.-' },
+      ]
+    };
+
+    let elements = [card502, card503];
+    const setElements = vi.fn((updater) => {
+      elements = typeof updater === 'function' ? updater(elements) : updater;
+    });
+
+    // Mock liveDataSource subscription
+    let liveCallback = null;
+    vi.spyOn(liveDataSourceModule, 'subscribeLive').mockImplementation((cb) => {
+      liveCallback = cb;
+      return () => { liveCallback = null; };
+    });
+
+    renderHook(() => useProcessScapeTelemetry({
+      elements,
+      pipes: [],
+      setElements,
+      setPipes: vi.fn(),
+      enabled: true,
+      activeLocationId: 'loc_main',
+      onDeviceConnected: null
+    }));
+
+    expect(liveCallback).toBeTypeOf('function');
+
+    // Simulate multi-device poll result containing both 502's 6 channels and 503's 3 channels
+    const multiDevicePoll = [
+      // 502 channels
+      { channel_id: 1, current_value: 101.5, unit: 'm³/h', resolution: 1, deviceId: 'dev_tcp_sn_12344321', serial: '12344321', port: 502 },
+      { channel_id: 2, current_value: 23.4, unit: '°C', resolution: 1, deviceId: 'dev_tcp_sn_12344321', serial: '12344321', port: 502 },
+      { channel_id: 3, current_value: 6.85, unit: 'bar', resolution: 2, deviceId: 'dev_tcp_sn_12344321', serial: '12344321', port: 502 },
+      { channel_id: 4, current_value: 12.0, unit: 'A', resolution: 1, deviceId: 'dev_tcp_sn_12344321', serial: '12344321', port: 502 },
+      { channel_id: 5, current_value: 12.1, unit: 'A', resolution: 1, deviceId: 'dev_tcp_sn_12344321', serial: '12344321', port: 502 },
+      { channel_id: 6, current_value: 11.9, unit: 'A', resolution: 1, deviceId: 'dev_tcp_sn_12344321', serial: '12344321', port: 502 },
+      // 503 channels (different values for channels 1, 2, 3!)
+      { channel_id: 1, current_value: 305.2, unit: 'm³/h', resolution: 1, deviceId: 'dev_tcp_sn_12344322', serial: '12344322', port: 503 },
+      { channel_id: 2, current_value: 35.8, unit: '°C', resolution: 1, deviceId: 'dev_tcp_sn_12344322', serial: '12344322', port: 503 },
+      { channel_id: 3, current_value: 7.20, unit: 'bar', resolution: 2, deviceId: 'dev_tcp_sn_12344322', serial: '12344322', port: 503 },
+    ];
+
+    act(() => {
+      liveCallback(multiDevicePoll);
+    });
+
+    const updatedCard502 = elements.find(e => e.id === 'sc_502');
+    const updatedCard503 = elements.find(e => e.id === 'sc_503');
+
+    // Verify 502: ALL 6 channels are updated with 502's values!
+    expect(updatedCard502.channels[0].val).toBe('101.5');
+    expect(updatedCard502.channels[1].val).toBe('23.4');
+    expect(updatedCard502.channels[2].val).toBe('6.85');
+    expect(updatedCard502.channels[3].val).toBe('12.0');
+    expect(updatedCard502.channels[4].val).toBe('12.1');
+    expect(updatedCard502.channels[5].val).toBe('11.9');
+    // None of 502's channels show --.-
+    expect(updatedCard502.channels.every(c => c.val !== '--.-')).toBe(true);
+
+    // Verify 503: All 3 channels updated with 503's distinct values!
+    expect(updatedCard503.channels[0].val).toBe('305.2');
+    expect(updatedCard503.channels[1].val).toBe('35.8');
+    expect(updatedCard503.channels[2].val).toBe('7.20');
+  });
+
+  it('two devices placed in the same scape receive their own distinct values and do not mirror the first 3 channels', () => {
+    // 1. Setup two devices in storage
+    const dev502 = {
+      id: 'dev_tcp_127_0_0_1_502',
+      serial: '12344321',
+      name: 'SUTO S331',
+      connectionConfig: { host: '127.0.0.1', port: 502 },
+      sensors: [
+        {
+          id: 'sens_502',
+          name: 'S331 Sensor',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_502_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_2_1', channel_id: 2, name: 'Temperature', unit: '°C' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_3_2', channel_id: 3, name: 'Pressure', unit: 'bar' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_4_3', channel_id: 4, name: 'Current A', unit: 'A' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_5_4', channel_id: 5, name: 'Current B', unit: 'A' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_6_5', channel_id: 6, name: 'Current C', unit: 'A' },
+          ]
+        }
+      ]
+    };
+
+    const dev503 = {
+      id: 'dev_tcp_127_0_0_1_503',
+      serial: '12344322',
+      name: 'SUTO S331 #2',
+      connectionConfig: { host: '127.0.0.1', port: 503 },
+      sensors: [
+        {
+          id: 'sens_503',
+          name: 'S331 Sensor #2',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_503_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h' },
+            { id: 'ch_dev_tcp_127_0_0_1_503_2_1', channel_id: 2, name: 'Temperature', unit: '°C' },
+            { id: 'ch_dev_tcp_127_0_0_1_503_3_2', channel_id: 3, name: 'Pressure', unit: 'bar' },
+          ]
+        }
+      ]
+    };
+
+    saveDevices([dev502, dev503]);
+
+    // 2. Put both devices in the SAME location mapped to the same scape
+    const sharedScape = {
+      id: 'scape_shared_1',
+      title: 'Shared Factory Scape',
+      elements: []
+    };
+    saveScape(sharedScape);
+    setActiveScapeId('scape_shared_1');
+
+    const locationWithBothDevices = {
+      id: 'loc_shared',
+      name: 'Main Plant Floor',
+      scapeId: 'scape_shared_1',
+      measurementPoints: [
+        {
+          id: 'mp_502',
+          name: 'Compressor 1 (502)',
+          channels: dev502.sensors[0].channels.map(c => ({ ...c, device: dev502.name }))
+        },
+        {
+          id: 'mp_503',
+          name: 'Compressor 2 (503)',
+          channels: dev503.sensors[0].channels.map(c => ({ ...c, device: dev503.name }))
+        }
+      ]
+    };
+
+    saveLocations([locationWithBothDevices]);
+    syncAllLocationsToScapes([locationWithBothDevices]);
+
+    const activeScape = getActiveScape();
+    expect(activeScape.elements.length).toBe(2);
+
+    let elements = [...activeScape.elements];
+    const setElements = vi.fn((updater) => {
+      elements = typeof updater === 'function' ? updater(elements) : updater;
+    });
+
+    let liveCallback = null;
+    vi.spyOn(liveDataSourceModule, 'subscribeLive').mockImplementation((cb) => {
+      liveCallback = cb;
+      return () => { liveCallback = null; };
+    });
+
+    renderHook(() => useProcessScapeTelemetry({
+      elements,
+      pipes: [],
+      setElements,
+      setPipes: vi.fn(),
+      enabled: true,
+      activeLocationId: 'loc_shared'
+    }));
+
+    // Multi-device telemetry packet with distinct values for 502 vs 503
+    const multiDeviceTelemetry = [
+      // 502: Base flow ~118.4, Temp 23.5, Pressure 6.75
+      { channel_id: 1, current_value: 118.4, unit: 'm³/h', port: 502, serial_number: '12344321', device_id: 'dev_tcp_127_0_0_1_502', device: 'SUTO S331' },
+      { channel_id: 2, current_value: 23.5, unit: '°C', port: 502, serial_number: '12344321', device_id: 'dev_tcp_127_0_0_1_502', device: 'SUTO S331' },
+      { channel_id: 3, current_value: 6.75, unit: 'bar', port: 502, serial_number: '12344321', device_id: 'dev_tcp_127_0_0_1_502', device: 'SUTO S331' },
+      { channel_id: 4, current_value: 12.0, unit: 'A', port: 502, serial_number: '12344321', device_id: 'dev_tcp_127_0_0_1_502', device: 'SUTO S331' },
+      { channel_id: 5, current_value: 12.1, unit: 'A', port: 502, serial_number: '12344321', device_id: 'dev_tcp_127_0_0_1_502', device: 'SUTO S331' },
+      { channel_id: 6, current_value: 11.9, unit: 'A', port: 502, serial_number: '12344321', device_id: 'dev_tcp_127_0_0_1_502', device: 'SUTO S331' },
+
+      // 503: Base flow ~84.5, Temp 21.2, Pressure 7.35 (different from 502!)
+      { channel_id: 1, current_value: 84.5, unit: 'm³/h', port: 503, serial_number: '12344322', device_id: 'dev_tcp_127_0_0_1_503', device: 'SUTO S331 #2' },
+      { channel_id: 2, current_value: 21.2, unit: '°C', port: 503, serial_number: '12344322', device_id: 'dev_tcp_127_0_0_1_503', device: 'SUTO S331 #2' },
+      { channel_id: 3, current_value: 7.35, unit: 'bar', port: 503, serial_number: '12344322', device_id: 'dev_tcp_127_0_0_1_503', device: 'SUTO S331 #2' },
+    ];
+
+    act(() => {
+      liveCallback(multiDeviceTelemetry);
+    });
+
+    const card502 = elements.find(e => e.mpId === 'mp_502' || e.id === 'elem_mp_502');
+    const card503 = elements.find(e => e.mpId === 'mp_503' || e.id === 'elem_mp_503');
+
+    expect(card502).toBeDefined();
+    expect(card503).toBeDefined();
+
+    // Verify Card 502 displays 502's values
+    expect(card502.channels[0].val).toBe('118.4');
+    expect(card502.channels[1].val).toBe('23.5');
+    expect(card502.channels[2].val).toBe('6.75');
+
+    // Verify Card 503 displays 503's values
+    expect(card503.channels[0].val).toBe('84.5');
+    expect(card503.channels[1].val).toBe('21.2');
+    expect(card503.channels[2].val).toBe('7.35');
+
+    // The two cards must NOT mirror the same values for the first 3 channels!
+    expect(card502.channels[0].val).not.toBe(card503.channels[0].val);
+    expect(card502.channels[1].val).not.toBe(card503.channels[1].val);
+    expect(card502.channels[2].val).not.toBe(card503.channels[2].val);
   });
 });
 

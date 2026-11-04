@@ -260,14 +260,15 @@ export async function discoverDevicesViaBroadcast(options = {}) {
       let dev = await probeDeviceAtIp(item.ip, { timeoutMs: 1200, signal: options.signal });
       if (!dev) {
         // Fallback device object if HTTP 8080 is not available but Ethernet port responded
+        const port = item.port || 502;
         dev = {
-          id: `eth_${item.ip.replace(/\./g, '_')}`,
+          id: `eth_${item.ip.replace(/\./g, '_')}_${port}`,
           ip: item.ip,
           host: item.ip,
-          port: item.port || 502,
+          port,
           protocol: 'TCP',
           transport: 'TCP',
-          transportLabel: `Ethernet (${item.ip})`,
+          transportLabel: `Ethernet (${item.ip}:${port})`,
           name: `SUTO Ethernet Device (${item.mac || item.ip})`,
           model: 'SUTO Ethernet Device',
           deviceId: `0x${(item.device_number || 0).toString(16).toUpperCase()}`,

@@ -21,7 +21,7 @@ const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_I
 // Rolling measurement buffer for chart display (keeps last 3600 points)
 const historyBuffer = new Map();
 const MAX_HISTORY = 3600;
-let activeTransport = 'USB'; // 'USB' | 'TCP' | 'BLE' | 'API'
+let activeTransport = null; // 'USB' | 'TCP' | 'BLE' | 'API' | null
 let activeMeasurementPromise = null;
 let lastMeasurementResult = null;
 let lastMeasurementTime = 0;
@@ -42,6 +42,9 @@ export const TauriSutoAPI = {
   },
 
   isConnected() {
+    if (!activeTransport) {
+      return false;
+    }
     if (activeTransport === 'API') {
       return Boolean(ApiDevice && ApiDevice.connected);
     }
@@ -86,6 +89,9 @@ export const TauriSutoAPI = {
     try {
       sInfo = await invoke('suto_get_system_info');
     } catch (_) {}
+    try {
+      await this.getChannels();
+    } catch (_) {}
     return {
       address: res,
       transport: 'USB',
@@ -108,6 +114,9 @@ export const TauriSutoAPI = {
     let sInfo = null;
     try {
       sInfo = await invoke('suto_get_system_info');
+    } catch (_) {}
+    try {
+      await this.getChannels();
     } catch (_) {}
     return {
       address: res,
@@ -210,6 +219,9 @@ export const TauriSutoAPI = {
         let sInfo = null;
         try {
           sInfo = await invoke('suto_get_system_info');
+        } catch (_) {}
+        try {
+          await this.getChannels();
         } catch (_) {}
         return {
           address: res,
@@ -424,10 +436,11 @@ export const TauriSutoAPI = {
       const valArray = Array.isArray(values) ? values : [];
       const now = Date.now();
       const result = valArray.map((val) => {
-        let history = historyBuffer.get(val.id);
+        const histKey = val.device_id ? `${val.device_id}_${val.id}` : (val.port ? `${val.port}_${val.id}` : val.id);
+        let history = historyBuffer.get(histKey);
         if (!history) {
           history = [];
-          historyBuffer.set(val.id, history);
+          historyBuffer.set(histKey, history);
         }
 
         if (val.value !== null && val.value !== undefined) {
@@ -447,6 +460,10 @@ export const TauriSutoAPI = {
           resolution: val.resolution,
           status: val.status,
           current_value: val.value,
+          device: val.device,
+          deviceId: val.device_id,
+          serial: val.serial_number,
+          port: val.port,
           measurementData: [history.map((h) => h[1])],
           realStartTime: history.length ? [history[0][0]] : [now],
           pointInterval: [1000],

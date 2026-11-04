@@ -149,7 +149,8 @@ export default function DeviceConnectModal({
         signal: abortController.signal,
         onDeviceFound: (dev) => {
           setLanDiscovered(prev => {
-            if (prev.some(d => d.ip === dev.ip)) return prev;
+            const devKey = `${dev.ip}:${dev.port || 502}`;
+            if (prev.some(d => `${d.ip}:${d.port || 502}` === devKey)) return prev;
             return [...prev, dev];
           });
           setLanSelectedIds(prev => new Set([...prev, dev.id]));
@@ -166,7 +167,8 @@ export default function DeviceConnectModal({
           onProgress: (p) => setLanProgress(p),
           onDeviceFound: (dev) => {
             setLanDiscovered(prev => {
-              if (prev.some(d => d.ip === dev.ip)) return prev;
+              const devKey = `${dev.ip}:${dev.port || 502}`;
+              if (prev.some(d => `${d.ip}:${d.port || 502}` === devKey)) return prev;
               return [...prev, dev];
             });
             setLanSelectedIds(prev => new Set([...prev, dev.id]));

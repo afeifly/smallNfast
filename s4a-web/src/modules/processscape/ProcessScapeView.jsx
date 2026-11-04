@@ -48,6 +48,7 @@ import {
   hasSavedLocations,
   DEFAULT_COMPRESSED_AIR_SCAPE
 } from './engine/scapeStorage.js';
+import { syncAllLocationsToScapes } from './engine/sensorManagerStorage.js';
 import ScapeManagerModal from './ScapeManagerModal.jsx';
 import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
 
@@ -190,11 +191,21 @@ export default function ProcessScapeView({
   onOpenSensorManager,
   initialElements = [],
   initialPipes = [],
-  initialMode
+  initialMode,
+  activeLocationId: initialActiveLocationId = null,
+  onDeviceConnected = null
 }) {
   const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
   const defaultMode = initialMode || (isTest ? 'editor' : 'runtime');
   const [scapeMode, setScapeMode] = useState(defaultMode); // 'runtime' | 'editor'
+  const [activeLocationId, setActiveLocationId] = useState(initialActiveLocationId);
+
+  useEffect(() => {
+    if (initialActiveLocationId !== undefined) {
+      setActiveLocationId(initialActiveLocationId);
+    }
+  }, [initialActiveLocationId]);
+
   const [isScapeManagerOpen, setIsScapeManagerOpen] = useState(false);
   const [isBannerMinimized, setIsBannerMinimized] = useState(false);
 
@@ -247,6 +258,10 @@ export default function ProcessScapeView({
     setSelectedIds(new Set());
     setScapeMode('runtime');
     setScapeVersion(v => v + 1);
+    const saved = getSavedScapeView(scape.id);
+    if (saved) {
+      setView(saved);
+    }
   }, []);
 
   const handleEditScapeFromManager = useCallback((scape) => {
@@ -270,6 +285,12 @@ export default function ProcessScapeView({
       elements,
       pipes
     });
+    // Ensure all location measurement points and sensor cards are preserved and synced
+    syncAllLocationsToScapes();
+    const updatedScape = getActiveScape();
+    if (updatedScape && Array.isArray(updatedScape.elements)) {
+      setElements(updatedScape.elements);
+    }
     setSelectedIds(new Set());
     setScapeMode('runtime');
     if (typeof window !== 'undefined' && window.showAppNotification) {
@@ -287,11 +308,20 @@ export default function ProcessScapeView({
         elements,
         pipes
       });
+      syncAllLocationsToScapes();
+      const updatedScape = getActiveScape();
+      if (updatedScape && Array.isArray(updatedScape.elements)) {
+        setElements(updatedScape.elements);
+      }
       if (typeof window !== 'undefined' && window.showAppNotification) {
         window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
       }
     }
     setSelectedIds(new Set());
+    setIsBoundsResizerActive(false);
+    setIsLiveDndActive(false);
+    setResizingBox(null);
+    boundsBoxRef.current = null;
     setScapeMode(newMode);
   }, [activeScapeId, projectTitle, screenSize, zones, elements, pipes, scapeMode]);
 
@@ -310,6 +340,20 @@ export default function ProcessScapeView({
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const isSpacePressedRef = useRef(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectorPos, setInspectorPos] = useState(null);
+  const [isDraggingInspector, setIsDraggingInspector] = useState(false);
+  const workbenchRef = useRef(null);
+  const inspectorElRef = useRef(null);
+  const inspectorDragRef = useRef({
+    startMouseX: 0,
+    startMouseY: 0,
+    startLeft: 0,
+    startTop: 0,
+    benchWidth: 0,
+    benchHeight: 0,
+    inspectorWidth: 0,
+    inspectorHeight: 0
+  });
   const [isRealSizePreview, setIsRealSizePreview] = useState(false);
   const [activePaletteTab, setActivePaletteTab] = useState('all');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -328,7 +372,9 @@ export default function ProcessScapeView({
     pipes,
     setElements,
     setPipes,
-    enabled: !isBoundsResizerActive
+    enabled: !isBoundsResizerActive,
+    activeLocationId,
+    onDeviceConnected
   });
 
   // --- SVG Viewport & Rendering Refs ---
@@ -396,20 +442,46 @@ export default function ProcessScapeView({
   };
 
   // --- Center Diagram on Canvas ---
-  const handleZoomFit = useCallback(() => {
+  const handleZoomFit = useCallback((targetElements, targetPipes, targetScreenSize) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const rect = viewport.getBoundingClientRect();
     const topOffset = 78; // Clearance to prevent overlap from floating top HUD
     const bottomOffset = 50; // Clearance for floating zoom HUD
-    const availH = Math.max(100, rect.height - topOffset - bottomOffset);
-    const scaleX = (rect.width - 60) / screenSize.w;
-    const scaleY = availH / screenSize.h;
-    const zoom = Math.min(scaleX, scaleY, 1.2);
-    const x = (rect.width - screenSize.w * zoom) / 2;
-    const y = topOffset + (availH - screenSize.h * zoom) / 2;
-    setView({ x, y, zoom });
-  }, [screenSize.w, screenSize.h]);
+    const vw = rect.width || 1024;
+    const vh = rect.height || 800;
+    const availH = Math.max(100, vh - topOffset - bottomOffset);
+    const availW = Math.max(100, vw - 60);
+
+    const els = targetElements !== undefined ? targetElements : elements;
+    const pps = targetPipes !== undefined ? targetPipes : pipes;
+    const cb = getContentBounds(els, pps, 32);
+
+    let nextView;
+    if (cb.hasContent && cb.width > 0 && cb.height > 0) {
+      const scaleX = availW / cb.width;
+      const scaleY = availH / cb.height;
+      const zoom = Math.max(0.2, Math.min(scaleX, scaleY, 1.2));
+      const x = (vw - cb.width * zoom) / 2 - cb.x * zoom;
+      const y = topOffset + (availH - cb.height * zoom) / 2 - cb.y * zoom;
+      nextView = { x: Math.round(x), y: Math.round(y), zoom: Number(zoom.toFixed(3)) };
+    } else {
+      const sw = targetScreenSize?.w || screenSize.w || 1024;
+      const sh = targetScreenSize?.h || screenSize.h || 800;
+      const scaleX = availW / sw;
+      const scaleY = availH / sh;
+      const zoom = Math.min(scaleX, scaleY, 1.2);
+      const x = (vw - sw * zoom) / 2;
+      const y = topOffset + (availH - sh * zoom) / 2;
+      nextView = { x: Math.round(x), y: Math.round(y), zoom: Number(zoom.toFixed(3)) };
+    }
+
+    setView(nextView);
+    if (activeScapeId) {
+      saveScapeView(activeScapeId, nextView);
+    }
+    return nextView;
+  }, [elements, pipes, screenSize.w, screenSize.h, activeScapeId]);
 
   // Viewport Zoom & Focus helpers
   const zoomAtPoint = useCallback((cx, cy, factor) => {
@@ -445,13 +517,44 @@ export default function ProcessScapeView({
   }, []);
 
   const resetView = useCallback(() => {
-    const vw = viewportRef.current?.clientWidth || 1000;
-    setView({
-      zoom: 1.0,
-      x: Math.max(10, (vw - screenSize.w) / 2),
-      y: 78
+    setView(v => {
+      const saved = activeScapeId ? getSavedScapeView(activeScapeId) : null;
+      // If user had a saved custom view for this scape, restore it with 100% zoom
+      if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+        const nextView = { x: saved.x, y: saved.y, zoom: 1.0 };
+        if (activeScapeId) saveScapeView(activeScapeId, nextView);
+        return nextView;
+      }
+
+      const rect = viewportRef.current?.getBoundingClientRect();
+      const vw = rect?.width || viewportRef.current?.clientWidth || 1000;
+      const vh = rect?.height || viewportRef.current?.clientHeight || 800;
+
+      // If user is currently viewing the canvas, zoom to 100% focused on current center point
+      // without jumping to a far away offset
+      if (v && typeof v.zoom === 'number' && v.zoom > 0) {
+        const cx = vw / 2;
+        const cy = vh / 2;
+        const wx = (cx - v.x) / v.zoom;
+        const wy = (cy - v.y) / v.zoom;
+        const nextView = {
+          zoom: 1.0,
+          x: cx - wx * 1.0,
+          y: cy - wy * 1.0
+        };
+        if (activeScapeId) saveScapeView(activeScapeId, nextView);
+        return nextView;
+      }
+
+      const nextView = {
+        zoom: 1.0,
+        x: Math.max(10, (vw - screenSize.w) / 2),
+        y: 78
+      };
+      if (activeScapeId) saveScapeView(activeScapeId, nextView);
+      return nextView;
     });
-  }, [screenSize.w]);
+  }, [activeScapeId, screenSize.w]);
 
   const focusSelectedOrCenter = useCallback(() => {
     if (selectedIds.size > 0) {
@@ -486,7 +589,7 @@ export default function ProcessScapeView({
     handleZoomFit();
   }, [selectedIds, elements, pipes, centerOnPoint, handleZoomFit]);
 
-  // Diagram Bounding Box Scaler & Pipe Extender Tool
+  // Diagram Bounding Box Scaler & Pipe Extender Tool (Combined with Sensor Card Repositioning)
   const handleToggleBoundsResizer = useCallback(() => {
     if (!isBoundsResizerActive) {
       const cb = getContentBounds(elements, pipes, 24);
@@ -506,6 +609,7 @@ export default function ProcessScapeView({
       };
       setResizingBox({ ...initialBox });
       setIsBoundsResizerActive(true);
+      setIsLiveDndActive(true);
     } else {
       // Clicked again: Confirm, skip bounding box, apply new size, and fit screen!
       const currentBox = resizingBox || (boundsBoxRef.current ? boundsBoxRef.current.currentBox : null);
@@ -529,6 +633,7 @@ export default function ProcessScapeView({
         }
       }
       setIsBoundsResizerActive(false);
+      setIsLiveDndActive(false);
       setResizingBox(null);
       boundsBoxRef.current = null;
     }
@@ -600,13 +705,16 @@ export default function ProcessScapeView({
       } else if (d.kind === 'element') {
         if (d.item.type === 'sensor_card') {
           if (scapeMode === 'editor') return; // Hide sensor mode card when editing scape
+          if (activeLocationId && activeLocationId !== 'example_demo' && d.item.locationId && d.item.locationId !== activeLocationId) {
+            return;
+          }
           dLayer.appendChild(renderSensorCard(d.item, activeSelectedIds, elements, (scapeMode === 'runtime' && isLiveDndActive)));
         } else {
           dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes, scapeMode === 'editor'));
         }
       }
     });
-  }, [elements, pipes, selectedIds, scapeMode, isLiveDndActive]);
+  }, [elements, pipes, selectedIds, scapeMode, isLiveDndActive, activeLocationId]);
 
   // --- Drag & Drop from Sidebar ---
   const handleDragOver = (e) => {
@@ -625,7 +733,10 @@ export default function ProcessScapeView({
         reader.onload = (ev) => {
           try {
             const json = JSON.parse(ev.target.result);
-            loadProcessScapeConfig(json);
+            const res = loadProcessScapeConfig(json);
+            if (res) {
+              handleZoomFit(res.parsedElements, res.parsedPipes, res.targetScreenSize);
+            }
           } catch (err) {
             console.error('Failed to parse dropped JSON:', err);
           }
@@ -765,7 +876,7 @@ export default function ProcessScapeView({
   });
 
   const handleMouseDown = (e) => {
-    if (e.target.closest('.canvas-floating-hud') || e.target.closest('.ps-inspector-toggle-float')) {
+    if (e.target.closest('.canvas-floating-hud') || e.target.closest('.ps-inspector-toggle-float') || e.target.closest('.ps-inspector')) {
       return;
     }
 
@@ -1574,13 +1685,24 @@ export default function ProcessScapeView({
             if (closestTarget) {
               return {
                 ...el,
+                userPositioned: true,
                 attachedAssetId: closestTarget.id,
                 targetOffsetX: el.x - closestTarget.x,
                 targetOffsetY: el.y - closestTarget.y
               };
             }
-            return el;
+            return {
+              ...el,
+              userPositioned: true,
+              attachedAssetId: null,
+              targetOffsetX: null,
+              targetOffsetY: null
+            };
           });
+          if (boundsBoxRef.current) {
+            boundsBoxRef.current.origElements = JSON.parse(JSON.stringify(updated));
+            boundsBoxRef.current.currentElements = JSON.parse(JSON.stringify(updated));
+          }
           saveScape({
             id: activeScapeId,
             title: projectTitle,
@@ -1629,6 +1751,10 @@ export default function ProcessScapeView({
               return u;
             }
           });
+          if (boundsBoxRef.current) {
+            boundsBoxRef.current.origElements = JSON.parse(JSON.stringify(updated));
+            boundsBoxRef.current.currentElements = JSON.parse(JSON.stringify(updated));
+          }
           saveScape({
             id: activeScapeId,
             title: projectTitle,
@@ -2087,6 +2213,124 @@ export default function ProcessScapeView({
     prevSelectedIdsSizeRef.current = selectedIds.size;
   }, [selectedIds]);
 
+  // Floating Inspector DND handlers
+  const handleInspectorHeaderMouseDown = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.ps-inspector-close-btn')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const benchEl = workbenchRef.current;
+    const inspEl = inspectorElRef.current;
+    if (!benchEl || !inspEl) return;
+
+    const benchRect = benchEl.getBoundingClientRect();
+    const inspRect = inspEl.getBoundingClientRect();
+
+    const currentLeft = inspRect.left - benchRect.left;
+    const currentTop = inspRect.top - benchRect.top;
+
+    inspectorDragRef.current = {
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startLeft: currentLeft,
+      startTop: currentTop,
+      benchWidth: benchRect.width,
+      benchHeight: benchRect.height,
+      inspectorWidth: inspRect.width,
+      inspectorHeight: inspRect.height
+    };
+
+    setIsDraggingInspector(true);
+  };
+
+  const handleInspectorHeaderTouchStart = (e) => {
+    if (e.target.closest('.ps-inspector-close-btn')) return;
+    if (!e.touches || e.touches.length === 0) return;
+
+    const touch = e.touches[0];
+    const benchEl = workbenchRef.current;
+    const inspEl = inspectorElRef.current;
+    if (!benchEl || !inspEl) return;
+
+    const benchRect = benchEl.getBoundingClientRect();
+    const inspRect = inspEl.getBoundingClientRect();
+
+    const currentLeft = inspRect.left - benchRect.left;
+    const currentTop = inspRect.top - benchRect.top;
+
+    inspectorDragRef.current = {
+      startMouseX: touch.clientX,
+      startMouseY: touch.clientY,
+      startLeft: currentLeft,
+      startTop: currentTop,
+      benchWidth: benchRect.width,
+      benchHeight: benchRect.height,
+      inspectorWidth: inspRect.width,
+      inspectorHeight: inspRect.height
+    };
+
+    setIsDraggingInspector(true);
+  };
+
+  useEffect(() => {
+    if (!isDraggingInspector) return;
+
+    const handlePointerMove = (e) => {
+      const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+      const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+      if (clientX === null || clientY === null) return;
+
+      const {
+        startMouseX,
+        startMouseY,
+        startLeft,
+        startTop,
+        benchWidth,
+        benchHeight,
+        inspectorWidth,
+        inspectorHeight
+      } = inspectorDragRef.current;
+
+      const dx = clientX - startMouseX;
+      const dy = clientY - startMouseY;
+
+      const maxLeft = Math.max(0, benchWidth - inspectorWidth);
+      const maxTop = Math.max(0, benchHeight - inspectorHeight);
+
+      const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
+      const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
+
+      setInspectorPos({ left: Math.round(newLeft), top: Math.round(newTop) });
+    };
+
+    const handlePointerUp = () => {
+      setIsDraggingInspector(false);
+    };
+
+    window.addEventListener('mousemove', handlePointerMove, { passive: false });
+    window.addEventListener('mouseup', handlePointerUp);
+    window.addEventListener('touchmove', handlePointerMove, { passive: false });
+    window.addEventListener('touchend', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove);
+      window.removeEventListener('touchend', handlePointerUp);
+    };
+  }, [isDraggingInspector]);
+
+  const inspectorStyle = inspectorPos
+    ? {
+        left: `${inspectorPos.left}px`,
+        top: `${inspectorPos.top}px`,
+        right: 'auto',
+        bottom: 'auto'
+      }
+    : undefined;
+
   const updateSelectedElement = (fields) => {
     if (!singleSelectedElement) return;
     saveHistory('Update Element Config');
@@ -2309,16 +2553,19 @@ export default function ProcessScapeView({
       setProjectTitle(data.project || data.projectTitle || data.title);
     }
 
+    let targetScreenSize = null;
     if (data.tempCanvasSize) {
-      setScreenSize({
+      targetScreenSize = {
         w: data.tempCanvasSize.width || data.tempCanvasSize.w || 1024,
         h: data.tempCanvasSize.height || data.tempCanvasSize.h || 800
-      });
+      };
+      setScreenSize(targetScreenSize);
     } else if (data.screenSize) {
-      setScreenSize({
+      targetScreenSize = {
         w: data.screenSize.width || data.screenSize.w || 1024,
         h: data.screenSize.height || data.screenSize.h || 800
-      });
+      };
+      setScreenSize(targetScreenSize);
     }
 
     if (Array.isArray(data.zones)) {
@@ -2366,6 +2613,7 @@ export default function ProcessScapeView({
             targetOffsetY: el.targetOffsetY,
             mpId: el.mpId || null,
             locationId: el.locationId || null,
+            userPositioned: !!el.userPositioned,
             zIndex: el.zIndex != null ? el.zIndex : 40
           };
         }
@@ -2419,6 +2667,8 @@ export default function ProcessScapeView({
         'success'
       );
     }
+
+    return { parsedElements, parsedPipes, targetScreenSize };
   }, [saveHistory]);
 
   const handleImportJson = useCallback(() => {
@@ -2437,7 +2687,10 @@ export default function ProcessScapeView({
       try {
         const text = event.target.result;
         const data = JSON.parse(text);
-        loadProcessScapeConfig(data, true);
+        const res = loadProcessScapeConfig(data, true);
+        if (res) {
+          handleZoomFit(res.parsedElements, res.parsedPipes, res.targetScreenSize);
+        }
       } catch (err) {
         console.error('Failed to import ProcessScape config:', err);
         if (typeof window !== 'undefined' && window.showAppNotification) {
@@ -2450,7 +2703,7 @@ export default function ProcessScapeView({
       }
     };
     reader.readAsText(file);
-  }, [loadProcessScapeConfig]);
+  }, [loadProcessScapeConfig, handleZoomFit]);
 
   const reloadActiveScape = useCallback((targetScapeId = null) => {
     if (targetScapeId) {
@@ -2460,10 +2713,16 @@ export default function ProcessScapeView({
     const all = getAllScapes();
     const active = targetScapeId ? all.find(s => s.id === targetScapeId) : getActiveScape();
     if (active) {
-      loadProcessScapeConfig(active, false);
+      const res = loadProcessScapeConfig(active, false);
+      const saved = getSavedScapeView(active.id);
+      if (saved) {
+        setView(saved);
+      } else if (res) {
+        handleZoomFit(res.parsedElements, res.parsedPipes, res.targetScreenSize);
+      }
     }
     setScapeVersion(v => v + 1);
-  }, [loadProcessScapeConfig]);
+  }, [loadProcessScapeConfig, handleZoomFit]);
 
   // Register actions & notify state to parent header
   useEffect(() => {
@@ -2485,6 +2744,7 @@ export default function ProcessScapeView({
         openScapeManager: () => setIsScapeManagerOpen(true),
         setScapeMode: changeScapeMode,
         reloadActiveScape,
+        setActiveLocationId: (locId) => setActiveLocationId(locId),
         switchScape: (scapeId) => {
           const all = getAllScapes();
           const target = all.find(s => s.id === scapeId);
@@ -2512,7 +2772,7 @@ export default function ProcessScapeView({
   return (
     <div className={`processscape-root ${isDarkMode ? 'theme-dark' : ''} mode-${scapeMode}`}>
       {/* Main 3-Column Workbench */}
-      <div className="ps-workbench">
+      <div className="ps-workbench" ref={workbenchRef}>
         {/* Left Sidebar Palette (Editor Mode only) */}
         {scapeMode === 'editor' && (
           <aside className="ps-sidebar">
@@ -3233,22 +3493,7 @@ export default function ProcessScapeView({
 
               <div className="hud-divider" />
 
-              {/* Status toggle to enable/disable dragging of measurement point cards */}
-              <button
-                id="toolRuntimeDndToggle"
-                type="button"
-                className={`hud-icon-btn ${isLiveDndActive ? 'active' : ''}`}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  setIsLiveDndActive(prev => !prev);
-                }}
-                title={isLiveDndActive ? "Lock Measurement Cards Position" : "Reposition Cards (Enable Card Dragging)"}
-                aria-label="Reposition Measurement Cards"
-              >
-                <HudIcons.LiveDnd />
-              </button>
-
-              {/* Diagram Bounding Box Resizer Tool */}
+              {/* Combined Diagram Bounds Resizer & Sensor Card Repositioning Tool */}
               <button
                 id="toolRuntimeBoundsResizer"
                 type="button"
@@ -3257,8 +3502,8 @@ export default function ProcessScapeView({
                   e.currentTarget.blur();
                   handleToggleBoundsResizer();
                 }}
-                title={isBoundsResizerActive ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
-                aria-label="Diagram Bounds Resizer"
+                title={isBoundsResizerActive ? "Confirm & Apply Layout Changes (Save Size & Positions)" : "Resize Diagram & Move Attached Sensor Cards"}
+                aria-label="Resize Diagram & Move Attached Sensor Cards"
               >
                 <HudIcons.BoundsScale />
               </button>
@@ -3430,16 +3675,29 @@ export default function ProcessScapeView({
 
         {/* Right Inspector Panel (Editor Mode only) */}
         {scapeMode === 'editor' && (
-          <aside className={`ps-inspector ${showInspector ? '' : 'collapsed'}`}>
-          <div className="ps-inspector-header">
-            <div className="ps-inspector-title">
-              {singleSelectedElement
-                ? (singleSelectedElement.tag || singleSelectedElement.text || 'Item Config')
-                : isPipeSelection
-                ? (selectedPipes.length > 1
-                    ? `Pipeline (${selectedPipes.length} segments)`
-                    : 'Pipe Config')
-                : 'Inspector'}
+          <aside
+            ref={inspectorElRef}
+            style={inspectorStyle}
+            className={`ps-inspector ${showInspector ? '' : 'collapsed'} ${isDraggingInspector ? 'is-dragging' : ''}`}
+          >
+          <div
+            className="ps-inspector-header"
+            onMouseDown={handleInspectorHeaderMouseDown}
+            onTouchStart={handleInspectorHeaderTouchStart}
+            onDoubleClick={() => setInspectorPos(null)}
+            title="Drag to reposition • Double-click to reset position"
+          >
+            <div className="ps-inspector-title-wrap">
+              <span className="ps-inspector-drag-grip" aria-hidden="true">⠿</span>
+              <div className="ps-inspector-title">
+                {singleSelectedElement
+                  ? (singleSelectedElement.tag || singleSelectedElement.text || 'Item Config')
+                  : isPipeSelection
+                  ? (selectedPipes.length > 1
+                      ? `Pipeline (${selectedPipes.length} segments)`
+                      : 'Pipe Config')
+                  : 'Inspector'}
+              </div>
             </div>
             <button
               type="button"
@@ -3594,22 +3852,28 @@ export default function ProcessScapeView({
                   />
                 </div>
 
-                {/* Solid Flat Color Theme Swatches (strictly zero gradients) */}
+                {/* Solid Flat Color Theme Swatches (Single-line compact options) */}
                 <div className="ps-form-group">
-                  <label className="ps-form-label">Color Theme</label>
-                  <div className="ps-swatches-grid">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label className="ps-form-label" style={{ margin: 0 }}>Color Theme</label>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                      {(EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue).name}
+                    </span>
+                  </div>
+                  <div className="ps-swatches-row">
                     {Object.values(EQUIPMENT_COLOR_THEMES).map(theme => (
-                      <div
+                      <button
+                        type="button"
                         key={theme.id}
-                        className={`ps-swatch-item ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
+                        className={`ps-swatch-circle-btn ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
+                        title={theme.name}
+                        aria-label={theme.name}
                         onClick={() => {
                           saveHistory('Change Theme');
                           updateSelectedElement({ colorTheme: theme.id });
                         }}
-                      >
-                        <div className="ps-swatch-circle" style={{ background: theme.main }} />
-                        <span className="ps-swatch-name">{theme.name.split(' ')[0]}</span>
-                      </div>
+                        style={{ backgroundColor: theme.main }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -3708,28 +3972,6 @@ export default function ProcessScapeView({
                 )}
 
                 <div className="ps-form-group">
-                  <label className="ps-form-label">Medium Type</label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className={`hud-btn-sm ${representativePipe.medium === 'gas' ? 'btn-primary' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => updateSelectedPipe({ medium: 'gas' })}
-                    >
-                      Gas (Grey)
-                    </button>
-                    <button
-                      type="button"
-                      className={`hud-btn-sm ${representativePipe.medium === 'liquid' ? 'btn-primary' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => updateSelectedPipe({ medium: 'liquid' })}
-                    >
-                      Liquid (Blue)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="ps-form-group">
                   <label className="ps-form-label">Pipe Thickness ({representativePipe.w || 20}px)</label>
                   <input
                     type="range"
@@ -3740,43 +3982,6 @@ export default function ProcessScapeView({
                     onChange={(e) => updateSelectedPipe({ w: parseInt(e.target.value, 10) })}
                   />
                 </div>
-
-                {selectedPipes.length === 1 && (
-                  <div className="ps-form-group">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label className="ps-form-label" style={{ margin: 0 }}>Pipe Length</label>
-                      <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#00ac86', fontWeight: 600 }}>
-                        {singlePipeLength}px
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input
-                        type="range"
-                        min="20"
-                        max="1200"
-                        step="10"
-                        style={{ flex: 1 }}
-                        value={singlePipeLength}
-                        onChange={(e) => handleUpdatePipeLength(parseInt(e.target.value, 10))}
-                      />
-                      <input
-                        type="number"
-                        className="ps-input"
-                        style={{ width: 70, textAlign: 'right', padding: '4px 6px', fontSize: 12 }}
-                        min="10"
-                        max="4000"
-                        step="10"
-                        value={singlePipeLength}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          if (!isNaN(val) && val >= 10) {
-                            handleUpdatePipeLength(val);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
 
                 <div className="ps-form-group">
                   <label className="ps-form-label">Flow Direction</label>

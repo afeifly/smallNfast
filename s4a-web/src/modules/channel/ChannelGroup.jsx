@@ -49,7 +49,7 @@ class ChannelGroup extends Component {
               '&.MuiCheckbox-indeterminate': { color: '#00ac86' }
             }}
           />
-          <div className="sensor-group-title">{ data.name }</div>
+          <div className="sensor-group-title" title={ data.name }>{ data.name }</div>
         </div>
 
         <div className="CG-channel-list" ref={this.channelListRef}>

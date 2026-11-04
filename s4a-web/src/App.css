@@ -568,6 +568,82 @@
   color: #00ac86;
 }
 
+button.header-mode-indicator {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+/* ProcessScape in title is styled as a header tab rather than a button */
+button.header-mode-indicator.processscape {
+  font-family: inherit;
+  background: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  padding: 0 14px;
+  margin-left: 2px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.3s ease;
+  outline: none !important;
+  box-sizing: border-box;
+}
+
+button.header-mode-indicator.processscape:hover {
+  background: none !important;
+  color: #0f172a;
+  transform: none;
+}
+
+button.header-mode-indicator.processscape::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  height: 4px;
+  background-color: #00ac86;
+  border-radius: 4px 4px 0 0;
+  opacity: 0;
+  transform: scaleX(0.8);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+button.header-mode-indicator.processscape.is-active,
+button.header-mode-indicator.processscape.active {
+  color: #00ac86;
+  font-weight: 800;
+  background: none !important;
+  box-shadow: none !important;
+  transform: none;
+}
+
+button.header-mode-indicator.processscape.is-active::after,
+button.header-mode-indicator.processscape.active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
 .ps-header-location-picker {
   display: inline-flex;
   align-items: center;
@@ -1029,7 +1105,8 @@
     gap: 6px;
   }
 
-  .tab-btn {
+  .tab-btn,
+  button.header-mode-indicator.processscape {
     height: 56px;
     padding: 0 10px;
     font-size: 12.5px;
@@ -1041,7 +1118,8 @@
     box-sizing: border-box;
   }
 
-  .tab-btn::after {
+  .tab-btn::after,
+  button.header-mode-indicator.processscape::after {
     left: 10px;
     right: 10px;
     bottom: 0;

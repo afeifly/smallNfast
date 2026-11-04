@@ -52,7 +52,8 @@ export default function ScapeManagerModal({
   const handleEdit = (id) => {
     setActiveScapeId(id);
     setActiveId(id);
-    const target = scapes.find(s => s.id === id);
+    const allLatest = getAllScapes();
+    const target = allLatest.find(s => s.id === id) || scapes.find(s => s.id === id);
     if (onEditScape && target) {
       onEditScape(target);
     }

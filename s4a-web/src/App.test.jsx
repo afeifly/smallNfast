@@ -378,5 +378,42 @@ describe('App', () => {
     expect(screen.queryByLabelText('Export PNG')).toBeNull();
     expect(screen.getByLabelText('Scape Manager')).toBeDefined();
   });
+
+  it('hides ps-header-location-picker in editor mode and renders it in runtime mode when locations exist', async () => {
+    localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify([
+      { id: 'loc_test_1', name: 'Compressor Room', scapeId: 'scape_example_demo', measurementPoints: [] }
+    ]));
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Open ProcessScape')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('Open ProcessScape'));
+
+    // In runtime mode: location picker is present!
+    await waitFor(() => {
+      expect(container.querySelector('.ps-header-location-picker')).not.toBeNull();
+    });
+    expect(screen.getByText('Compressor Room')).toBeDefined();
+
+    // Switch to editor mode via Scape Manager
+    fireEvent.click(screen.getByLabelText('Scape Manager'));
+    const editBtn = container.querySelector('.ps-mgr-action-btn.btn-edit');
+    fireEvent.click(editBtn);
+
+    // In editor mode: location picker MUST BE HIDDEN
+    await waitFor(() => {
+      expect(screen.getByLabelText('Live Runtime View')).toBeDefined();
+    });
+    expect(container.querySelector('.ps-header-location-picker')).toBeNull();
+
+    // Return to runtime mode: location picker is visible again
+    fireEvent.click(screen.getByLabelText('Live Runtime View'));
+    await waitFor(() => {
+      expect(container.querySelector('.ps-header-location-picker')).not.toBeNull();
+    });
+  });
 });
 

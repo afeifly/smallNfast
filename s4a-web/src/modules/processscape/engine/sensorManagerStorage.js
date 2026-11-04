@@ -6,7 +6,8 @@
  */
 
 import TauriSutoAPI from '../../../api/TauriSutoAPI';
-import { getAllScapes, saveScape } from './scapeStorage';
+import { getAllScapes, saveScape, getActiveScapeId, getSavedScapeView } from './scapeStorage';
+import { pollOnce } from '../../../util/liveDataSource';
 
 export const STORAGE_KEY_SENSOR_LOCATIONS = 's4a_sensor_locations_v1';
 export const STORAGE_KEY_SENSOR_DEVICES = 's4a_sensor_devices_v1';
@@ -43,9 +44,43 @@ export function saveLocations(locations) {
   if (!storage) return;
   try {
     storage.setItem(STORAGE_KEY_SENSOR_LOCATIONS, JSON.stringify(locations));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      try {
+        window.dispatchEvent(new CustomEvent('sensor-locations-changed', { detail: locations }));
+      } catch (_) {}
+    }
   } catch (err) {
     console.warn('[SensorManager] Error saving locations:', err);
   }
+}
+
+/**
+ * Check if any location has at least one measurement point with assigned channels
+ */
+export function hasAssignedChannels(locations) {
+  const locs = locations || getLocations();
+  if (!Array.isArray(locs) || locs.length === 0) return false;
+  return locs.some(loc =>
+    Array.isArray(loc?.measurementPoints) &&
+    loc.measurementPoints.some(mp =>
+      Array.isArray(mp?.channels) && mp.channels.some(ch => Boolean(ch && (ch.id || ch.channel_id || ch.name)))
+    )
+  );
+}
+
+/**
+ * Count total number of assigned channels across all locations and measurement points
+ */
+export function countAssignedChannels(locations) {
+  const locs = locations || getLocations();
+  if (!Array.isArray(locs) || locs.length === 0) return 0;
+  let count = 0;
+  for (const loc of locs) {
+    for (const mp of (loc?.measurementPoints || [])) {
+      count += (mp?.channels || []).filter(ch => Boolean(ch && (ch.id || ch.channel_id || ch.name))).length;
+    }
+  }
+  return count;
 }
 
 /**
@@ -111,10 +146,79 @@ export function getSavedDevices() {
       return { ...d, sensors: cleanSensors };
     });
 
+    // Auto-heal / normalize network devices and migrate corrupted IDs (e.g. dev_tcp_ble_4197 -> dev_tcp_127_0_0_1_502)
+    const idMigrationMap = new Map();
+    const normalizedDevices = cleaned.map(d => {
+      const transportStr = (d.transportType || d.connectionConfig?.transport || d.transport || '').toLowerCase();
+      const isNet = transportStr.includes('tcp') || transportStr.includes('api') || transportStr.includes('ethernet') || transportStr.includes('lan');
+      if (isNet) {
+        let host = d.connectionConfig?.host || d.connectionConfig?.ip || d.host || d.ip;
+        let port = d.connectionConfig?.port || d.port;
+        if ((!host || !port) && typeof d.transport === 'string') {
+          const match = d.transport.match(/(\d+\.\d+\.\d+\.\d+)(?::(\d+))?/);
+          if (match) {
+            if (!host) host = match[1];
+            if (!port && match[2]) port = parseInt(match[2], 10);
+          }
+        }
+        if (!port && typeof d.id === 'string') {
+          const idMatch = d.id.match(/_(\d{2,5})$/);
+          if (idMatch) port = parseInt(idMatch[1], 10);
+        }
+        port = port || (transportStr.includes('api') ? 8080 : 502);
+        host = host || '127.0.0.1';
+
+        const cleanHost = String(host).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const expectedId = `dev_${d.transportType || 'tcp'}_${cleanHost}_${port}`;
+        // Only heal IDs that were corrupted by the earlier bleId bug (e.g. dev_tcp_ble_4197)
+        if (d.id && d.id.includes('_ble_')) {
+          idMigrationMap.set(d.id, expectedId);
+        }
+
+        const finalId = idMigrationMap.get(d.id) || d.id || expectedId;
+        const transportLabel = transportStr.includes('api')
+          ? `S332 API (${host}:${port})`
+          : `Ethernet (${host}:${port})`;
+
+        return {
+          ...d,
+          id: finalId,
+          transport: transportLabel,
+          connectionConfig: {
+            ...(d.connectionConfig || {}),
+            host,
+            port: Number(port),
+            transport: d.transportType || d.connectionConfig?.transport || 'tcp'
+          }
+        };
+      }
+      return d;
+    });
+
+    if (idMigrationMap.size > 0) {
+      try {
+        const locs = getLocations();
+        let locsChanged = false;
+        locs.forEach(loc => {
+          (loc.measurementPoints || []).forEach(mp => {
+            (mp.channels || []).forEach(ch => {
+              if (ch.deviceId && idMigrationMap.has(ch.deviceId)) {
+                ch.deviceId = idMigrationMap.get(ch.deviceId);
+                locsChanged = true;
+              }
+            });
+          });
+        });
+        if (locsChanged) {
+          saveLocations(locs);
+        }
+      } catch (_) {}
+    }
+
     // Auto-heal: If any saved device has 0 channels, but locations still hold assigned channels for it,
     // restore those channels so the user never loses their device configuration.
     const locations = getLocations();
-    const healed = cleaned.map(d => {
+    const healed = normalizedDevices.map(d => {
       const totalChannels = (d.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
       if (totalChannels > 0) return d;
 
@@ -182,29 +286,44 @@ export function saveDevices(devices) {
 
 /**
  * Generate a deterministic, consistent device ID based on hardware identifiers.
- * Prevents duplicate device entries when reconnecting or re-scanning.
+ * 1. Hardware Serial Number (SN) - Definitive hardware identifier from getSN / serial_number.
+ * 2. Network IP + Port (for TCP/API/Ethernet) when SN is not yet available.
+ * Prevents duplicate device entries when reconnecting or re-scanning while distinguishing separate simulator instances.
  */
 export function generateDeterministicDeviceId(transportType, sysInfo = {}, devName = '') {
   const safeTransport = (transportType || 'usb').toLowerCase();
 
-  // 1. Web Bluetooth persistent ID (device.id)
-  const bleId = sysInfo.deviceId || (safeTransport.includes('ble') && sysInfo.id);
-  if (bleId) {
-    return `dev_${safeTransport}_ble_${String(bleId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-  }
-
-  // 2. Hardware Serial Number (if valid and not generic)
+  // 1. Hardware Serial Number (SN) - Definitive hardware identifier!
+  // Uses getSN / serial_number so physical hardware and simulator instances with unique serials
+  // (e.g. SN 12344321, 12344322, 12344323) are uniquely identified.
   const sn = sysInfo.serial_number || sysInfo.serial;
   const isGenericSn = (s) => !s || /^SN-(USB|TCP|BLE|API)-/i.test(String(s)) || String(s).length < 3;
   if (sn && !isGenericSn(sn)) {
     return `dev_${safeTransport}_sn_${String(sn).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
   }
 
-  // 3. Network IP & Port (for TCP or API)
-  const host = sysInfo.ip || sysInfo.host;
-  if (host) {
-    const port = sysInfo.port || (safeTransport === 'api' ? 8080 : 502);
-    return `dev_${safeTransport}_${String(host).replace(/[^a-zA-Z0-9_-]/g, '_')}_${port}`;
+  // 2. Network IP & Port (for TCP, API, Ethernet) when SN is not yet available
+  const isNet = safeTransport.includes('tcp') || safeTransport.includes('api') || safeTransport.includes('ethernet') || safeTransport.includes('lan');
+  const host = sysInfo.host || sysInfo.ip || sysInfo.address;
+  if (isNet && host) {
+    let cleanHost = host;
+    let port = sysInfo.port;
+    if (typeof cleanHost === 'string' && cleanHost.includes(':')) {
+      const parts = cleanHost.split(':');
+      cleanHost = parts[0];
+      if (!port && parts[1]) port = parseInt(parts[1], 10);
+    }
+    const finalPort = port || (safeTransport.includes('api') ? 8080 : 502);
+    const safeHostStr = String(cleanHost).replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `dev_${safeTransport}_${safeHostStr}_${finalPort}`;
+  }
+
+  // 3. Web Bluetooth persistent ID (device.id) — ONLY for BLE!
+  if (safeTransport.includes('ble')) {
+    const bleId = sysInfo.deviceId || sysInfo.id;
+    if (bleId) {
+      return `dev_${safeTransport}_ble_${String(bleId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    }
   }
 
   // 4. USB Port Path
@@ -212,7 +331,21 @@ export function generateDeterministicDeviceId(transportType, sysInfo = {}, devNa
     return `dev_${safeTransport}_${String(sysInfo.path).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
   }
 
-  // 5. Hardware Device / Model ID
+  // 5. Network IP & Port fallback (if host was present even without explicit transport)
+  if (host) {
+    let cleanHost = host;
+    let port = sysInfo.port;
+    if (typeof cleanHost === 'string' && cleanHost.includes(':')) {
+      const parts = cleanHost.split(':');
+      cleanHost = parts[0];
+      if (!port && parts[1]) port = parseInt(parts[1], 10);
+    }
+    const finalPort = port || 502;
+    const safeHostStr = String(cleanHost).replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `dev_${safeTransport}_${safeHostStr}_${finalPort}`;
+  }
+
+  // 6. Hardware Device / Model ID (non-network, non-ble fallback)
   if (sysInfo.device_id) {
     return `dev_${safeTransport}_devid_${sysInfo.device_id}`;
   }
@@ -224,16 +357,17 @@ export function generateDeterministicDeviceId(transportType, sysInfo = {}, devNa
 
 /**
  * Determine if two device records represent the exact same physical hardware.
+ * 1. Hardware Serial Number (SN) match: definitive physical identifier.
+ * 2. If SN is unavailable, compares network IP + Port for Ethernet/TCP, or path/bleId.
  */
 export function isSameDevice(d1, d2) {
   if (!d1 || !d2) return false;
 
-  // 1. Exact ID match
-  if (d1.id && d2.id && d1.id === d2.id) return true;
-
-  // 2. Hardware Serial Number match (ignore generic placeholders like 'SN-USB-...')
+  // 1. Hardware Serial Number (SN) match:
+  // If both devices have a valid hardware serial number (SN), this is the definitive physical identifier.
+  // Distinct serial numbers (e.g. SN 12344321 vs SN 12344322) ALWAYS represent different devices!
   const extractSn = (d) => {
-    const raw = String(d.serial || d.serial_number || d.connectionConfig?.serial || '').trim();
+    const raw = String(d.serial || d.serial_number || d.connectionConfig?.serial || d.connectionConfig?.serial_number || '').trim();
     if (raw && !/^SN-(USB|TCP|BLE|API)-/i.test(raw) && raw.length >= 3) return raw;
     const fromName = (d.name || d.connectionConfig?.name || '').match(/(\d{6,10})/);
     return fromName ? fromName[1] : '';
@@ -241,45 +375,89 @@ export function isSameDevice(d1, d2) {
 
   const sn1 = extractSn(d1);
   const sn2 = extractSn(d2);
-  if (sn1 && sn2 && sn1 === sn2) {
-    return true;
+  if (sn1 && sn2) {
+    return sn1 === sn2;
   }
 
-  // 3. Web Bluetooth persistent device ID match
+  // 2. Exact ID match (if serial numbers are not present or generic)
+  if (d1.id && d2.id && d1.id === d2.id) return true;
+
+  const t1 = (d1.transportType || d1.connectionConfig?.transport || d1.transport || '').toLowerCase();
+  const t2 = (d2.transportType || d2.connectionConfig?.transport || d2.transport || '').toLowerCase();
+  const isNet1 = t1.includes('tcp') || t1.includes('api') || t1.includes('ethernet') || t1.includes('lan');
+  const isNet2 = t2.includes('tcp') || t2.includes('api') || t2.includes('ethernet') || t2.includes('lan');
+
+  // Helper to extract host & port reliably from connectionConfig, root properties, transport string, or id
+  const extractNetEndpoint = (d, t) => {
+    let host = d.connectionConfig?.host || d.connectionConfig?.ip || d.host || d.ip;
+    let port = d.connectionConfig?.port || d.port;
+
+    // Fallback: extract from transport string (e.g. "Ethernet (127.0.0.1:502)" or "Ethernet (127.0.0.1)")
+    if ((!host || !port) && typeof d.transport === 'string') {
+      const match = d.transport.match(/(\d+\.\d+\.\d+\.\d+)(?::(\d+))?/);
+      if (match) {
+        if (!host) host = match[1];
+        if (!port && match[2]) port = parseInt(match[2], 10);
+      }
+    }
+
+    // Fallback: extract from device ID if formatted like dev_tcp_127_0_0_1_502
+    if ((!host || !port) && typeof d.id === 'string') {
+      const idMatch = d.id.match(/dev_(?:tcp|api|ethernet)_((?:\d+_){3}\d+)_(\d+)/);
+      if (idMatch) {
+        if (!host) host = idMatch[1].replace(/_/g, '.');
+        if (!port) port = parseInt(idMatch[2], 10);
+      }
+    }
+
+    const defaultPort = t.includes('api') ? 8080 : 502;
+    const finalPort = port ? String(port) : String(defaultPort);
+    const finalHost = host ? (host === 'localhost' ? '127.0.0.1' : host).toLowerCase() : null;
+    return { host: finalHost, port: finalPort };
+  };
+
+  // 3. Network devices (TCP / API): distinguish by IP + Port if serial numbers were absent
+  // Multiple simulator or hardware devices can run on the same IP across different ports (e.g. 502, 503, 504).
+  if (isNet1 || isNet2) {
+    // If one is network and the other is not network, they are NEVER the same device
+    if (!isNet1 || !isNet2) return false;
+
+    const net1 = extractNetEndpoint(d1, t1);
+    const net2 = extractNetEndpoint(d2, t2);
+
+    // If both have host: match ONLY if both host and port match!
+    if (net1.host && net2.host) {
+      return net1.host === net2.host && net1.port === net2.port;
+    }
+
+    // Fallback to exact ID match ONLY if both IDs are non-empty and equal
+    if (d1.id && d2.id && d1.id === d2.id) return true;
+
+    return false;
+  }
+
+  // 4. Web Bluetooth persistent device ID match
   const bleId1 = d1.connectionConfig?.deviceId || d1.deviceId;
   const bleId2 = d2.connectionConfig?.deviceId || d2.deviceId;
   if (bleId1 && bleId2 && bleId1 === bleId2) {
     return true;
   }
 
-  // 4. Match by specific device name & transport (e.g. 'S403-12345678' via BLE)
-  const n1 = (d1.name || d1.connectionConfig?.name || '').trim().toLowerCase();
-  const n2 = (d2.name || d2.connectionConfig?.name || '').trim().toLowerCase();
-  const t1 = (d1.transportType || d1.connectionConfig?.transport || d1.transport || '').toLowerCase();
-  const t2 = (d2.transportType || d2.connectionConfig?.transport || d2.transport || '').toLowerCase();
-  const sameTransport = t1 === t2 || (t1.includes('ble') && t2.includes('ble')) || (t1.includes('tcp') && t2.includes('tcp')) || (t1.includes('usb') && t2.includes('usb')) || (t1.includes('api') && t2.includes('api'));
-  if (n1 && n2 && n1 === n2 && !['suto sensor', 'connected suto device', 'suto ble device'].includes(n1) && sameTransport) {
-    return true;
-  }
-
-  // 5. Network IP / Host & Port match (for TCP / API)
-  const host1 = d1.connectionConfig?.host || d1.host;
-  const host2 = d2.connectionConfig?.host || d2.host;
-  const isNet1 = t1.includes('tcp') || t1.includes('api');
-  const isNet2 = t2.includes('tcp') || t2.includes('api');
-  if (host1 && host2 && host1 === host2 && isNet1 && isNet2) {
-    const port1 = d1.connectionConfig?.port || d1.port;
-    const port2 = d2.connectionConfig?.port || d2.port;
-    if (!port1 || !port2 || String(port1) === String(port2)) {
-      return true;
-    }
-  }
-
-  // 6. USB serial port path match
+  // 5. USB serial port path match
   const path1 = d1.connectionConfig?.path || d1.path;
   const path2 = d2.connectionConfig?.path || d2.path;
   if (path1 && path2 && path1 === path2 && t1.includes('usb') && t2.includes('usb')) {
     return true;
+  }
+
+  // 6. Match by specific device name & transport (ONLY for non-network devices)
+  if (!isNet1 && !isNet2) {
+    const n1 = (d1.name || d1.connectionConfig?.name || '').trim().toLowerCase();
+    const n2 = (d2.name || d2.connectionConfig?.name || '').trim().toLowerCase();
+    const sameTransport = t1 === t2 || (t1.includes('ble') && t2.includes('ble')) || (t1.includes('usb') && t2.includes('usb'));
+    if (n1 && n2 && n1 === n2 && !['suto sensor', 'connected suto device', 'suto ble device'].includes(n1) && sameTransport) {
+      return true;
+    }
   }
 
   return false;
@@ -503,6 +681,46 @@ export async function detectConnectedSensors(transportType = 'all', options = {}
 }
 
 /**
+ * Calculate non-overlapping grid coordinates for newly added sensor cards.
+ * Provides comfortable padding gaps between cards and wraps to a new line when a row fills up.
+ */
+export function calculateSensorCardGridPosition(scapeId, elements = [], cardIndex = 0) {
+  const CARD_COL_WIDTH = 270; // 220px card width + 50px visible gap
+  const CARD_ROW_HEIGHT = 160; // 110px card height + 50px visible gap
+  const CARDS_PER_ROW = 3;
+
+  const savedView = getSavedScapeView(scapeId);
+  let baseLeft = 60;
+  let baseTop = 60;
+
+  if (savedView && typeof savedView.x === 'number' && typeof savedView.y === 'number') {
+    const zoom = savedView.zoom > 0 ? savedView.zoom : 1.0;
+    baseLeft = Math.round((-savedView.x) / zoom + 40);
+    baseTop = Math.round((-savedView.y) / zoom + 40);
+  } else {
+    const nonSensors = elements.filter(e => e.type !== 'sensor_card');
+    if (nonSensors.length > 0) {
+      const xs = nonSensors.map(e => e.x).filter(x => typeof x === 'number');
+      const ys = nonSensors.map(e => e.y).filter(y => typeof y === 'number');
+      if (xs.length > 0 && ys.length > 0) {
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        baseLeft = Math.max(40, minX);
+        baseTop = Math.max(40, minY - 180);
+      }
+    }
+  }
+
+  const col = cardIndex % CARDS_PER_ROW;
+  const row = Math.floor(cardIndex / CARDS_PER_ROW);
+
+  return {
+    x: baseLeft + 135 + (col * CARD_COL_WIDTH),
+    y: baseTop + 75 + (row * CARD_ROW_HEIGHT)
+  };
+}
+
+/**
  * Synchronize a measurement point into its matched ProcessScape
  */
 export function syncMeasurementPointToScape(locationId, mpId, customLocations = null) {
@@ -532,14 +750,53 @@ export function syncMeasurementPointToScape(locationId, mpId, customLocations = 
     return { success: true, removed: true, scapeId: loc.scapeId, scapeTitle: targetScape.title };
   }
 
-  const formattedChannels = (mp.channels || []).map(ch => ({
-    id: ch.id || `ch_${ch.channel_id}`,
-    name: ch.name || ch.channelName || 'Channel',
-    unit: ch.unit || '',
-    val: (ch.val !== undefined && ch.val !== null) ? ch.val : '--.-',
-    status: ch.status || 'normal',
-    channel_id: ch.channel_id ?? ch.id
-  }));
+  // Build channel -> device mapping from saved devices
+  const savedDevs = getSavedDevices();
+  const chToDevMap = new Map();
+  (savedDevs || []).forEach(d => {
+    (d.sensors || []).forEach(s => {
+      (s.channels || []).forEach(c => {
+        if (c.id) chToDevMap.set(String(c.id), d);
+      });
+    });
+  });
+
+  const formattedChannels = (mp.channels || []).map(ch => {
+    const sDev = ch.id ? chToDevMap.get(String(ch.id)) : null;
+    let devId = ch.deviceId || sDev?.id;
+    let devSerial = ch.deviceSerial || sDev?.serial;
+    let devPort = ch.devicePort || sDev?.connectionConfig?.port;
+    let devName = ch.device || sDev?.name;
+
+    if (!devId && typeof ch.id === 'string') {
+      const m = ch.id.match(/^ch_(dev_[a-zA-Z0-9_-]+?)_\d+(?:_\d+)?$/);
+      if (m) {
+        devId = m[1];
+        const pm = devId.match(/_(\d{2,5})$/);
+        if (pm && !devPort) devPort = parseInt(pm[1], 10);
+        const snm = devId.match(/_sn_([a-zA-Z0-9_-]+)/);
+        if (snm && !devSerial) devSerial = snm[1];
+      }
+    }
+
+    return {
+      id: ch.id || `ch_${ch.channel_id}`,
+      name: ch.name || ch.channelName || 'Channel',
+      unit: ch.unit || '',
+      val: (ch.val !== undefined && ch.val !== null) ? ch.val : '--.-',
+      status: ch.status || 'normal',
+      channel_id: ch.channel_id ?? ch.id,
+      deviceId: devId,
+      deviceSerial: devSerial,
+      devicePort: devPort,
+      device: devName
+    };
+  });
+
+  const cardDevId = formattedChannels.find(c => c.deviceId)?.deviceId;
+  const cardDevPort = formattedChannels.find(c => c.devicePort)?.devicePort;
+  const cardDevSerial = formattedChannels.find(c => c.deviceSerial)?.deviceSerial;
+  const cardDevName = formattedChannels.find(c => c.device)?.device;
 
   let updatedElements;
   if (existingCardIdx >= 0) {
@@ -551,22 +808,31 @@ export function syncMeasurementPointToScape(locationId, mpId, customLocations = 
       tag: mp.name,
       titlePosition: updatedElements[existingCardIdx].titlePosition || 'top',
       channels: formattedChannels,
-      locationId: loc.id
+      locationId: loc.id,
+      deviceId: cardDevId || updatedElements[existingCardIdx].deviceId,
+      devicePort: cardDevPort || updatedElements[existingCardIdx].devicePort,
+      deviceSerial: cardDevSerial || updatedElements[existingCardIdx].deviceSerial,
+      device: cardDevName || updatedElements[existingCardIdx].device
     };
   } else {
-    // Calculate safe placement position
-    const offsetIdx = existingElements.filter(e => e.type === 'sensor_card').length;
+    const cardCount = existingElements.filter(e => e.type === 'sensor_card').length;
+    const gridPos = calculateSensorCardGridPosition(loc.scapeId, existingElements, cardCount);
     const newCard = {
       id: `elem_${mp.id}`,
       mpId: mp.id,
       locationId: loc.id,
       type: 'sensor_card',
       tag: mp.name,
-      x: 340 + (offsetIdx * 140),
-      y: 80,
+      x: gridPos.x,
+      y: gridPos.y,
       zIndex: 40,
       titlePosition: 'top',
-      channels: formattedChannels
+      channels: formattedChannels,
+      userPositioned: false,
+      deviceId: cardDevId,
+      devicePort: cardDevPort,
+      deviceSerial: cardDevSerial,
+      device: cardDevName
     };
     updatedElements = [...existingElements, newCard];
   }
@@ -584,11 +850,41 @@ export function syncMeasurementPointToScape(locationId, mpId, customLocations = 
  * Synchronize all measurement points across all locations to their matched ProcessScapes
  */
 export function syncAllLocationsToScapes(customLocations = null) {
-  const locations = customLocations || getLocations();
+  const allScapes = getAllScapes();
+  const currentActiveId = getActiveScapeId();
+  const fallbackScapeId = currentActiveId || allScapes[0]?.id;
+
+  const rawLocations = customLocations || getLocations();
+  const locations = rawLocations.map(loc => {
+    // If location already has a valid scapeId that exists in allScapes, strictly preserve it!
+    // Never overwrite an assigned scape when multiple locations and scapes exist.
+    if (loc.scapeId && allScapes.some(s => s.id === loc.scapeId)) {
+      return loc;
+    }
+    // Only if scapeId is empty or points to a deleted scape, fall back to the active scape:
+    return { ...loc, scapeId: fallbackScapeId };
+  });
+
+  const hadPatchedLocs = locations.some((l, i) => l.scapeId !== rawLocations[i]?.scapeId);
+  if (hadPatchedLocs) {
+    saveLocations(locations);
+  }
+
   let syncCount = 0;
   const affectedScapeIds = new Set();
-  const allScapes = getAllScapes();
+  const scapesWithSyncedCards = new Set();
   const scapeMap = new Map(allScapes.map(s => [s.id, { ...s, elements: [...(s.elements || [])] }]));
+
+  // Build channel -> device mapping from saved devices
+  const savedDevs = getSavedDevices();
+  const chToDevMap = new Map();
+  (savedDevs || []).forEach(d => {
+    (d.sensors || []).forEach(s => {
+      (s.channels || []).forEach(c => {
+        if (c.id) chToDevMap.set(String(c.id), d);
+      });
+    });
+  });
 
   scapeMap.forEach((targetScape, scapeId) => {
     // Find all locations matched to this scape
@@ -603,8 +899,6 @@ export function syncAllLocationsToScapes(customLocations = null) {
       return;
     }
 
-    affectedScapeIds.add(scapeId);
-
     // Build a map of valid measurement points that have at least 1 channel for this scape
     const validMpMap = new Map();
     matchedLocs.forEach(loc => {
@@ -615,13 +909,21 @@ export function syncAllLocationsToScapes(customLocations = null) {
       });
     });
 
+    const hadCardsBefore = (targetScape.elements || []).some(el => el.type === 'sensor_card');
+    if (validMpMap.size > 0 || hadCardsBefore) {
+      affectedScapeIds.add(scapeId);
+    }
+    if (validMpMap.size > 0) {
+      scapesWithSyncedCards.add(scapeId);
+    }
+
     // Prune sensor cards: keep all non-sensor elements (machines, vessels, pipes, text notes)
     // and prune any sensor cards that do not correspond to an active measurement point with channels
     const remainingElements = (targetScape.elements || []).filter(el => {
       if (el.type !== 'sensor_card') return true;
 
       // Only keep if the measurement point is active, matched to this scape, and has assigned channels
-      if (el.mpId && validMpMap.has(el.mpId)) {
+      if ((el.mpId && validMpMap.has(el.mpId)) || (el.id && validMpMap.has(el.id.replace('elem_', '')))) {
         return true;
       }
 
@@ -631,44 +933,101 @@ export function syncAllLocationsToScapes(customLocations = null) {
 
     const finalElements = [...remainingElements];
 
+    let cardGridIdx = 0;
+
     // Upsert cards for valid measurement points that have channels
     validMpMap.forEach(({ mp, locationId }) => {
       const existingIdx = finalElements.findIndex(e => e.mpId === mp.id || e.id === `elem_${mp.id}`);
 
-      const formattedChannels = mp.channels.map(ch => ({
-        id: ch.id || `ch_${ch.channel_id}`,
-        name: ch.displayName || ch.name || ch.channelName || 'Channel',
-        rawName: ch.name || ch.channelName,
-        displayName: ch.displayName,
-        unit: ch.unit || '',
-        val: (ch.val !== undefined && ch.val !== null) ? ch.val : '--.-',
-        status: ch.status || 'normal',
-        channel_id: ch.channel_id ?? ch.id
-      }));
+      const formattedChannels = mp.channels.map(ch => {
+        const sDev = ch.id ? chToDevMap.get(String(ch.id)) : null;
+        let devId = ch.deviceId || sDev?.id;
+        let devSerial = ch.deviceSerial || sDev?.serial;
+        let devPort = ch.devicePort || sDev?.connectionConfig?.port;
+        let devName = ch.device || sDev?.name;
+
+        if (!devId && typeof ch.id === 'string') {
+          const m = ch.id.match(/^ch_(dev_[a-zA-Z0-9_-]+?)_\d+(?:_\d+)?$/);
+          if (m) {
+            devId = m[1];
+            const pm = devId.match(/_(\d{2,5})$/);
+            if (pm && !devPort) devPort = parseInt(pm[1], 10);
+            const snm = devId.match(/_sn_([a-zA-Z0-9_-]+)/);
+            if (snm && !devSerial) devSerial = snm[1];
+          }
+        }
+
+        return {
+          id: ch.id || `ch_${ch.channel_id}`,
+          name: ch.displayName || ch.name || ch.channelName || 'Channel',
+          rawName: ch.name || ch.channelName,
+          displayName: ch.displayName,
+          unit: ch.unit || '',
+          val: (ch.val !== undefined && ch.val !== null) ? ch.val : '--.-',
+          status: ch.status || 'normal',
+          channel_id: ch.channel_id ?? ch.id,
+          deviceId: devId,
+          deviceSerial: devSerial,
+          devicePort: devPort,
+          device: devName
+        };
+      });
+
+      const cardDevId = formattedChannels.find(c => c.deviceId)?.deviceId;
+      const cardDevPort = formattedChannels.find(c => c.devicePort)?.devicePort;
+      const cardDevSerial = formattedChannels.find(c => c.deviceSerial)?.deviceSerial;
+      const cardDevName = formattedChannels.find(c => c.device)?.device;
 
       if (existingIdx >= 0) {
+        let currX = finalElements[existingIdx].x;
+        let currY = finalElements[existingIdx].y;
+        const isUserMoved = finalElements[existingIdx].userPositioned || finalElements[existingIdx].attachedAssetId;
+        const savedView = getSavedScapeView(scapeId);
+
+        // If card was not manually moved by the user and is stuck at default/legacy overlapping position (e.g. currY <= 80 or offscreen),
+        // cleanly align it using the non-overlapping grid layout with padding gap
+        if (!isUserMoved && (currY <= 80 || (savedView && (-savedView.y) > 200 && currY < (-savedView.y) / (savedView.zoom || 1)))) {
+          const gridPos = calculateSensorCardGridPosition(scapeId, finalElements, cardGridIdx);
+          currX = gridPos.x;
+          currY = gridPos.y;
+        }
+
         finalElements[existingIdx] = {
           ...finalElements[existingIdx],
           type: 'sensor_card',
           tag: mp.name,
+          x: currX,
+          y: currY,
           titlePosition: finalElements[existingIdx].titlePosition || 'top',
           channels: formattedChannels,
-          locationId
+          locationId,
+          deviceId: cardDevId || finalElements[existingIdx].deviceId,
+          devicePort: cardDevPort || finalElements[existingIdx].devicePort,
+          deviceSerial: cardDevSerial || finalElements[existingIdx].deviceSerial,
+          device: cardDevName || finalElements[existingIdx].device
         };
+        cardGridIdx++;
       } else {
-        const offsetIdx = finalElements.filter(e => e.type === 'sensor_card').length;
+        const gridPos = calculateSensorCardGridPosition(scapeId, finalElements, cardGridIdx);
+
         finalElements.push({
           id: `elem_${mp.id}`,
           mpId: mp.id,
           locationId,
           type: 'sensor_card',
           tag: mp.name,
-          x: 340 + (offsetIdx * 140),
-          y: 80,
+          x: gridPos.x,
+          y: gridPos.y,
           zIndex: 40,
           titlePosition: 'top',
-          channels: formattedChannels
+          channels: formattedChannels,
+          userPositioned: false,
+          deviceId: cardDevId,
+          devicePort: cardDevPort,
+          deviceSerial: cardDevSerial,
+          device: cardDevName
         });
+        cardGridIdx++;
       }
       syncCount++;
     });
@@ -683,10 +1042,15 @@ export function syncAllLocationsToScapes(customLocations = null) {
     }
   });
 
+  const sortedAffectedScapeIds = [
+    ...scapesWithSyncedCards,
+    ...Array.from(affectedScapeIds).filter(id => !scapesWithSyncedCards.has(id))
+  ];
+
   return {
     success: true,
     syncCount,
-    affectedScapeIds: Array.from(affectedScapeIds)
+    affectedScapeIds: sortedAffectedScapeIds
   };
 }
 
@@ -817,63 +1181,122 @@ export function removeDeviceAndUnassignChannels(deviceId) {
 }
 
 let autoReconnectPromise = null;
+const pendingCallbacks = [];
 
 /**
- * Automatically reconnect to saved devices on startup or page refresh.
- * Restores hardware transport link and enables live polling data to flow immediately.
+ * Automatically reconnect to saved devices on startup, page refresh, or ProcessScape entry.
+ * Restores hardware transport link (Ethernet TCP/API, USB, BLE) and enables live polling data immediately.
+ * @param {Function|null} onConnectedCallback - Optional callback invoked with connected session
  */
-export function autoReconnectSavedDevices() {
+export function autoReconnectSavedDevices(onConnectedCallback = null) {
+  if (typeof onConnectedCallback === 'function') {
+    pendingCallbacks.push(onConnectedCallback);
+  }
+
   if (autoReconnectPromise) {
     return autoReconnectPromise;
   }
 
   autoReconnectPromise = (async () => {
     try {
-      if (typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
-        return { reconnected: true, alreadyConnected: true };
-      }
-
       const devices = getSavedDevices();
       if (!devices || devices.length === 0) {
         return { reconnected: false, reason: 'no_saved_devices' };
       }
 
-      for (const dev of devices) {
+      // Only skip auto-reconnect if single device is already active; for multiple devices, always connect all endpoints
+      if (devices.length === 1 && typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
+        const curTransport = (TauriSutoAPI.getActiveTransport?.() || '').toLowerCase();
+        const matchesOnlineDevice = devices.some(dev => {
+          if (!dev.isOnline) return false;
+          const dt = (dev.transportType || dev.transport || '').toLowerCase();
+          if (curTransport.includes('tcp') && (dt.includes('tcp') || dt.includes('ethernet') || dt.includes('lan'))) return true;
+          if (curTransport.includes('api') && dt.includes('api')) return true;
+          if (curTransport.includes('usb') && dt.includes('usb')) return true;
+          if (curTransport.includes('ble') && dt.includes('ble')) return true;
+          return false;
+        });
+
+        if (matchesOnlineDevice) {
+          return { reconnected: true, alreadyConnected: true };
+        }
+      }
+
+      await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Starting auto-reconnect check for ${devices.length} saved device(s)...`);
+
+      for (let i = 0; i < devices.length; i++) {
+        const dev = devices[i];
         const config = dev.connectionConfig || {};
-        const transport = (config.transport || dev.transportType || dev.transport || '').toLowerCase();
-        const host = config.host || (typeof dev.transport === 'string' && dev.transport.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]);
-        const port = config.port;
+        const rawTransport = (config.transport || dev.transportType || dev.transport || '').toLowerCase();
+        const host = config.host || dev.host || dev.ip || (typeof dev.transport === 'string' && dev.transport.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]) || (typeof dev.name === 'string' && dev.name.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]);
+        const port = config.port || dev.port || (typeof dev.transport === 'string' && dev.transport.match(/:(\d+)/)?.[1]) || null;
+
+        const isApi = rawTransport.includes('api') || rawTransport.includes('s332') || port === 8080;
+        const isTcp = rawTransport.includes('tcp') || rawTransport.includes('ethernet') || rawTransport.includes('lan') || (Boolean(host) && !rawTransport.includes('usb') && !rawTransport.includes('ble'));
+        const isUsb = rawTransport.includes('usb');
+        const isBle = rawTransport.includes('ble');
 
         try {
-          if (transport.includes('api') && host) {
-            await TauriSutoAPI.connectApi(host, port || 8080);
-            return { reconnected: true, device: dev.name, transport: 'API' };
-          } else if (transport.includes('tcp') && host) {
-            await TauriSutoAPI.connectTcp(host, port || 502);
-            return { reconnected: true, device: dev.name, transport: 'TCP' };
-          } else if (transport.includes('usb') && typeof TauriSutoAPI.isAvailable === 'function' && TauriSutoAPI.isAvailable()) {
-            await TauriSutoAPI.connectUsb();
-            return { reconnected: true, device: dev.name, transport: 'USB' };
-          } else if (transport.includes('ble')) {
+          let conn = null;
+          if (isApi && host) {
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting API device "${dev.name}" at ${host}:${port || 8080}...`);
+            conn = await TauriSutoAPI.connectApi(host, port || 8080);
+          } else if (isTcp && host) {
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting Ethernet device "${dev.name}" at ${host}:${port || 502}...`);
+            conn = await TauriSutoAPI.connectTcp(host, port || 502);
+          } else if (isUsb && typeof TauriSutoAPI.isAvailable === 'function' && TauriSutoAPI.isAvailable()) {
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting USB device "${dev.name}"...`);
+            conn = await TauriSutoAPI.connectUsb();
+          } else if (isBle) {
             try {
-              const bleRes = await TauriSutoAPI.resumeBleConnection({
+              await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-resuming BLE device "${dev.name}"...`);
+              conn = await TauriSutoAPI.resumeBleConnection({
                 deviceId: config.deviceId || dev.id,
                 name: config.name || dev.name
               });
-              dev.isOnline = true;
-              return { reconnected: true, device: dev.name, transport: 'BLE', ...bleRes };
             } catch (bleErr) {
               dev.isOnline = false;
               console.info(`[AutoReconnect] BLE device "${dev.name}" not in range currently (${bleErr?.message || bleErr}). Connect via "Detect" or ↻ when in range.`);
             }
           }
+
+          if (conn) {
+            dev.isOnline = true;
+            saveDevices(devices);
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `✓ Successfully auto-reconnected to "${dev.name}" (${conn?.transport || (isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : 'BLE')})`);
+
+            if (typeof TauriSutoAPI.getChannels === 'function') {
+              try {
+                await TauriSutoAPI.getChannels();
+              } catch (_) {}
+            }
+
+            while (pendingCallbacks.length > 0) {
+              const cb = pendingCallbacks.shift();
+              try { cb(conn); } catch (_) {}
+            }
+
+            try {
+              pollOnce();
+            } catch (_) {}
+
+            return {
+              reconnected: true,
+              device: dev.name,
+              transport: conn?.transport || (isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : 'BLE'),
+              conn
+            };
+          }
         } catch (err) {
+          dev.isOnline = false;
+          await TauriSutoAPI?.logClientEvent?.('WARN', 'AUTO_RECONNECT', `Failed to reconnect "${dev.name}": ${err?.message || err}`);
           console.warn(`[AutoReconnect] Could not reconnect to "${dev.name}":`, err?.message || err);
         }
       }
       return { reconnected: false, reason: 'failed_all_devices' };
     } finally {
       autoReconnectPromise = null;
+      pendingCallbacks.length = 0;
     }
   })();
 

@@ -1120,36 +1120,39 @@ export function removeDeviceAndUnassignChannels(deviceId) {
     };
   }
 
-  // 1. Gather all channel identifiers belonging to this device
+  // 1. Gather all unique full channel IDs belonging strictly to this device
   const devChannelIds = new Set();
   (targetDev.sensors || []).forEach(s => {
     (s.channels || []).forEach(c => {
       if (c.id) devChannelIds.add(String(c.id));
-      if (c.channel_id !== undefined && c.channel_id !== null) {
-        devChannelIds.add(String(c.channel_id));
-        devChannelIds.add(`cid_${c.channel_id}`);
-      }
-      if (c.channelId) devChannelIds.add(String(c.channelId));
     });
   });
+
+  const targetDevId = String(targetDev.id);
+  const targetPort = targetDev.connectionConfig?.port || targetDev.port;
+  const targetSerial = String(targetDev.serial || targetDev.connectionConfig?.serial || '');
 
   // 2. Remove device from devices storage
   const updatedDevices = currentDevices.filter(d => d.id !== deviceId);
   saveDevices(updatedDevices);
 
-  // 3. Unassign its channels from all measurement points in all locations
+  // 3. Unassign only this device's channels from all measurement points in all locations
   const currentLocations = getLocations();
   let unassignedCount = 0;
 
   const updatedLocations = currentLocations.map(loc => {
     const updatedMps = (loc.measurementPoints || []).map(mp => {
       const remainingChannels = (mp.channels || []).filter(ch => {
-        const matchesId = (ch.id && devChannelIds.has(String(ch.id))) ||
-          (ch.channel_id !== undefined && devChannelIds.has(String(ch.channel_id))) ||
-          (ch.channelId && devChannelIds.has(String(ch.channelId)));
-        const matchesDeviceName = ch.device && targetDev.name && ch.device === targetDev.name;
+        // Strict match: does this channel belong to the device being deleted?
+        const matchesExactId = ch.id && devChannelIds.has(String(ch.id));
+        const matchesDevId = (ch.deviceId && String(ch.deviceId) === targetDevId) ||
+                             (typeof ch.id === 'string' && ch.id.includes(targetDevId));
+        const matchesSerial = Boolean(targetSerial && ch.deviceSerial && String(ch.deviceSerial) === targetSerial);
+        const matchesPort = Boolean(targetPort && ch.devicePort && Number(ch.devicePort) === Number(targetPort));
 
-        if (matchesId || matchesDeviceName) {
+        const belongsToTarget = matchesExactId || matchesDevId || matchesSerial || matchesPort;
+
+        if (belongsToTarget) {
           unassignedCount++;
           return false;
         }
@@ -1186,6 +1189,7 @@ const pendingCallbacks = [];
 /**
  * Automatically reconnect to saved devices on startup, page refresh, or ProcessScape entry.
  * Restores hardware transport link (Ethernet TCP/API, USB, BLE) and enables live polling data immediately.
+ * Reconnects ALL saved devices concurrently without stopping after the first device.
  * @param {Function|null} onConnectedCallback - Optional callback invoked with connected session
  */
 export function autoReconnectSavedDevices(onConnectedCallback = null) {
@@ -1197,32 +1201,19 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
     return autoReconnectPromise;
   }
 
-  autoReconnectPromise = (async () => {
+  const devices = getSavedDevices();
+  if (!devices || devices.length === 0) {
+    return Promise.resolve({ reconnected: false, reason: 'no_saved_devices' });
+  }
+
+  const runReconnect = async () => {
     try {
-      const devices = getSavedDevices();
-      if (!devices || devices.length === 0) {
-        return { reconnected: false, reason: 'no_saved_devices' };
-      }
-
-      // Only skip auto-reconnect if single device is already active; for multiple devices, always connect all endpoints
-      if (devices.length === 1 && typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
-        const curTransport = (TauriSutoAPI.getActiveTransport?.() || '').toLowerCase();
-        const matchesOnlineDevice = devices.some(dev => {
-          if (!dev.isOnline) return false;
-          const dt = (dev.transportType || dev.transport || '').toLowerCase();
-          if (curTransport.includes('tcp') && (dt.includes('tcp') || dt.includes('ethernet') || dt.includes('lan'))) return true;
-          if (curTransport.includes('api') && dt.includes('api')) return true;
-          if (curTransport.includes('usb') && dt.includes('usb')) return true;
-          if (curTransport.includes('ble') && dt.includes('ble')) return true;
-          return false;
-        });
-
-        if (matchesOnlineDevice) {
-          return { reconnected: true, alreadyConnected: true };
-        }
-      }
-
       await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Starting auto-reconnect check for ${devices.length} saved device(s)...`);
+
+      let connectedCount = 0;
+      let lastConn = null;
+      let lastTransport = null;
+      let lastDevName = null;
 
       for (let i = 0; i < devices.length; i++) {
         const dev = devices[i];
@@ -1262,30 +1253,12 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
 
           if (conn) {
             dev.isOnline = true;
+            connectedCount++;
+            lastConn = conn;
+            lastTransport = conn?.transport || (isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : 'BLE');
+            lastDevName = dev.name;
             saveDevices(devices);
-            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `✓ Successfully auto-reconnected to "${dev.name}" (${conn?.transport || (isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : 'BLE')})`);
-
-            if (typeof TauriSutoAPI.getChannels === 'function') {
-              try {
-                await TauriSutoAPI.getChannels();
-              } catch (_) {}
-            }
-
-            while (pendingCallbacks.length > 0) {
-              const cb = pendingCallbacks.shift();
-              try { cb(conn); } catch (_) {}
-            }
-
-            try {
-              pollOnce();
-            } catch (_) {}
-
-            return {
-              reconnected: true,
-              device: dev.name,
-              transport: conn?.transport || (isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : 'BLE'),
-              conn
-            };
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `✓ Successfully auto-reconnected to "${dev.name}" (${lastTransport})`);
           }
         } catch (err) {
           dev.isOnline = false;
@@ -1293,12 +1266,48 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
           console.warn(`[AutoReconnect] Could not reconnect to "${dev.name}":`, err?.message || err);
         }
       }
+
+      if (connectedCount > 0) {
+        if (typeof TauriSutoAPI?.getChannels === 'function') {
+          try {
+            await TauriSutoAPI.getChannels();
+          } catch (_) {}
+        }
+
+        while (pendingCallbacks.length > 0) {
+          const cb = pendingCallbacks.shift();
+          try { cb(lastConn); } catch (_) {}
+        }
+
+        try {
+          syncAllLocationsToScapes();
+        } catch (_) {}
+
+        try {
+          pollOnce();
+        } catch (_) {}
+
+        return {
+          reconnected: true,
+          connectedCount,
+          transport: lastTransport,
+          device: lastDevName,
+          conn: lastConn,
+          lastConn
+        };
+      }
+
       return { reconnected: false, reason: 'failed_all_devices' };
     } finally {
       autoReconnectPromise = null;
       pendingCallbacks.length = 0;
     }
-  })();
+  };
+
+  autoReconnectPromise = runReconnect().finally(() => {
+    autoReconnectPromise = null;
+    pendingCallbacks.length = 0;
+  });
 
   return autoReconnectPromise;
 }

@@ -4620,6 +4620,125 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(card502.channels[1].val).not.toBe(card503.channels[1].val);
     expect(card502.channels[2].val).not.toBe(card503.channels[2].val);
   });
+
+  it('removing one device (502) unassigns only 502 channels and leaves 503 channels in location untouched', () => {
+    const dev502 = {
+      id: 'dev_tcp_127_0_0_1_502',
+      name: 'SUTO S331',
+      serial: '12344321',
+      connectionConfig: { host: '127.0.0.1', port: 502 },
+      sensors: [
+        {
+          id: 'sens_502',
+          name: 'SUTO S331',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_502_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_2_1', channel_id: 2, name: 'Temperature', unit: '°C' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_3_2', channel_id: 3, name: 'Pressure', unit: 'bar' },
+          ]
+        }
+      ]
+    };
+
+    const dev503 = {
+      id: 'dev_tcp_127_0_0_1_503',
+      name: 'SUTO S331', // identical model name!
+      serial: '12344322',
+      connectionConfig: { host: '127.0.0.1', port: 503 },
+      sensors: [
+        {
+          id: 'sens_503',
+          name: 'SUTO S331',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_503_1_0', channel_id: 1, name: 'Flow', unit: 'm³/h' },
+            { id: 'ch_dev_tcp_127_0_0_1_503_2_1', channel_id: 2, name: 'Temperature', unit: '°C' },
+            { id: 'ch_dev_tcp_127_0_0_1_503_3_2', channel_id: 3, name: 'Pressure', unit: 'bar' },
+          ]
+        }
+      ]
+    };
+
+    saveDevices([dev502, dev503]);
+
+    const location = {
+      id: 'loc_test_del',
+      name: 'Test Location',
+      measurementPoints: [
+        {
+          id: 'mp_502',
+          name: 'MP 502',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_502_1_0', channel_id: 1, deviceId: dev502.id, devicePort: 502, device: 'SUTO S331' },
+            { id: 'ch_dev_tcp_127_0_0_1_502_2_1', channel_id: 2, deviceId: dev502.id, devicePort: 502, device: 'SUTO S331' }
+          ]
+        },
+        {
+          id: 'mp_503',
+          name: 'MP 503',
+          channels: [
+            { id: 'ch_dev_tcp_127_0_0_1_503_1_0', channel_id: 1, deviceId: dev503.id, devicePort: 503, device: 'SUTO S331' },
+            { id: 'ch_dev_tcp_127_0_0_1_503_2_1', channel_id: 2, deviceId: dev503.id, devicePort: 503, device: 'SUTO S331' }
+          ]
+        }
+      ]
+    };
+
+    saveLocations([location]);
+
+    // Remove device 502
+    const { updatedDevices, updatedLocations, unassignedCount } = removeDeviceAndUnassignChannels(dev502.id);
+
+    // Verify device 502 is removed, device 503 remains
+    expect(updatedDevices.length).toBe(1);
+    expect(updatedDevices[0].id).toBe(dev503.id);
+
+    // Verify 502's channels unassigned (2 channels)
+    expect(unassignedCount).toBe(2);
+
+    // Verify location's MP 502 has 0 channels, but MP 503 STILL HAS BOTH CHANNELS!
+    const updatedLoc = updatedLocations.find(l => l.id === location.id);
+    const mp502 = updatedLoc.measurementPoints.find(m => m.id === 'mp_502');
+    const mp503 = updatedLoc.measurementPoints.find(m => m.id === 'mp_503');
+
+    expect(mp502.channels.length).toBe(0);
+    expect(mp503.channels.length).toBe(2); // 503 channels are NOT wiped out!
+    expect(mp503.channels[0].id).toBe('ch_dev_tcp_127_0_0_1_503_1_0');
+  });
+
+  it('autoReconnectSavedDevices connects both 502 and 503 without stopping after the first device', async () => {
+    const connectedPorts = [];
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockImplementation(async (host, port) => {
+      connectedPorts.push(port);
+      return { host, port, transport: 'TCP' };
+    });
+    const isConnectedSpy = vi.spyOn(TauriSutoAPI, 'isConnected').mockReturnValue(false);
+
+    const dev502 = {
+      id: 'dev_tcp_127_0_0_1_502',
+      name: 'SUTO S331',
+      transport: 'Ethernet (127.0.0.1:502)',
+      transportType: 'tcp',
+      connectionConfig: { host: '127.0.0.1', port: 502, transport: 'tcp' }
+    };
+    const dev503 = {
+      id: 'dev_tcp_127_0_0_1_503',
+      name: 'SUTO S331 #2',
+      transport: 'Ethernet (127.0.0.1:503)',
+      transportType: 'tcp',
+      connectionConfig: { host: '127.0.0.1', port: 503, transport: 'tcp' }
+    };
+
+    saveDevices([dev502, dev503]);
+
+    const res = await autoReconnectSavedDevices();
+    expect(res.reconnected).toBe(true);
+    expect(res.connectedCount).toBe(2);
+    expect(connectedPorts).toContain(502);
+    expect(connectedPorts).toContain(503);
+
+    connectTcpSpy.mockRestore();
+    isConnectedSpy.mockRestore();
+  });
 });
 
 

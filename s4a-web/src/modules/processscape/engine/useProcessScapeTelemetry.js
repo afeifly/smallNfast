@@ -156,37 +156,52 @@ export function useProcessScapeTelemetry({
             }
           }
 
-          // Collect possible device identifiers for this channel / card
-          const targetDevKeys = [
+          // Collect strict instance identifiers for this channel / card
+          const targetInstanceKeys = [
             ch.deviceId,
             ch.deviceSerial,
             ch.devicePort ? String(ch.devicePort) : null,
-            ch.device,
             savedDev?.id,
             savedDev?.serial ? String(savedDev.serial) : null,
             savedDev?.connectionConfig?.port ? String(savedDev.connectionConfig.port) : null,
-            savedDev?.name,
             parsedDevId,
             parsedSn,
             parsedPort,
             el.deviceId,
             el.serial,
             el.devicePort ? String(el.devicePort) : null,
-            el.port ? String(el.port) : null,
+            el.port ? String(el.port) : null
+          ].filter(Boolean);
+
+          const targetModelNames = [
+            ch.device,
+            savedDev?.name,
             el.device
           ].filter(Boolean);
 
           let liveItem = null;
 
-          // 1. Try matching with device scoping first (prevents channel cross-talk between multi-devices)
-          for (const dk of targetDevKeys) {
-            const k = String(dk).toLowerCase();
+          // 1. Try matching with strict hardware instance scoping first (prevents channel cross-talk between multi-devices)
+          for (const ik of targetInstanceKeys) {
+            const k = String(ik).toLowerCase();
             liveItem = byDevId.get(`${k}_${chKey}`) ||
                        byDevId.get(`${k}_${ch.channel_id}`) ||
                        byName.get(`${k}_${chRawNameKey}`) ||
                        byName.get(`${k}_${chNameKey}`) ||
                        byName.get(`${k}_${chDisplayKey}`);
             if (liveItem) break;
+          }
+
+          // Fallback to model name only if NO instance keys exist and there are no multiple live devices
+          if (!liveItem && targetInstanceKeys.length === 0 && !hasMultipleLiveDevices) {
+            for (const mn of targetModelNames) {
+              const k = String(mn).toLowerCase();
+              liveItem = byDevId.get(`${k}_${chKey}`) ||
+                         byDevId.get(`${k}_${ch.channel_id}`) ||
+                         byName.get(`${k}_${chRawNameKey}`) ||
+                         byName.get(`${k}_${chNameKey}`);
+              if (liveItem) break;
+            }
           }
 
           // 2. Fallback to un-scoped lookup ONLY if candidate doesn't conflict with a different device
@@ -207,32 +222,41 @@ export function useProcessScapeTelemetry({
             if (!candidate) {
               candidate = byName.get(chRawNameKey) || byName.get(chNameKey) || byName.get(chDisplayKey);
             }
-            if (!candidate && !hasMultipleLiveDevices && rawList.length === el.channels.length && rawList[chIdx]) {
+            if (!candidate && !hasMultipleLiveDevices && targetInstanceKeys.length === 0 && rawList.length === el.channels.length && rawList[chIdx]) {
               candidate = rawList[chIdx];
             }
 
             if (candidate) {
-              const candDevs = [
-                candidate.deviceId,
-                candidate.device_id,
-                candidate.serial,
-                candidate.serial_number,
-                candidate.port ? String(candidate.port) : null,
-                candidate.device
-              ].filter(Boolean).map(s => String(s).toLowerCase());
+              const candPort = candidate.port ? Number(candidate.port) : null;
+              const candSerial = candidate.serial || candidate.serial_number ? String(candidate.serial || candidate.serial_number) : null;
+              const candId = candidate.deviceId || candidate.device_id ? String(candidate.deviceId || candidate.device_id).toLowerCase() : null;
 
-              if (candDevs.length > 0 && targetDevKeys.length > 0) {
-                // Candidate belongs to a specific device -> channel must match that device
-                const matchesTarget = targetDevKeys.some(tk => {
-                  const normTk = String(tk).toLowerCase();
-                  return candDevs.some(cd => cd === normTk || cd.includes(normTk) || normTk.includes(cd));
-                });
-                if (matchesTarget) {
+              const chPort = ch.devicePort || savedDev?.connectionConfig?.port || parsedPort || el.devicePort || el.port
+                ? Number(ch.devicePort || savedDev?.connectionConfig?.port || parsedPort || el.devicePort || el.port)
+                : null;
+              const chSerial = ch.deviceSerial || savedDev?.serial || parsedSn || el.serial
+                ? String(ch.deviceSerial || savedDev?.serial || parsedSn || el.serial)
+                : null;
+              const chId = ch.deviceId || savedDev?.id || parsedDevId || el.deviceId
+                ? String(ch.deviceId || savedDev?.id || parsedDevId || el.deviceId).toLowerCase()
+                : null;
+
+              // Check for conflict: if ports, serials, or IDs differ between target channel and candidate, REJECT immediately!
+              const hasConflict = (candPort && chPort && candPort !== chPort) ||
+                                  (candSerial && chSerial && candSerial !== chSerial) ||
+                                  (candId && chId && candId !== chId);
+
+              if (!hasConflict) {
+                const hasInstanceMatch = (candPort && chPort && candPort === chPort) ||
+                                         (candSerial && chSerial && candSerial === chSerial) ||
+                                         (candId && chId && candId === chId);
+
+                if (hasInstanceMatch) {
+                  liveItem = candidate;
+                } else if (!hasMultipleLiveDevices && !candPort && !chPort && !candSerial && !chSerial) {
+                  // Only single device connected without hardware identifiers
                   liveItem = candidate;
                 }
-              } else if (candDevs.length === 0 || !hasMultipleLiveDevices) {
-                // Untagged telemetry stream or only 1 device live: safe to accept candidate
-                liveItem = candidate;
               }
             }
           }

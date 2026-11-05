@@ -164,5 +164,5 @@ export function resolveDeviceTypeName(sysInfo, deviceInfo) {
   if (deviceInfo?.device && deviceInfo.device.trim()) {
     return deviceInfo.device.trim();
   }
-  return 'SUTO Connected Hardware';
+  return 'Connected Hardware';
 }

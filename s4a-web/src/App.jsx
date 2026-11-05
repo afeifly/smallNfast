@@ -161,9 +161,11 @@ function App() {
   React.useEffect(() => {
     if (appMode === 'processscape') {
       try {
-        autoReconnectSavedDevices((conn) => {
-          if (conn) setDeviceInfo(conn);
-        }).catch(() => {});
+        if (typeof TauriSutoAPI?.isConnected !== 'function' || !TauriSutoAPI.isConnected()) {
+          autoReconnectSavedDevices((conn) => {
+            if (conn) setDeviceInfo(conn);
+          }).catch(() => {});
+        }
       } catch (_) {}
       try {
         const locs = getLocations();

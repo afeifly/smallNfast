@@ -15,13 +15,27 @@ import { invoke } from '@tauri-apps/api/core';
 import BleSutoAPI from './BleSutoAPI';
 import ApiDevice from './device/ApiDevice';
 import { resolveChannelResolution } from '../util/resolution';
+import {
+  modbusData2Double,
+  MODBUS_DATA_TYPES,
+  applyModbusChannelScaling,
+  parseCSCommChannelSetting,
+  buildCSCommChannelSetting,
+  buildCsGetChannelCountCommand,
+  parseCsChannelCountResponse,
+  buildCsGetChannelStructCommand,
+  parseCsChannelStructBatchResponse,
+  channelSettingToModbusChannel,
+  createMockS331ChannelSettings
+} from './modbusProtocol';
 
 const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke);
 
 // Rolling measurement buffer for chart display (keeps last 3600 points)
 const historyBuffer = new Map();
 const MAX_HISTORY = 3600;
-let activeTransport = null; // 'USB' | 'TCP' | 'BLE' | 'API' | null
+let activeTransport = null; // 'USB' | 'TCP' | 'BLE' | 'API' | 'MODBUS_TCP' | null
+const activeModbusDevices = new Map();
 let activeMeasurementPromise = null;
 let lastMeasurementResult = null;
 let lastMeasurementTime = 0;
@@ -38,12 +52,21 @@ export const TauriSutoAPI = {
     if (activeTransport === 'BLE_WEB' || activeTransport === 'BLE_NATIVE') {
       return 'BLE';
     }
+    if (activeModbusDevices.size > 0 && !activeTransport) {
+      return 'Modbus TCP';
+    }
     return activeTransport;
   },
 
   isConnected() {
+    if (activeModbusDevices.size > 0) {
+      return true;
+    }
     if (!activeTransport) {
       return false;
+    }
+    if (activeTransport === 'MODBUS_TCP') {
+      return true;
     }
     if (activeTransport === 'API') {
       return Boolean(ApiDevice && ApiDevice.connected);
@@ -255,12 +278,335 @@ export const TauriSutoAPI = {
     return await ApiDevice.connect({ host, port });
   },
 
+  /**
+   * Connect to a Modbus TCP device (standard Modbus register-based polling)
+   */
+  async connectModbusTcp({ host = '127.0.0.1', port = 502, slaveId = 1, name = '', channels = [] } = {}) {
+    activeTransport = 'MODBUS_TCP';
+    const sId = parseInt(slaveId, 10) || 1;
+    const p = parseInt(port, 10) || 502;
+    const devName = name || `Modbus TCP (${host}:${p})`;
+    const devKey = `${host}_${p}_${sId}`;
+    const cleanHost = String(host).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const deviceId = `dev_modbus_tcp_${cleanHost}_${p}_slave_${sId}`;
+
+    await this.logClientEvent('INFO', 'MODBUS_OPEN', `Initiating Modbus TCP connection to ${host}:${p} (Slave: ${sId})...`);
+
+    // Probe the connection if channels are provided
+    if (channels.length > 0) {
+      try {
+        const testCh = channels[0];
+        await this.readModbusChannel(testCh, { host, port: p, slaveId: sId });
+      } catch (probeErr) {
+        console.warn('[TauriSutoAPI] Modbus initial probe note:', probeErr);
+      }
+    }
+
+    const devInfo = {
+      id: deviceId,
+      deviceId,
+      device_id: deviceId,
+      address: sId,
+      slaveId: sId,
+      host,
+      port: p,
+      name: devName,
+      device: devName,
+      transport: `Modbus TCP (${host}:${p})`,
+      transportType: 'modbus_tcp',
+      channels: channels || [],
+      isOnline: true
+    };
+
+    activeModbusDevices.set(devKey, devInfo);
+    return devInfo;
+  },
+
+  /**
+   * Disconnect a specific Modbus device or clear all Modbus devices
+   */
+  disconnectModbus(devKey) {
+    if (devKey) {
+      activeModbusDevices.delete(devKey);
+    } else {
+      activeModbusDevices.clear();
+    }
+    if (activeModbusDevices.size === 0 && activeTransport === 'MODBUS_TCP') {
+      activeTransport = null;
+    }
+  },
+
+  /**
+   * Read raw Modbus registers over TCP (or RTU)
+   */
+  async readModbusRegisters({ host = '127.0.0.1', port = 502, slaveId = 1, funcCode = 3, regAddr = 0, regCount = 2, isRtu = false, timeoutMs = 2500 } = {}) {
+    if (hasTauri()) {
+      const bytes = await invoke('suto_read_modbus_registers', {
+        host,
+        port: parseInt(port, 10),
+        slaveId: parseInt(slaveId, 10),
+        funcCode: parseInt(funcCode, 10),
+        regAddr: parseInt(regAddr, 10),
+        regCount: parseInt(regCount, 10),
+        isRtu: Boolean(isRtu),
+        timeoutMs: parseInt(timeoutMs, 10)
+      });
+      return new Uint8Array(bytes);
+    }
+
+    // In web / browser mock mode: simulate realistic sensor registers
+    const simulated = new Uint8Array(regCount * 2);
+    const dv = new DataView(simulated.buffer);
+    const t = Date.now() / 4000;
+    const baseVal = (regAddr % 2 === 0)
+      ? 6.8 + Math.sin(t) * 0.35 // Pressure ~6.8 bar
+      : 142.0 + Math.cos(t) * 12.0; // Flow ~142 m3/h
+
+    if (regCount >= 2) {
+      dv.setFloat32(0, baseVal, false); // Big Endian IEEE 754 float
+    } else {
+      dv.setInt16(0, Math.round(baseVal * 10), false);
+    }
+    return simulated;
+  },
+
+  /**
+   * Read and decode a single Modbus channel (with scaling, word swapping, and error handling)
+   */
+  async readModbusChannel(channel, connectionConfig = {}) {
+    const host = connectionConfig.host || channel.host || '127.0.0.1';
+    const port = connectionConfig.port || channel.port || 502;
+    const slaveId = channel.slaverAddr ?? channel.slaveId ?? connectionConfig.slaveId ?? 1;
+    const funcCode = channel.mBAccessFuncCode ?? channel.funcCode ?? 3;
+    const regAddr = channel.mBValueAddr ?? channel.regAddr ?? 0;
+    const inType = channel.mBInputValueType ?? channel.dataType ?? 7; // default FLOAT32_BE
+    const regCount = (inType === 1 || inType === 2) ? 1 : 2;
+    const isRtu = Boolean(connectionConfig.isRtu || channel.isRtu);
+
+    try {
+      const bytes = await this.readModbusRegisters({
+        host,
+        port,
+        slaveId,
+        funcCode,
+        regAddr,
+        regCount,
+        isRtu
+      });
+
+      const rawVal = modbusData2Double(inType, bytes);
+      const scaledVal = applyModbusChannelScaling(rawVal, channel);
+
+      return {
+        success: true,
+        value: scaledVal,
+        rawValue: rawVal,
+        channelId: channel.channel_id ?? channel.id
+      };
+    } catch (err) {
+      console.warn(`[TauriSutoAPI] Modbus channel read note (${channel.name || regAddr}):`, err);
+      return {
+        success: false,
+        error: err?.message || String(err),
+        value: null,
+        rawValue: null,
+        channelId: channel.channel_id ?? channel.id
+      };
+    }
+  },
+
+  /**
+   * Send a raw CS-Bus command packet over Modbus TCP (FC 71 gateway)
+   * @param {object} params
+   * @param {string} params.host
+   * @param {number} [params.port=502]
+   * @param {number} [params.slaveId=1]
+   * @param {Uint8Array} params.csPacket
+   * @param {number} [params.timeoutMs=3000]
+   * @returns {Promise<Uint8Array>}
+   */
+  async exchangeCsModbus({ host = '127.0.0.1', port = 502, slaveId = 1, csPacket, timeoutMs = 3000 } = {}) {
+    if (hasTauri()) {
+      const bytes = await invoke('suto_exchange_cs_modbus', {
+        host,
+        port: parseInt(port, 10),
+        slaveId: parseInt(slaveId, 10),
+        csPacket: Array.from(csPacket),
+        timeoutMs: parseInt(timeoutMs, 10)
+      });
+      return new Uint8Array(bytes);
+    }
+
+    // In web / browser mock mode:
+    // If querying channel count [4, 2, 3]: return [6] (6 channels)
+    if (csPacket[0] === 4 && csPacket[1] === 2 && csPacket[2] === 3) {
+      return new Uint8Array([6]);
+    }
+    // If querying channel settings [4, 2, 2, start, count] or [4, 2, 11, start, count]:
+    if (csPacket[0] === 4 && csPacket[1] === 2 && (csPacket[2] === 2 || csPacket[2] === 11)) {
+      const allBytes = createMockS331ChannelSettings();
+      const start = csPacket[3];
+      const count = csPacket[4];
+      const startIdx = Math.max(0, (start - 1) * 204);
+      const endIdx = Math.min(allBytes.length, startIdx + count * 204);
+      if (startIdx < allBytes.length) {
+        return allBytes.slice(startIdx, endIdx);
+      }
+      return new Uint8Array(0);
+    }
+    return new Uint8Array(0);
+  },
+
+  /**
+   * Auto-discover channels from an S330/S331 over Modbus TCP gateway (FC 71).
+   * Follows GetAllChannelStructActionExecutor.java:
+   * 1. Query channel count via CSBusCommands.GET_MEASUREMENT_CHANNEL_COUNT ([4, 2, 3])
+   * 2. Query channel structures in batches of 5 ([4, 2, 2, startChannelNo, count])
+   * 3. Parse each 204-byte struct into UI-ready Modbus channel definitions!
+   *
+   * @param {object} params
+   * @param {string} params.host
+   * @param {number} [params.port=502]
+   * @param {number} [params.slaveId=1]
+   * @param {function} [onProgress] Callback for UI progress updates
+   * @returns {Promise<Array<object>>} Discovered Modbus channels
+   */
+  async discoverS331ChannelsOverModbus({ host = '127.0.0.1', port = 502, slaveId = 1, onProgress = null } = {}) {
+    await this.logClientEvent('INFO', 'MODBUS_DISCOVER', `Starting S331 auto-discovery on ${host}:${port} (Slave: ${slaveId})...`);
+    if (typeof onProgress === 'function') {
+      onProgress('Querying device channel count...');
+    }
+
+    let channelCount = 0;
+    try {
+      const countCmd = buildCsGetChannelCountCommand();
+      const countResp = await this.exchangeCsModbus({ host, port, slaveId, csPacket: countCmd });
+      channelCount = parseCsChannelCountResponse(countResp);
+    } catch (err) {
+      console.warn('[TauriSutoAPI] Failed to get channel count, falling back to 6 channels:', err);
+      channelCount = 6;
+    }
+
+    if (channelCount <= 0 || channelCount > 100) {
+      channelCount = 6;
+    }
+
+    const discoveredChannels = [];
+    // Each 204-byte channel struct (+ address and CRC-16) is 207 bytes,
+    // which cleanly fits inside a single Modbus TCP PDU byte-length (max 255 bytes).
+    const BATCH_SIZE = 1;
+
+    for (let startCh = 1; startCh <= channelCount; startCh += BATCH_SIZE) {
+      const count = Math.min(BATCH_SIZE, channelCount - startCh + 1);
+      if (typeof onProgress === 'function') {
+        onProgress(`Reading channel ${startCh} of ${channelCount}...`);
+      }
+
+      try {
+        const batchCmd = buildCsGetChannelStructCommand(startCh, count, false);
+        const batchResp = await this.exchangeCsModbus({ host, port, slaveId, csPacket: batchCmd });
+        let settings = parseCsChannelStructBatchResponse(batchResp);
+
+        if (!settings || settings.length === 0) {
+          // If standard (0x02) returned empty, try transformed/TRED (0x0B) for newer S331 firmware (>= 1.54)
+          try {
+            const tredCmd = buildCsGetChannelStructCommand(startCh, count, true);
+            const tredResp = await this.exchangeCsModbus({ host, port, slaveId, csPacket: tredCmd });
+            settings = parseCsChannelStructBatchResponse(tredResp);
+          } catch (_) {}
+        }
+
+        for (const setting of settings || []) {
+          const modCh = channelSettingToModbusChannel(setting);
+          discoveredChannels.push(modCh);
+        }
+      } catch (batchErr) {
+        console.warn(`[TauriSutoAPI] Batch fetch error for channel ${startCh}:`, batchErr);
+      }
+    }
+
+    // Fallback: If proprietary FC 71 tunneling times out or is unsupported on port 502,
+    // probe standard Modbus Holding Registers (FC 03, IEEE 754 Float32 BE, 2 regs per channel).
+    if (discoveredChannels.length === 0) {
+      if (typeof onProgress === 'function') {
+        onProgress('Probing standard Modbus registers...');
+      }
+      const candidateUnits = Array.from(new Set([slaveId, 0, 1]));
+      let workingUnit = null;
+
+      for (const unit of candidateUnits) {
+        try {
+          const testBytes = await this.readModbusRegisters({
+            host,
+            port,
+            slaveId: unit,
+            funcCode: 3,
+            regAddr: 0,
+            regCount: 2,
+            timeoutMs: 1200
+          });
+          if (testBytes && testBytes.length === 4) {
+            workingUnit = unit;
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (workingUnit !== null) {
+        await this.logClientEvent('INFO', 'MODBUS_DISCOVER', `Found responsive Modbus registers on Unit ID ${workingUnit}. Probing channels...`);
+        for (let chIdx = 1; chIdx <= 16; chIdx++) {
+          const regAddr = (chIdx - 1) * 2;
+          try {
+            const bytes = await this.readModbusRegisters({
+              host,
+              port,
+              slaveId: workingUnit,
+              funcCode: 3,
+              regAddr,
+              regCount: 2,
+              timeoutMs: 800
+            });
+            if (bytes && bytes.length === 4) {
+              // SUTO S331 Modbus Holding Registers use IEEE 754 Float32 Word-Swapped CDAB (Type 8)
+              const val = modbusData2Double(8, bytes);
+              // SUTO uses -9999.0 or -8888.0 as error/disconnected sentinels
+              if (Math.abs(val - (-9999.0)) < 1.0 || Math.abs(val - (-8888.0)) < 1.0 || isNaN(val)) {
+                continue;
+              }
+              discoveredChannels.push({
+                id: chIdx,
+                name: `Channel ${chIdx}`,
+                unit: chIdx === 1 ? '°C' : chIdx === 2 ? '%rH' : chIdx === 3 ? 'bar' : '',
+                funcCode: 3,
+                regAddr,
+                dataType: 8, // FLOAT32 Word-Swapped (CDAB)
+                a1: 1.0,
+                a0: 0.0,
+                slaveId: workingUnit,
+                slaverAddr: workingUnit,
+                current_value: Number(val.toFixed(2))
+              });
+            } else {
+              break;
+            }
+          } catch (_) {
+            break;
+          }
+        }
+      }
+    }
+
+    await this.logClientEvent('INFO', 'MODBUS_DISCOVER', `Discovered ${discoveredChannels.length} S331 channels.`);
+    return discoveredChannels;
+  },
+
   /** Disconnect from active device */
   async disconnect() {
     await this.logClientEvent('INFO', 'SUTO_IPC', `Disconnecting active transport (${activeTransport})...`);
     activeMeasurementPromise = null;
     lastMeasurementResult = null;
     lastMeasurementTime = 0;
+    activeModbusDevices.clear();
     if (activeTransport === 'API') {
       await ApiDevice.disconnect();
     } else if (activeTransport === 'BLE_WEB') {
@@ -383,6 +729,33 @@ export const TauriSutoAPI = {
       return formatted;
     } catch (err) {
       console.error('[TauriSutoAPI] getChannels failed:', err);
+      // Even if raw suto hardware failed or is absent, return any active Modbus device channels
+      if (activeModbusDevices.size > 0) {
+        const modbusChs = [];
+        for (const modbusDev of activeModbusDevices.values()) {
+          (modbusDev.channels || []).forEach((ch, idx) => {
+            const chId = ch.channel_id ?? ch.id ?? (idx + 1);
+            modbusChs.push({
+              channel_id: chId,
+              id: chId,
+              location_id: 1,
+              channel_name: ch.name || ch.channel_name || `Modbus Ch ${chId}`,
+              unit_in_ascii: ch.unit || '',
+              logic_channel_description: ch.name || ch.channel_name || `Modbus Ch ${chId}`,
+              full_channel_name: ch.name || ch.channel_name || `Modbus Ch ${chId}`,
+              unit: ch.unit || '',
+              resolution: ch.resolution ?? 2,
+              device_description: modbusDev.name,
+              sensor_description: ch.sensor_description || modbusDev.name,
+              device_id: modbusDev.deviceId || modbusDev.id,
+              active: true,
+              selected: idx === 0
+            });
+          });
+        }
+        if (callback) callback(modbusChs);
+        return modbusChs;
+      }
       if (callback) callback([]);
       return [];
     }
@@ -471,6 +844,56 @@ export const TauriSutoAPI = {
           max,
         };
       });
+
+      // Poll active Modbus devices
+      if (activeModbusDevices.size > 0) {
+        for (const modbusDev of activeModbusDevices.values()) {
+          const chList = Array.isArray(modbusDev.channels) ? modbusDev.channels : [];
+          for (const ch of chList) {
+            const chId = ch.channel_id ?? ch.id;
+            try {
+              const res = await this.readModbusChannel(ch, modbusDev);
+              const val = res.value;
+              const histKey = `${modbusDev.deviceId || modbusDev.id}_${chId}`;
+              let history = historyBuffer.get(histKey);
+              if (!history) {
+                history = [];
+                historyBuffer.set(histKey, history);
+              }
+              if (val !== null && val !== undefined) {
+                history.push([now, val]);
+                if (history.length > MAX_HISTORY) {
+                  history.shift();
+                }
+              }
+              const pts = history.map((item) => item[1]);
+              const min = pts.length ? Math.min(...pts) : 0;
+              const max = pts.length ? Math.max(...pts) : 100;
+
+              result.push({
+                channel_id: chId,
+                id: chId,
+                unit: ch.unit || '',
+                resolution: ch.resolution ?? 2,
+                status: res.success ? 0 : 1,
+                current_value: val,
+                device: modbusDev.name || ch.device,
+                deviceId: modbusDev.deviceId || modbusDev.id,
+                slaveId: modbusDev.slaveId,
+                port: modbusDev.port,
+                host: modbusDev.host,
+                measurementData: [history.map((h) => h[1])],
+                realStartTime: history.length ? [history[0][0]] : [now],
+                pointInterval: [1000],
+                min,
+                max
+              });
+            } catch (err) {
+              console.warn(`[TauriSutoAPI] Polling error for Modbus channel ${chId}:`, err);
+            }
+          }
+        }
+      }
 
       if (callback) callback(result);
       return result;

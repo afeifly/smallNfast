@@ -77,6 +77,6 @@ describe('platform detection utilities', () => {
     expect(resolveDeviceTypeName({ device_id: 0x1068 })).toBe('S600');
     expect(resolveDeviceTypeName({ device_name: 'Custom-Sensor' })).toBe('Custom-Sensor');
     expect(resolveDeviceTypeName(null, { device: 'S551-P4' })).toBe('S551-P4');
-    expect(resolveDeviceTypeName(null, null)).toBe('SUTO Connected Hardware');
+    expect(resolveDeviceTypeName(null, null)).toBe('Connected Hardware');
   });
 });

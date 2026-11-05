@@ -1525,10 +1525,10 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     // 2. Click "Detect" button to open DeviceConnectModal
     fireEvent.click(detectBtn);
 
-    // Connect SUTO Hardware dialog (DeviceConnectModal) is opened!
+    // Connect Hardware dialog (DeviceConnectModal) is opened!
     const overlay = document.querySelector('.device-connect-overlay');
     expect(overlay).not.toBeNull();
-    expect(document.querySelector('.device-connect-modal h3').textContent).toBe('Connect SUTO Hardware');
+    expect(document.querySelector('.device-connect-modal h3').textContent).toBe('Connect Hardware');
 
     // 3. Connect First Device via USB in DeviceConnectModal
     const usbActionBtn = document.querySelector('.connect-action-btn');
@@ -1728,6 +1728,57 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(saved[0].sensors.length).toBe(1);
     expect(saved[0].sensors[0].name).toBe('S403');
     expect(saved[0].sensors[0].channels.length).toBe(3);
+  });
+
+  it('correctly groups channels under external sensor model S212 when detected via S331 data logger hub', () => {
+    const rawChannels = [
+      { id: 1, channel_id: 1, name: 'Dew Point', unit: '°C Td', sensor_description: 'S212', device_desc: 'S331' },
+      { id: 2, channel_id: 2, name: 'Temperature', unit: '°C', sensor_description: 'S212', device_desc: 'S331' },
+      { id: 3, channel_id: 3, name: 'Humidity', unit: '%RH', sensor_description: 'S212', device_desc: 'S331' },
+    ];
+
+    const device = buildDeviceFromRawChannels(
+      rawChannels,
+      'S331-100200',
+      'Ethernet TCP',
+      'tcp',
+      { device_name: 'S331', serial_number: '100200', device_id: 4197 }
+    );
+
+    // Device should be S331
+    expect(device.name).toBe('S331-100200');
+
+    // The sensor should be S212, NOT S331
+    expect(device.sensors.length).toBe(1);
+    expect(device.sensors[0].name).toBe('S212');
+    expect(device.sensors[0].channels.length).toBe(3);
+    const names = device.sensors[0].channels.map(c => c.name);
+    expect(names).toEqual(['Dew Point', 'Temperature', 'Humidity']);
+  });
+
+  it('lists both S212 and S451 as distinct sensors under S331 when both are connected', () => {
+    const rawChannels = [
+      { id: 1, channel_id: 1, name: 'Dew Point', unit: '°C Td', sensor_description: 'S212', device_desc: 'S331', slaver_addr: 1 },
+      { id: 2, channel_id: 2, name: 'Temperature', unit: '°C', sensor_description: 'S212', device_desc: 'S331', slaver_addr: 1 },
+      { id: 3, channel_id: 3, name: 'Humidity', unit: '%RH', sensor_description: 'S212', device_desc: 'S331', slaver_addr: 1 },
+      { id: 4, channel_id: 4, name: 'Flow', unit: 'm³/h', sensor_description: 'S451', device_desc: 'S331', slaver_addr: 2 },
+      { id: 5, channel_id: 5, name: 'Consumption', unit: 'm³', sensor_description: 'S451', device_desc: 'S331', slaver_addr: 2 },
+    ];
+
+    const device = buildDeviceFromRawChannels(
+      rawChannels,
+      'S331-Hub',
+      'Ethernet TCP',
+      'tcp',
+      { device_name: 'S331', serial_number: '100200', device_id: 4197 }
+    );
+
+    // Both S212 and S451 must be listed as separate sensors under S331
+    expect(device.sensors.length).toBe(2);
+    expect(device.sensors[0].name).toBe('S212');
+    expect(device.sensors[0].channels.length).toBe(3);
+    expect(device.sensors[1].name).toBe('S451');
+    expect(device.sensors[1].channels.length).toBe(2);
   });
 
   it('creates a measurement point named after the sensor when dropping entire sensor or channel onto an empty location', () => {
@@ -3371,7 +3422,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const bleTab = screen.getByText('Bluetooth (BLE)');
     fireEvent.click(bleTab);
 
-    const scanBtn = screen.getByText(/Scan SUTO BLE Sensors/);
+    const scanBtn = screen.getByText(/Scan (?:SUTO )?BLE Sensors/);
     fireEvent.click(scanBtn);
 
     const connectBleBtn = await screen.findByText('Connect');

@@ -455,7 +455,7 @@ export function isSameDevice(d1, d2) {
     const n1 = (d1.name || d1.connectionConfig?.name || '').trim().toLowerCase();
     const n2 = (d2.name || d2.connectionConfig?.name || '').trim().toLowerCase();
     const sameTransport = t1 === t2 || (t1.includes('ble') && t2.includes('ble')) || (t1.includes('usb') && t2.includes('usb'));
-    if (n1 && n2 && n1 === n2 && !['suto sensor', 'connected suto device', 'suto ble device'].includes(n1) && sameTransport) {
+    if (n1 && n2 && n1 === n2 && !['suto sensor', 'connected suto device', 'suto ble device', 'sensor', 'connected device', 'ble device'].includes(n1) && sameTransport) {
       return true;
     }
   }
@@ -562,19 +562,35 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
   const sensorsMap = new Map();
   const rawList = Array.isArray(list) ? list : (list?.channels || list?.logging_chs || []);
 
-  const rawDevName = sysInfo?.device_name || devName || 'SUTO Sensor';
+  const rawDevName = sysInfo?.device_name || devName || 'Sensor';
   const modelMatch = rawDevName.match(/([A-Z]\s?\d{3}[A-Z]?)/i);
-  const primaryModel = modelMatch ? modelMatch[1].replace(/\s+/g, '').toUpperCase() : (sysInfo?.device_name || devName || 'SUTO Sensor');
+  const primaryModel = modelMatch ? modelMatch[1].replace(/\s+/g, '').toUpperCase() : (sysInfo?.device_name || devName || 'Sensor');
 
   const model = sysInfo?.device_name || sysInfo?.model || devName;
   const serial = sysInfo?.serial_number || sysInfo?.serial || (sysInfo?.device_id ? `SN-${sysInfo.device_id}` : `SN-${safeTransport.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`);
 
-  // Detect whether this is a multi-slave logger (e.g. S330 with distinct RS485 slave addresses > 1)
+  // Detect whether this is a data logger / acquisition hub (e.g. S330, S331, S551, DS350, S320)
   // or a standalone instrument (e.g. S403, S401, S421, S450, S530 with multiple parameters).
   const distinctSlaverAddrs = new Set(
     rawList.map(ch => ch.slaver_addr ?? ch.slaverAddr).filter(a => a !== undefined && a !== null && a !== 0)
   );
   const isMultiSlaveHub = distinctSlaverAddrs.size > 1;
+
+  // A device is a known data logger / acquisition hub if:
+  // 1. Its device model or name matches S330, S331, S551, DS350, S320, etc.
+  // 2. Its device ID matches known hub identification codes (4196, 4197, 4198, 4199, 4200, 4178, 4179, 4181)
+  const isKnownHubModel = /^(S\s?33[0-9]|S\s?32[0-9]|S\s?55[0-9]|DS\s?350|LOGGER|HUB)/i.test(primaryModel) ||
+    /^(S\s?33[0-9]|S\s?32[0-9]|S\s?55[0-9]|DS\s?350|LOGGER|HUB)/i.test(rawDevName) ||
+    [4196, 4197, 4198, 4199, 4200, 4178, 4179, 4181].includes(Number(sysInfo?.device_id) || Number(sysInfo?.device_identification));
+
+  // Standalone multi-parameter instruments (e.g. S403 flow meter) have internal transducer board codes
+  // (like "451" for flow core and "Pressure Sensor" for pressure), which should be unified under the instrument model.
+  const isStandaloneSensorInstrument = /^(S\s?40[1-9]|S\s?421|S\s?45[0-9]|S\s?530)/i.test(primaryModel);
+
+  const isHubDevice = isKnownHubModel || isMultiSlaveHub || (!isStandaloneSensorInstrument && rawList.some(ch => {
+    const sDesc = (ch.sensor_description || ch.sensorDescription || ch.sensor_name || '').trim();
+    return sDesc && sDesc.toUpperCase() !== primaryModel.toUpperCase();
+  }));
 
   if (rawList.length === 0) {
     const fallbackSensName = primaryModel || devName || 'Sensor Transducer';
@@ -586,14 +602,30 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
     });
   } else {
     rawList.forEach((ch, idx) => {
-      // For standalone multi-parameter sensors like S403, group all channels (Flow, Consumption, Pressure)
-      // under the primary sensor model (e.g. S403) rather than splitting into internal transducer board codes (e.g. "451", "Pressure").
       let sensName;
-      if (!isMultiSlaveHub) {
+      const explicitSensor = (ch.sensor_description || ch.sensor_name || ch.sensorDescription || '').trim();
+
+      if (isKnownHubModel) {
+        // Any sensor connected to an S330/S331/S551/DS350 data logger is an external sensor.
+        // e.g. An S331 with both 'S212' and 'S451' will list both as distinct sensor containers!
+        if (explicitSensor) {
+          sensName = (/^451$/i.test(explicitSensor)) ? 'S451' : explicitSensor;
+        } else {
+          const slaverAddr = ch.slaver_addr ?? ch.slaverAddr;
+          sensName = (slaverAddr !== undefined && slaverAddr !== null && slaverAddr !== 0)
+            ? `Slave ${slaverAddr} Sensor`
+            : `Port ${idx + 1} Sensor`;
+        }
+      } else if (isStandaloneSensorInstrument) {
+        // Standalone instrument (e.g. S403 flow meter with internal 451 flow board & pressure sensor)
         sensName = primaryModel;
-      } else {
+      } else if (isMultiSlaveHub) {
         const slaverAddr = ch.slaver_addr ?? ch.slaverAddr ?? 1;
-        sensName = ch.sensor_description || ch.sensor_name || ch.sensorDescription || `Slave ${slaverAddr} Sensor`;
+        sensName = explicitSensor || `Slave ${slaverAddr} Sensor`;
+      } else if (isHubDevice && explicitSensor) {
+        sensName = explicitSensor;
+      } else {
+        sensName = primaryModel;
       }
 
       if (!sensorsMap.has(sensName)) {
@@ -647,6 +679,91 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
 }
 
 /**
+ * Build a structured Modbus device object for Sensor Manager
+ */
+export function buildModbusDevice({
+  name = 'Modbus TCP Device',
+  host = '192.168.1.100',
+  port = 502,
+  serialPort = 'COM1',
+  baudRate = 19200,
+  parity = 'none',
+  slaveId = 1,
+  transportType = 'modbus_tcp',
+  channels = []
+}) {
+  const isRtu = transportType === 'modbus_rtu';
+  const p = parseInt(port, 10) || 502;
+  const sId = parseInt(slaveId, 10) || (isRtu ? 1 : 0);
+  const cleanHost = isRtu
+    ? String(serialPort || 'COM1').replace(/[^a-zA-Z0-9_-]/g, '_')
+    : String(host).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const deviceId = isRtu
+    ? `dev_modbus_rtu_${cleanHost}_baud_${baudRate}_slave_${sId}`
+    : `dev_modbus_tcp_${cleanHost}_${p}_slave_${sId}`;
+  const transportLabel = isRtu
+    ? `Modbus RTU (${serialPort || 'COM'} @ ${baudRate} ID:${sId})`
+    : `Modbus TCP (${host}:${p}${sId ? ` ID:${sId}` : ''})`;
+
+  const formattedChannels = (channels || []).map((ch, idx) => {
+    const chId = ch.channel_id ?? ch.id ?? (idx + 1);
+    const chName = ch.name || ch.channel_name || `Channel ${chId}`;
+    return {
+      id: `${deviceId}_ch_${chId}`,
+      channel_id: chId,
+      channelId: chId,
+      name: chName,
+      unit: ch.unit || '',
+      resolution: ch.resolution ?? 2,
+      device: name,
+      deviceId,
+      mBAccessFuncCode: ch.mBAccessFuncCode ?? ch.funcCode ?? 3,
+      mBValueAddr: ch.mBValueAddr ?? ch.regAddr ?? 0,
+      mBInputValueType: ch.mBInputValueType ?? ch.dataType ?? 7,
+      mBA1: ch.mBA1 ?? ch.a1 ?? 1.0,
+      mBA0: ch.mBA0 ?? ch.a0 ?? 0.0,
+      errorValue: ch.errorValue ?? -9999.0,
+      chOptionalConfig: ch.chOptionalConfig ?? 0,
+      desc: ch.desc || `Reg 0x${((ch.mBValueAddr ?? ch.regAddr ?? 0)).toString(16).toUpperCase().padStart(4, '0')}`
+    };
+  });
+
+  return {
+    id: deviceId,
+    name,
+    model: isRtu ? 'Modbus RTU Device' : 'Modbus TCP Device',
+    serial: `ID-${sId}`,
+    transport: transportLabel,
+    transportType: isRtu ? 'modbus_rtu' : 'modbus_tcp',
+    host: isRtu ? null : host,
+    port: isRtu ? null : p,
+    serialPort: isRtu ? serialPort : null,
+    baudRate: isRtu ? baudRate : null,
+    parity: isRtu ? parity : null,
+    slaveId: sId,
+    isOnline: true,
+    connectionConfig: {
+      transport: isRtu ? 'modbus_rtu' : 'modbus_tcp',
+      host: isRtu ? null : host,
+      port: isRtu ? null : p,
+      serialPort: isRtu ? serialPort : null,
+      baudRate: isRtu ? baudRate : null,
+      parity: isRtu ? parity : null,
+      slaveId: sId,
+      name
+    },
+    sensors: [
+      {
+        id: `sens_${deviceId}_1`,
+        name: `${name} Channels`,
+        desc: `Modbus Slave ID: ${sId}`,
+        channels: formattedChannels
+      }
+    ]
+  };
+}
+
+/**
  * Detect devices and sensors from real connected hardware link (no fake mock data).
  * Supports querying currently active communication link.
  */
@@ -661,7 +778,7 @@ export async function detectSensorsByTransport(transportType = 'active', options
         const list = Array.isArray(rawChs) ? rawChs : (rawChs?.logging_chs || []);
         if (list && list.length > 0) {
           const sysInfo = await TauriSutoAPI.getSystemInfo?.().catch(() => null);
-          const devName = sysInfo?.device_name || `Connected SUTO Device (${activeTransport.toUpperCase()})`;
+          const devName = sysInfo?.device_name || `Connected Device (${activeTransport.toUpperCase()})`;
           results.push(buildDeviceFromRawChannels(list, devName, `Live ${activeTransport.toUpperCase()}`, activeTransport, sysInfo));
         }
       }
@@ -1222,14 +1339,43 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
         const host = config.host || dev.host || dev.ip || (typeof dev.transport === 'string' && dev.transport.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]) || (typeof dev.name === 'string' && dev.name.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]);
         const port = config.port || dev.port || (typeof dev.transport === 'string' && dev.transport.match(/:(\d+)/)?.[1]) || null;
 
-        const isApi = rawTransport.includes('api') || rawTransport.includes('s332') || port === 8080;
-        const isTcp = rawTransport.includes('tcp') || rawTransport.includes('ethernet') || rawTransport.includes('lan') || (Boolean(host) && !rawTransport.includes('usb') && !rawTransport.includes('ble'));
+        const isModbus = rawTransport.includes('modbus');
+        const isApi = !isModbus && (rawTransport.includes('api') || rawTransport.includes('s332') || port === 8080);
+        const isTcp = !isModbus && (rawTransport.includes('tcp') || rawTransport.includes('ethernet') || rawTransport.includes('lan') || (Boolean(host) && !rawTransport.includes('usb') && !rawTransport.includes('ble')));
         const isUsb = rawTransport.includes('usb');
         const isBle = rawTransport.includes('ble');
 
+        // If this device is already online and active in this session, do not disrupt the live socket
+        if (dev.isOnline && typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
+          connectedCount++;
+          lastConn = {
+            transport: isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : isModbus ? 'Modbus TCP' : 'BLE',
+            host,
+            port,
+            device: dev.name,
+            name: dev.name,
+          };
+          lastTransport = lastConn.transport;
+          lastDevName = dev.name;
+          continue;
+        }
+
         try {
           let conn = null;
-          if (isApi && host) {
+          if (isModbus && host) {
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting Modbus device "${dev.name}" at ${host}:${port || 502}...`);
+            const allDevChannels = [];
+            (dev.sensors || []).forEach(s => {
+              if (Array.isArray(s.channels)) allDevChannels.push(...s.channels);
+            });
+            conn = await TauriSutoAPI.connectModbusTcp({
+              host,
+              port: port || 502,
+              slaveId: config.slaveId || 1,
+              name: dev.name,
+              channels: allDevChannels
+            });
+          } else if (isApi && host) {
             await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting API device "${dev.name}" at ${host}:${port || 8080}...`);
             conn = await TauriSutoAPI.connectApi(host, port || 8080);
           } else if (isTcp && host) {

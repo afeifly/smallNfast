@@ -539,7 +539,7 @@ export default function ReadoutView({
     sysInfo?.device_name ||
     deviceInfo?.device ||
     deviceInfo?.name ||
-    'SUTO Device';
+  'Hardware Device';
 
   const rawIp = deviceInfo?.host || deviceInfo?.ip || sysInfo?.ip || null;
   const cleanIp = isEthernet && rawIp
@@ -587,7 +587,7 @@ export default function ReadoutView({
 
     // Header block
     const headerLines = [];
-    headerLines.push(`${deviceDisplayName || 'SUTO Device'} Raw Data`);
+    headerLines.push(`${deviceDisplayName || 'Hardware Device'} Raw Data`);
     headerLines.push('');
     headerLines.push(`Start Date Time,${formatHeaderDate(start)}`);
     headerLines.push(`End Date Time,${formatHeaderDate(end)}`);
@@ -599,7 +599,7 @@ export default function ReadoutView({
     headerLines.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
     channels.forEach((ch, idx) => {
       const chName = ch.channel_name || ch.name || `CH${idx + 1}`;
-      const sensor = ch.sensor_name || 'SUTO';
+      const sensor = ch.sensor_name || 'Hardware';
       const unit = ch.unit || '';
       const resVal = getResolutionString(ch.resolution ?? 2);
       const loc = `Location ${idx + 1}/MP001`;
@@ -1247,7 +1247,7 @@ export default function ReadoutView({
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>🖼️</div>
                 <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Screenshot Images Found in Device</h4>
                 <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b' }}>
-                  The connected SUTO unit has no saved screenshot captures.
+                  The connected unit has no saved screenshot captures.
                 </p>
                 <button className="readout-btn-secondary" onClick={fetchScreenshots} disabled={loadingDeviceData}>
                   {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Screenshots'}
@@ -1262,7 +1262,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>SUTO S418 Compact Logger Data</h3>
+                <h3>Compact Logger Data</h3>
                 <p>Read recorded telemetry without fixed time constraints. Each row is stamped with exact date and time.</p>
               </div>
               <div className="readout-section-actions">
@@ -1752,7 +1752,7 @@ export default function ReadoutView({
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📁</div>
                 <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Recorded Measurement Sessions Found</h4>
                 <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
-                  The connected SUTO unit has no saved measurement session files in memory.
+                  The connected unit has no saved measurement session files in memory.
                 </p>
               </div>
             )}
@@ -1883,20 +1883,19 @@ export default function ReadoutView({
                       background: reportStatusMsg.includes('Failed')
                         ? '#fef2f2'
                         : reportStatusMsg.includes('cancelled')
-                        ? '#f8fafc'
-                        : '#f0fdf4',
+                          ? '#f8fafc'
+                          : '#f0fdf4',
                       color: reportStatusMsg.includes('Failed')
                         ? '#b91c1c'
                         : reportStatusMsg.includes('cancelled')
-                        ? '#64748b'
-                        : '#15803d',
-                      border: `1px solid ${
-                        reportStatusMsg.includes('Failed')
+                          ? '#64748b'
+                          : '#15803d',
+                      border: `1px solid ${reportStatusMsg.includes('Failed')
                           ? '#fecaca'
                           : reportStatusMsg.includes('cancelled')
-                          ? '#e2e8f0'
-                          : '#bbf7d0'
-                      }`,
+                            ? '#e2e8f0'
+                            : '#bbf7d0'
+                        }`,
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,

@@ -95,7 +95,7 @@ describe('App', () => {
     });
   });
 
-  it('keeps Connect SUTO Hardware dialog open when overlay is clicked, closing only via device-connect-close', async () => {
+  it('keeps Connect Hardware dialog open when overlay is clicked, closing only via device-connect-close', async () => {
     render(<App />);
 
     await waitFor(() => {
@@ -105,7 +105,7 @@ describe('App', () => {
     fireEvent.click(screen.getByText('Detect & Connect Device'));
 
     await waitFor(() => {
-      expect(screen.getByText('Connect SUTO Hardware')).toBeDefined();
+      expect(screen.getByText('Connect Hardware')).toBeDefined();
     });
 
     // Clicking overlay should NOT close dialog
@@ -126,7 +126,7 @@ describe('App', () => {
     fireEvent.click(closeBtn);
 
     await waitFor(() => {
-      expect(screen.queryByText('Connect SUTO Hardware')).toBeNull();
+      expect(screen.queryByText('Connect Hardware')).toBeNull();
     });
   });
 

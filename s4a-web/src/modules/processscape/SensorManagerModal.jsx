@@ -138,6 +138,20 @@ export default function SensorManagerModal({
     setSyncFeedback('Reading sensor channels from hardware...');
 
     try {
+      if (conn?.deviceItem) {
+        setDevices(prev => {
+          const updated = upsertDeviceList(prev, [conn.deviceItem]);
+          saveDevices(updated);
+          return updated;
+        });
+        if (typeof onDeviceConnected === 'function') {
+          onDeviceConnected(conn);
+        }
+        const chCount = (conn.deviceItem.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
+        setSyncFeedback(`✓ Collected "${conn.deviceItem.name}" (${chCount} channels) via ${conn.deviceItem.transport}`);
+        setTimeout(() => setSyncFeedback(null), 4000);
+        return;
+      }
       let rawChs = [];
       let sysInfo = null;
 
@@ -266,7 +280,34 @@ export default function SensorManagerModal({
       const transport = (config.transport || dev.transportType || dev.transport || '').toLowerCase();
       let conn = null;
 
-      if (transport.includes('ble')) {
+      if (transport.includes('modbus')) {
+        const host = config.host || dev.host || dev.ip || (typeof dev.transport === 'string' && dev.transport.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]) || '127.0.0.1';
+        const port = config.port || dev.port || (typeof dev.transport === 'string' && dev.transport.match(/:(\d+)/)?.[1]) || 502;
+        const slaveId = config.slaveId || dev.slaveId || 1;
+        const allDevChannels = [];
+        (dev.sensors || []).forEach(s => {
+          if (Array.isArray(s.channels)) allDevChannels.push(...s.channels);
+        });
+        conn = await TauriSutoAPI.connectModbusTcp({
+          host,
+          port: parseInt(port, 10),
+          slaveId: parseInt(slaveId, 10),
+          name: dev.name,
+          channels: allDevChannels
+        });
+        setDevices(prev => {
+          const updated = prev.map(d => d.id === dev.id ? { ...d, isOnline: true } : d);
+          saveDevices(updated);
+          return updated;
+        });
+        if (typeof onDeviceConnected === 'function' && conn) {
+          onDeviceConnected(conn);
+        }
+        setSyncFeedback(`✓ Connected to "${dev.name}"`);
+        setTimeout(() => setSyncFeedback(null), 4000);
+        setLoadingDevices(false);
+        return;
+      } else if (transport.includes('ble')) {
         conn = await TauriSutoAPI.resumeBleConnection({
           deviceId: config.deviceId || dev.id,
           name: config.name || dev.name
@@ -1257,6 +1298,11 @@ export default function SensorManagerModal({
                                             <span className="ps-sm-ch-drag-handle">{assigned ? '🔒' : '⋮⋮'}</span>
                                             <span className="ps-sm-ch-name">{ch.name}</span>
                                             {ch.unit && <span className="ps-sm-ch-unit">{ch.unit}</span>}
+                                            {ch.mBValueAddr !== undefined && (
+                                              <span className="ps-sm-ch-unit" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '9.5px', fontFamily: 'monospace' }}>
+                                                Reg 0x{ch.mBValueAddr.toString(16).toUpperCase().padStart(4, '0')}
+                                              </span>
+                                            )}
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             {!assigned && (

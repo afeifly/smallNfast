@@ -307,6 +307,10 @@ export function useProcessScapeTelemetry({
     }
 
     const tryReconnect = () => {
+      // If already connected and active, skip reconnecting to avoid dropping live socket stream
+      if (typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
+        return;
+      }
       autoReconnectSavedDevices((conn) => {
         if (conn && typeof onDeviceConnectedRef.current === 'function') {
           onDeviceConnectedRef.current(conn);
@@ -316,7 +320,7 @@ export function useProcessScapeTelemetry({
       });
     };
 
-    // Immediate auto-recovery when entering ProcessScape
+    // Auto-recovery only if disconnected
     tryReconnect();
 
     // Periodic auto-recovery check every 5 seconds if disconnected

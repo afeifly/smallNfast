@@ -36,6 +36,8 @@ pub fn run() {
             suto::suto_read_screenshot,
             suto::suto_send_command,
             suto::suto_send_raw,
+            suto::modbus::suto_read_modbus_registers,
+            suto::modbus::suto_exchange_cs_modbus,
             suto::suto_get_logs,
             suto::suto_clear_logs,
             suto::suto_get_log_file_path,

@@ -11,7 +11,9 @@ pub mod transport;
 pub mod driver_tcp;
 pub mod driver_ble;
 pub mod files;
+pub mod modbus;
 
+pub use modbus::suto_read_modbus_registers;
 pub use files::{
     suto_add_recent_file, suto_get_file_stats, suto_get_recent_files, suto_pick_file,
     suto_read_file, suto_read_file_slice, suto_remove_recent_file, suto_save_binary_file,
@@ -157,6 +159,22 @@ pub async fn suto_connect_tcp(
 ) -> Result<u8, String> {
     log_event("INFO", "SUTO_IPC", &format!("suto_connect_tcp called with {}:{}", host, port), None);
 
+    let endpoint = format!("{}:{}", host, port);
+    {
+        let tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(existing) = tcp_map.get(&endpoint) {
+            if existing.transport.is_open() && !existing.channels.is_empty() {
+                log_event(
+                    "INFO",
+                    "SUTO_IPC",
+                    &format!("TCP session for {} already active with {} channels, reusing existing connection", endpoint, existing.channels.len()),
+                    None,
+                );
+                return Ok(existing.dev_addr);
+            }
+        }
+    }
+
     let mut tcp = driver_tcp::TcpTransport::new();
     tcp.connect(&host, port)?;
 
@@ -202,9 +220,21 @@ pub async fn suto_connect_tcp(
         }
     }
 
-    let chs: Vec<ChannelInfo> = Vec::new();
-    let cloned_tcp = tcp.try_clone().ok();
     let endpoint = format!("{}:{}", host, port);
+    let prev_channels = {
+        let tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(dev) = tcp_map.get(&endpoint) {
+            if !dev.channels.is_empty() {
+                dev.channels.clone()
+            } else {
+                state.cached_channels.lock().unwrap_or_else(|p| p.into_inner()).clone()
+            }
+        } else {
+            state.cached_channels.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        }
+    };
+    let chs: Vec<ChannelInfo> = prev_channels;
+    let cloned_tcp = tcp.try_clone().ok();
 
     {
         let mut tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
@@ -317,6 +347,8 @@ pub fn suto_disconnect(state: State<'_, SutoState>) -> Result<(), String> {
     for (_, mut dev) in tcp_map.drain() {
         let _ = dev.transport.close();
     }
+    let mut ch_lock = state.cached_channels.lock().unwrap_or_else(|p| p.into_inner());
+    ch_lock.clear();
     log_event("INFO", "SUTO_IPC", "Device disconnected successfully", None);
     Ok(())
 }

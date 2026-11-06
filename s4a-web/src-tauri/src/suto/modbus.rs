@@ -156,7 +156,7 @@ pub fn read_modbus_tcp_registers(
     );
 
     let rx_unit = pdu[0];
-    if slave_id != 0 && rx_unit != slave_id {
+    if slave_id != 0 && slave_id != 255 && rx_unit != 0 && rx_unit != 255 && rx_unit != slave_id {
         return Err(format!("Modbus Unit ID mismatch: expected {}, got {}", slave_id, rx_unit));
     }
     let rx_fc = pdu[1];
@@ -283,6 +283,48 @@ pub async fn suto_read_modbus_registers(
     }
 }
 
+pub fn calculate_csbus_checksum(data: &[u8]) -> u8 {
+    let mut total: u16 = 0;
+    for &b in data {
+        total = total.wrapping_add(b as u16);
+    }
+    let sum = total as u8;
+    (!sum).wrapping_add(1)
+}
+
+pub fn pack_csbus_packet(address: u8, net_data: &[u8]) -> Vec<u8> {
+    let total_len = (net_data.len() + 4) as u8;
+    let mut packet = Vec::with_capacity(total_len as usize);
+    packet.push(address);
+    packet.push(total_len);
+    packet.extend_from_slice(net_data);
+    let checksum = calculate_csbus_checksum(&packet);
+    packet.push(checksum);
+    packet.push(0x00);
+    packet
+}
+
+pub fn unpack_csbus_packet(packet: &[u8]) -> Result<Vec<u8>, String> {
+    if packet.len() < 5 {
+        return Ok(packet.to_vec());
+    }
+    let total_len = packet[1] as usize;
+    if packet.len() < total_len || total_len < 5 {
+        return Ok(packet.to_vec());
+    }
+    let calc_check = calculate_csbus_checksum(&packet[..total_len - 2]);
+    if calc_check != packet[total_len - 2] {
+        return Err("CS-Bus checksum verification failed".to_string());
+    }
+    let status_char = packet[2];
+    if status_char == 0x3E {
+        // Status '>' indicating success, return inner data
+        Ok(packet[3..total_len - 2].to_vec())
+    } else {
+        Ok(packet[2..total_len - 2].to_vec())
+    }
+}
+
 /// Exchange a SUTO CS-Bus packet over Modbus TCP (FC 71) gateway
 pub fn exchange_cs_modbus_tcp(
     host: &str,
@@ -311,29 +353,15 @@ pub fn exchange_cs_modbus_tcp(
 
     let trans_id = next_trans_id();
 
-    // Frame embedded CS-Bus packet: [device_addr, cmd..., crc_lo, crc_hi]
-    // Conforms to CSLib CSBusProtocolAdapter.packPacket(slave_id, cs_packet)
-    let cs_pkg = if cs_packet.len() >= 4 {
-        let (c_lo, c_hi) = calculate_crc16(&cs_packet[..cs_packet.len() - 2]);
-        if c_lo == cs_packet[cs_packet.len() - 2] && c_hi == cs_packet[cs_packet.len() - 1] {
-            cs_packet.to_vec()
-        } else {
-            let mut framed = Vec::with_capacity(cs_packet.len() + 3);
-            framed.push(slave_id);
-            framed.extend_from_slice(cs_packet);
-            let (lo, hi) = calculate_crc16(&framed);
-            framed.push(lo);
-            framed.push(hi);
-            framed
-        }
+    // Frame command payload into SUTO CS-Bus packet: [device_addr, total_len, cmd..., checksum, 0x00]
+    let cs_pkg = if cs_packet.len() >= 5
+        && cs_packet[1] as usize == cs_packet.len()
+        && cs_packet[cs_packet.len() - 1] == 0x00
+        && calculate_csbus_checksum(&cs_packet[..cs_packet.len() - 2]) == cs_packet[cs_packet.len() - 2]
+    {
+        cs_packet.to_vec()
     } else {
-        let mut framed = Vec::with_capacity(cs_packet.len() + 3);
-        framed.push(slave_id);
-        framed.extend_from_slice(cs_packet);
-        let (lo, hi) = calculate_crc16(&framed);
-        framed.push(lo);
-        framed.push(hi);
-        framed
+        pack_csbus_packet(slave_id, cs_packet)
     };
 
     let cs_len = cs_pkg.len();
@@ -397,22 +425,117 @@ pub fn exchange_cs_modbus_tcp(
     }
 
     let raw_cs = &pdu[3..];
-    // Check if the response contains CS-Bus framing [addr, ...data, crc_lo, crc_hi]
-    if raw_cs.len() >= 4 {
-        let (c_lo, c_hi) = calculate_crc16(&raw_cs[..raw_cs.len() - 2]);
-        if c_lo == raw_cs[raw_cs.len() - 2] && c_hi == raw_cs[raw_cs.len() - 1] {
-            // Valid CS-Bus frame with CRC-16!
-            // Strip address byte at index 0 and CRC-16 at end
-            let inner = &raw_cs[1..raw_cs.len() - 2];
-            // If the inner response begins with SUTO status byte '>' (0x3E), strip it
-            if inner.first() == Some(&0x3E) {
-                return Ok(inner[1..].to_vec());
+    unpack_csbus_packet(raw_cs)
+}
+
+/// Exchange a SUTO CS-Bus packet over Modbus RTU (FC 70) gateway
+pub fn exchange_cs_modbus_rtu(
+    host: &str,
+    port: u16,
+    slave_id: u8,
+    cs_packet: &[u8],
+    timeout_ms: u64,
+) -> Result<Vec<u8>, String> {
+    let addr_str = format!("{}:{}", host, port);
+    let addrs: Vec<SocketAddr> = addr_str
+        .to_socket_addrs()
+        .map_err(|e| format!("Invalid host/port '{}': {}", addr_str, e))?
+        .collect();
+
+    if addrs.is_empty() {
+        return Err(format!("Unable to resolve address: {}", addr_str));
+    }
+
+    let mut stream = TcpStream::connect_timeout(&addrs[0], Duration::from_millis(timeout_ms.min(3000)))
+        .map_err(|e| format!("Failed to connect to Modbus RTU gateway {}: {}", addr_str, e))?;
+
+    let timeout = Duration::from_millis(timeout_ms.max(1000));
+    stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_millis(1500))).map_err(|e| e.to_string())?;
+    let _ = stream.set_nodelay(true);
+
+    let cs_pkg = if cs_packet.len() >= 5
+        && cs_packet[1] as usize == cs_packet.len()
+        && cs_packet[cs_packet.len() - 1] == 0x00
+        && calculate_csbus_checksum(&cs_packet[..cs_packet.len() - 2]) == cs_packet[cs_packet.len() - 2]
+    {
+        cs_packet.to_vec()
+    } else {
+        pack_csbus_packet(slave_id, cs_packet)
+    };
+
+    let cs_len = cs_pkg.len();
+    let mut req = Vec::with_capacity(3 + cs_len + 2);
+    req.push(slave_id);
+    req.push(70); // FC 70 (CSModbus RTU)
+    req.push((cs_len & 0xFF) as u8);
+    req.extend_from_slice(&cs_pkg);
+    let (crc_lo, crc_hi) = calculate_crc16(&req);
+    req.push(crc_lo);
+    req.push(crc_hi);
+
+    log_event(
+        "DEBUG",
+        "CSMODBUS_RTU_TX",
+        &format!("CSModbus RTU TX to {}: unit={}, cs_len={}", addr_str, slave_id, cs_len),
+        Some(&req),
+    );
+
+    stream.write_all(&req).map_err(|e| format!("CSModbus RTU write error: {}", e))?;
+    stream.flush().map_err(|e| format!("CSModbus RTU flush error: {}", e))?;
+
+    let mut buf = vec![0u8; 1024];
+    let mut total_read = 0;
+    let start = std::time::Instant::now();
+    let read_limit = Duration::from_millis(timeout_ms.max(1500));
+
+    while start.elapsed() < read_limit {
+        match stream.read(&mut buf[total_read..]) {
+            Ok(0) => break,
+            Ok(n) => {
+                total_read += n;
+                // Minimum valid CSModbus RTU frame is 5 bytes (slave + fc + len + data + 2 crc)
+                if total_read >= 5 {
+                    let data_len = buf[2] as usize;
+                    if total_read >= 3 + data_len + 2 {
+                        break;
+                    }
+                }
             }
-            return Ok(inner.to_vec());
+            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(e) => return Err(format!("CSModbus RTU read error: {}", e)),
         }
     }
 
-    Ok(raw_cs.to_vec())
+    if total_read < 5 {
+        return Err(format!("CSModbus RTU response too short ({} bytes)", total_read));
+    }
+
+    let resp = &buf[..total_read];
+    let (calc_lo, calc_hi) = calculate_crc16(&resp[..resp.len() - 2]);
+    if calc_lo != resp[resp.len() - 2] || calc_hi != resp[resp.len() - 1] {
+        return Err("CSModbus RTU CRC verification failed".to_string());
+    }
+
+    let rx_fc = resp[1];
+    if (rx_fc & 0x80) != 0 {
+        let ex_code = resp[2];
+        return Err(format!("CSModbus RTU Exception (0x{:02X}): {}", rx_fc, format_modbus_exception(ex_code)));
+    }
+
+    if rx_fc != 70 {
+        return Err(format!("CSModbus RTU FC mismatch: expected 70, got {}", rx_fc));
+    }
+
+    let payload_len = resp[2] as usize;
+    if resp.len() < 3 + payload_len + 2 {
+        return Err("Incomplete CSModbus RTU payload".to_string());
+    }
+
+    let raw_cs = &resp[3..3 + payload_len];
+    unpack_csbus_packet(raw_cs)
 }
 
 #[tauri::command]
@@ -421,8 +544,13 @@ pub async fn suto_exchange_cs_modbus(
     port: u16,
     slave_id: u8,
     cs_packet: Vec<u8>,
+    is_rtu: Option<bool>,
     timeout_ms: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     let t_ms = timeout_ms.unwrap_or(2500);
-    exchange_cs_modbus_tcp(&host, port, slave_id, &cs_packet, t_ms)
+    if is_rtu.unwrap_or(false) {
+        exchange_cs_modbus_rtu(&host, port, slave_id, &cs_packet, t_ms)
+    } else {
+        exchange_cs_modbus_tcp(&host, port, slave_id, &cs_packet, t_ms)
+    }
 }

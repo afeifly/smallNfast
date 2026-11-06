@@ -132,20 +132,58 @@ export const MODBUS_DATA_TYPES = {
 };
 
 /**
+ * Normalizes user-specified or firmware-specified data type string/number to 1-8 integer
+ * @param {string|number} type
+ * @returns {number} 1 to 8 (defaults to 7: FLOAT_B)
+ */
+export function normalizeModbusDataType(type) {
+  if (typeof type === 'number') {
+    return (type >= 1 && type <= 8) ? type : 7;
+  }
+  if (!type) return 7;
+  const s = String(type).trim().toUpperCase();
+  switch (s) {
+    case 'INT16': return 1;
+    case 'UINT16': return 2;
+    case 'INT32':
+    case 'INT32_B': return 3;
+    case 'INT32_L':
+    case 'INT32_SWAP': return 4;
+    case 'UINT32':
+    case 'UINT32_B': return 5;
+    case 'UINT32_L':
+    case 'UINT32_SWAP': return 6;
+    case 'FLOAT':
+    case 'FLOAT32':
+    case 'FLOAT_B': return 7;
+    case 'FLOAT_L':
+    case 'FLOAT32_SWAP': return 8;
+    default: {
+      const num = parseInt(s, 10);
+      return (!isNaN(num) && num >= 1 && num <= 8) ? num : 7;
+    }
+  }
+}
+
+/**
  * Convert raw Modbus register bytes to double value (DataTypeConverter.modbusData2Double)
- * @param {number} type 1 to 8
+ * @param {number|string} type 1 to 8 or type name string ('FLOAT_B', etc.)
  * @param {Uint8Array|Array<number>} byteArray
  * @param {number} [offset=0]
  * @returns {number}
  */
 export function modbusData2Double(type, byteArray, offset = 0) {
+  const normType = normalizeModbusDataType(type);
   const bytes = (byteArray instanceof Uint8Array)
     ? byteArray
-    : new Uint8Array(byteArray);
+    : new Uint8Array(byteArray || []);
+
+  if (bytes.length < offset + 2) return 0.0;
+  if ((normType >= 3 && normType <= 8) && bytes.length < offset + 4) return 0.0;
 
   const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
 
-  switch (type) {
+  switch (normType) {
     case 1: // INT16
       return view.getInt16(0, false); // Big Endian
     case 2: // UINT16
@@ -361,11 +399,72 @@ export function parseModbusTcpResponse(response, expectedTransId, expectedFuncCo
 }
 
 // ==========================================
-// 5. SUTO CSModbusProtocolAdapter (FC 70 / 71)
+// 5. SUTO CSModbusProtocolAdapter (FC 70 / 71) & CS-Bus Framing
 // ==========================================
 
 export const CS_MODBUS_FUNC_RTU = 70; // 0x46 (RS485 RTU)
 export const CS_MODBUS_FUNC_TCP = 71; // 0x47 (Ethernet TCP)
+
+/**
+ * Calculate SUTO CS-Bus 8-bit two's complement checksum (CSBusProtocol.calculateChecksum)
+ * @param {Uint8Array|Array<number>} packet
+ * @param {number} length
+ * @returns {number} 8-bit checksum
+ */
+export function calculateCsChecksum(packet, length) {
+  let total = 0;
+  for (let i = 0; i < length; i++) {
+    total += packet[i];
+  }
+  const checksum = (((total & 0xFF) ^ 0xFF) + 1) & 0xFF;
+  return checksum;
+}
+
+/**
+ * Packages raw command payload into a complete SUTO CS-Bus packet (CSBusProtocolAdapter.packPacket)
+ * Format: [Address, TotalLength, ...NetData, CSChecksum, 0x00]
+ * @param {number} deviceAddress Target device address (0 for broadcast)
+ * @param {Uint8Array|Array<number>} netData Command bytes (e.g. [1, 255, 28] for GET_DEVICE_INFO)
+ * @returns {Uint8Array} Fully framed CS-Bus packet
+ */
+export function packCsBusFrame(deviceAddress, netData) {
+  const data = (netData instanceof Uint8Array) ? netData : new Uint8Array(netData);
+  const byteTotal = data.length + 4; // Header (2) + Tail (2)
+  const packet = new Uint8Array(byteTotal);
+  packet[0] = deviceAddress & 0xFF;
+  packet[1] = byteTotal & 0xFF;
+  packet.set(data, 2);
+  packet[byteTotal - 2] = calculateCsChecksum(packet, byteTotal - 2);
+  packet[byteTotal - 1] = 0x00;
+  return packet;
+}
+
+/**
+ * Parses and verifies a received CS-Bus response packet
+ * Format: [Address, TotalLength, '>', ...Payload, CSChecksum, 0x00]
+ * @param {Uint8Array|Array<number>} packet
+ * @returns {{ success: boolean, address?: number, data?: Uint8Array, error?: string }}
+ */
+export function unpackCsBusFrame(packet) {
+  const p = (packet instanceof Uint8Array) ? packet : new Uint8Array(packet);
+  if (p.length < 5) {
+    return { success: false, error: 'CS-Bus frame too short' };
+  }
+  const totalLen = p[1];
+  if (p.length < totalLen) {
+    return { success: false, error: `Incomplete CS-Bus frame: expected ${totalLen}, got ${p.length}` };
+  }
+  const calcCheck = calculateCsChecksum(p, totalLen - 2);
+  if (calcCheck !== p[totalLen - 2]) {
+    return { success: false, error: 'CS-Bus checksum failed' };
+  }
+  const statusChar = p[2];
+  if (statusChar !== 0x3E) { // '>' = 0x3E
+    return { success: false, error: `CS-Bus command rejected: status 0x${statusChar.toString(16)}` };
+  }
+  const innerData = p.slice(3, totalLen - 2);
+  return { success: true, address: p[0], data: innerData };
+}
 
 /**
  * Pack a SUTO CS-Bus packet inside a Modbus RTU wrapper (FC 70, 5 extra bytes)
@@ -715,11 +814,105 @@ export function buildCSCommChannelSetting(s = {}) {
 }
 
 // ==========================================
-// 8. S330/S331 Auto-Channel Discovery over Modbus TCP (CSBusCommands + GetAllChannelStructActionExecutor)
+// 8. SUTO Device & Auto-Channel Discovery over Modbus (CSBusCommands + GetAllChannelStructActionExecutor)
 // ==========================================
 
+export const CS_CMD_GET_DEVICE_INFO = new Uint8Array([1, 255, 28]); // CSBusCommands.GET_DEVICE_INFO (CTY_SYS_INFO, SUB_NONE, ACT_GET_DEVICE_INFO)
+export const CS_CMD_BROADCAST_GET_DEVICE_INFO = new Uint8Array([0x41]); // CSBusCommands.RETRIEVE_DEVICE_INFORMATION ("A")
 export const CS_CMD_GET_MEASUREMENT_CHANNEL_COUNT = new Uint8Array([4, 2, 3]);
 export const CS_CMD_GET_MAX_CHANNEL_COUNT = new Uint8Array([1, 255, 35]); // [1, -1, 35]
+
+export const SUTO_DEVICE_MODELS = {
+  0x1065: 'SUTO S331',
+  0x1064: 'SUTO S330',
+  0x1066: 'SUTO S551',
+  0x1067: 'SUTO S551 P6',
+  0x1068: 'SUTO S600',
+  0x1080: 'SUTO S505 (DP500)',
+  0x1082: 'SUTO S505 (DP520)',
+  0x1052: 'SUTO DS320',
+  0x1053: 'SUTO DS330',
+  0x1055: 'SUTO S325 (DS350)',
+  0x1060: 'SUTO S550 P2',
+  0x1061: 'SUTO S550 P4',
+  0x1062: 'SUTO S550 P6',
+  0x0002: 'SUTO FA300',
+  0x0003: 'SUTO VA300',
+  0x0004: 'SUTO DS300',
+  0x3300: 'SUTO DS300 Modbus',
+  0x3330: 'SUTO S330/S350 Modbus',
+  0x3331: 'SUTO S331 Modbus',
+  0x3450: 'SUTO S450 Modbus',
+  0x3460: 'SUTO S430 Modbus',
+  0x3120: 'SUTO S120 Modbus',
+  0x3130: 'SUTO S130-A Modbus',
+  0x3131: 'SUTO S131 Modbus',
+  0x3500: 'SUTO CSMAEXT Modbus',
+  0x3510: 'SUTO CS110 Modbus',
+  0x3520: 'SUTO CS460 Modbus',
+  0x3530: 'SUTO CSPULSEEXT Modbus'
+};
+
+/**
+ * Maps a numeric SUTO device identification ID to a human-readable model name
+ * @param {number} deviceIdentification
+ * @returns {string} Model name
+ */
+export function getSutoModelFromDeviceId(deviceIdentification) {
+  if (SUTO_DEVICE_MODELS[deviceIdentification]) {
+    return SUTO_DEVICE_MODELS[deviceIdentification];
+  }
+  const hex = (deviceIdentification ?? 0).toString(16).toUpperCase();
+  return `SUTO Device (0x${hex})`;
+}
+
+/**
+ * Builds the CS-Bus command to query device information (CSBusCommands.GET_DEVICE_INFO)
+ * @returns {Uint8Array} [1, 255, 28]
+ */
+export function buildCsGetDeviceInfoCommand() {
+  return new Uint8Array([1, 255, 28]);
+}
+
+/**
+ * Builds the CS-Bus broadcast command to retrieve device info (CSBusCommands.RETRIEVE_DEVICE_INFORMATION)
+ * @returns {Uint8Array} [0x41] ('A')
+ */
+export function buildCsBroadcastGetDeviceInfoCommand() {
+  return new Uint8Array([0x41]);
+}
+
+/**
+ * Parses the 8-byte CSCommDeviceID struct from CS-Bus response payload
+ * CSCommDeviceID layout (Little-Endian):
+ *  - byte 0: busVersion (1 byte)
+ *  - bytes 1..2: deviceIdentification (uint16 LE)
+ *  - byte 3: softwareVersion (uint8, e.g. 154 -> 1.54)
+ *  - bytes 4..7: deviceSerialNumber (uint32 LE)
+ * @param {Uint8Array|Array<number>} csPayload
+ * @returns {{ busVersion: number, deviceId: number, softwareVersion: string, serial: string, model: string }|null}
+ */
+export function parseCsDeviceInfoResponse(csPayload) {
+  if (!csPayload || csPayload.length < 8) return null;
+  const raw = (csPayload instanceof Uint8Array) ? csPayload : new Uint8Array(csPayload);
+  const dv = new DataView(raw.buffer, raw.byteOffset, 8);
+
+  const busVersion = dv.getUint8(0);
+  const deviceIdentification = dv.getUint16(1, true);
+  const softwareVersionByte = dv.getUint8(3);
+  const serialNumber = dv.getUint32(4, true);
+
+  const softwareVersion = (softwareVersionByte / 100).toFixed(2);
+  const model = getSutoModelFromDeviceId(deviceIdentification);
+
+  return {
+    busVersion,
+    deviceId: deviceIdentification,
+    softwareVersion,
+    serial: String(serialNumber),
+    model
+  };
+}
 
 /**
  * Builds the CS-Bus command to query channel count (CSBusCommands.GET_MEASUREMENT_CHANNEL_COUNT)
@@ -809,6 +1002,7 @@ export function channelSettingToModbusChannel(setting) {
 
   return {
     id: setting.logicalChannelNo,
+    channel_id: setting.logicalChannelNo,
     name,
     unit,
     regAddr,
@@ -823,7 +1017,17 @@ export function channelSettingToModbusChannel(setting) {
     scalingLo: setting.mBScalingLo ?? 0.0,
     rangeHi: setting.mBRangeHi ?? 1000.0,
     rangeLo: setting.mBRangeLo ?? 0.0,
-    deviceDescription: setting.deviceDescription?.trim() || ''
+    deviceDescription: setting.deviceDescription?.trim() || '',
+    device_description: setting.deviceDescription?.trim() || '',
+    sensorDescription: setting.sensorDescription?.trim() || '',
+    sensor_description: setting.sensorDescription?.trim() || '',
+    subDevDescription: setting.subDevDescription?.trim() || '',
+    channelDescription: setting.channelDescription?.trim() || '',
+    slaverAddr: setting.slaverAddr,
+    slaver_addr: setting.slaverAddr,
+    slaverType: setting.slaverType,
+    sensorID: setting.sensorID,
+    sensor_id: setting.sensorID
   };
 }
 
@@ -921,5 +1125,130 @@ export function createMockS331ChannelSettings() {
   });
   return totalBytes;
 }
+
+// ==========================================
+// 8. SUTO Online Measurement Value Parsing (CSCommMeasurementValue)
+// ==========================================
+
+export const CS_MEASUREMENT_VALUE_SIZE = 7;
+export const CONSUMPTION_UNIT_INDICES = new Set([24, 25, 26, 27, 28, 47]);
+
+/**
+ * Builds SUTO CS-Bus GET_ONLINE_MEASUREMENT_VALUE command ([4, 1, 1, startChannel, numberOfChannels])
+ * @param {number} [startChannel=1] 1-based start channel index
+ * @param {number} [numberOfChannels=100] number of channels to fetch
+ * @returns {Uint8Array} 5-byte command payload
+ */
+export function buildCsGetOnlineMeasurementValuesCommand(startChannel = 1, numberOfChannels = 100) {
+  return new Uint8Array([0x04, 0x01, 0x01, startChannel & 0xFF, numberOfChannels & 0xFF]);
+}
+
+/**
+ * Parses raw CS-Bus online measurement values payload.
+ * Each channel measurement is 7 bytes:
+ * [value (4B, LE), resolution (1B), unitIndex (1B), status (1B)]
+ *
+ * @param {Uint8Array|Array<number>} rawPayload
+ * @param {number} [expectedCount]
+ * @returns {Array<{ channelIndex: number, value: number|null, rawValue: number, resolution: number, unitIndex: number, status: number, isValid: boolean, isOverRange: boolean }>}
+ */
+export function parseCsOnlineMeasurementValues(rawPayload, expectedCount = undefined) {
+  if (!rawPayload || rawPayload.length === 0) return [];
+  const bytes = (rawPayload instanceof Uint8Array) ? rawPayload : new Uint8Array(rawPayload);
+
+  let offset = 0;
+  // If response echoes the [4, 1, 1] command prefix:
+  if (bytes.length >= 10 && bytes[0] === 4 && bytes[1] === 1 && bytes[2] === 1) {
+    offset = 3;
+    if ((bytes.length - 5) % CS_MEASUREMENT_VALUE_SIZE === 0 && (bytes.length - 3) % CS_MEASUREMENT_VALUE_SIZE !== 0) {
+      offset = 5;
+    }
+  } else if (bytes.length % CS_MEASUREMENT_VALUE_SIZE === 1) {
+    // 1 leading count byte
+    offset = 1;
+  } else if (bytes.length % CS_MEASUREMENT_VALUE_SIZE !== 0) {
+    // Look for where (bytes.length - offset) % 7 === 0
+    for (let testOffset = 1; testOffset <= 8; testOffset++) {
+      if ((bytes.length - testOffset) % CS_MEASUREMENT_VALUE_SIZE === 0) {
+        offset = testOffset;
+        break;
+      }
+    }
+  }
+
+  const count = expectedCount !== undefined
+    ? Math.min(expectedCount, Math.floor((bytes.length - offset) / CS_MEASUREMENT_VALUE_SIZE))
+    : Math.floor((bytes.length - offset) / CS_MEASUREMENT_VALUE_SIZE);
+
+  const results = [];
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  for (let i = 0; i < count; i++) {
+    const itemOffset = offset + (i * CS_MEASUREMENT_VALUE_SIZE);
+    if (itemOffset + CS_MEASUREMENT_VALUE_SIZE > bytes.length) break;
+
+    const resolution = dv.getUint8(itemOffset + 4);
+    const unitIndex = dv.getUint8(itemOffset + 5);
+    const status = dv.getUint8(itemOffset + 6);
+
+    let val = 0.0;
+    if (CONSUMPTION_UNIT_INDICES.has(unitIndex)) {
+      val = dv.getInt32(itemOffset, true); // Little-Endian Int32
+      if (resolution > 0) {
+        val = val / Math.pow(10, resolution);
+      }
+    } else {
+      val = dv.getFloat32(itemOffset, true); // Little-Endian Float32
+    }
+
+    const isInvalid = (status & 0x04) !== 0;
+    const isOverRange = (status & 0x08) !== 0;
+
+    results.push({
+      channelIndex: i + 1,
+      value: (isInvalid || isNaN(val)) ? null : val,
+      rawValue: val,
+      resolution,
+      unitIndex,
+      status,
+      isValid: !isInvalid,
+      isOverRange
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Creates simulated 7-byte CSCommMeasurementValue binary bytes.
+ * Used for mock/browser simulation of online measurements.
+ * @param {Array<number>} [values]
+ * @returns {Uint8Array}
+ */
+export function createMockS331MeasurementValues(values) {
+  const defaultVals = [142.5, 120530, 6.82, 24.3, -42.1, 15.6];
+  const list = values || defaultVals;
+  const buffer = new Uint8Array(list.length * CS_MEASUREMENT_VALUE_SIZE);
+  const dv = new DataView(buffer.buffer);
+
+  list.forEach((v, idx) => {
+    const offset = idx * CS_MEASUREMENT_VALUE_SIZE;
+    const isConsumption = idx === 1; // 2nd channel is consumption
+    if (isConsumption) {
+      dv.setInt32(offset, Math.round(v), true);
+      dv.setUint8(offset + 4, 0); // resolution 0
+      dv.setUint8(offset + 5, 24); // unit m3
+      dv.setUint8(offset + 6, 0); // status OK
+    } else {
+      dv.setFloat32(offset, v, true);
+      dv.setUint8(offset + 4, idx === 2 ? 2 : 1);
+      dv.setUint8(offset + 5, idx === 0 ? 1 : 2);
+      dv.setUint8(offset + 6, 0);
+    }
+  });
+
+  return buffer;
+}
+
 
 

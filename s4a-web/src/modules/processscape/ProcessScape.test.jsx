@@ -4790,6 +4790,64 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     connectTcpSpy.mockRestore();
     isConnectedSpy.mockRestore();
   });
+
+  it('auto-reconnects both Ethernet SUTO device and Modbus TCP device concurrently on bootup and surfaces all channels', async () => {
+    let tcpConnected = false;
+    let modbusConnected = false;
+
+    const connectTcpSpy = vi.spyOn(TauriSutoAPI, 'connectTcp').mockImplementation(async (host, port) => {
+      tcpConnected = true;
+      return { host, port, transport: 'TCP' };
+    });
+
+    const connectModbusSpy = vi.spyOn(TauriSutoAPI, 'connectModbusTcp').mockImplementation(async (params) => {
+      modbusConnected = true;
+      return {
+        id: 'dev_modbus_tcp_127_0_0_1_503_slave_1',
+        name: params.name,
+        transport: `Modbus TCP (${params.host}:${params.port})`,
+        channels: params.channels || []
+      };
+    });
+
+    const ethernetDev = {
+      id: 'dev_tcp_127_0_0_1_502',
+      name: 'SUTO S331 (Ethernet)',
+      transport: 'Ethernet (127.0.0.1:502)',
+      transportType: 'tcp',
+      isOnline: true,
+      connectionConfig: { host: '127.0.0.1', port: 502, transport: 'tcp' }
+    };
+
+    const modbusDev = {
+      id: 'dev_modbus_tcp_127_0_0_1_503_slave_1',
+      name: 'Modbus Sensor (503)',
+      transport: 'Modbus TCP (127.0.0.1:503)',
+      transportType: 'modbus_tcp',
+      isOnline: true,
+      connectionConfig: { host: '127.0.0.1', port: 503, slaveId: 1, transport: 'modbus_tcp' },
+      sensors: [{
+        id: 'sens_modbus_1',
+        name: 'Modbus Core',
+        channels: [
+          { id: 'ch_modbus_1', channel_id: 1, name: 'Modbus Flow', unit: 'm³/h' },
+          { id: 'ch_modbus_2', channel_id: 2, name: 'Modbus Temp', unit: '°C' }
+        ]
+      }]
+    };
+
+    saveDevices([ethernetDev, modbusDev]);
+
+    // Reconnecting should connect BOTH devices despite isOnline being true in storage
+    const res = await autoReconnectSavedDevices();
+    expect(res.reconnected).toBe(true);
+    expect(res.connectedCount).toBe(2);
+    expect(tcpConnected).toBe(true);
+    expect(modbusConnected).toBe(true);
+
+    connectTcpSpy.mockRestore();
+    connectModbusSpy.mockRestore();
+  });
 });
 
 

@@ -161,11 +161,9 @@ function App() {
   React.useEffect(() => {
     if (appMode === 'processscape') {
       try {
-        if (typeof TauriSutoAPI?.isConnected !== 'function' || !TauriSutoAPI.isConnected()) {
-          autoReconnectSavedDevices((conn) => {
-            if (conn) setDeviceInfo(conn);
-          }).catch(() => {});
-        }
+        autoReconnectSavedDevices((conn) => {
+          if (conn) setDeviceInfo(conn);
+        }).catch(() => {});
       } catch (_) {}
       try {
         const locs = getLocations();
@@ -709,9 +707,7 @@ function App() {
       clearLiveSelection();
       clearReadoutCache();
       clearOnlineCache();
-      if (appMode === 'monitor') {
-        TauriSutoAPI.disconnect().catch(console.warn);
-      }
+      TauriSutoAPI.disconnect().catch(console.warn);
       TestAPI.setMode('analyze');
       setDeviceInfo(null);
     }
@@ -1458,6 +1454,9 @@ function App() {
                 onBackToLanding={() => {
                   TestAPI.setMode('analyze');
                   setAppMode(null);
+                  clearOnlineCache();
+                  clearReadoutCache();
+                  TauriSutoAPI.disconnect().catch(console.warn);
                 }}
                 onRegisterActions={(actions) => { psActionsRef.current = actions; }}
                 onOpenSensorManager={() => {

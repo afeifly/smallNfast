@@ -432,7 +432,23 @@ const FinalAPI = new Proxy(BaseAPI, {
         // catch block and the callback would never fire (stuck loading).
         return (chId, start, stop, pointInterval, getDataWayOrCallback, maybeCallback) => {
           const cb = [chId, getDataWayOrCallback, maybeCallback].find((a) => typeof a === 'function');
-          return TauriSutoAPI.getMeasurementData(cb);
+          const handleResult = (allRes) => {
+            let payload = allRes;
+            if (chId !== undefined && typeof chId !== 'function') {
+              const matched = (allRes || []).find((item) =>
+                item.channel_id === chId ||
+                item.id === chId ||
+                String(item.channel_id) === String(chId) ||
+                String(item.id) === String(chId)
+              );
+              if (matched) {
+                payload = [matched, ...allRes.filter((item) => item !== matched)];
+              }
+            }
+            if (cb) cb(payload);
+            return payload;
+          };
+          return TauriSutoAPI.getMeasurementData(handleResult);
         };
       }
       if (prop === 'getTablePage') {

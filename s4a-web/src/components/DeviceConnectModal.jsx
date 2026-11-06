@@ -54,7 +54,8 @@ export default function DeviceConnectModal({
   onConnected,
   onAddMultipleDevices,
   initialTab,
-  initialMode = 'manual'
+  initialMode = 'manual',
+  singleDeviceMode = true
 }) {
   const isNative = checkIsNative();
   const [tab, setTab] = useState(initialTab || (isMobile ? 'ble' : (isNative ? 'usb' : 'ble'))); // 'usb' | 'tcp' | 'ble' | 'api'
@@ -79,63 +80,76 @@ export default function DeviceConnectModal({
   const [hasScannedBle, setHasScannedBle] = useState(false);
 
   // Modbus State
+  const [modbusDeviceType, setModbusDeviceType] = useState('suto'); // 'suto' | 'third_party'
+  const [detectedSutoInfo, setDetectedSutoInfo] = useState(null); // { model, serial, softwareVersion, busVersion }
   const [modbusProtocolType, setModbusProtocolType] = useState('tcp'); // 'tcp' | 'rtu'
-  const [modbusName, setModbusName] = useState('Modbus TCP Device');
+  const [modbusName, setModbusName] = useState('SUTO Modbus Device');
   const [modbusHost, setModbusHost] = useState('192.168.1.100');
   const [modbusPort, setModbusPort] = useState('502');
-  const [modbusSlaveId, setModbusSlaveId] = useState(''); // When TCP, slave ID is optional
+  const [modbusSlaveId, setModbusSlaveId] = useState('1'); // Default 1 for SUTO
   const [modbusSerialPort, setModbusSerialPort] = useState('COM1');
   const [modbusBaudRate, setModbusBaudRate] = useState('19200');
   const [modbusRtuSlaveId, setModbusRtuSlaveId] = useState('1');
   const [modbusParity, setModbusParity] = useState('none');
   const [selectedScalingIdx, setSelectedScalingIdx] = useState(null);
   const [modbusPreset, setModbusPreset] = useState('s401_flow');
-  const [modbusChannels, setModbusChannels] = useState([
-    { id: 1, name: 'Flow', unit: 'm³/h', funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
-    { id: 2, name: 'Temperature', unit: '°C', funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 }
-  ]);
+  const [modbusChannels, setModbusChannels] = useState([]);
   const [modbusTestResults, setModbusTestResults] = useState(null);
   const [modbusTesting, setModbusTesting] = useState(false);
   const [modbusDiscovering, setModbusDiscovering] = useState(false);
   const [modbusDiscoverStatus, setModbusDiscoverStatus] = useState('');
 
-  const handleAutoDiscoverS331 = async () => {
+  const handleDetectSutoDevice = async () => {
     setModbusDiscovering(true);
-    setModbusDiscoverStatus('Connecting...');
+    setModbusDiscoverStatus('Connecting to SUTO device...');
     setError(null);
     setSelectedScalingIdx(null);
     try {
+      const isRtu = modbusProtocolType === 'rtu';
       const port = parseInt(modbusPort, 10) || 502;
-      const slaveId = (modbusSlaveId !== '' && !isNaN(parseInt(modbusSlaveId, 10)))
-        ? parseInt(modbusSlaveId, 10)
-        : (modbusProtocolType === 'rtu' ? 1 : 0);
-      const discovered = await TauriSutoAPI.discoverS331ChannelsOverModbus({
-        host: modbusHost.trim(),
+      const slaveId = isRtu
+        ? (parseInt(modbusRtuSlaveId, 10) || 1)
+        : ((modbusSlaveId !== '' && !isNaN(parseInt(modbusSlaveId, 10))) ? parseInt(modbusSlaveId, 10) : 1);
+
+      const targetHost = isRtu ? modbusSerialPort.trim() : modbusHost.trim();
+      const res = await TauriSutoAPI.detectSutoDeviceOverModbus({
+        host: targetHost,
         port,
         slaveId,
+        isRtu,
         onProgress: (status) => setModbusDiscoverStatus(status)
       });
 
-      if (discovered && discovered.length > 0) {
-        setModbusChannels(discovered);
-        setModbusName(`S331 (${modbusHost.trim()})`);
+      if (res && res.channels && res.channels.length > 0) {
+        setModbusChannels(res.channels);
+        setDetectedSutoInfo(res.deviceInfo);
+        const model = res.deviceInfo?.model || 'SUTO Device';
+        const serial = res.deviceInfo?.serial ? ` (${res.deviceInfo.serial})` : '';
+        setModbusName(`${model}${serial}`);
         if (typeof window !== 'undefined' && window.showAppNotification) {
           window.showAppNotification(
-            'Channel Structure Discovered',
-            `Successfully discovered ${discovered.length} active channels from S331!`,
+            'SUTO Device Detected',
+            `Discovered ${model} with ${res.channels.length} channels!`,
             'success'
           );
         }
+        return res;
       } else {
-        setError('No active channels discovered from device at ' + modbusHost);
+        setError(`No SUTO device or active channels found on ${isRtu ? modbusSerialPort : `${modbusHost}:${port}`} (Slave ID: ${slaveId}). Check connection or switch to Third-Party Sensor mode.`);
+        return null;
       }
     } catch (err) {
-      console.error('[DeviceConnectModal] S331 discovery error:', err);
-      setError('Auto-Discovery Failed: ' + (err?.message || err));
+      console.error('[DeviceConnectModal] SUTO discovery error:', err);
+      setError('Detection Failed: ' + (err?.message || err));
+      return null;
     } finally {
       setModbusDiscovering(false);
       setModbusDiscoverStatus('');
     }
+  };
+
+  const handleAutoDiscoverS331 = () => {
+    return handleDetectSutoDevice();
   };
 
   const handlePresetChange = (presetKey) => {
@@ -233,11 +247,40 @@ export default function DeviceConnectModal({
       const port = parseInt(modbusPort, 10) || 502;
       const slaveId = isRtu
         ? (parseInt(modbusRtuSlaveId, 10) || 1)
-        : (modbusSlaveId ? (parseInt(modbusSlaveId, 10) || 0) : 0);
-      const name = modbusName.trim() || (isRtu ? `Modbus RTU (${modbusSerialPort})` : `Modbus TCP (${modbusHost}:${port})`);
+        : ((modbusSlaveId !== '' && !isNaN(parseInt(modbusSlaveId, 10))) ? parseInt(modbusSlaveId, 10) : 1);
+
+      let channelsToUse = modbusChannels;
+      let devModel = detectedSutoInfo?.model || null;
+      let devSerial = detectedSutoInfo?.serial || null;
+
+      // If connecting a SUTO device and channels have not been detected yet, detect them now!
+      if (modbusDeviceType === 'suto' && (!channelsToUse || channelsToUse.length === 0)) {
+        const detectRes = await handleDetectSutoDevice();
+        if (!detectRes || !detectRes.channels || detectRes.channels.length === 0) {
+          setLoading(false);
+          return;
+        }
+        channelsToUse = detectRes.channels;
+        devModel = detectRes.deviceInfo?.model || null;
+        devSerial = detectRes.deviceInfo?.serial || null;
+      }
+
+      if (!channelsToUse || channelsToUse.length === 0) {
+        setError('No channels configured to connect.');
+        setLoading(false);
+        return;
+      }
+
+      const defaultName = devModel
+        ? `${devModel}${devSerial ? ` (${devSerial})` : ''}`
+        : (isRtu ? `Modbus RTU (${modbusSerialPort})` : `Modbus TCP (${modbusHost}:${port})`);
+      const name = modbusName.trim() || defaultName;
 
       const devItem = buildModbusDevice({
         name,
+        model: devModel,
+        serial: devSerial,
+        softwareVersion: detectedSutoInfo?.softwareVersion || null,
         host: isRtu ? null : modbusHost.trim(),
         port: isRtu ? null : port,
         serialPort: isRtu ? modbusSerialPort.trim() : null,
@@ -245,17 +288,24 @@ export default function DeviceConnectModal({
         parity: isRtu ? modbusParity : null,
         slaveId,
         transportType: isRtu ? 'modbus_rtu' : 'modbus_tcp',
-        channels: modbusChannels
+        channels: channelsToUse
       });
+
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
 
       const conn = await TauriSutoAPI.connectModbusTcp({
         host: isRtu ? null : modbusHost.trim(),
         port: isRtu ? null : port,
         serialPort: isRtu ? modbusSerialPort.trim() : null,
         baudRate: isRtu ? (parseInt(modbusBaudRate, 10) || 19200) : null,
+        parity: isRtu ? modbusParity : null,
         slaveId,
         isRtu,
         name,
+        serial: devSerial,
+        clearOthers: singleDeviceMode,
         channels: devItem.sensors[0]?.channels || []
       });
 
@@ -311,6 +361,9 @@ export default function DeviceConnectModal({
     setLoading(true);
     setError(null);
     try {
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
       const conn = await TauriSutoAPI.connectUsb();
       onConnected(conn);
       onClose();
@@ -328,6 +381,9 @@ export default function DeviceConnectModal({
     setLoading(true);
     setError(null);
     try {
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
       const port = parseInt(tcpPort, 10);
       if (isNaN(port) || port < 1 || port > 65535) {
         throw new Error('Please enter a valid TCP port number (1-65535)');
@@ -348,6 +404,9 @@ export default function DeviceConnectModal({
     setLoading(true);
     setError(null);
     try {
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
       const conn = await TauriSutoAPI.connectApi(apiHost.trim(), 8080);
       onConnected(conn);
       onClose();
@@ -451,6 +510,9 @@ export default function DeviceConnectModal({
     setError(null);
 
     try {
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
       const convertedDevices = selected.map(dev => convertDiscoveredToSensorManagerDevice(dev)).filter(Boolean);
 
       if (typeof onAddMultipleDevices === 'function') {
@@ -497,6 +559,9 @@ export default function DeviceConnectModal({
     setLoading(true);
     setError(null);
     try {
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
       const conn = await TauriSutoAPI.connectBle({ deviceId: dev.id, name: dev.name });
       onConnected(conn);
       onClose();
@@ -514,6 +579,9 @@ export default function DeviceConnectModal({
     setLoading(true);
     setError(null);
     try {
+      if (singleDeviceMode) {
+        await TauriSutoAPI.disconnect();
+      }
       const conn = await TauriSutoAPI.connectBle({ acceptAll: showAllBle });
       onConnected(conn);
       onClose();
@@ -714,8 +782,42 @@ export default function DeviceConnectModal({
 
     return (
       <div className="modbus-section">
+        {/* Device Type Toggle (SUTO Auto-Detect vs Third-Party Sensor) */}
+        <div className="modbus-device-type-bar">
+          <div className="modbus-type-toggle">
+            <button
+              type="button"
+              className={`modbus-type-btn ${modbusDeviceType === 'suto' ? 'active' : ''}`}
+              onClick={() => {
+                setModbusDeviceType('suto');
+                if (!detectedSutoInfo) {
+                  setModbusName(isRtu ? 'SUTO Modbus RTU Device' : 'SUTO Modbus TCP Device');
+                } else {
+                  setModbusName(`${detectedSutoInfo.model} (${detectedSutoInfo.serial})`);
+                }
+              }}
+            >
+              <span>⚡ SUTO Device (Auto-Detect)</span>
+            </button>
+            <button
+              type="button"
+              className={`modbus-type-btn ${modbusDeviceType === 'third_party' ? 'active' : ''}`}
+              onClick={() => {
+                setModbusDeviceType('third_party');
+                if (modbusChannels.length === 0) {
+                  handlePresetChange('s401_flow');
+                }
+              }}
+            >
+              <span>⚙️ Third-Party Sensor (Manual Registers)</span>
+            </button>
+          </div>
+        </div>
+
         <p className="tab-desc">
-          Connect to Modbus TCP or RTU instruments. Configure the communication link, registers, data types, and scaling range.
+          {modbusDeviceType === 'suto'
+            ? 'Connect to SUTO instruments (S331, S330, S551, S505, S600, etc.) over Modbus TCP or RTU. Model identification and all channel configurations are automatically detected.'
+            : 'Connect to standard Modbus TCP or RTU 3rd-party instruments. Configure registers, data types, and scaling range.'}
         </p>
 
         {/* RTU vs TCP Toggle */}
@@ -726,8 +828,8 @@ export default function DeviceConnectModal({
               className={`modbus-toggle-btn ${!isRtu ? 'active' : ''}`}
               onClick={() => {
                 setModbusProtocolType('tcp');
-                if (modbusName === 'Modbus RTU Device' || modbusName === 'Modbus Device') {
-                  setModbusName('Modbus TCP Device');
+                if (modbusName === 'Modbus RTU Device' || modbusName === 'Modbus Device' || modbusName === 'SUTO Modbus RTU Device') {
+                  setModbusName(modbusDeviceType === 'suto' ? 'SUTO Modbus TCP Device' : 'Modbus TCP Device');
                 }
               }}
             >
@@ -738,8 +840,8 @@ export default function DeviceConnectModal({
               className={`modbus-toggle-btn ${isRtu ? 'active' : ''}`}
               onClick={() => {
                 setModbusProtocolType('rtu');
-                if (modbusName === 'Modbus TCP Device' || modbusName === 'Modbus Device') {
-                  setModbusName('Modbus RTU Device');
+                if (modbusName === 'Modbus TCP Device' || modbusName === 'Modbus Device' || modbusName === 'SUTO Modbus TCP Device') {
+                  setModbusName(modbusDeviceType === 'suto' ? 'SUTO Modbus RTU Device' : 'Modbus RTU Device');
                 }
               }}
             >
@@ -868,8 +970,89 @@ export default function DeviceConnectModal({
           </div>
         )}
 
-        {/* Preset Selector & S331 Auto-Detect */}
-        <div className="modbus-preset-bar">
+        {/* SUTO Auto-Discovery Section */}
+        {modbusDeviceType === 'suto' ? (
+          <>
+            {detectedSutoInfo ? (
+              <div className="suto-detected-card">
+                <div className="suto-detected-header">
+                  <div className="suto-detected-title-group">
+                    <span className="suto-detected-badge">
+                      <span className="dot"></span> Detected
+                    </span>
+                    <span className="suto-detected-title">{detectedSutoInfo.model}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="suto-redetect-btn"
+                    onClick={handleDetectSutoDevice}
+                    disabled={loading || modbusDiscovering}
+                    title="Re-query SUTO device for updated channel definitions"
+                  >
+                    {modbusDiscovering ? '⏳ Reading...' : '🔄 Re-Detect'}
+                  </button>
+                </div>
+
+                <div className="suto-meta-chips">
+                  <div className="suto-chip">
+                    <span>Serial No:</span>
+                    <strong>{detectedSutoInfo.serial}</strong>
+                  </div>
+                  <div className="suto-chip">
+                    <span>Firmware:</span>
+                    <strong>v{detectedSutoInfo.softwareVersion}</strong>
+                  </div>
+                  <div className="suto-chip">
+                    <span>Bus Version:</span>
+                    <strong>v{detectedSutoInfo.busVersion}</strong>
+                  </div>
+                  <div className="suto-chip">
+                    <span>Slave Address:</span>
+                    <strong>{isRtu ? modbusRtuSlaveId : (modbusSlaveId || 1)}</strong>
+                  </div>
+                </div>
+
+                <div className="suto-channels-section">
+                  <div className="suto-channels-title">
+                    <span>Discovered Measurement Channels ({modbusChannels.length})</span>
+                    <span style={{ fontSize: 11, fontWeight: 'normal', color: '#64748b' }}>
+                      Auto-configured directly from device firmware
+                    </span>
+                  </div>
+                  <div className="suto-channels-grid">
+                    {modbusChannels.map((ch, idx) => (
+                      <div key={ch.id || idx} className="suto-channel-pill">
+                        <div className="suto-channel-pill-top">
+                          <span className="suto-channel-name">{ch.name || `Channel ${idx + 1}`}</span>
+                          {ch.unit && <span className="suto-channel-unit">{ch.unit}</span>}
+                        </div>
+                        <span className="suto-channel-desc">
+                          Ch {idx + 1} • Reg 0x{((ch.mBValueAddr ?? ch.regAddr ?? 0)).toString(16).toUpperCase().padStart(4, '0')} (FC {ch.mBAccessFuncCode ?? ch.funcCode ?? 3})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="suto-info-banner">
+                <span className="suto-info-icon">⚡</span>
+                <div className="suto-info-content">
+                  <strong>Zero-Configuration SUTO Detection</strong>
+                  <div>
+                    SUTO instruments automatically stream their channel names, physical units, scaling coefficients, and data layouts over Modbus. No manual register definitions needed.
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    Click <strong>"Auto-Detect"</strong> or <strong>"Detect &amp; Connect SUTO Device"</strong> below to automatically detect your instrument.
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Preset Selector & S331 Auto-Detect */}
+            <div className="modbus-preset-bar">
           <div className="modbus-preset-label">
             <span>⚡ Presets:</span>
             <select
@@ -1166,6 +1349,8 @@ export default function DeviceConnectModal({
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
     );
   };
@@ -1431,22 +1616,55 @@ export default function DeviceConnectModal({
 
           {tab === 'modbus' && (
             <div className="modbus-footer-btn-group">
-              <button
-                type="button"
-                className="modbus-test-btn"
-                onClick={handleTestModbusChannels}
-                disabled={loading || modbusTesting || modbusChannels.length === 0}
-              >
-                {modbusTesting ? '⏳ Testing Read...' : '🔍 Test Read'}
-              </button>
-              <button
-                type="button"
-                className="connect-action-btn"
-                onClick={handleConnectModbus}
-                disabled={loading || modbusTesting || modbusChannels.length === 0}
-              >
-                {loading ? 'Connecting...' : (modbusProtocolType === 'rtu' ? '📥 Connect Modbus RTU' : '📥 Connect Modbus TCP')}
-              </button>
+              {modbusDeviceType === 'third_party' ? (
+                <>
+                  <button
+                    type="button"
+                    className="modbus-test-btn"
+                    onClick={handleTestModbusChannels}
+                    disabled={loading || modbusTesting || modbusChannels.length === 0}
+                  >
+                    {modbusTesting ? '⏳ Testing Read...' : '🔍 Test Read'}
+                  </button>
+                  <button
+                    type="button"
+                    className="connect-action-btn"
+                    onClick={handleConnectModbus}
+                    disabled={loading || modbusTesting || modbusChannels.length === 0}
+                  >
+                    {loading ? 'Connecting...' : (modbusProtocolType === 'rtu' ? '📥 Connect Modbus RTU' : '📥 Connect Modbus TCP')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="modbus-test-btn"
+                    onClick={handleDetectSutoDevice}
+                    disabled={loading || modbusDiscovering || (modbusProtocolType === 'tcp' && !modbusHost) || (modbusProtocolType === 'rtu' && !modbusSerialPort)}
+                    title="Probe and read SUTO device identification and channel configuration"
+                  >
+                    {modbusDiscovering ? `⏳ ${modbusDiscoverStatus || 'Detecting...'}` : '⚡ Auto-Detect'}
+                  </button>
+                  <button
+                    type="button"
+                    className="connect-action-btn"
+                    onClick={handleConnectModbus}
+                    disabled={loading || modbusDiscovering || (modbusProtocolType === 'tcp' && !modbusHost) || (modbusProtocolType === 'rtu' && !modbusSerialPort)}
+                  >
+                    {loading
+                      ? 'Connecting...'
+                      : (detectedSutoInfo
+                          ? `📥 Connect ${detectedSutoInfo.model} (${modbusChannels.length} Channels)`
+                          : (modbusChannels.length > 0
+                              ? `📥 Connect SUTO Device (${modbusChannels.length} Channels)`
+                              : '⚡ Detect & Connect SUTO Device'
+                            )
+                        )
+                    }
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

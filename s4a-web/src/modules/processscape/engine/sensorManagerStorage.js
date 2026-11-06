@@ -683,6 +683,9 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
  */
 export function buildModbusDevice({
   name = 'Modbus TCP Device',
+  model = null,
+  serial = null,
+  softwareVersion = null,
   host = '192.168.1.100',
   port = 502,
   serialPort = 'COM1',
@@ -717,6 +720,9 @@ export function buildModbusDevice({
       resolution: ch.resolution ?? 2,
       device: name,
       deviceId,
+      sensor_description: ch.sensor_description || ch.sensorDescription || ch.sensor_name || '',
+      sensorDescription: ch.sensor_description || ch.sensorDescription || ch.sensor_name || '',
+      slaver_addr: ch.slaver_addr ?? ch.slaverAddr ?? sId,
       mBAccessFuncCode: ch.mBAccessFuncCode ?? ch.funcCode ?? 3,
       mBValueAddr: ch.mBValueAddr ?? ch.regAddr ?? 0,
       mBInputValueType: ch.mBInputValueType ?? ch.dataType ?? 7,
@@ -728,11 +734,33 @@ export function buildModbusDevice({
     };
   });
 
+  const sensorsMap = new Map();
+  formattedChannels.forEach((ch, idx) => {
+    const explicitSensor = (ch.sensor_description || ch.sensorDescription || '').trim();
+    let sensName = explicitSensor;
+    if (/^451$/i.test(sensName)) sensName = 'S451';
+    if (/^212$/i.test(sensName)) sensName = 'S212';
+    if (!sensName) sensName = `${name} Channels`;
+
+    if (!sensorsMap.has(sensName)) {
+      sensorsMap.set(sensName, {
+        id: `sens_${deviceId}_${sensorsMap.size + 1}`,
+        name: sensName,
+        desc: explicitSensor ? `Model: ${explicitSensor}` : `Modbus Slave ID: ${sId}`,
+        channels: []
+      });
+    }
+    sensorsMap.get(sensName).channels.push(ch);
+  });
+
+  const finalSensors = Array.from(sensorsMap.values());
+
   return {
     id: deviceId,
     name,
-    model: isRtu ? 'Modbus RTU Device' : 'Modbus TCP Device',
-    serial: `ID-${sId}`,
+    model: model || (isRtu ? 'Modbus RTU Device' : 'Modbus TCP Device'),
+    serial: serial || `ID-${sId}`,
+    softwareVersion: softwareVersion || '1.0',
     transport: transportLabel,
     transportType: isRtu ? 'modbus_rtu' : 'modbus_tcp',
     host: isRtu ? null : host,
@@ -750,9 +778,11 @@ export function buildModbusDevice({
       baudRate: isRtu ? baudRate : null,
       parity: isRtu ? parity : null,
       slaveId: sId,
-      name
+      name,
+      model: model || null,
+      serial: serial || null
     },
-    sensors: [
+    sensors: finalSensors.length > 0 ? finalSensors : [
       {
         id: `sens_${deviceId}_1`,
         name: `${name} Channels`,
@@ -1345,11 +1375,37 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
         const isUsb = rawTransport.includes('usb');
         const isBle = rawTransport.includes('ble');
 
-        // If this device is already online and active in this session, do not disrupt the live socket
-        if (dev.isOnline && typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected()) {
+        // Check whether THIS specific device is already active in memory
+        let isDeviceActive = false;
+        if (isModbus) {
+          isDeviceActive = typeof TauriSutoAPI?.isModbusDeviceActive === 'function' &&
+            TauriSutoAPI.isModbusDeviceActive({
+              id: dev.id,
+              deviceId: dev.deviceId || dev.id,
+              serial: dev.serial || config.serial,
+              host,
+              port: port || 502,
+              slaveId: config.slaveId || dev.slaveId || 1,
+              isRtu: rawTransport.includes('rtu') || Boolean(config.isRtu),
+              serialPort: config.serialPort || dev.serialPort
+            });
+        } else if (isTcp) {
+          isDeviceActive = TauriSutoAPI?.getActiveTransport?.() === 'TCP';
+        } else if (isUsb) {
+          isDeviceActive = TauriSutoAPI?.getActiveTransport?.() === 'USB';
+        } else if (isApi) {
+          isDeviceActive = TauriSutoAPI?.getActiveTransport?.() === 'API';
+        } else if (isBle) {
+          const act = TauriSutoAPI?.getActiveTransport?.();
+          isDeviceActive = (act === 'BLE' || act === 'BLE_WEB') && (typeof TauriSutoAPI?.isConnected === 'function' && TauriSutoAPI.isConnected());
+        }
+
+        // If this device is already active in this session, do not disrupt the live socket
+        if (isDeviceActive) {
+          dev.isOnline = true;
           connectedCount++;
           lastConn = {
-            transport: isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : isModbus ? 'Modbus TCP' : 'BLE',
+            transport: isTcp ? 'TCP' : isApi ? 'API' : isUsb ? 'USB' : isModbus ? (rawTransport.includes('rtu') ? 'Modbus RTU' : 'Modbus TCP') : 'BLE',
             host,
             port,
             device: dev.name,
@@ -1362,18 +1418,40 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
 
         try {
           let conn = null;
-          if (isModbus && host) {
-            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting Modbus device "${dev.name}" at ${host}:${port || 502}...`);
+          if (isModbus && (host || config.isRtu || rawTransport.includes('rtu'))) {
+            await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting Modbus device "${dev.name}" at ${host || config.serialPort}:${port || 502}...`);
             const allDevChannels = [];
             (dev.sensors || []).forEach(s => {
               if (Array.isArray(s.channels)) allDevChannels.push(...s.channels);
             });
+            if (allDevChannels.length === 0 && Array.isArray(dev.channels)) {
+              allDevChannels.push(...dev.channels);
+            }
+            if (allDevChannels.length === 0 && typeof TauriSutoAPI?.discoverS331ChannelsOverModbus === 'function') {
+              try {
+                const discChs = await TauriSutoAPI.discoverS331ChannelsOverModbus({
+                  host,
+                  port: port || 502,
+                  slaveId: config.slaveId || dev.slaveId || 1,
+                  isRtu: rawTransport.includes('rtu') || Boolean(config.isRtu),
+                  serialPort: config.serialPort || dev.serialPort
+                });
+                if (Array.isArray(discChs) && discChs.length > 0) {
+                  allDevChannels.push(...discChs);
+                }
+              } catch (_) {}
+            }
             conn = await TauriSutoAPI.connectModbusTcp({
-              host,
+              host: (rawTransport.includes('rtu') || Boolean(config.isRtu)) ? null : (host || '127.0.0.1'),
               port: port || 502,
-              slaveId: config.slaveId || 1,
+              slaveId: config.slaveId || dev.slaveId || 1,
               name: dev.name,
-              channels: allDevChannels
+              serial: dev.serial || config.serial,
+              channels: allDevChannels,
+              isRtu: rawTransport.includes('rtu') || Boolean(config.isRtu),
+              serialPort: config.serialPort || dev.serialPort,
+              baudRate: config.baudRate || dev.baudRate || 19200,
+              parity: config.parity || dev.parity || 'none'
             });
           } else if (isApi && host) {
             await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Auto-reconnecting API device "${dev.name}" at ${host}:${port || 8080}...`);

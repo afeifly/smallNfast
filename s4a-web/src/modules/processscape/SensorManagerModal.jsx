@@ -293,6 +293,11 @@ export default function SensorManagerModal({
           port: parseInt(port, 10),
           slaveId: parseInt(slaveId, 10),
           name: dev.name,
+          serial: dev.serial || config.serial,
+          isRtu: Boolean(config.isRtu || transport.includes('rtu')),
+          serialPort: config.serialPort || null,
+          baudRate: config.baudRate || null,
+          parity: config.parity || null,
           channels: allDevChannels
         });
         setDevices(prev => {
@@ -390,9 +395,11 @@ export default function SensorManagerModal({
     if (!pendingDeleteDevice) return;
     const { device, assignedChannels } = pendingDeleteDevice;
 
-    // 1. Close hardware connection
+    // 1. Close hardware connection for this specific device
     try {
-      if (typeof TauriSutoAPI.disconnect === 'function') {
+      if (typeof TauriSutoAPI.disconnectDevice === 'function') {
+        await TauriSutoAPI.disconnectDevice(device);
+      } else if (typeof TauriSutoAPI.disconnect === 'function') {
         await TauriSutoAPI.disconnect();
       }
     } catch (err) {
@@ -1651,6 +1658,7 @@ export default function SensorManagerModal({
         onAddMultipleDevices={handleBatchDevicesConnected}
         initialTab={connectInitialTab}
         initialMode={connectInitialMode}
+        singleDeviceMode={false}
       />
 
       {/* Device Delete Confirmation & Active Channel Warning Dialog */}

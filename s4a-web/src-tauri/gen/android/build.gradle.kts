@@ -1,10 +1,10 @@
 buildscript {
     repositories {
+        google()
+        mavenCentral()
         maven { url = uri("https://maven.aliyun.com/repository/google") }
         maven { url = uri("https://maven.aliyun.com/repository/public") }
         maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
-        google()
-        mavenCentral()
     }
     dependencies {
         classpath("com.android.tools.build:gradle:9.3.1")
@@ -14,10 +14,10 @@ buildscript {
 
 allprojects {
     repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
         google()
         mavenCentral()
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
     }
 }
 

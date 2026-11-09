@@ -11,6 +11,7 @@
 }
 
 .device-connect-modal {
+  position: relative;
   width: 820px;
   min-width: 680px;
   max-width: 95vw;
@@ -100,30 +101,6 @@
   border-bottom: 2px solid #00ac86;
   font-weight: 700;
   box-shadow: none !important;
-}
-
-.platform-diff-note {
-  margin: 12px 24px 0 24px;
-  padding: 9px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 11.5px;
-  color: #64748b;
-  line-height: 1.45;
-}
-
-.platform-diff-note p {
-  margin: 0;
-}
-
-.platform-diff-note code {
-  background: #e2e8f0;
-  padding: 1px 4px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 11px;
-  color: #0f172a;
 }
 
 .device-connect-body {
@@ -370,12 +347,6 @@
     padding: 6px 4px;
     font-size: 12px;
     white-space: nowrap;
-  }
-
-  .platform-diff-note {
-    margin: 10px 16px 0 16px;
-    padding: 8px 10px;
-    font-size: 11px;
   }
 
   .device-connect-body {
@@ -827,14 +798,14 @@
   color: #0f172a;
 }
 
-.suto-redetect-btn {
+.suto-delete-btn {
   background: transparent;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #fca5a5;
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 11.5px;
   font-weight: 600;
-  color: #475569;
+  color: #dc2626;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -842,10 +813,10 @@
   transition: all 0.15s ease;
 }
 
-.suto-redetect-btn:hover {
-  border-color: #00ac86;
-  color: #00ac86;
-  background: rgba(0, 172, 134, 0.05);
+.suto-delete-btn:hover {
+  border-color: #ef4444;
+  color: #b91c1c;
+  background: #fef2f2;
 }
 
 .suto-meta-chips {
@@ -1020,6 +991,10 @@
   margin-top: 4px;
 }
 
+.modbus-channels-header.fixed-suto-header {
+  grid-template-columns: 1.6fr 0.9fr 1.1fr 1fr 1.3fr;
+}
+
 .modbus-channels-container {
   display: flex;
   flex-direction: column;
@@ -1039,6 +1014,19 @@
   border-radius: 6px;
   border: 1px solid #e2e8f0;
   transition: all 0.15s ease;
+}
+
+.modbus-channel-row.fixed-suto-row {
+  grid-template-columns: 1.6fr 0.9fr 1.1fr 1fr 1.3fr;
+}
+
+.modbus-channel-row.fixed-suto-row input[readonly],
+.modbus-channel-row.fixed-suto-row input:disabled,
+.modbus-channel-row.fixed-suto-row select:disabled {
+  background: #f8fafc;
+  color: #475569;
+  border-color: #e2e8f0;
+  cursor: default;
 }
 
 .modbus-channel-row:hover {
@@ -1347,10 +1335,40 @@
   gap: 12px;
 }
 
+.device-connect-footer .footer-close-btn {
+  padding: 10px 20px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 90px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.device-connect-footer .footer-close-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+.device-connect-footer .footer-close-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .device-connect-footer .connect-action-btn {
-  width: 100%;
+  width: auto;
+  min-width: 160px;
+  height: 42px;
   margin: 0;
-  padding: 11px 20px;
+  padding: 10px 22px;
   background: #00ac86;
   color: #ffffff;
   border: none;
@@ -1358,7 +1376,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -1380,13 +1398,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
 }
 
 .modbus-footer-btn-group .modbus-test-btn {
-  flex: 1;
-  max-width: 180px;
-  padding: 11px 18px;
+  width: auto;
+  height: 42px;
+  padding: 10px 18px;
   background: #ffffff;
   border: 1px solid #00ac86;
   color: #00ac86;
@@ -1394,7 +1411,7 @@
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -1406,7 +1423,112 @@
 }
 
 .modbus-footer-btn-group .connect-action-btn {
-  flex: 2;
+  width: auto;
+  min-width: 160px;
+}
+
+/* ==========================================================================
+   Auto-Detect Warning Confirmation Dialog
+   ========================================================================== */
+.modbus-confirm-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modbus-confirm-card {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  padding: 26px 28px;
+  max-width: 440px;
+  width: 90%;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+  animation: scaleIn 0.15s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modbus-confirm-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.modbus-confirm-title {
+  font-size: 16.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.modbus-confirm-msg {
+  font-size: 13.5px;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+
+.modbus-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.modbus-confirm-cancel-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 100px;
+  transition: all 0.15s ease;
+}
+
+.modbus-confirm-cancel-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+.modbus-confirm-proceed-btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  background: #00ac86;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 130px;
+  box-shadow: 0 2px 4px rgba(0, 172, 134, 0.25);
+  transition: all 0.15s ease;
+}
+
+.modbus-confirm-proceed-btn:hover {
+  background: #009674;
 }
 
 

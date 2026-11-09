@@ -141,6 +141,19 @@ function App() {
   const [detectingDevice, setDetectingDevice] = React.useState(false);
   const [detectError, setDetectError] = React.useState(null);
   const [deviceInfo, setDeviceInfo] = React.useState(null);
+
+  const isModbusConnected = Boolean(
+    deviceInfo?.transportType?.startsWith('modbus') ||
+    deviceInfo?.transport?.toLowerCase().includes('modbus') ||
+    deviceInfo?.deviceItem?.transportType?.startsWith('modbus')
+  );
+
+  React.useEffect(() => {
+    if (isModbusConnected && activeTab === 'readout') {
+      setActiveTab('online');
+    }
+  }, [isModbusConnected, activeTab]);
+
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
   const [showDownloadModal, setShowDownloadModal] = React.useState(false);
@@ -1084,8 +1097,8 @@ function App() {
                 Table View
               </button>
             )}
-            {/* Readout hammers the device — never offered while recording */}
-            {!recState.recording && (
+            {/* Readout hammers the device — never offered while recording, or when a Modbus device is connected */}
+            {!recState.recording && !isModbusConnected && (
               <button
                 className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
                 onClick={() => {

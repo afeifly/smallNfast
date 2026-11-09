@@ -459,11 +459,11 @@ describe('modbusProtocol Engine', () => {
     });
 
     it('identifies SUTO device models from device ID', () => {
-      expect(getSutoModelFromDeviceId(0x1065)).toBe('SUTO S331');
-      expect(getSutoModelFromDeviceId(0x1064)).toBe('SUTO S330');
-      expect(getSutoModelFromDeviceId(0x1066)).toBe('SUTO S551');
-      expect(getSutoModelFromDeviceId(0x1068)).toBe('SUTO S600');
-      expect(getSutoModelFromDeviceId(0x1080)).toBe('SUTO S505 (DP500)');
+      expect(getSutoModelFromDeviceId(0x1065)).toBe('S331');
+      expect(getSutoModelFromDeviceId(0x1064)).toBe('S330');
+      expect(getSutoModelFromDeviceId(0x1066)).toBe('S551');
+      expect(getSutoModelFromDeviceId(0x1068)).toBe('S600');
+      expect(getSutoModelFromDeviceId(0x1080)).toBe('S505 (DP500)');
     });
 
     it('parses 8-byte CSCommDeviceID response', () => {
@@ -471,13 +471,13 @@ describe('modbusProtocol Engine', () => {
       const raw = new Uint8Array(8);
       const dv = new DataView(raw.buffer);
       dv.setUint8(0, 1);
-      dv.setUint16(1, 0x1065, true); // SUTO S331
+      dv.setUint16(1, 0x1065, true); // S331
       dv.setUint8(3, 154); // v1.54
       dv.setUint32(4, 33100123, true);
 
       const parsed = parseCsDeviceInfoResponse(raw);
       expect(parsed).not.toBeNull();
-      expect(parsed.model).toBe('SUTO S331');
+      expect(parsed.model).toBe('S331');
       expect(parsed.serial).toBe('33100123');
       expect(parsed.softwareVersion).toBe('1.54');
       expect(parsed.busVersion).toBe(1);

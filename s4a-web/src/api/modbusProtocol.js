@@ -823,34 +823,34 @@ export const CS_CMD_GET_MEASUREMENT_CHANNEL_COUNT = new Uint8Array([4, 2, 3]);
 export const CS_CMD_GET_MAX_CHANNEL_COUNT = new Uint8Array([1, 255, 35]); // [1, -1, 35]
 
 export const SUTO_DEVICE_MODELS = {
-  0x1065: 'SUTO S331',
-  0x1064: 'SUTO S330',
-  0x1066: 'SUTO S551',
-  0x1067: 'SUTO S551 P6',
-  0x1068: 'SUTO S600',
-  0x1080: 'SUTO S505 (DP500)',
-  0x1082: 'SUTO S505 (DP520)',
-  0x1052: 'SUTO DS320',
-  0x1053: 'SUTO DS330',
-  0x1055: 'SUTO S325 (DS350)',
-  0x1060: 'SUTO S550 P2',
-  0x1061: 'SUTO S550 P4',
-  0x1062: 'SUTO S550 P6',
-  0x0002: 'SUTO FA300',
-  0x0003: 'SUTO VA300',
-  0x0004: 'SUTO DS300',
-  0x3300: 'SUTO DS300 Modbus',
-  0x3330: 'SUTO S330/S350 Modbus',
-  0x3331: 'SUTO S331 Modbus',
-  0x3450: 'SUTO S450 Modbus',
-  0x3460: 'SUTO S430 Modbus',
-  0x3120: 'SUTO S120 Modbus',
-  0x3130: 'SUTO S130-A Modbus',
-  0x3131: 'SUTO S131 Modbus',
-  0x3500: 'SUTO CSMAEXT Modbus',
-  0x3510: 'SUTO CS110 Modbus',
-  0x3520: 'SUTO CS460 Modbus',
-  0x3530: 'SUTO CSPULSEEXT Modbus'
+  0x1065: 'S331',
+  0x1064: 'S330',
+  0x1066: 'S551',
+  0x1067: 'S551 P6',
+  0x1068: 'S600',
+  0x1080: 'S505 (DP500)',
+  0x1082: 'S505 (DP520)',
+  0x1052: 'DS320',
+  0x1053: 'DS330',
+  0x1055: 'S325 (DS350)',
+  0x1060: 'S550 P2',
+  0x1061: 'S550 P4',
+  0x1062: 'S550 P6',
+  0x0002: 'FA300',
+  0x0003: 'VA300',
+  0x0004: 'DS300',
+  0x3300: 'DS300 Modbus',
+  0x3330: 'S330/S350 Modbus',
+  0x3331: 'S331 Modbus',
+  0x3450: 'S450 Modbus',
+  0x3460: 'S430 Modbus',
+  0x3120: 'S120 Modbus',
+  0x3130: 'S130-A Modbus',
+  0x3131: 'S131 Modbus',
+  0x3500: 'CSMAEXT Modbus',
+  0x3510: 'CS110 Modbus',
+  0x3520: 'CS460 Modbus',
+  0x3530: 'CSPULSEEXT Modbus'
 };
 
 /**
@@ -987,18 +987,22 @@ export function channelSettingToModbusChannel(setting) {
     8: 'FLOAT_L'
   };
 
-  const dataType = typeMap[setting.mBInputValueType] || 'FLOAT_B';
+  const rawType = setting.mBInputValueType ?? 7;
+  const numType = (rawType >= 1 && rawType <= 8) ? rawType : normalizeModbusDataType(rawType);
+  const dataType = typeMap[numType] || 'FLOAT_B';
   const name = setting.channelDescription?.trim()
     || setting.sensorDescription?.trim()
     || `Channel ${setting.logicalChannelNo}`;
   const unit = setting.unitInASCII?.trim() || '';
-  const regAddr = setting.mBValueAddr || 0;
+  const regAddr = (setting.mBValueAddr !== undefined && setting.mBValueAddr > 0)
+    ? setting.mBValueAddr
+    : ((setting.logicalChannelNo ? setting.logicalChannelNo - 1 : 0) * 2);
   const funcCode = setting.mBAccessFuncCode || 3;
   const a1 = (setting.mBA1 !== undefined && !Number.isNaN(setting.mBA1)) ? setting.mBA1 : 1.0;
   const a0 = (setting.mBA0 !== undefined && !Number.isNaN(setting.mBA0)) ? setting.mBA0 : 0.0;
 
-  // Disabled if bit 1 of chOptionalConfig is set (& 0x02), or slaverType is -1, or regAddr is 0
-  const isDisabled = (setting.chOptionalConfig & 0x02) === 2 || setting.slaverType === -1 || regAddr === 0;
+  // Disabled if bit 1 of chOptionalConfig is set (& 0x02), or slaverType is -1
+  const isDisabled = (setting.chOptionalConfig & 0x02) === 2 || setting.slaverType === -1;
 
   return {
     id: setting.logicalChannelNo,
@@ -1006,8 +1010,11 @@ export function channelSettingToModbusChannel(setting) {
     name,
     unit,
     regAddr,
+    mBValueAddr: regAddr,
     funcCode,
     dataType,
+    dataTypeId: numType,
+    mBInputValueType: numType,
     a1,
     a0,
     active: !isDisabled,

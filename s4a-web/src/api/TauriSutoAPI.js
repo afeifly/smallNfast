@@ -763,6 +763,7 @@ export const TauriSutoAPI = {
             modCh.isRtu = isRtu;
             modCh.host = host;
             modCh.port = port;
+            modCh.dataType = normalizeModbusDataType(modCh.dataType);
             discoveredChannels.push(modCh);
           }
         } catch (batchErr) {
@@ -844,7 +845,7 @@ export const TauriSutoAPI = {
 
         if (!deviceInfo) {
           deviceInfo = {
-            model: 'SUTO Modbus Device',
+            model: 'Modbus Device',
             serial: `MB-${workingUnit}`,
             softwareVersion: '1.00',
             busVersion: 1
@@ -855,7 +856,7 @@ export const TauriSutoAPI = {
 
     if (!deviceInfo && discoveredChannels.length > 0) {
       deviceInfo = {
-        model: 'SUTO S331',
+        model: 'S331',
         serial: `331${String(slaveId).padStart(4, '0')}`,
         softwareVersion: '1.54',
         busVersion: 1
@@ -867,7 +868,7 @@ export const TauriSutoAPI = {
     return {
       success: discoveredChannels.length > 0,
       deviceInfo: deviceInfo || {
-        model: 'SUTO Device',
+        model: 'Device',
         serial: String(slaveId),
         softwareVersion: '1.0',
         busVersion: 1

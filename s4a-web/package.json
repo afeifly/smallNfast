@@ -24,6 +24,7 @@
     "tauri:android:build:debug": "npm run sync:version && tauri android build --apk --target aarch64 --debug",
     "tauri:android:dev": "npm run sync:version && tauri android dev",
     "sync:version": "node scripts/sync-version.mjs",
+    "sync:builds": "node scripts/sync-builds.mjs",
     "package:artifacts": "node scripts/package-artifacts.mjs"
   },
   "dependencies": {

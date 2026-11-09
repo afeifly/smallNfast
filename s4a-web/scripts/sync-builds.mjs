@@ -13,7 +13,6 @@ const OWNER = 'afeifly';
 const REPO = 'smallNfast';
 const WORKFLOW_FILE = 's4a-windows-build.yml';
 
-// Optional GITHUB_TOKEN or GH_TOKEN from environment for private repos or higher rate limits
 const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 const headers = {
   'Accept': 'application/vnd.github+json',
@@ -44,10 +43,47 @@ async function downloadBuffer(url) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+// Unpack zip using tar (standard in Ubuntu 24/Debian/macOS) or python3 as fallback
+function extractZip(srcZip, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  try {
+    // Ubuntu 24's tar can extract zip natively
+    execSync(`tar -xf "${srcZip}" -C "${destDir}" 2>/dev/null`);
+    return;
+  } catch (_) {}
+
+  try {
+    // Python3 standard library zipfile (present on almost all Linux machines)
+    execSync(`python3 -m zipfile -e "${srcZip}" "${destDir}"`);
+    return;
+  } catch (_) {}
+
+  try {
+    execSync(`unzip -q -o "${srcZip}" -d "${destDir}"`);
+    return;
+  } catch (_) {
+    throw new Error(`Could not extract zip ${srcZip}. Neither 'tar', 'python3', nor 'unzip' succeeded.`);
+  }
+}
+
+// Pack folder or file into a zip without requiring external zip command
+function createZip(sourceFileOrDir, outputZip) {
+  try {
+    execSync(`python3 -c "import zipfile, os, sys; z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED); [z.write(os.path.join(root, f), os.path.relpath(os.path.join(root, f), os.path.dirname(sys.argv[1]))) for root, dirs, files in os.walk(sys.argv[1]) for f in files] if os.path.isdir(sys.argv[1]) else z.write(sys.argv[1], os.path.basename(sys.argv[1])); z.close()" "${sourceFileOrDir}" "${outputZip}"`);
+    return;
+  } catch (_) {}
+
+  try {
+    execSync(`zip -q -r "${outputZip}" .`, { cwd: path.dirname(sourceFileOrDir) });
+    return;
+  } catch (_) {
+    throw new Error(`Could not create zip ${outputZip}.`);
+  }
+}
+
 async function main() {
   console.log(`[sync:builds] Checking repository ${OWNER}/${REPO} for latest workflow run...`);
 
-  // 1. Get the latest successful run on main (or fall back to any branch if main has none yet)
   let runsData = await apiRequest(
     `https://api.github.com/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs?status=success&branch=main&per_page=1`
   );
@@ -70,12 +106,11 @@ async function main() {
   console.log(`[sync:builds] Commit: "${latestRun.head_commit?.message?.split('\n')[0]}"`);
   console.log(`[sync:builds] Completed at: ${latestRun.updated_at}`);
 
-  // 2. Fetch artifacts for this run
   const artifactsData = await apiRequest(latestRun.artifacts_url);
   const artifacts = artifactsData.artifacts || [];
 
   if (artifacts.length === 0) {
-    console.warn('[sync:builds] No artifacts found for this run (they may have expired).');
+    console.warn('[sync:builds] No artifacts found for this run.');
     process.exit(1);
   }
 
@@ -93,17 +128,13 @@ async function main() {
       const sizeMb = (artifact.size_in_bytes / 1024 / 1024).toFixed(2);
 
       let targetPublicFile = null;
-      let extractInner = false;
 
       if (artName === 'S4A-Windows-Portable-ZIP') {
         targetPublicFile = 's4a_window.zip';
-        extractInner = true;
-      } else if (artName === 'S4A-macOS-Portable-ZIP') {
+      } else if (artName === 'S4A-macOS-Portable-ZIP' || artName === 'S4A-macOS-DMG') {
         targetPublicFile = 's4a_mac.zip';
-        extractInner = true;
       } else if (artName === 'S4A-Android-APK') {
         targetPublicFile = 's4a_android.zip';
-        extractInner = true;
       }
 
       if (!targetPublicFile) {
@@ -116,13 +147,11 @@ async function main() {
       const artZipPath = path.join(tmpDir, `${artName}.zip`);
       fs.writeFileSync(artZipPath, zipBuffer);
 
-      // GitHub actions artifacts are always wrapped in a zip container.
-      // We extract the container to get the actual build file.
+      // Extract the outer GitHub wrapper zip
       const extractSubDir = path.join(tmpDir, artName);
-      fs.mkdirSync(extractSubDir, { recursive: true });
-      execSync(`unzip -q -o "${artZipPath}" -d "${extractSubDir}"`);
+      extractZip(artZipPath, extractSubDir);
 
-      const extractedFiles = fs.readdirSync(extractSubDir);
+      const extractedFiles = fs.readdirSync(extractSubDir).filter(f => !f.startsWith('.'));
       if (extractedFiles.length === 0) {
         console.warn(`[sync:builds] Warning: No file extracted from ${artName}`);
         continue;
@@ -131,23 +160,13 @@ async function main() {
       const innerFile = path.join(extractSubDir, extractedFiles[0]);
       const destPath = path.join(publicDir, targetPublicFile);
 
-      // If the target is android apk, we keep it as a zip containing the apk (or zip it)
-      if (artName === 'S4A-Android-APK') {
-        if (extractedFiles[0].endsWith('.zip')) {
-          fs.copyFileSync(innerFile, destPath);
-        } else {
-          // Zip the APK so browser downloads /s4a_android.zip
-          const apkName = extractedFiles[0];
-          execSync(`cd "${extractSubDir}" && zip -q "${destPath}" "${apkName}"`);
-        }
+      // If the inner file is already a zip (e.g. s4a-app_xxx_windows_x64.zip),
+      // we copy that real zip directly as s4a_window.zip
+      if (extractedFiles[0].endsWith('.zip')) {
+        fs.copyFileSync(innerFile, destPath);
       } else {
-        // Windows and macOS portable packages are already zip files inside the artifact
-        if (extractedFiles[0].endsWith('.zip')) {
-          fs.copyFileSync(innerFile, destPath);
-        } else {
-          // If a raw executable or file, zip it for the web download link
-          execSync(`cd "${extractSubDir}" && zip -q "${destPath}" "${extractedFiles[0]}"`);
-        }
+        // If it's a raw file (.apk or .dmg or .exe), package it into target zip
+        createZip(innerFile, destPath);
       }
 
       const finalSizeMb = (fs.statSync(destPath).size / 1024 / 1024).toFixed(2);
@@ -156,7 +175,6 @@ async function main() {
 
     console.log('\n[sync:builds] Successfully synchronized latest build artifacts to s4a-web/public/ !');
   } finally {
-    // Cleanup temporary files
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch (_) {}
@@ -167,4 +185,3 @@ main().catch(err => {
   console.error('[sync:builds] Error:', err.message);
   process.exit(1);
 });
-

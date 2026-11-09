@@ -19,8 +19,45 @@ permissions:
   contents: write
 
 jobs:
+  check-version:
+    name: Check Version Change
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Compare package.json version
+        id: check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "release" ]; then
+            echo "Manual or release event detected. Forcing build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CURR_VER=$(node -p "try { require('./s4a-web/package.json').version } catch(e) { '' }")
+          PREV_VER=$(git show HEAD~1:s4a-web/package.json 2>/dev/null | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).version)}catch(e){console.log('')}})" || echo "")
+
+          echo "Previous version: '$PREV_VER'"
+          echo "Current version:  '$CURR_VER'"
+
+          if [ -n "$CURR_VER" ] && [ "$CURR_VER" != "$PREV_VER" ]; then
+            echo "Version changed from '$PREV_VER' to '$CURR_VER'. Triggering builds."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged. Skipping builds."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
   build-windows:
     name: Build Windows Release (.exe)
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
     runs-on: windows-latest
 
     defaults:
@@ -131,6 +168,8 @@ jobs:
 
   build-macos:
     name: Build macOS Release (.dmg)
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
     runs-on: macos-latest
 
     defaults:
@@ -213,6 +252,8 @@ jobs:
 
   build-android:
     name: Build Android APK
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
 
     env:

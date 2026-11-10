@@ -847,6 +847,8 @@ export const SUTO_DEVICE_MODELS = {
   0x3120: 'S120 Modbus',
   0x3130: 'S130-A Modbus',
   0x3131: 'S131 Modbus',
+  0x1300: 'S461',
+  0x1302: 'S463',
   0x3500: 'CSMAEXT Modbus',
   0x3510: 'CS110 Modbus',
   0x3520: 'CS460 Modbus',

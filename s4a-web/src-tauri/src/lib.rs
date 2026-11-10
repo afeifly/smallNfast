@@ -30,6 +30,7 @@ pub fn run() {
             suto::suto_get_logger_status,
             suto::suto_get_logger_files,
             suto::suto_read_s461_log,
+            suto::suto_read_s418_log,
             suto::suto_get_600_csd_files,
             suto::suto_generate_600_report,
             suto::suto_get_screenshots,

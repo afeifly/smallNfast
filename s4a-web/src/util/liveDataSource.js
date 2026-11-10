@@ -21,6 +21,8 @@ let viewDemand = false;
 let recordingDemand = false;
 let timer = null;
 let inFlight = false;
+let activeLocationChannels = null; // null: unrestricted (all channels); Array: channels in active location
+let recordingChannels = null; // null or Array of channels being recorded
 const subscribers = new Set();
 
 function dispatch(result) {
@@ -33,11 +35,79 @@ function dispatch(result) {
   }
 }
 
+/**
+ * Returns the consolidated list of demanded channels based on:
+ * 1. Active location in ProcessScape (when not recording, ONLY active location's channels)
+ * 2. When recording is running: (active location channels) ∪ (recording channels)
+ * 3. When outside ProcessScape (unrestricted): null (all connected channels)
+ */
+export function getDemandedChannels() {
+  const isRec = recordingDemand && Array.isArray(recordingChannels);
+  const isLoc = Array.isArray(activeLocationChannels);
+
+  // If recording is running AND active location channels are defined: combine both!
+  if (isRec && isLoc) {
+    const combined = [...activeLocationChannels];
+    const seen = new Set(combined.map(c => c.key || c.id || c.channel_id));
+    recordingChannels.forEach(rc => {
+      const k = rc.key || rc.id || rc.channel_id;
+      if (!seen.has(k)) {
+        combined.push(rc);
+        seen.add(k);
+      }
+    });
+    return combined;
+  }
+
+  // If only recording is running (e.g. background recording without location scope)
+  if (isRec) {
+    return recordingChannels;
+  }
+
+  // If viewing a ProcessScape location (when not recording, strictly active location)
+  if (isLoc) {
+    return activeLocationChannels;
+  }
+
+  // Unrestricted demand (e.g. standard S4A Online View / Monitor tab)
+  return null;
+}
+
+/** Set channels demanded by the currently active ProcessScape location */
+export function setActiveLocationChannels(channels) {
+  activeLocationChannels = Array.isArray(channels) ? channels : null;
+  // If poller is active, trigger an immediate poll to refresh new location channels immediately
+  if (timer !== null) {
+    poll();
+  }
+}
+
+/** Set channels demanded by active live recording */
+export function setRecordingChannels(channels) {
+  recordingChannels = Array.isArray(channels) ? channels : null;
+  if (timer !== null) {
+    poll();
+  }
+}
+
+let isPaused = false;
+
+/** Temporarily pause the background live polling loop (e.g. during hardware connection/discovery) */
+export function pausePolling() {
+  isPaused = true;
+}
+
+/** Resume the background live polling loop */
+export function resumePolling() {
+  isPaused = false;
+}
+
 async function poll() {
-  if (inFlight) return;
+  if (inFlight || isPaused) return;
   inFlight = true;
   try {
-    const res = await TauriSutoAPI.getMeasurementData();
+    const demanded = getDemandedChannels();
+    const res = await TauriSutoAPI.getMeasurementData(null, { demandedChannels: demanded });
     dispatch(res);
   } catch (e) {
     console.warn('[LiveDataSource] poll failed:', e);

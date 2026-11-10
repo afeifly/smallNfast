@@ -12,6 +12,7 @@
 
 import { isTauri, checkIsTauri } from '../util/platform';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import BleSutoAPI from './BleSutoAPI';
 import ApiDevice from './device/ApiDevice';
 import { resolveChannelResolution } from '../util/resolution';
@@ -234,8 +235,12 @@ export const TauriSutoAPI = {
    * Dispatches to native Tauri BLE in desktop mode, or BleSutoAPI.resumeBleConnection in Web mode.
    */
   async resumeBleConnection(options = {}) {
-    if (this.isConnected()) {
-      return { reconnected: true, transport: activeTransport || 'BLE' };
+    const isBleAlreadyConnected = hasTauri()
+      ? (activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE')
+      : Boolean(BleSutoAPI && BleSutoAPI.isConnected && BleSutoAPI.isConnected());
+
+    if (isBleAlreadyConnected) {
+      return { reconnected: true, transport: 'BLE' };
     }
 
     if (hasTauri()) {
@@ -1016,8 +1021,9 @@ export const TauriSutoAPI = {
       }
     }
 
-    // 2. Append active Modbus devices' channels
-    if (activeModbusDevices.size > 0) {
+    // 2. Append active Modbus devices' channels (ONLY when Modbus or non-BLE transport is active, NEVER for BLE!)
+    const isBleActive = activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || activeTransport === 'BLE_WEB';
+    if (!isBleActive && activeModbusDevices.size > 0) {
       for (const modbusDev of activeModbusDevices.values()) {
         (modbusDev.channels || []).forEach((ch, idx) => {
           const chId = ch.channel_id ?? ch.id ?? (idx + 1);
@@ -1089,57 +1095,279 @@ export const TauriSutoAPI = {
   },
 
   /**
+   * Helper to determine whether BLE polling is required given the current demanded channels list.
+   * @private
+   */
+  _isBleDemanded(demanded) {
+    if (!demanded) return true;
+    if (!Array.isArray(demanded) || demanded.length === 0) return false;
+
+    const bleSerial = String(BleSutoAPI?.systemInfo?.serial_number || BleSutoAPI?.systemInfo?.serial || '').toLowerCase();
+    const bleDevName = String(BleSutoAPI?.getDeviceName?.() || '').toLowerCase();
+    const bleCachedChs = BleSutoAPI?.cachedChannels || [];
+    const bleChIds = new Set(bleCachedChs.map(c => String(c.channel_id ?? c.id)));
+
+    return demanded.some((item) => {
+      if (!item) return false;
+      if (typeof item === 'string' || typeof item === 'number') {
+        const s = String(item).toLowerCase();
+        if (s.startsWith('ble') || s.includes('ble_')) return true;
+        if (bleSerial && s.includes(bleSerial)) return true;
+        if (bleChIds.has(s)) return true;
+        return false;
+      }
+
+      const itemTransport = String(item.transport || item.transportType || '').toLowerCase();
+      const itemDev = String(item.device || '').toLowerCase();
+      const itemDevId = String(item.deviceId || item.device_id || '').toLowerCase();
+      const itemDevSerial = String(item.deviceSerial || item.serial || item.serial_number || '').toLowerCase();
+      const itemId = String(item.id || '').toLowerCase();
+
+      if (item.isBle || itemTransport.includes('ble') || itemDev.includes('ble') || itemDevId.includes('ble') || itemId.includes('ble')) {
+        return true;
+      }
+      if (bleSerial && (itemDevSerial === bleSerial || itemId.includes(bleSerial))) {
+        return true;
+      }
+      if (bleDevName && itemDev === bleDevName) {
+        return true;
+      }
+
+      // If it's explicitly modbus or tcp/usb, it's not BLE
+      if (itemTransport.includes('modbus') || itemTransport.includes('tcp') || item.mBValueAddr !== undefined) {
+        return false;
+      }
+
+      const itemChId = String(item.channel_id ?? item.channelId ?? item.id ?? '');
+      if (bleChIds.has(itemChId) && !itemDevSerial && !itemDevId) {
+        return true;
+      }
+      return false;
+    });
+  },
+
+  /**
+   * Helper to determine whether native Tauri socket polling is required.
+   * Note: On desktop Tauri, BLE connections are also managed via the native socket
+   * (activeTransport === 'BLE' or 'BLE_NATIVE'), so BLE items MUST also demand native polling!
+   * @private
+   */
+  _isNativeDemanded(demanded) {
+    if (!demanded) return true;
+    if (!Array.isArray(demanded) || demanded.length === 0) return false;
+
+    // If native transport is currently running BLE, check if BLE is demanded
+    if (activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE') {
+      return this._isBleDemanded(demanded);
+    }
+
+    const activeModbusList = Array.from(activeModbusDevices.values());
+
+    return demanded.some((item) => {
+      if (!item) return false;
+      if (typeof item === 'string' || typeof item === 'number') {
+        const s = String(item).toLowerCase();
+        if (s.startsWith('usb') || s.startsWith('tcp') || s.startsWith('native')) return true;
+        return false;
+      }
+      const itemTransport = String(item.transport || item.transportType || '').toLowerCase();
+      const itemDevId = String(item.deviceId || item.device_id || '').toLowerCase();
+      const itemDev = String(item.device || '').toLowerCase();
+      const itemId = String(item.id || '').toLowerCase();
+
+      // Explicit BLE items do NOT demand USB / native TCP polling
+      if (
+        item.isBle ||
+        itemTransport.includes('ble') ||
+        itemDevId.includes('ble') ||
+        itemDev.includes('ble')
+      ) {
+        return false;
+      }
+
+      // Explicit Modbus items do NOT demand USB / native TCP polling
+      if (
+        itemTransport.includes('modbus') ||
+        itemDevId.includes('modbus') ||
+        itemDev.includes('modbus') ||
+        item.mBValueAddr !== undefined
+      ) {
+        return false;
+      }
+
+      // Explicit USB or native TCP identifiers
+      if (
+        itemTransport.includes('usb') ||
+        itemDevId.includes('usb') ||
+        itemDev.includes('usb') ||
+        itemId.includes('usb') ||
+        ((itemTransport.includes('tcp') || itemDevId.includes('tcp')) && !itemTransport.includes('modbus'))
+      ) {
+        return true;
+      }
+
+      // If this item belongs to one of the active Modbus devices, do not trigger native USB polling
+      if (activeModbusList.some((m) => this._isModbusDeviceDemanded(m, [item]))) {
+        return false;
+      }
+
+      // Otherwise, a non-Modbus/non-BLE channel in the active location demands native USB/TCP polling
+      return true;
+    });
+  },
+
+  /**
+   * Helper to determine whether a specific Modbus device is required given demanded channels.
+   * @private
+   */
+  _isModbusDeviceDemanded(modbusDev, demanded) {
+    if (!demanded) return true;
+    if (!Array.isArray(demanded) || demanded.length === 0) return false;
+
+    const devId = String(modbusDev.deviceId || modbusDev.id || '').toLowerCase();
+    const devSerial = String(modbusDev.serial || modbusDev.serial_number || '').toLowerCase();
+    const devHost = String(modbusDev.host || '').toLowerCase();
+    const devName = String(modbusDev.name || modbusDev.device || '').toLowerCase();
+    const devChIds = new Set((modbusDev.channels || []).map(c => String(c.channel_id ?? c.id)));
+
+    return demanded.some((item) => {
+      if (!item) return false;
+
+      if (typeof item === 'string' || typeof item === 'number') {
+        const s = String(item).toLowerCase();
+        if (devSerial && s.includes(devSerial)) return true;
+        if (devId && s.includes(devId)) return true;
+        if (devHost && s.includes(devHost)) return true;
+        if (devChIds.has(s)) return true;
+        return false;
+      }
+
+      const itemTransport = String(item.transport || item.transportType || '').toLowerCase();
+      const itemDevSerial = String(item.deviceSerial || item.serial || item.serial_number || '').toLowerCase();
+      const itemDevId = String(item.deviceId || item.device_id || '').toLowerCase();
+      const itemHost = String(item.host || item.ip || '').toLowerCase();
+      const itemDevName = String(item.device || '').toLowerCase();
+      const itemId = String(item.id || '').toLowerCase();
+
+      // If item has explicit serial and both have serials
+      if (devSerial && itemDevSerial) {
+        return devSerial === itemDevSerial;
+      }
+
+      // If item has deviceId
+      if (devId && itemDevId) {
+        if (devId === itemDevId || devId.includes(itemDevId) || itemDevId.includes(devId)) {
+          return true;
+        }
+      }
+
+      // If item has host
+      if (devHost && itemHost) {
+        if (devHost === itemHost) return true;
+      }
+
+      // If item has register address and transport mentions modbus
+      if (item.mBValueAddr !== undefined && (itemTransport.includes('modbus') || itemDevName.includes('modbus'))) {
+        if (!itemDevSerial || itemDevSerial === devSerial) return true;
+      }
+
+      // If the channel ID string embeds the serial or device ID
+      if (devSerial && itemId.includes(devSerial)) return true;
+      if (devId && itemId.includes(devId)) return true;
+
+      // If item is explicitly BLE or USB (not modbus), it does not belong to this modbus device
+      if (itemTransport.includes('ble') || itemDevName.includes('ble') || item.isBle) {
+        return false;
+      }
+
+      // If channel ID matches one of this modbusDev's channels and no conflicting device info
+      const itemChId = String(item.channel_id ?? item.channelId ?? item.id ?? '');
+      if (devChIds.has(itemChId)) {
+        if (!itemDevSerial && !itemDevId) {
+          if (!itemDevName || itemDevName === devName) return true;
+        }
+      }
+
+      return false;
+    });
+  },
+
+  /**
    * Get live measurement data formatted for S4A GraphicView
    * @param {Function} [callback]
+   * @param {Object} [options]
+   * @param {Array} [options.demandedChannels] - When provided, restrict polling to devices/channels demanded by active location and/or recording
    */
-  async getMeasurementData(callback) {
+  async getMeasurementData(callback, options = {}) {
+    if (typeof callback === 'object' && callback !== null && (options === undefined || Object.keys(options).length === 0)) {
+      options = callback;
+      callback = undefined;
+    }
+
     if (activeTransport === 'API') {
       return await ApiDevice.getMeasurementData(callback);
     }
-    if (activeTransport === 'BLE_WEB') {
-      const now = Date.now();
-      // Reuse recent fresh measurement within 750ms
-      if (lastMeasurementResult && (now - lastMeasurementTime < 750)) {
-        if (callback) callback(lastMeasurementResult);
-        return lastMeasurementResult;
-      }
 
-      // If a measurement query is already in flight, coalesce onto the same promise
-      if (activeMeasurementPromise) {
-        const res = await activeMeasurementPromise;
-        if (callback) callback(res);
-        return res;
-      }
-
-      activeMeasurementPromise = BleSutoAPI.getMeasurementData()
-        .then((res) => {
-          lastMeasurementResult = res;
-          lastMeasurementTime = Date.now();
-          return res;
-        })
-        .finally(() => {
-          activeMeasurementPromise = null;
-        });
-
-      const res = await activeMeasurementPromise;
-      if (callback) callback(res);
-      return res;
+    const demanded = options?.demandedChannels;
+    // If demandedChannels is explicitly an empty array, no channels are needed -> return immediately!
+    if (Array.isArray(demanded) && demanded.length === 0) {
+      if (callback) callback([]);
+      return [];
     }
 
     try {
+      const result = [];
+      const now = Date.now();
+
+      // 1. Poll BLE if active (Web Bluetooth) and demanded
+      const isBleWeb = activeTransport === 'BLE_WEB' || Boolean(BleSutoAPI && BleSutoAPI.isConnected && BleSutoAPI.isConnected());
+      const isBleNeeded = isBleWeb && (!demanded || this._isBleDemanded(demanded));
+      if (isBleNeeded) {
+        try {
+          let bleRes = null;
+          if (lastMeasurementResult && (now - lastMeasurementTime < 750)) {
+            bleRes = lastMeasurementResult;
+          } else {
+            if (!activeMeasurementPromise) {
+              activeMeasurementPromise = BleSutoAPI.getMeasurementData()
+                .then((res) => {
+                  lastMeasurementResult = res;
+                  lastMeasurementTime = Date.now();
+                  return res;
+                })
+                .finally(() => {
+                  activeMeasurementPromise = null;
+                });
+            }
+            bleRes = await activeMeasurementPromise;
+          }
+
+          if (Array.isArray(bleRes)) {
+            result.push(...bleRes);
+          } else if (bleRes && Array.isArray(bleRes.channels)) {
+            result.push(...bleRes.channels);
+          }
+        } catch (bleErr) {
+          console.warn('[TauriSutoAPI] BLE telemetry poll error:', bleErr);
+        }
+      }
+
+      // 2. Poll native Tauri hardware values (if native socket is active)
       let values = [];
-      if (hasTauri()) {
+      const isNativeActive = hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE');
+      const isNativeNeeded = isNativeActive && (!demanded || this._isNativeDemanded(demanded));
+      if (isNativeNeeded) {
         try {
           const res = await invoke('suto_get_values');
           if (Array.isArray(res)) values = res;
         } catch (tauriErr) {
-          // Normal when no USB/raw device is attached; must NOT abort Modbus device polling
+          // Normal when no direct USB socket is attached
           values = [];
         }
       }
+
       const valArray = Array.isArray(values) ? values : [];
-      const now = Date.now();
-      const result = valArray.map((val) => {
+      valArray.forEach((val) => {
         const histKey = val.device_id ? `${val.device_id}_${val.id}` : (val.port ? `${val.port}_${val.id}` : val.id);
         let history = historyBuffer.get(histKey);
         if (!history) {
@@ -1158,7 +1386,7 @@ export const TauriSutoAPI = {
         const min = pts.length ? Math.min(...pts) : 0;
         const max = pts.length ? Math.max(...pts) : 100;
 
-        return {
+        result.push({
           channel_id: val.id,
           id: val.id,
           unit: val.unit,
@@ -1176,7 +1404,7 @@ export const TauriSutoAPI = {
           pointInterval: [1000],
           min,
           max,
-        };
+        });
       });
 
       // Poll active Modbus devices
@@ -1184,6 +1412,11 @@ export const TauriSutoAPI = {
         for (const modbusDev of activeModbusDevices.values()) {
           const chList = Array.isArray(modbusDev.channels) ? modbusDev.channels : [];
           if (chList.length === 0) continue;
+
+          // If demand is specified, skip this Modbus device if not demanded
+          if (demanded && !this._isModbusDeviceDemanded(modbusDev, demanded)) {
+            continue;
+          }
 
           // Attempt SUTO CS-Bus atomic batch polling first (FC 71 TCP / FC 70 RTU: [4, 1, 1, 1, chCount])
           let sutoBatchSuccess = false;
@@ -1211,6 +1444,30 @@ export const TauriSutoAPI = {
                   const ch = chList[idx];
                   if (!ch) return;
                   const chId = ch.channel_id ?? ch.id ?? (idx + 1);
+
+                  // If demand is active, only include demanded channels in result output
+                  if (demanded) {
+                    const devSerial = String(modbusDev.serial || modbusDev.serial_number || '').toLowerCase();
+                    const devId = String(modbusDev.deviceId || modbusDev.id || '').toLowerCase();
+                    const isChDemanded = demanded.some((d) => {
+                      if (!d) return false;
+                      if (typeof d === 'string' || typeof d === 'number') {
+                        const s = String(d).toLowerCase();
+                        return s === String(chId) || (devSerial && s.includes(devSerial) && s.includes(String(chId)));
+                      }
+                      const dChId = d.channel_id ?? d.channelId ?? d.id;
+                      const dSerial = String(d.deviceSerial || d.serial || d.serial_number || '').toLowerCase();
+                      const dDevId = String(d.deviceId || d.device_id || '').toLowerCase();
+                      if (String(dChId) === String(chId)) {
+                        if (dSerial && devSerial) return dSerial === devSerial;
+                        if (dDevId && devId) return dDevId === devId;
+                        return true;
+                      }
+                      return false;
+                    });
+                    if (!isChDemanded) return;
+                  }
+
                   const val = mVal.value;
                   const histKey = `${modbusDev.deviceId || modbusDev.id}_${chId}`;
                   let history = historyBuffer.get(histKey);
@@ -1262,8 +1519,30 @@ export const TauriSutoAPI = {
 
           // If SUTO batch was not applicable or failed, poll channel-by-channel with Modbus registers
           if (!sutoBatchSuccess) {
+            const devSerial = String(modbusDev.serial || modbusDev.serial_number || '').toLowerCase();
+            const devId = String(modbusDev.deviceId || modbusDev.id || '').toLowerCase();
             for (const ch of chList) {
               const chId = ch.channel_id ?? ch.id;
+
+              if (demanded) {
+                const isChDemanded = demanded.some((d) => {
+                  if (!d) return false;
+                  if (typeof d === 'string' || typeof d === 'number') {
+                    const s = String(d).toLowerCase();
+                    return s === String(chId) || (devSerial && s.includes(devSerial) && s.includes(String(chId)));
+                  }
+                  const dChId = d.channel_id ?? d.channelId ?? d.id;
+                  const dSerial = String(d.deviceSerial || d.serial || d.serial_number || '').toLowerCase();
+                  const dDevId = String(d.deviceId || d.device_id || '').toLowerCase();
+                  if (String(dChId) === String(chId)) {
+                    if (dSerial && devSerial) return dSerial === devSerial;
+                    if (dDevId && devId) return dDevId === devId;
+                    return true;
+                  }
+                  return false;
+                });
+                if (!isChDemanded) continue;
+              }
               try {
                 const res = await this.readModbusChannel(ch, modbusDev);
                 const val = res.value;
@@ -1377,10 +1656,18 @@ export const TauriSutoAPI = {
     if (activeTransport === 'API') {
       return await ApiDevice.getSystemInfo();
     }
-    if (activeTransport === 'BLE_WEB') {
+    if (activeTransport === 'BLE_WEB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE') {
+      if (hasTauri()) {
+        try {
+          const sInfo = await invoke('suto_get_system_info');
+          if (sInfo && (sInfo.device_id || sInfo.serial_number || sInfo.device_name)) {
+            return sInfo;
+          }
+        } catch (_) {}
+      }
       return await BleSutoAPI.getSystemInfo();
     }
-    if (hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE')) {
+    if (hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB')) {
       try {
         const sInfo = await invoke('suto_get_system_info');
         if (sInfo && (sInfo.device_id || sInfo.serial_number || sInfo.device_name)) {
@@ -1388,7 +1675,8 @@ export const TauriSutoAPI = {
         }
       } catch (_) {}
     }
-    if (activeModbusDevices.size > 0 || activeTransport === 'MODBUS_TCP' || activeTransport === 'MODBUS_RTU') {
+    const isBleActive = activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || activeTransport === 'BLE_WEB';
+    if (!isBleActive && (activeTransport === 'MODBUS_TCP' || activeTransport === 'MODBUS_RTU' || (activeModbusDevices.size > 0 && !activeTransport))) {
       const dev = activeModbusDevices.values().next().value;
       if (dev) {
         return {
@@ -1421,19 +1709,61 @@ export const TauriSutoAPI = {
   },
 
   /**
-   * Read logged data from S461 device memory for a given time period
-   * @param {number} startTime Unix timestamp in seconds
-   * @param {number} stopTime Unix timestamp in seconds
-   * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
+   * Invoke a Tauri logger readout command while streaming live `suto-readout-progress` events.
+   * @private
    */
-  async readS461Log(startTime, stopTime) {
+  async _invokeWithReadoutProgress(command, args, onProgress) {
     if (!hasTauri()) {
       throw new Error('Device communication is only available in desktop application mode.');
     }
-    return await invoke('suto_read_s461_log', {
+    let unlisten = null;
+    try {
+      if (typeof onProgress === 'function' && typeof listen === 'function') {
+        try {
+          unlisten = await listen('suto-readout-progress', (event) => {
+            const payload = event?.payload || {};
+            if (typeof payload.percent === 'number') {
+              onProgress(payload.percent, payload);
+            }
+          });
+        } catch (_) {
+          unlisten = null;
+        }
+      }
+      return await invoke(command, args);
+    } finally {
+      if (typeof unlisten === 'function') {
+        try { unlisten(); } catch (_) {}
+      }
+    }
+  },
+
+  /**
+   * Read logged data from S461/S463 device memory for a given time period
+   * @param {number} startTime Unix timestamp in seconds
+   * @param {number} stopTime Unix timestamp in seconds
+   * @param {Function} [onProgress] Optional callback `(percent, { current, total }) => void`
+   * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
+   */
+  async readS461Log(startTime, stopTime, onProgress) {
+    return await this._invokeWithReadoutProgress('suto_read_s461_log', {
       startTime: Math.floor(startTime),
       stopTime: Math.floor(stopTime),
-    });
+    }, onProgress);
+  },
+
+  /**
+   * Read logged data from S418/S419 device memory for a given time period
+   * @param {number} startTime Unix timestamp in seconds
+   * @param {number} stopTime Unix timestamp in seconds
+   * @param {Function} [onProgress] Optional callback `(percent, { current, total }) => void`
+   * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
+   */
+  async readS418Log(startTime, stopTime, onProgress) {
+    return await this._invokeWithReadoutProgress('suto_read_s418_log', {
+      startTime: Math.floor(startTime),
+      stopTime: Math.floor(stopTime),
+    }, onProgress);
   },
 
   /**

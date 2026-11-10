@@ -108,27 +108,21 @@ export function getAllScapes() {
 
   try {
     const raw = storage.getItem(STORAGE_KEY_SCAPES);
-    if (!raw) {
+    if (raw === null) {
+      // First visit before user has ever saved or deleted scapes: show demo example
       return [getExampleCompressorStationScape()];
     }
 
     let list = JSON.parse(raw);
-    if (!Array.isArray(list) || list.length === 0) {
-      return [getExampleCompressorStationScape()];
+    if (!Array.isArray(list)) {
+      return [];
     }
 
     // Auto-clean: purge old hardcoded starter plant if present
     const cleaned = list.filter(s => s.id !== 'scape_default_plant');
     if (cleaned.length !== list.length) {
       list = cleaned;
-      if (list.length > 0) {
-        storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(list));
-      } else {
-        storage.removeItem(STORAGE_KEY_SCAPES);
-      }
-    }
-    if (list.length === 0) {
-      return [getExampleCompressorStationScape()];
+      storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(list));
     }
 
     // Auto-migrate legacy scapes: remove zone_comp_room, fake sensor cards, heal pipe flow
@@ -157,10 +151,10 @@ export function getAllScapes() {
     if (modified) {
       storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(list));
     }
-    return list.length > 0 ? list : [getExampleCompressorStationScape()];
+    return list;
   } catch (err) {
-    console.warn('[ScapeStorage] Error loading scapes, fallback to default:', err);
-    return [getExampleCompressorStationScape()];
+    console.warn('[ScapeStorage] Error loading scapes:', err);
+    return [];
   }
 }
 
@@ -169,17 +163,39 @@ export function getAllScapes() {
  */
 export function getActiveScapeId() {
   const storage = getStorage();
-  if (!storage) return EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
+  if (!storage) return '';
   const activeId = storage.getItem(STORAGE_KEY_ACTIVE);
+  // If activeId was explicitly set to empty, respect it (no active scape)
+  if (activeId === '') {
+    return '';
+  }
+  // If user has configured/visited locations (storage key exists, e.g. set to [] after deletion),
+  // but has 0 locations, do not force-activate any scape!
+  const hasLocationsKey = storage.getItem(STORAGE_KEY_LOCATIONS) !== null;
+  if (hasLocationsKey && !hasSavedLocations()) {
+    return '';
+  }
   const all = getAllScapes();
   if (activeId && all.some(s => s.id === activeId)) {
     return activeId;
   }
+  // If user has saved locations, pick the first real scape if activeId is missing or invalid
+  if (hasSavedLocations()) {
+    const realScapes = all.filter(s => !s.isExample);
+    if (realScapes.length > 0) {
+      return realScapes[0].id;
+    }
+    return all[0]?.id || '';
+  }
+  if (hasLocationsKey) {
+    return '';
+  }
+  // First-time demo visit before any locations or scapes were saved:
   const realScapes = all.filter(s => !s.isExample);
   if (realScapes.length > 0) {
     return realScapes[0].id;
   }
-  return all[0]?.id || EXAMPLE_COMPRESSOR_STATION_SCAPE.id;
+  return all[0]?.id || '';
 }
 
 /**
@@ -188,6 +204,10 @@ export function getActiveScapeId() {
 export function setActiveScapeId(id) {
   const storage = getStorage();
   if (!storage) return;
+  if (!id) {
+    storage.setItem(STORAGE_KEY_ACTIVE, '');
+    return;
+  }
   storage.setItem(STORAGE_KEY_ACTIVE, id);
 }
 
@@ -195,17 +215,28 @@ export function setActiveScapeId(id) {
  * Get currently active scape object
  */
 export function getActiveScape() {
-  const all = getAllScapes();
   const activeId = getActiveScapeId();
+  if (!activeId) {
+    return {
+      id: '',
+      title: 'ProcessScape',
+      tempCanvasSize: { width: 1024, height: 800 },
+      zones: [],
+      elements: [],
+      pipes: []
+    };
+  }
+  const all = getAllScapes();
   const found = all.find(s => s.id === activeId);
-  if (found) {
-    return JSON.parse(JSON.stringify(found));
-  }
-  const realScapes = all.filter(s => !s.isExample);
-  if (realScapes.length > 0) {
-    return JSON.parse(JSON.stringify(realScapes[0]));
-  }
-  return getExampleCompressorStationScape();
+  if (found) return found;
+  return {
+    id: '',
+    title: 'ProcessScape',
+    tempCanvasSize: { width: 1024, height: 800 },
+    zones: [],
+    elements: [],
+    pipes: []
+  };
 }
 
 /**
@@ -290,23 +321,21 @@ export function duplicateScape(id) {
 }
 
 /**
- * Delete a scape (preserves at least one scape)
+ * Delete a scape (even if it is the only one in use)
  */
 export function deleteScape(id) {
   const storage = getStorage();
   if (!storage) return false;
 
   const all = getAllScapes();
-  if (all.length <= 1) {
-    return false; // Cannot delete the only remaining scape
-  }
-
   const newList = all.filter(s => s.id !== id);
+
   storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(newList));
 
   const activeId = getActiveScapeId();
   if (activeId === id) {
-    setActiveScapeId(newList[0].id);
+    const nextActiveId = newList[0]?.id || '';
+    setActiveScapeId(nextActiveId);
   }
   return true;
 }

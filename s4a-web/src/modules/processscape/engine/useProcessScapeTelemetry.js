@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { subscribeLive, setViewDemand } from '../../../util/liveDataSource';
+import { subscribeLive, setViewDemand, setActiveLocationChannels } from '../../../util/liveDataSource';
 import { formatChannelValue, resolveChannelResolution } from '../../../util/resolution';
-import { autoReconnectSavedDevices, getSavedDevices } from './sensorManagerStorage';
+import { autoReconnectSavedDevices, getSavedDevices, getLocations } from './sensorManagerStorage';
 import TauriSutoAPI from '../../../api/TauriSutoAPI';
 
 function formatVal(val, resolution = 2) {
@@ -241,10 +241,10 @@ export function useProcessScapeTelemetry({
                 ? String(ch.deviceId || savedDev?.id || parsedDevId || el.deviceId).toLowerCase()
                 : null;
 
-              // Check for conflict: if ports, serials, or IDs differ between target channel and candidate, REJECT immediately!
+              const isGenericId = (id) => !id || id.startsWith('dev_single_') || id.startsWith('dev_ble_') || id.startsWith('dev_usb_');
               const hasConflict = (candPort && chPort && candPort !== chPort) ||
                                   (candSerial && chSerial && candSerial !== chSerial) ||
-                                  (candId && chId && candId !== chId);
+                                  (candId && chId && !isGenericId(candId) && !isGenericId(chId) && candId !== chId);
 
               if (!hasConflict) {
                 const hasInstanceMatch = (candPort && chPort && candPort === chPort) ||
@@ -253,8 +253,8 @@ export function useProcessScapeTelemetry({
 
                 if (hasInstanceMatch) {
                   liveItem = candidate;
-                } else if (!hasMultipleLiveDevices && !candPort && !chPort && !candSerial && !chSerial) {
-                  // Only single device connected without hardware identifiers
+                } else if (!hasMultipleLiveDevices) {
+                  // Only single device transmitting telemetry (e.g. connected BLE/USB sensor)
                   liveItem = candidate;
                 }
               }
@@ -340,6 +340,94 @@ export function useProcessScapeTelemetry({
       setViewDemand(false);
     };
   }, [enabled, handleLiveResult]);
+
+  // Synchronize active location channels with live polling scheduler
+  useEffect(() => {
+    if (!enabled) {
+      setActiveLocationChannels(null);
+      return;
+    }
+
+    const computeAndSetNeededChannels = () => {
+      const curLocId = activeLocationIdRef.current;
+      if (!curLocId || curLocId === 'example_demo') {
+        setActiveLocationChannels([]);
+        return;
+      }
+
+      const locs = getLocations();
+      const activeLoc = locs.find(l => l.id === curLocId);
+      const savedDevs = getSavedDevices() || [];
+      const devById = new Map();
+      const devByChId = new Map();
+      savedDevs.forEach(d => {
+        if (d?.id) devById.set(String(d.id), d);
+        (d?.sensors || []).forEach(s => {
+          (s?.channels || []).forEach(c => {
+            if (c?.id) devByChId.set(String(c.id), d);
+          });
+        });
+      });
+
+      const enrichChannelDemand = (ch, extra = {}) => {
+        const matchedDev = (ch.deviceId && devById.get(String(ch.deviceId))) || (ch.id && devByChId.get(String(ch.id))) || null;
+        return {
+          ...ch,
+          ...extra,
+          deviceId: extra.deviceId || ch.deviceId || matchedDev?.id,
+          deviceSerial: extra.deviceSerial || ch.deviceSerial || matchedDev?.serial,
+          transport: ch.transport || matchedDev?.connectionConfig?.transport || matchedDev?.transport,
+          transportType: ch.transportType || matchedDev?.transportType || matchedDev?.connectionConfig?.transport
+        };
+      };
+
+      const needed = [];
+
+      if (activeLoc && Array.isArray(activeLoc.measurementPoints)) {
+        activeLoc.measurementPoints.forEach(mp => {
+          (mp.channels || []).forEach(ch => {
+            needed.push(enrichChannelDemand(ch, {
+              locationId: activeLoc.id,
+              locationName: activeLoc.name,
+              measurementPointId: mp.id,
+              measurementPointName: mp.name
+            }));
+          });
+        });
+      }
+
+      (elementsRef.current || []).forEach(el => {
+        if (el.type === 'sensor_card' && el.locationId === curLocId && Array.isArray(el.channels)) {
+          el.channels.forEach(ch => {
+            needed.push(enrichChannelDemand(ch, {
+              locationId: curLocId,
+              deviceId: el.deviceId || ch.deviceId,
+              deviceSerial: el.serial || ch.deviceSerial
+            }));
+          });
+        }
+      });
+
+      setActiveLocationChannels(needed);
+    };
+
+    computeAndSetNeededChannels();
+
+    const handleLocationsChanged = () => {
+      computeAndSetNeededChannels();
+    };
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('sensor-locations-changed', handleLocationsChanged);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('sensor-locations-changed', handleLocationsChanged);
+      }
+      setActiveLocationChannels(null);
+    };
+  }, [enabled, activeLocationId, elements]);
 
   return telemetryState;
 }

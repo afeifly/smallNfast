@@ -20,6 +20,7 @@ export default function ScapeManagerModal({
   const [activeId, setActiveId] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [pendingDeleteScape, setPendingDeleteScape] = useState(null);
   const fileInputRef = useRef(null);
 
   const refreshList = () => {
@@ -77,22 +78,26 @@ export default function ScapeManagerModal({
     refreshList();
   };
 
-  const handleDelete = (id, title, e) => {
+  const handleDeleteClick = (scape, e) => {
     e.stopPropagation();
-    if (scapes.length <= 1) {
-      if (typeof window !== 'undefined' && window.showAppNotification) {
-        window.showAppNotification('Action Blocked', 'Cannot delete the only remaining plant scape.', 'warning');
-      }
-      return;
+    setPendingDeleteScape(scape);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDeleteScape) return;
+    const { id, title } = pendingDeleteScape;
+    deleteScape(id);
+    const updatedList = getAllScapes();
+    const newActive = getActiveScapeId();
+    setScapes(updatedList);
+    setActiveId(newActive);
+    const target = updatedList.find(s => s.id === newActive) || null;
+    if (onSelectActiveScape) {
+      onSelectActiveScape(target);
     }
-    if (confirm(`Are you sure you want to delete "${title || 'this scape'}"?`)) {
-      deleteScape(id);
-      refreshList();
-      const newActive = getActiveScapeId();
-      const target = scapes.find(s => s.id === newActive);
-      if (onSelectActiveScape && target) {
-        onSelectActiveScape(target);
-      }
+    setPendingDeleteScape(null);
+    if (typeof window !== 'undefined' && window.showAppNotification) {
+      window.showAppNotification('Scape Deleted', `"${title || 'Plant Scape'}" was removed.`, 'info');
     }
   };
 
@@ -200,93 +205,154 @@ export default function ScapeManagerModal({
           </form>
         )}
 
-        {/* Scape Cards Grid */}
+        {/* Scape Cards Grid or Empty State */}
         <div className="ps-mgr-list">
-          {scapes.map((scape) => {
-            const isActive = scape.id === activeId;
-            const elemCount = scape.elements?.length || 0;
-            const pipeCount = scape.pipes?.length || 0;
-            const dateStr = scape.updatedAt
-              ? new Date(scape.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-              : 'Built-in';
-
-            return (
-              <div
-                key={scape.id}
-                className={`ps-mgr-card ${isActive ? 'is-active' : ''}`}
-                onClick={() => handleSetActive(scape.id)}
+          {scapes.length === 0 ? (
+            <div className="ps-mgr-empty-state">
+              <div className="ps-mgr-empty-icon">🏭</div>
+              <h3 className="ps-mgr-empty-title">No Plant Scapes</h3>
+              <p className="ps-mgr-empty-desc">
+                All plant scapes have been deleted. Click "+ New Scape" above to design a new plant layout.
+              </p>
+              <button
+                type="button"
+                className="ps-mgr-btn-primary"
+                onClick={() => setShowCreateForm(true)}
               >
-                <div className="ps-mgr-card-top">
-                  <div className="ps-mgr-card-title-row">
-                    <h3 className="ps-mgr-card-title">{scape.title || 'Untitled Scape'}</h3>
-                    {isActive ? (
-                      <span className="ps-mgr-active-badge">Active (Current)</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="ps-mgr-card-switch-btn"
-                        onClick={(e) => { e.stopPropagation(); handleSetActive(scape.id); }}
-                      >
-                        Set Active
-                      </button>
-                    )}
-                  </div>
-                  {scape.description && (
-                    <p className="ps-mgr-card-desc">{scape.description}</p>
-                  )}
-                  <div className="ps-mgr-card-meta">
-                    <span>{elemCount} equipment/sensors</span>
-                    <span>·</span>
-                    <span>{pipeCount} pipe segments</span>
-                    <span>·</span>
-                    <span>{dateStr}</span>
-                  </div>
-                </div>
+                + Create New Scape
+              </button>
+            </div>
+          ) : (
+            scapes.map((scape) => {
+              const isActive = scape.id === activeId;
+              const elemCount = scape.elements?.length || 0;
+              const pipeCount = scape.pipes?.length || 0;
+              const dateStr = scape.updatedAt
+                ? new Date(scape.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : 'Built-in';
 
-                <div className="ps-mgr-card-actions">
-                  <button
-                    type="button"
-                    className="ps-mgr-action-btn btn-edit"
-                    onClick={(e) => { e.stopPropagation(); handleEdit(scape.id); }}
-                    title="Modify & edit this scape layout"
-                  >
-                    ✏️ Modify Scape
-                  </button>
-                  <button
-                    type="button"
-                    className="ps-mgr-action-icon-btn"
-                    onClick={(e) => handleDuplicate(scape.id, e)}
-                    title="Duplicate Scape"
-                    aria-label="Duplicate"
-                  >
-                    📋
-                  </button>
-                  <button
-                    type="button"
-                    className="ps-mgr-action-icon-btn"
-                    onClick={(e) => handleExportJson(scape, e)}
-                    title="Export JSON"
-                    aria-label="Export"
-                  >
-                    ⬇️
-                  </button>
-                  {scapes.length > 1 && (
+              return (
+                <div
+                  key={scape.id}
+                  className={`ps-mgr-card ${isActive ? 'is-active' : ''}`}
+                  onClick={() => handleSetActive(scape.id)}
+                >
+                  <div className="ps-mgr-card-top">
+                    <div className="ps-mgr-card-title-row">
+                      <h3 className="ps-mgr-card-title">{scape.title || 'Untitled Scape'}</h3>
+                      {isActive ? (
+                        <span className="ps-mgr-active-badge">Active (Current)</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ps-mgr-card-switch-btn"
+                          onClick={(e) => { e.stopPropagation(); handleSetActive(scape.id); }}
+                        >
+                          Set Active
+                        </button>
+                      )}
+                    </div>
+                    {scape.description && (
+                      <p className="ps-mgr-card-desc">{scape.description}</p>
+                    )}
+                    <div className="ps-mgr-card-meta">
+                      <span>{elemCount} equipment/sensors</span>
+                      <span>·</span>
+                      <span>{pipeCount} pipe segments</span>
+                      <span>·</span>
+                      <span>{dateStr}</span>
+                    </div>
+                  </div>
+
+                  <div className="ps-mgr-card-actions">
+                    <button
+                      type="button"
+                      className="ps-mgr-action-btn btn-edit"
+                      onClick={(e) => { e.stopPropagation(); handleEdit(scape.id); }}
+                      title="Modify & edit this scape layout"
+                    >
+                      ✏️ Modify Scape
+                    </button>
+                    <button
+                      type="button"
+                      className="ps-mgr-action-icon-btn"
+                      onClick={(e) => handleDuplicate(scape.id, e)}
+                      title="Duplicate Scape"
+                      aria-label="Duplicate"
+                    >
+                      📋
+                    </button>
+                    <button
+                      type="button"
+                      className="ps-mgr-action-icon-btn"
+                      onClick={(e) => handleExportJson(scape, e)}
+                      title="Export JSON"
+                      aria-label="Export"
+                    >
+                      ⬇️
+                    </button>
                     <button
                       type="button"
                       className="ps-mgr-action-icon-btn btn-delete"
-                      onClick={(e) => handleDelete(scape.id, scape.title, e)}
+                      onClick={(e) => handleDeleteClick(scape, e)}
                       title="Delete Scape"
                       aria-label="Delete"
                     >
                       🗑️
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
+
+      {/* Delete Confirmation In-App Dialog */}
+      {pendingDeleteScape && (
+        <div
+          className="ps-mgr-confirm-backdrop"
+          onClick={() => setPendingDeleteScape(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="ps-mgr-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="ps-mgr-confirm-header">
+              <div className="ps-mgr-confirm-icon-danger">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="ps-mgr-confirm-title">Delete Plant Scape</h3>
+                <p className="ps-mgr-confirm-subtitle">
+                  Are you sure you want to delete <strong>"{pendingDeleteScape.title || 'this scape'}"</strong>?
+                  {scapes.length <= 1 ? ' This is the only remaining scape.' : ''}
+                </p>
+              </div>
+            </div>
+            <div className="ps-mgr-confirm-actions">
+              <button
+                type="button"
+                className="ps-mgr-action-btn"
+                onClick={() => setPendingDeleteScape(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ps-mgr-btn-danger"
+                onClick={handleConfirmDelete}
+              >
+                Delete Scape
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

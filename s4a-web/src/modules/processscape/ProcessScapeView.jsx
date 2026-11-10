@@ -226,16 +226,44 @@ export default function ProcessScapeView({
     return getActiveScape();
   }, [initialElements, initialPipes, scapeVersion]);
 
-  const [activeScapeId, setActiveScapeIdState] = useState(() => activeScape.id);
-  const [projectTitle, setProjectTitle] = useState(() => activeScape.title || 'ProcessScape');
+  const [activeScapeId, setActiveScapeIdState] = useState(() => activeScape?.id || '');
+  const [projectTitle, setProjectTitle] = useState(() => activeScape?.title || 'ProcessScape');
   const [screenSize, setScreenSize] = useState(() => (
-    activeScape.tempCanvasSize
+    activeScape?.tempCanvasSize
       ? { w: activeScape.tempCanvasSize.width, h: activeScape.tempCanvasSize.height }
       : { w: 1024, h: 800 }
   ));
-  const [zones, setZones] = useState(() => activeScape.zones || []);
-  const [pipes, setPipes] = useState(() => (initialPipes.length > 0 ? initialPipes : (activeScape.pipes || [])));
-  const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape.elements || [])));
+  const [zones, setZones] = useState(() => activeScape?.zones || []);
+  const [pipes, setPipes] = useState(() => (initialPipes.length > 0 ? initialPipes : (activeScape?.pipes || [])));
+  const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape?.elements || [])));
+
+  // Listen for locations changed in storage (e.g. from SensorManagerModal)
+  useEffect(() => {
+    const handleLocationsChanged = (e) => {
+      const locs = e.detail || [];
+      if (!Array.isArray(locs) || locs.length === 0) {
+        // When all locations are removed, leave no active scape and clear canvas elements
+        setActiveScapeId('');
+        setActiveScapeIdState('');
+        setZones([]);
+        setElements([]);
+        setPipes([]);
+        setProjectTitle('ProcessScape');
+        setScapeVersion(v => v + 1);
+      } else {
+        const curActiveId = getActiveScapeId();
+        if (curActiveId) {
+          setActiveScapeIdState(curActiveId);
+        }
+        setScapeVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('sensor-locations-changed', handleLocationsChanged);
+    return () => window.removeEventListener('sensor-locations-changed', handleLocationsChanged);
+  }, []);
+
+  const hasLocations = useMemo(() => hasSavedLocations(), [scapeVersion]);
+  const isEmptyPage = scapeMode !== 'editor' && !hasLocations && (!activeScapeId || !activeScape?.id || activeScape.id === '');
 
   const isExampleShow = useMemo(() => {
     if (isBannerDismissed) return false;
@@ -245,10 +273,22 @@ export default function ProcessScapeView({
     const hasRealScapes = all.some(s => !s.isExample && s.id !== 'scape_example_demo');
     if (hasRealScapes) return false;
     if (activeScape && !activeScape.isExample && activeScape.id !== 'scape_example_demo') return false;
+    if (!activeScape?.id || activeScape.id === '') return false;
     return true;
   }, [isBannerDismissed, initialElements, initialPipes, activeScape, activeScapeId, scapeVersion]);
 
   const handleSelectActiveScape = useCallback((scape) => {
+    if (!scape || !scape.id) {
+      setActiveScapeIdState('');
+      setProjectTitle('ProcessScape');
+      setZones([]);
+      setElements([]);
+      setPipes([]);
+      setSelectedIds(new Set());
+      setScapeMode('runtime');
+      setScapeVersion(v => v + 1);
+      return;
+    }
     setActiveScapeIdState(scape.id);
     setProjectTitle(scape.title || 'ProcessScape');
     setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
@@ -265,6 +305,7 @@ export default function ProcessScapeView({
   }, []);
 
   const handleEditScapeFromManager = useCallback((scape) => {
+    if (!scape || !scape.id) return;
     setActiveScapeIdState(scape.id);
     setProjectTitle(scape.title || 'ProcessScape');
     setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
@@ -754,7 +795,7 @@ export default function ProcessScapeView({
       if (rawData) {
         data = JSON.parse(rawData);
       }
-    } catch (_) {}
+    } catch (_) { }
     if (!data && typeof window !== 'undefined' && window.__ps_active_drag) {
       data = window.__ps_active_drag;
     }
@@ -1148,9 +1189,9 @@ export default function ProcessScapeView({
     const pipeEl = e.target.closest('.plant-pipe-group');
 
     const clickedId = nodeEl?.getAttribute('data-node-id') ||
-                      cardEl?.getAttribute('data-card-id') ||
-                      textEl?.getAttribute('data-text-id') ||
-                      pipeEl?.getAttribute('data-pipe-id');
+      cardEl?.getAttribute('data-card-id') ||
+      textEl?.getAttribute('data-text-id') ||
+      pipeEl?.getAttribute('data-pipe-id');
 
     if (clickedId) {
       let idsToSelect = [clickedId];
@@ -2025,9 +2066,9 @@ export default function ProcessScapeView({
     const pipeEl = e.target.closest('.plant-pipe-group');
 
     const clickedId = nodeEl?.getAttribute('data-node-id') ||
-                      cardEl?.getAttribute('data-card-id') ||
-                      textEl?.getAttribute('data-text-id') ||
-                      pipeEl?.getAttribute('data-pipe-id');
+      cardEl?.getAttribute('data-card-id') ||
+      textEl?.getAttribute('data-text-id') ||
+      pipeEl?.getAttribute('data-pipe-id');
 
     if (clickedId) {
       let idsToSelect = [clickedId];
@@ -2324,11 +2365,11 @@ export default function ProcessScapeView({
 
   const inspectorStyle = inspectorPos
     ? {
-        left: `${inspectorPos.left}px`,
-        top: `${inspectorPos.top}px`,
-        right: 'auto',
-        bottom: 'auto'
-      }
+      left: `${inspectorPos.left}px`,
+      top: `${inspectorPos.top}px`,
+      right: 'auto',
+      bottom: 'auto'
+    }
     : undefined;
 
   const updateSelectedElement = (fields) => {
@@ -2706,13 +2747,22 @@ export default function ProcessScapeView({
   }, [loadProcessScapeConfig, handleZoomFit]);
 
   const reloadActiveScape = useCallback((targetScapeId = null) => {
-    if (targetScapeId) {
+    if (targetScapeId !== null && targetScapeId !== undefined) {
       setActiveScapeId(targetScapeId);
       setActiveScapeIdState(targetScapeId);
     }
+    const currentId = (targetScapeId !== null && targetScapeId !== undefined) ? targetScapeId : getActiveScapeId();
+    if (!currentId) {
+      setElements([]);
+      setPipes([]);
+      setZones([]);
+      setActiveScapeIdState('');
+      setScapeVersion(v => v + 1);
+      return;
+    }
     const all = getAllScapes();
-    const active = targetScapeId ? all.find(s => s.id === targetScapeId) : getActiveScape();
-    if (active) {
+    const active = all.find(s => s.id === currentId);
+    if (active && active.id) {
       const res = loadProcessScapeConfig(active, false);
       const saved = getSavedScapeView(active.id);
       if (saved) {
@@ -2720,6 +2770,11 @@ export default function ProcessScapeView({
       } else if (res) {
         handleZoomFit(res.parsedElements, res.parsedPipes, res.targetScreenSize);
       }
+    } else {
+      setElements([]);
+      setPipes([]);
+      setZones([]);
+      setActiveScapeIdState('');
     }
     setScapeVersion(v => v + 1);
   }, [loadProcessScapeConfig, handleZoomFit]);
@@ -2746,10 +2801,21 @@ export default function ProcessScapeView({
         reloadActiveScape,
         setActiveLocationId: (locId) => setActiveLocationId(locId),
         switchScape: (scapeId) => {
+          if (!scapeId) {
+            setActiveScapeId('');
+            setActiveScapeIdState('');
+            setElements([]);
+            setPipes([]);
+            setZones([]);
+            handleSelectActiveScape(null);
+            setScapeVersion(v => v + 1);
+            return;
+          }
           const all = getAllScapes();
           const target = all.find(s => s.id === scapeId);
           if (target) {
             setActiveScapeId(target.id);
+            setActiveScapeIdState(target.id);
             handleSelectActiveScape(target);
           }
         }
@@ -2773,1292 +2839,1327 @@ export default function ProcessScapeView({
     <div className={`processscape-root ${isDarkMode ? 'theme-dark' : ''} mode-${scapeMode}`}>
       {/* Main 3-Column Workbench */}
       <div className="ps-workbench" ref={workbenchRef}>
-        {/* Left Sidebar Palette (Editor Mode only) */}
-        {scapeMode === 'editor' && (
-          <aside className="ps-sidebar">
-            <div className="ps-palette-tabs">
-              {PALETTE_CATEGORIES.map(cat => (
-                <button
-                  key={cat.id}
-                  className={`ps-palette-tab ${activePaletteTab === cat.id ? 'active' : ''}`}
-                  onClick={() => setActivePaletteTab(cat.id)}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-
-          <div className="ps-palette-items">
-            {/* Helper renderers */}
-            {(() => {
-              const renderAssetCard = (type, def) => (
-                <div
-                  key={type}
-                  className="ps-palette-card"
-                  draggable
-                  onDragStart={(e) => {
-                    const payload = { kind: 'asset', key: type };
-                    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
-                    if (e.dataTransfer) {
-                      e.dataTransfer.effectAllowed = 'copyMove';
-                      const s = JSON.stringify(payload);
-                      try {
-                        e.dataTransfer.setData('application/json', s);
-                        e.dataTransfer.setData('text/plain', s);
-                      } catch (_) {}
-                    }
-                  }}
-                  onDragEnd={() => {
-                    if (typeof window !== 'undefined') {
-                      setTimeout(() => { window.__ps_active_drag = null; }, 200);
-                    }
-                  }}
-                >
-                  <div className="ps-card-icon-box">
-                    {renderAssetPaletteIcon(type, def)}
-                  </div>
-                  <div className="ps-card-info">
-                    <div className="ps-card-title">{def.name}</div>
-                    <div className="ps-card-desc">{def.defaultDesc}</div>
-                  </div>
-                </div>
-              );
-
-              const renderSensorCardTemplate = (key, tpl) => (
-                <div
-                  key={key}
-                  className="ps-palette-card"
-                  draggable
-                  onDragStart={(e) => {
-                    const payload = { kind: 'sensor_card', key };
-                    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
-                    if (e.dataTransfer) {
-                      e.dataTransfer.effectAllowed = 'copyMove';
-                      const s = JSON.stringify(payload);
-                      try {
-                        e.dataTransfer.setData('application/json', s);
-                        e.dataTransfer.setData('text/plain', s);
-                      } catch (_) {}
-                    }
-                  }}
-                  onDragEnd={() => {
-                    if (typeof window !== 'undefined') {
-                      setTimeout(() => { window.__ps_active_drag = null; }, 200);
-                    }
-                  }}
-                >
-                  <div
-                    className="ps-card-icon-box"
-                    style={{
-                      background: '#fed72a',
-                      borderColor: '#eab308',
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: '#18181b'
-                    }}
-                  >
-                    {tpl.tag}
-                  </div>
-                  <div className="ps-card-info">
-                    <div className="ps-card-title">{tpl.title || (tpl.tag + ' Sensor Card')}</div>
-                    <div className="ps-card-desc">{tpl.desc}</div>
-                  </div>
-                </div>
-              );
-
-              const renderPipePresetCard = (p) => {
-                const iconColor = p.medium === 'liquid' ? '#0284c7' : '#94a3b8';
-                const isVert = p.id.includes('vert');
-                return (
-                  <div
-                    key={p.id}
-                    className="ps-palette-card"
-                    draggable
-                    onDragStart={(e) => {
-                      const payload = { kind: 'pipe_preset', key: p.id };
-                      if (typeof window !== 'undefined') window.__ps_active_drag = payload;
-                      if (e.dataTransfer) {
-                        e.dataTransfer.effectAllowed = 'copyMove';
-                        const s = JSON.stringify(payload);
-                        try {
-                          e.dataTransfer.setData('application/json', s);
-                          e.dataTransfer.setData('text/plain', s);
-                        } catch (_) {}
-                      }
-                    }}
-                    onDragEnd={() => {
-                      if (typeof window !== 'undefined') {
-                        setTimeout(() => { window.__ps_active_drag = null; }, 200);
-                      }
-                    }}
-                  >
-                    <div
-                      className="ps-card-icon-box"
-                      style={{
-                        background: '#f8fafc',
-                        border: `2px solid ${iconColor}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: isVert ? 8 : 26,
-                          height: isVert ? 26 : 8,
-                          background: iconColor,
-                          position: 'relative'
-                        }}
-                      >
-                        {/* Flange caps on palette icon (130% diameter) */}
-                        <div
-                          style={{
-                            position: 'absolute',
-                            ...(isVert
-                              ? { top: 0, left: -2, width: 12, height: 2, borderRadius: 1 }
-                              : { left: 0, top: -2, width: 2, height: 12, borderRadius: 1 }),
-                            background: iconColor
-                          }}
-                        />
-                        <div
-                          style={{
-                            position: 'absolute',
-                            ...(isVert
-                              ? { bottom: 0, left: -2, width: 12, height: 2, borderRadius: 1 }
-                              : { right: 0, top: -2, width: 2, height: 12, borderRadius: 1 }),
-                            background: iconColor
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="ps-card-info">
-                      <div className="ps-card-title">{p.name}</div>
-                      <div className="ps-card-desc">{p.desc}</div>
-                    </div>
-                  </div>
-                );
-              };
-
-              const renderTextNoteCard = () => (
-                <div
-                  key="text_note"
-                  className="ps-palette-card"
-                  draggable
-                  onDragStart={(e) => {
-                    const payload = { kind: 'text_note', key: 'text_note' };
-                    if (typeof window !== 'undefined') window.__ps_active_drag = payload;
-                    if (e.dataTransfer) {
-                      e.dataTransfer.effectAllowed = 'copyMove';
-                      const s = JSON.stringify(payload);
-                      try {
-                        e.dataTransfer.setData('application/json', s);
-                        e.dataTransfer.setData('text/plain', s);
-                      } catch (_) {}
-                    }
-                  }}
-                  onDragEnd={() => {
-                    if (typeof window !== 'undefined') {
-                      setTimeout(() => { window.__ps_active_drag = null; }, 200);
-                    }
-                  }}
-                >
-                  <div
-                    className="ps-card-icon-box"
-                    style={{
-                      background: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      fontWeight: 700,
-                      fontFamily: 'monospace',
-                      fontSize: 16,
-                      color: '#64748b'
-                    }}
-                  >
-                    T
-                  </div>
-                  <div className="ps-card-info">
-                    <div className="ps-card-title">Text Note / Label</div>
-                    <div className="ps-card-desc">Editable text annotation (e.g. Modbus, Tag, Zone)</div>
-                  </div>
-                </div>
-              );
-
-              if (activePaletteTab === 'all') {
-                return (
-                  <>
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
-                    {PIPE_PRESETS.map(p => renderPipePresetCard(p))}
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d))}
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'vessels').map(([t, d]) => renderAssetCard(t, d))}
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'gateways').map(([t, d]) => renderAssetCard(t, d))}
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'others').map(([t, d]) => renderAssetCard(t, d))}
-                    {renderTextNoteCard()}
-                  </>
-                );
-              }
-              if (activePaletteTab === 'sensors') {
-                return (
-                  <>
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
-                  </>
-                );
-              }
-              if (activePaletteTab === 'piping') {
-                return PIPE_PRESETS.map(p => renderPipePresetCard(p));
-              }
-              if (activePaletteTab === 'vessels') {
-                return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'vessels').map(([t, d]) => renderAssetCard(t, d));
-              }
-              if (activePaletteTab === 'machines') {
-                return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d));
-              }
-              if (activePaletteTab === 'gateways') {
-                return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'gateways').map(([t, d]) => renderAssetCard(t, d));
-              }
-              if (activePaletteTab === 'others') {
-                return (
-                  <>
-                    {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'others').map(([t, d]) => renderAssetCard(t, d))}
-                    {renderTextNoteCard()}
-                  </>
-                );
-              }
-              return null;
-            })()}
-          </div>
-
-          {tipVisible && (
-            <div className="ps-sidebar-footer">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <strong style={{ color: '#00a876', fontSize: 10, textTransform: 'uppercase' }}>💡 Pro Tip</strong>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 10, fontWeight: 700, color: '#00a876' }}
-                    onClick={() => setTipIndex((tipIndex + 1) % TIPS_LIST.length)}
-                  >
-                    Next →
-                  </button>
-                  <button
-                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#94a3b8' }}
-                    onClick={() => setTipVisible(false)}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              <div dangerouslySetInnerHTML={{ __html: TIPS_LIST[tipIndex] }} />
-            </div>
-          )}
-        </aside>
-      )}
-
-        {/* Center Canvas Viewport */}
-        <main
-          ref={viewportRef}
-          className={`ps-canvas-viewport ${currentTool === 'pan' || isSpacePressed ? 'panning' : ''} ${currentTool === 'draw_pipe' ? 'drawing-pipe' : ''}`}
-          onMouseDown={handleMouseDown}
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
-          onContextMenu={handleContextMenu}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          {/* Example Demo Show Notice Banner */}
-          {isExampleShow && (
-            <div className={`ps-example-demo-banner ${isBannerMinimized ? 'minimized' : ''}`} role="alert">
-              <div className="ps-example-demo-badge">
-                <span className="ps-demo-pulse-dot" />
-                DEMO PREVIEW
-              </div>
-              {!isBannerMinimized && (
-                <div className="ps-example-demo-content">
-                  <div className="ps-example-demo-title">
-                    Example Plant Layout (Demonstration)
-                  </div>
-                  <div className="ps-example-demo-desc">
-                    No real locations are configured in the system yet. Create your own location and ProcessScape stage to design custom piping, bind measurement points, and monitor live sensor telemetry.
-                  </div>
-                </div>
-              )}
-              {isBannerMinimized && (
-                <div
-                  className="ps-example-demo-desc"
-                  style={{ cursor: 'pointer', color: '#f8fafc', fontWeight: 500 }}
-                  onClick={() => setIsBannerMinimized(false)}
-                >
-                  Example layout preview &middot; Click to expand notice
-                </div>
-              )}
-              <div className="ps-example-demo-actions">
+        {isEmptyPage ? (
+          <div className="ps-empty-stage-page">
+            <div className="ps-empty-stage-card">
+              <div className="ps-empty-stage-icon">📍</div>
+              <h2 className="ps-empty-stage-title">No Locations or Active Scape</h2>
+              <p className="ps-empty-stage-desc">
+                All locations have been removed. Configure a location in Sensor Manager to map sensor measurement points and activate your plant ProcessScape.
+              </p>
+              <div className="ps-empty-stage-actions">
                 <button
                   type="button"
-                  className="ps-example-demo-btn-primary"
+                  className="ps-empty-stage-btn-primary"
                   onClick={() => {
-                    setIsBannerDismissed(true);
                     if (onOpenSensorManager) onOpenSensorManager();
                   }}
-                  title="Open Sensor Manager to create your own location and scape stage"
                 >
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  <span>Create Location &amp; Stage</span>
+                  <span style={{ fontSize: 16 }}>+</span>
+                  <span>Configure Locations</span>
                 </button>
-                <button
-                  type="button"
-                  className="ps-example-demo-dismiss-btn"
-                  onClick={() => setIsBannerDismissed(true)}
-                  title="Dismiss example notice"
-                  aria-label="Dismiss example notice"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-          {/* Top Floating HUD Toolbar in Editor Mode */}
-          {scapeMode === 'editor' && (
-            <div className="canvas-floating-hud top-hud ps-hud-bar">
-              {/* Tool Selection Group */}
-              <div className="tool-group">
-                <button
-                  id="toolSelect"
-                  type="button"
-                  className={`hud-icon-btn ${currentTool === 'select' ? 'active' : ''}`}
-                  onClick={() => {
-                    dragRef.current.drawingPipeStart = null;
-                    dragRef.current.extendingPipe = null;
-                    if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                    setCurrentTool('select');
-                  }}
-                  title="Select Tool (V)"
-                  aria-label="Select Tool"
-                >
-                  <HudIcons.Select />
-                </button>
-                <button
-                  id="toolPan"
-                  type="button"
-                  className={`hud-icon-btn ${currentTool === 'pan' ? 'active' : ''}`}
-                  onClick={() => {
-                    dragRef.current.drawingPipeStart = null;
-                    dragRef.current.extendingPipe = null;
-                    if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                    setCurrentTool('pan');
-                  }}
-                  title="Pan Tool (H or hold Space)"
-                  aria-label="Pan Tool"
-                >
-                  <HudIcons.Pan />
-                </button>
-              </div>
-
-              {/* Dynamic Dimension Controls (W: H: for elements, L: D: for pipes) */}
-              {(isPipeSelection || selectedElements.length > 0) && (
-                <>
-                  <div className="hud-divider" />
-                  <div className="hud-dimension-group" id="hudDimensionSelector">
-                  {isPipeSelection ? (
-                    <>
-                      <label className="hud-dim-item" title="Pipeline Length (px)">
-                        <span className="hud-dim-label">L:</span>
-                        <input
-                          id="hudInputLength"
-                          type="number"
-                          className="hud-dim-input"
-                          value={singlePipeLength || 0}
-                          min="10"
-                          max="4000"
-                          step="10"
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 10) {
-                              handleUpdatePipeLength(val);
-                            }
-                          }}
-                        />
-                      </label>
-                      <label className="hud-dim-item" title="Pipeline Diameter (px)">
-                        <span className="hud-dim-label">D:</span>
-                        <input
-                          id="hudInputDiameter"
-                          type="number"
-                          className="hud-dim-input"
-                          value={representativePipe?.w || 20}
-                          min="6"
-                          max="100"
-                          step="2"
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 6) {
-                              updateSelectedPipe({ w: val });
-                            }
-                          }}
-                        />
-                      </label>
-                    </>
-                  ) : (
-                    <>
-                      <label className="hud-dim-item" title="Item Width (px)">
-                        <span className="hud-dim-label">W:</span>
-                        <input
-                          id="hudInputWidth"
-                          type="number"
-                          className="hud-dim-input"
-                          value={selectedElementW}
-                          min="10"
-                          max="3000"
-                          step="5"
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 10) {
-                              handleUpdateElementDimension({ w: val });
-                            }
-                          }}
-                        />
-                      </label>
-                      <label className="hud-dim-item" title="Item Height (px)">
-                        <span className="hud-dim-label">H:</span>
-                        <input
-                          id="hudInputHeight"
-                          type="number"
-                          className="hud-dim-input"
-                          value={selectedElementH}
-                          min="10"
-                          max="3000"
-                          step="5"
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 10) {
-                              handleUpdateElementDimension({ h: val });
-                            }
-                          }}
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
-                </>
-              )}
-
-              {currentTool === 'draw_pipe' && (
-                <>
-                  <div className="hud-divider" />
+                {getAllScapes().filter(s => !s.isExample).length > 0 && (
                   <button
-                    id="finishPipeBtn"
                     type="button"
-                    className="hud-icon-btn active"
-                    onClick={() => {
-                      dragRef.current.drawingPipeStart = null;
-                      dragRef.current.extendingPipe = null;
-                      if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                      setCurrentTool('select');
-                    }}
-                    title="Finish current pipe"
-                    aria-label="Finish Pipe"
+                    className="ps-empty-stage-btn-secondary"
+                    onClick={() => setIsScapeManagerOpen(true)}
                   >
-                    <HudIcons.Check />
+                    <span>Plant SCADA Scapes</span>
                   </button>
-                </>
-              )}
-
-              {selectedIds.size > 0 && (
-                <>
-                  <div className="hud-divider" />
-                  <div className="tool-group">
-                    <button
-                      id="hudFrontBtn"
-                      type="button"
-                      className="hud-icon-btn"
-                      disabled={selectedIds.size === 0}
-                      onClick={bringToFront}
-                      title="Bring to Front (])"
-                      aria-label="Bring to Front"
-                    >
-                      <HudIcons.BringToFront />
-                    </button>
-                    <button
-                      id="hudBackBtn"
-                      type="button"
-                      className="hud-icon-btn"
-                      disabled={selectedIds.size === 0}
-                      onClick={sendToBack}
-                      title="Send to Back ([)"
-                      aria-label="Send to Back"
-                    >
-                      <HudIcons.SendToBack />
-                    </button>
-                    <button
-                      id="hudDeleteBtn"
-                      type="button"
-                      className="hud-icon-btn btn-danger-outline"
-                      disabled={selectedIds.size === 0}
-                      onClick={() => {
-                        saveHistory('Delete Item');
-                        const updatedElements = elements.filter(el => !selectedIds.has(el.id));
-                        const updatedPipes = pipes.filter(p => !selectedIds.has(p.id));
-                        setElements(updatedElements);
-                        setPipes(updatedPipes);
-                        setSelectedIds(new Set());
-                        saveScape({
-                          id: activeScapeId,
-                          title: projectTitle,
-                          tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                          zones,
-                          elements: updatedElements,
-                          pipes: updatedPipes
-                        });
-                      }}
-                      title="Delete selected items (Delete key)"
-                      aria-label="Delete Selected"
-                    >
-                      <HudIcons.Delete />
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {contentBounds.hasContent && (
-                <>
-                  <div className="hud-divider" />
-                  <button
-                    id="toolRealSize"
-                    type="button"
-                    className={`hud-icon-btn ${isRealSizePreview ? 'active' : ''}`}
-                    onMouseDown={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
-                    onMouseUp={() => setIsRealSizePreview(false)}
-                    onMouseLeave={() => setIsRealSizePreview(false)}
-                    onTouchStart={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
-                    onTouchEnd={() => setIsRealSizePreview(false)}
-                    title={`Hold to preview Real Picture Size (${contentBounds.width}×${contentBounds.height}px)`}
-                    aria-label="Real Size Preview"
-                  >
-                    <HudIcons.RealSize />
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Hidden JSON file input for importing layout config */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={handleFileInputChange}
-            style={{ display: 'none' }}
-            aria-hidden="true"
-          />
-
-          {/* Floating Inspector Reopen Button (when Inspector is closed but an element is selected) */}
-          {(scapeMode === 'editor') && !showInspector && hasSelection && (
-            <div className="ps-inspector-toggle-float">
-              <button
-                className="hud-btn"
-                onClick={() => setIsInspectorOpen(true)}
-                title="Open Inspector Panel"
-              >
-                <span>⚙️</span> Inspector
-              </button>
-            </div>
-          )}
-
-          {/* Bottom Floating Canvas Tools HUD in Modify Scape (Editor Mode only) */}
-          {scapeMode === 'editor' && (
-            <div className="canvas-floating-hud zoom-hud" id="psModifyPageTools">
-              <div className="tool-group">
-                <button
-                  id="toolZoomOut"
-                  type="button"
-                  className="hud-icon-btn"
-                  onClick={() => {
-                    const rect = viewportRef.current?.getBoundingClientRect();
-                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                    zoomAtPoint(cx, cy, 1 / 1.15);
-                  }}
-                  title="Zoom Out (-)"
-                  aria-label="Zoom Out"
-                >
-                  <HudIcons.ZoomOut />
-                </button>
-
-                <button
-                  id="toolZoomReset"
-                  type="button"
-                  className="zoom-text hud-btn-zoom-reset"
-                  onClick={resetView}
-                  title="Reset Zoom to 100% (Click to reset)"
-                  aria-label="Zoom Percentage"
-                >
-                  {Math.round((view?.zoom || 1) * 100)}%
-                </button>
-
-                <button
-                  id="toolZoomIn"
-                  type="button"
-                  className="hud-icon-btn"
-                  onClick={() => {
-                    const rect = viewportRef.current?.getBoundingClientRect();
-                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                    zoomAtPoint(cx, cy, 1.15);
-                  }}
-                  title="Zoom In (+)"
-                  aria-label="Zoom In"
-                >
-                  <HudIcons.ZoomIn />
-                </button>
-              </div>
-
-              <div className="hud-divider" />
-
-              <button
-                id="toolZoomFit"
-                type="button"
-                className="hud-icon-btn"
-                onClick={focusSelectedOrCenter}
-                title="Focus / Fit Whole Canvas (F)"
-                aria-label="Focus / Fit Whole Canvas"
-              >
-                <HudIcons.ZoomFit />
-              </button>
-
-              <div className="hud-divider" />
-
-              <button
-                id="toolModifyBoundsResizer"
-                type="button"
-                className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  handleToggleBoundsResizer();
-                }}
-                title={isBoundsResizerActive ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
-                aria-label="Diagram Bounds Resizer"
-              >
-                <HudIcons.BoundsScale />
-              </button>
-            </div>
-          )}
-
-          {/* Bottom Floating Canvas Tools HUD in Live View (Runtime Mode) */}
-          {scapeMode === 'runtime' && (
-            <div className="canvas-floating-hud zoom-hud ps-runtime-page-tools" id="psRuntimePageTools">
-              <div className="tool-group">
-                <button
-                  id="toolRuntimeZoomOut"
-                  type="button"
-                  className="hud-icon-btn"
-                  onClick={() => {
-                    const rect = viewportRef.current?.getBoundingClientRect();
-                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                    zoomAtPoint(cx, cy, 1 / 1.15);
-                  }}
-                  title="Zoom Out (-)"
-                  aria-label="Zoom Out"
-                >
-                  <HudIcons.ZoomOut />
-                </button>
-
-                <button
-                  id="toolRuntimeZoomReset"
-                  type="button"
-                  className="zoom-text hud-btn-zoom-reset"
-                  onClick={resetView}
-                  title="Reset Zoom to 100% (Click to reset)"
-                  aria-label="Zoom Percentage"
-                >
-                  {Math.round((view?.zoom || 1) * 100)}%
-                </button>
-
-                <button
-                  id="toolRuntimeZoomIn"
-                  type="button"
-                  className="hud-icon-btn"
-                  onClick={() => {
-                    const rect = viewportRef.current?.getBoundingClientRect();
-                    const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-                    const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                    zoomAtPoint(cx, cy, 1.15);
-                  }}
-                  title="Zoom In (+)"
-                  aria-label="Zoom In"
-                >
-                  <HudIcons.ZoomIn />
-                </button>
-              </div>
-
-              <div className="hud-divider" />
-
-              {/* Combined Diagram Bounds Resizer & Sensor Card Repositioning Tool */}
-              <button
-                id="toolRuntimeBoundsResizer"
-                type="button"
-                className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  handleToggleBoundsResizer();
-                }}
-                title={isBoundsResizerActive ? "Confirm & Apply Layout Changes (Save Size & Positions)" : "Resize Diagram & Move Attached Sensor Cards"}
-                aria-label="Resize Diagram & Move Attached Sensor Cards"
-              >
-                <HudIcons.BoundsScale />
-              </button>
-            </div>
-          )}
-
-          {/* Scalable SVG World Scene */}
-          <svg className="ps-scene-svg">
-            <defs>
-              <filter id="softCardShadow" x="-10%" y="-10%" width="125%" height="125%">
-                <feDropShadow dx="0" dy="4" stdDeviation="6" floodOpacity="0.08" />
-              </filter>
-              <filter id="badgeShadow" x="-10%" y="-10%" width="125%" height="125%">
-                <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
-              </filter>
-            </defs>
-
-            <g id="worldGroup" transform={`translate(${view.x}, ${view.y}) scale(${view.zoom})`}>
-              {/* Dynamic Real Picture Bounds Guide (Shown only when holding 'Real Size' button) */}
-              {isRealSizePreview && contentBounds.hasContent && (
-                <g className="ps-real-bounds-guide" pointerEvents="none">
-                  <rect
-                    x={contentBounds.x}
-                    y={contentBounds.y}
-                    width={contentBounds.width}
-                    height={contentBounds.height}
-                    rx={6}
-                    fill="rgba(0, 172, 134, 0.08)"
-                    stroke="#00ac86"
-                    strokeWidth={2}
-                    strokeDasharray="6 4"
-                    opacity={0.9}
-                  />
-                  <g transform={`translate(${contentBounds.x + 8}, ${contentBounds.y - 8})`}>
-                    <rect x={-4} y={-14} width={154} height={18} rx={4} fill="#0f172a" opacity={0.92} />
-                    <text x={4} y={-1} fontSize={10} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
-                      📐 Real Size: {contentBounds.width}×{contentBounds.height}px
-                    </text>
-                  </g>
-                </g>
-              )}
-
-              {/* Background Zones */}
-              {zones.map(z => (
-                <g key={z.id} transform={`translate(${z.x}, ${z.y})`} pointerEvents="none">
-                  <rect
-                    x={0} y={0} width={z.w} height={z.h} rx={16}
-                    fill={isDarkMode ? '#131922' : '#f8fafc'}
-                    stroke={isDarkMode ? '#243042' : '#e2e8f0'}
-                    strokeWidth={1.5}
-                  />
-                  <rect
-                    x={0} y={z.headerPosition === 'bottom' ? z.h - 44 : 0}
-                    width={z.w} height={44}
-                    rx={16}
-                    fill="#00a876"
-                  />
-                  <rect
-                    x={0} y={z.headerPosition === 'bottom' ? z.h - 44 : 20}
-                    width={z.w} height={24}
-                    fill="#00a876"
-                  />
-                  <text
-                    x={z.w / 2}
-                    y={z.headerPosition === 'bottom' ? z.h - 16 : 28}
-                    textAnchor="middle"
-                    fontSize={16}
-                    fontWeight={800}
-                    fill="#ffffff"
-                    fontFamily="sans-serif"
-                    letterSpacing="0.8px"
-                  >
-                    {z.title}
-                  </text>
-                  {z.watermark && (
-                    <text
-                      x={z.w - 16}
-                      y={z.headerPosition === 'bottom' ? z.h - 16 : 28}
-                      textAnchor="end"
-                      fontSize={11}
-                      fontWeight={600}
-                      fill="rgba(255,255,255,0.8)"
-                      fontFamily="sans-serif"
-                    >
-                      {z.watermark}
-                    </text>
-                  )}
-                </g>
-              ))}
-
-              {/* Dynamic Diagram Elements & Pipes */}
-              <g ref={diagramLayerRef} />
-
-              {/* Interactive Layer (Anchors, Lead lines, Reticles) */}
-              <g ref={interactionLayerRef} />
-
-              {/* Diagram Bounding Box Resizer Tool Overlay */}
-              {isBoundsResizerActive && resizingBox && (
-                <g id="boundsResizerGroup" className="ps-bounds-resizer-group">
-                  <rect
-                    x={resizingBox.x}
-                    y={resizingBox.y}
-                    width={resizingBox.w}
-                    height={resizingBox.h}
-                    fill="rgba(0, 172, 134, 0.05)"
-                    stroke="#00ac86"
-                    strokeWidth={2}
-                    strokeDasharray="6 4"
-                    rx={4}
-                    pointerEvents="none"
-                  />
-                  <g transform={`translate(${resizingBox.x + 8}, ${resizingBox.y - 10})`} pointerEvents="none">
-                    <rect x={-4} y={-14} width={164} height={20} rx={4} fill="#0f172a" opacity={0.92} />
-                    <text x={6} y={1} fontSize={11} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
-                      📐 Diagram: {Math.round(resizingBox.w)}×{Math.round(resizingBox.h)}px
-                    </text>
-                  </g>
-                  {[
-                    // Side edge handles first (10x10 px)
-                    { type: 'n', x: resizingBox.x + resizingBox.w / 2, y: resizingBox.y, cursor: 'ns-resize', isCorner: false },
-                    { type: 'e', x: resizingBox.x + resizingBox.w, y: resizingBox.y + resizingBox.h / 2, cursor: 'ew-resize', isCorner: false },
-                    { type: 's', x: resizingBox.x + resizingBox.w / 2, y: resizingBox.y + resizingBox.h, cursor: 'ns-resize', isCorner: false },
-                    { type: 'w', x: resizingBox.x, y: resizingBox.y + resizingBox.h / 2, cursor: 'ew-resize', isCorner: false },
-                    // Corner handles second so they render on top with prominent 14x14 px styling
-                    { type: 'nw', x: resizingBox.x, y: resizingBox.y, cursor: 'nwse-resize', isCorner: true },
-                    { type: 'ne', x: resizingBox.x + resizingBox.w, y: resizingBox.y, cursor: 'nesw-resize', isCorner: true },
-                    { type: 'se', x: resizingBox.x + resizingBox.w, y: resizingBox.y + resizingBox.h, cursor: 'nwse-resize', isCorner: true },
-                    { type: 'sw', x: resizingBox.x, y: resizingBox.y + resizingBox.h, cursor: 'nesw-resize', isCorner: true },
-                  ].map(h => (
-                    <g
-                      key={h.type}
-                      className="ps-bounds-handle"
-                      data-handle={h.type}
-                      transform={`translate(${h.x}, ${h.y})`}
-                      style={{ cursor: h.cursor }}
-                      pointerEvents="all"
-                    >
-                      {/* Generous invisible hit target (28x28 px) for effortless clicking without precision strain */}
-                      <rect
-                        x={-14}
-                        y={-14}
-                        width={28}
-                        height={28}
-                        fill="transparent"
-                        style={{ cursor: h.cursor }}
-                        pointerEvents="all"
-                      />
-                      {/* Crisp, stable visual handle (14x14 px for 4 corners, 10x10 px for 4 edge midpoints) */}
-                      <rect
-                        className="ps-bounds-handle-rect"
-                        x={h.isCorner ? -7 : -5}
-                        y={h.isCorner ? -7 : -5}
-                        width={h.isCorner ? 14 : 10}
-                        height={h.isCorner ? 14 : 10}
-                        rx={h.isCorner ? 3 : 2}
-                        fill="#ffffff"
-                        stroke="#00ac86"
-                        strokeWidth={h.isCorner ? 2.5 : 2}
-                        style={{ cursor: h.cursor }}
-                        pointerEvents="none"
-                      />
-                    </g>
-                  ))}
-                </g>
-              )}
-            </g>
-          </svg>
-        </main>
-
-        {/* Right Inspector Panel (Editor Mode only) */}
-        {scapeMode === 'editor' && (
-          <aside
-            ref={inspectorElRef}
-            style={inspectorStyle}
-            className={`ps-inspector ${showInspector ? '' : 'collapsed'} ${isDraggingInspector ? 'is-dragging' : ''}`}
-          >
-          <div
-            className="ps-inspector-header"
-            onMouseDown={handleInspectorHeaderMouseDown}
-            onTouchStart={handleInspectorHeaderTouchStart}
-            onDoubleClick={() => setInspectorPos(null)}
-            title="Drag to reposition • Double-click to reset position"
-          >
-            <div className="ps-inspector-title-wrap">
-              <span className="ps-inspector-drag-grip" aria-hidden="true">⠿</span>
-              <div className="ps-inspector-title">
-                {singleSelectedElement
-                  ? (singleSelectedElement.tag || singleSelectedElement.text || 'Item Config')
-                  : isPipeSelection
-                  ? (selectedPipes.length > 1
-                      ? `Pipeline (${selectedPipes.length} segments)`
-                      : 'Pipe Config')
-                  : 'Inspector'}
-              </div>
-            </div>
-            <button
-              type="button"
-              className="ps-inspector-close-btn"
-              onClick={() => setIsInspectorOpen(false)}
-              title="Close Inspector"
-              aria-label="Close Inspector"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="ps-inspector-body">
-            {!singleSelectedElement && !isPipeSelection ? (
-              <div className="ps-empty-inspector">
-                <div style={{ fontSize: 32 }}>🎯</div>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>No Item Selected</div>
-                <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-                  Click an equipment asset, pipe, or sensor card on the canvas to configure parameters and live data channels.
-                </div>
-              </div>
-            ) : singleSelectedElement?.type === 'sensor_card' ? (
-              /* Sensor Mode Card Inspector */
-              <>
-                <div className="ps-form-group">
-                  <label className="ps-form-label">Sensor Tag Name</label>
-                  <input
-                    className="ps-input"
-                    value={selectedElement.tag || ''}
-                    onChange={(e) => updateSelectedElement({ tag: e.target.value })}
-                  />
-                </div>
-
-                <div className="ps-form-group">
-                  <label className="ps-form-label">Title Position</label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className={`hud-btn-sm ${selectedElement.titlePosition === 'left' ? 'btn-primary' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => updateSelectedElement({ titlePosition: 'left' })}
-                    >
-                      Left Tag
-                    </button>
-                    <button
-                      type="button"
-                      className={`hud-btn-sm ${selectedElement.titlePosition === 'top' ? 'btn-primary' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => updateSelectedElement({ titlePosition: 'top' })}
-                    >
-                      Top Banner
-                    </button>
-                  </div>
-                </div>
-
-                <div className="ps-form-group">
-                  <label className="ps-form-label">Linked Device (Sensor / Gateway)</label>
-                  <select
-                    className="ps-select"
-                    value={selectedElement.attachedAssetId || ''}
-                    onChange={(e) => {
-                      const val = e.target.value || null;
-                      updateSelectedElement({ attachedAssetId: val });
-                    }}
-                  >
-                    <option value="">(None - Free Floating)</option>
-                    {elements.filter(e => isSensorOrGateway(e)).map(dev => (
-                      <option key={dev.id} value={dev.id}>
-                        {dev.tag || ASSET_DEFS[dev.type]?.name || dev.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Relative placement shortcuts */}
-                {selectedElement.attachedAssetId && (
-                  <div className="ps-form-group">
-                    <label className="ps-form-label">Quick Position vs Linked Device</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                      <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) - 80 })}>Above</button>
-                      <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) + 80 })}>Below</button>
-                      <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) - 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Left</button>
-                      <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) + 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Right</button>
-                    </div>
-                  </div>
                 )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Left Sidebar Palette (Editor Mode only) */}
+            {scapeMode === 'editor' && (
+              <aside className="ps-sidebar">
+                <div className="ps-palette-tabs">
+                  {PALETTE_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.id}
+                      className={`ps-palette-tab ${activePaletteTab === cat.id ? 'active' : ''}`}
+                      onClick={() => setActivePaletteTab(cat.id)}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
 
-                {/* Assigned Telemetry Channels */}
-                <div className="ps-form-group">
-                  <label className="ps-form-label">
-                    Assigned Telemetry Channels ({(selectedElement.channels || []).length})
-                  </label>
-                  {(selectedElement.channels || []).length === 0 ? (
-                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
-                      No channels assigned. Use <strong>Sensor & Measurement Point Manager</strong> to detect and bind channels.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                      {(selectedElement.channels || []).map((ch, idx) => (
+                <div className="ps-palette-items">
+                  {/* Helper renderers */}
+                  {(() => {
+                    const renderAssetCard = (type, def) => (
+                      <div
+                        key={type}
+                        className="ps-palette-card"
+                        draggable
+                        onDragStart={(e) => {
+                          const payload = { kind: 'asset', key: type };
+                          if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                          if (e.dataTransfer) {
+                            e.dataTransfer.effectAllowed = 'copyMove';
+                            const s = JSON.stringify(payload);
+                            try {
+                              e.dataTransfer.setData('application/json', s);
+                              e.dataTransfer.setData('text/plain', s);
+                            } catch (_) { }
+                          }
+                        }}
+                        onDragEnd={() => {
+                          if (typeof window !== 'undefined') {
+                            setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                          }
+                        }}
+                      >
+                        <div className="ps-card-icon-box">
+                          {renderAssetPaletteIcon(type, def)}
+                        </div>
+                        <div className="ps-card-info">
+                          <div className="ps-card-title">{def.name}</div>
+                          <div className="ps-card-desc">{def.defaultDesc}</div>
+                        </div>
+                      </div>
+                    );
+
+                    const renderSensorCardTemplate = (key, tpl) => (
+                      <div
+                        key={key}
+                        className="ps-palette-card"
+                        draggable
+                        onDragStart={(e) => {
+                          const payload = { kind: 'sensor_card', key };
+                          if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                          if (e.dataTransfer) {
+                            e.dataTransfer.effectAllowed = 'copyMove';
+                            const s = JSON.stringify(payload);
+                            try {
+                              e.dataTransfer.setData('application/json', s);
+                              e.dataTransfer.setData('text/plain', s);
+                            } catch (_) { }
+                          }
+                        }}
+                        onDragEnd={() => {
+                          if (typeof window !== 'undefined') {
+                            setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                          }
+                        }}
+                      >
                         <div
-                          key={ch.id || idx}
+                          className="ps-card-icon-box"
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '4px 8px',
-                            background: 'rgba(15, 23, 42, 0.03)',
-                            borderRadius: 4,
-                            fontSize: 11
+                            background: '#fed72a',
+                            borderColor: '#eab308',
+                            fontWeight: 800,
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: '#18181b'
                           }}
                         >
-                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{ch.name}</span>
-                          <span style={{ fontFamily: 'monospace', color: '#0284c7' }}>{ch.unit || ''}</span>
+                          {tpl.tag}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        <div className="ps-card-info">
+                          <div className="ps-card-title">{tpl.title || (tpl.tag + ' Sensor Card')}</div>
+                          <div className="ps-card-desc">{tpl.desc}</div>
+                        </div>
+                      </div>
+                    );
 
-                <button
-                  type="button"
-                  className="hud-btn-sm btn-danger-outline"
-                  style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
-                  onClick={() => {
-                    saveHistory('Delete Sensor');
-                    const updated = elements.filter(e => e.id !== singleSelectedElement.id);
-                    setElements(updated);
-                    setSelectedIds(new Set());
-                    saveScape({
-                      id: activeScapeId,
-                      title: projectTitle,
-                      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                      zones,
-                      elements: updated,
-                      pipes
-                    });
-                  }}
-                >
-                  🗑 Delete Sensor Card
-                </button>
-              </>
-            ) : singleSelectedElement ? (
-              /* Equipment / Asset Node Inspector */
-              <>
-                <div className="ps-form-group">
-                  <label className="ps-form-label">Equipment Tag Name</label>
-                  <input
-                    className="ps-input"
-                    value={singleSelectedElement.tag ?? ''}
-                    placeholder="(Optional tag / empty)"
-                    onChange={(e) => updateSelectedElement({ tag: e.target.value })}
-                  />
-                </div>
+                    const renderPipePresetCard = (p) => {
+                      const iconColor = p.medium === 'liquid' ? '#0284c7' : '#94a3b8';
+                      const isVert = p.id.includes('vert');
+                      return (
+                        <div
+                          key={p.id}
+                          className="ps-palette-card"
+                          draggable
+                          onDragStart={(e) => {
+                            const payload = { kind: 'pipe_preset', key: p.id };
+                            if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                            if (e.dataTransfer) {
+                              e.dataTransfer.effectAllowed = 'copyMove';
+                              const s = JSON.stringify(payload);
+                              try {
+                                e.dataTransfer.setData('application/json', s);
+                                e.dataTransfer.setData('text/plain', s);
+                              } catch (_) { }
+                            }
+                          }}
+                          onDragEnd={() => {
+                            if (typeof window !== 'undefined') {
+                              setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                            }
+                          }}
+                        >
+                          <div
+                            className="ps-card-icon-box"
+                            style={{
+                              background: '#f8fafc',
+                              border: `2px solid ${iconColor}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: isVert ? 8 : 26,
+                                height: isVert ? 26 : 8,
+                                background: iconColor,
+                                position: 'relative'
+                              }}
+                            >
+                              {/* Flange caps on palette icon (130% diameter) */}
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  ...(isVert
+                                    ? { top: 0, left: -2, width: 12, height: 2, borderRadius: 1 }
+                                    : { left: 0, top: -2, width: 2, height: 12, borderRadius: 1 }),
+                                  background: iconColor
+                                }}
+                              />
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  ...(isVert
+                                    ? { bottom: 0, left: -2, width: 12, height: 2, borderRadius: 1 }
+                                    : { right: 0, top: -2, width: 2, height: 12, borderRadius: 1 }),
+                                  background: iconColor
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="ps-card-info">
+                            <div className="ps-card-title">{p.name}</div>
+                            <div className="ps-card-desc">{p.desc}</div>
+                          </div>
+                        </div>
+                      );
+                    };
 
-                {/* Solid Flat Color Theme Swatches (Single-line compact options) */}
-                <div className="ps-form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <label className="ps-form-label" style={{ margin: 0 }}>Color Theme</label>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                      {(EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue).name}
-                    </span>
-                  </div>
-                  <div className="ps-swatches-row">
-                    {Object.values(EQUIPMENT_COLOR_THEMES).map(theme => (
-                      <button
-                        type="button"
-                        key={theme.id}
-                        className={`ps-swatch-circle-btn ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
-                        title={theme.name}
-                        aria-label={theme.name}
-                        onClick={() => {
-                          saveHistory('Change Theme');
-                          updateSelectedElement({ colorTheme: theme.id });
+                    const renderTextNoteCard = () => (
+                      <div
+                        key="text_note"
+                        className="ps-palette-card"
+                        draggable
+                        onDragStart={(e) => {
+                          const payload = { kind: 'text_note', key: 'text_note' };
+                          if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                          if (e.dataTransfer) {
+                            e.dataTransfer.effectAllowed = 'copyMove';
+                            const s = JSON.stringify(payload);
+                            try {
+                              e.dataTransfer.setData('application/json', s);
+                              e.dataTransfer.setData('text/plain', s);
+                            } catch (_) { }
+                          }
                         }}
-                        style={{ backgroundColor: theme.main }}
-                      />
-                    ))}
-                  </div>
+                        onDragEnd={() => {
+                          if (typeof window !== 'undefined') {
+                            setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                          }
+                        }}
+                      >
+                        <div
+                          className="ps-card-icon-box"
+                          style={{
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            fontWeight: 700,
+                            fontFamily: 'monospace',
+                            fontSize: 16,
+                            color: '#64748b'
+                          }}
+                        >
+                          T
+                        </div>
+                        <div className="ps-card-info">
+                          <div className="ps-card-title">Text Note / Label</div>
+                          <div className="ps-card-desc">Editable text annotation (e.g. Modbus, Tag, Zone)</div>
+                        </div>
+                      </div>
+                    );
+
+                    if (activePaletteTab === 'all') {
+                      return (
+                        <>
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
+                          {PIPE_PRESETS.map(p => renderPipePresetCard(p))}
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d))}
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'vessels').map(([t, d]) => renderAssetCard(t, d))}
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'gateways').map(([t, d]) => renderAssetCard(t, d))}
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'others').map(([t, d]) => renderAssetCard(t, d))}
+                          {renderTextNoteCard()}
+                        </>
+                      );
+                    }
+                    if (activePaletteTab === 'sensors') {
+                      return (
+                        <>
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
+                        </>
+                      );
+                    }
+                    if (activePaletteTab === 'piping') {
+                      return PIPE_PRESETS.map(p => renderPipePresetCard(p));
+                    }
+                    if (activePaletteTab === 'vessels') {
+                      return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'vessels').map(([t, d]) => renderAssetCard(t, d));
+                    }
+                    if (activePaletteTab === 'machines') {
+                      return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d));
+                    }
+                    if (activePaletteTab === 'gateways') {
+                      return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'gateways').map(([t, d]) => renderAssetCard(t, d));
+                    }
+                    if (activePaletteTab === 'others') {
+                      return (
+                        <>
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'others').map(([t, d]) => renderAssetCard(t, d))}
+                          {renderTextNoteCard()}
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
-                {/* Proportional Size Control Slider */}
-                <div className="ps-form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <label className="ps-form-label" style={{ margin: 0 }}>Device Size</label>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
-                      {Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}%
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>40%</span>
-                    <input
-                      id="itemScaleSlider"
-                      type="range"
-                      min="40"
-                      max="250"
-                      step="5"
-                      style={{ flex: 1, accentColor: '#00ac86' }}
-                      value={Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}
-                      onChange={(e) => {
-                        const pct = parseInt(e.target.value, 10);
-                        const newScale = Math.round((pct / 100) * 100) / 100;
-                        const def = ASSET_DEFS[singleSelectedElement.type] || { w: 100, h: 80 };
-                        const newW = Math.round(def.w * newScale);
-                        const newH = Math.round(def.h * newScale);
-                        saveHistory('Resize Device');
-                        updateSelectedElement({ scale: newScale, w: newW, h: newH });
-                      }}
-                    />
-                    <span style={{ fontSize: 11, color: '#64748b', minWidth: 32, textAlign: 'right' }}>250%</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11, color: '#64748b' }}>
-                    <span>
-                      {Math.round(singleSelectedElement.w || (ASSET_DEFS[singleSelectedElement.type]?.w || 100) * (singleSelectedElement.scale || 1))} × {Math.round(singleSelectedElement.h || (ASSET_DEFS[singleSelectedElement.type]?.h || 80) * (singleSelectedElement.scale || 1))} px
-                    </span>
-                    <button
-                      type="button"
-                      className="hud-btn-sm"
-                      style={{ fontSize: 10, height: 20, padding: '0 6px' }}
-                      onClick={() => {
-                        const def = ASSET_DEFS[singleSelectedElement.type] || { w: 100, h: 80 };
-                        saveHistory('Reset Device Size');
-                        updateSelectedElement({ scale: 1, w: def.w, h: def.h });
-                      }}
-                      title="Reset to 100% standard size"
-                    >
-                      Reset (100%)
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="hud-btn-sm btn-danger-outline"
-                  style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
-                  onClick={() => {
-                    saveHistory('Delete Equipment');
-                    const updated = elements.filter(e => e.id !== singleSelectedElement.id);
-                    setElements(updated);
-                    setSelectedIds(new Set());
-                    saveScape({
-                      id: activeScapeId,
-                      title: projectTitle,
-                      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                      zones,
-                      elements: updated,
-                      pipes
-                    });
-                  }}
-                >
-                  🗑 Delete Equipment
-                </button>
-              </>
-            ) : isPipeSelection && representativePipe ? (
-              /* Pipe Inspector (Works for both single pipe and grouped pipelines) */
-              <>
-                {selectedPipes.length > 1 && (
-                  <div style={{
-                    fontSize: 11.5,
-                    color: '#00ac86',
-                    fontWeight: 600,
-                    background: 'rgba(0, 172, 134, 0.08)',
-                    border: '1px solid rgba(0, 172, 134, 0.25)',
-                    padding: '6px 10px',
-                    borderRadius: 6,
-                    marginBottom: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}>
-                    <span>🔗</span> Grouped Pipeline ({selectedPipes.length} segments)
+                {tipVisible && (
+                  <div className="ps-sidebar-footer">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <strong style={{ color: '#00a876', fontSize: 10, textTransform: 'uppercase' }}>💡 Pro Tip</strong>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 10, fontWeight: 700, color: '#00a876' }}
+                          onClick={() => setTipIndex((tipIndex + 1) % TIPS_LIST.length)}
+                        >
+                          Next →
+                        </button>
+                        <button
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#94a3b8' }}
+                          onClick={() => setTipVisible(false)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                    <div dangerouslySetInnerHTML={{ __html: TIPS_LIST[tipIndex] }} />
                   </div>
                 )}
+              </aside>
+            )}
 
-                <div className="ps-form-group">
-                  <label className="ps-form-label">Pipe Thickness ({representativePipe.w || 20}px)</label>
-                  <input
-                    type="range"
-                    min="10"
-                    max="40"
-                    step="2"
-                    value={representativePipe.w || 20}
-                    onChange={(e) => updateSelectedPipe({ w: parseInt(e.target.value, 10) })}
-                  />
-                </div>
-
-                <div className="ps-form-group">
-                  <label className="ps-form-label">Flow Direction</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+            {/* Center Canvas Viewport */}
+            <main
+              ref={viewportRef}
+              className={`ps-canvas-viewport ${currentTool === 'pan' || isSpacePressed ? 'panning' : ''} ${currentTool === 'draw_pipe' ? 'drawing-pipe' : ''}`}
+              onMouseDown={handleMouseDown}
+              onClick={handleClick}
+              onDoubleClick={handleDoubleClick}
+              onContextMenu={handleContextMenu}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            >
+              {/* Example Demo Show Notice Banner */}
+              {isExampleShow && (
+                <div className={`ps-example-demo-banner ${isBannerMinimized ? 'minimized' : ''}`} role="alert">
+                  <div className="ps-example-demo-badge">
+                    <span className="ps-demo-pulse-dot" />
+                    DEMO PREVIEW
+                  </div>
+                  {!isBannerMinimized && (
+                    <div className="ps-example-demo-content">
+                      <div className="ps-example-demo-title">
+                        Example Plant Layout (Demonstration)
+                      </div>
+                      <div className="ps-example-demo-desc">
+                        No real locations are configured in the system yet. Create your own location and ProcessScape stage to design custom piping, bind measurement points, and monitor live sensor telemetry.
+                      </div>
+                    </div>
+                  )}
+                  {isBannerMinimized && (
+                    <div
+                      className="ps-example-demo-desc"
+                      style={{ cursor: 'pointer', color: '#f8fafc', fontWeight: 500 }}
+                      onClick={() => setIsBannerMinimized(false)}
+                    >
+                      Example layout preview &middot; Click to expand notice
+                    </div>
+                  )}
+                  <div className="ps-example-demo-actions">
                     <button
                       type="button"
-                      className={`hud-btn-sm ${(!representativePipe.flow || representativePipe.flow === 'forward') ? 'btn-primary' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => updateSelectedPipe({ flow: 'forward' })}
-                      title="Animate fluid flow from start to end"
+                      className="ps-example-demo-btn-primary"
+                      onClick={() => {
+                        setIsBannerDismissed(true);
+                        if (onOpenSensorManager) onOpenSensorManager();
+                      }}
+                      title="Open Sensor Manager to create your own location and scape stage"
                     >
-                      ▶ Forward
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      <span>Create Location &amp; Stage</span>
                     </button>
                     <button
                       type="button"
-                      className={`hud-btn-sm ${representativePipe.flow === 'reverse' ? 'btn-primary' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => updateSelectedPipe({ flow: 'reverse' })}
-                      title="Animate fluid flow from end to start"
+                      className="ps-example-demo-dismiss-btn"
+                      onClick={() => setIsBannerDismissed(true)}
+                      title="Dismiss example notice"
+                      aria-label="Dismiss example notice"
                     >
-                      ◀ Reverse
-                    </button>
-                    <button
-                      type="button"
-                      className={`hud-btn-sm ${representativePipe.flow === 'none' ? 'btn-primary' : ''}`}
-                      style={{ flex: 0.8, justifyContent: 'center' }}
-                      onClick={() => updateSelectedPipe({ flow: 'none' })}
-                      title="Turn off flow animation"
-                    >
-                      ⏹ Off
+                      ✕
                     </button>
                   </div>
                 </div>
+              )}
+              {/* Top Floating HUD Toolbar in Editor Mode */}
+              {scapeMode === 'editor' && (
+                <div className="canvas-floating-hud top-hud ps-hud-bar">
+                  {/* Tool Selection Group */}
+                  <div className="tool-group">
+                    <button
+                      id="toolSelect"
+                      type="button"
+                      className={`hud-icon-btn ${currentTool === 'select' ? 'active' : ''}`}
+                      onClick={() => {
+                        dragRef.current.drawingPipeStart = null;
+                        dragRef.current.extendingPipe = null;
+                        if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+                        setCurrentTool('select');
+                      }}
+                      title="Select Tool (V)"
+                      aria-label="Select Tool"
+                    >
+                      <HudIcons.Select />
+                    </button>
+                    <button
+                      id="toolPan"
+                      type="button"
+                      className={`hud-icon-btn ${currentTool === 'pan' ? 'active' : ''}`}
+                      onClick={() => {
+                        dragRef.current.drawingPipeStart = null;
+                        dragRef.current.extendingPipe = null;
+                        if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+                        setCurrentTool('pan');
+                      }}
+                      title="Pan Tool (H or hold Space)"
+                      aria-label="Pan Tool"
+                    >
+                      <HudIcons.Pan />
+                    </button>
+                  </div>
 
-                <button
-                  type="button"
-                  className="hud-btn-sm btn-danger-outline"
-                  style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
-                  onClick={() => {
-                    saveHistory('Delete Pipeline');
-                    const targetGroupIds = new Set(
-                      selectedPipes.filter(p => p.groupId).map(p => p.groupId)
-                    );
-                    const deletedPipeIds = new Set(
-                      pipes.filter(p => selectedIds.has(p.id) || (p.groupId && targetGroupIds.has(p.groupId))).map(p => p.id)
-                    );
-                    const updatedPipes = pipes.filter(p => !deletedPipeIds.has(p.id));
-                    const updatedElements = elements.map(el => {
-                      if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
-                        const updated = { ...el };
-                        delete updated.attachedPipeId;
-                        delete updated.pipeT;
-                        delete updated.pipeOffsetX;
-                        delete updated.pipeOffsetY;
-                        return updated;
-                      }
-                      return el;
-                    });
-                    setPipes(updatedPipes);
-                    setElements(updatedElements);
-                    setSelectedIds(new Set());
-                    saveScape({
-                      id: activeScapeId,
-                      title: projectTitle,
-                      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                      zones,
-                      elements: updatedElements,
-                      pipes: updatedPipes
-                    });
-                  }}
+                  {/* Dynamic Dimension Controls (W: H: for elements, L: D: for pipes) */}
+                  {(isPipeSelection || selectedElements.length > 0) && (
+                    <>
+                      <div className="hud-divider" />
+                      <div className="hud-dimension-group" id="hudDimensionSelector">
+                        {isPipeSelection ? (
+                          <>
+                            <label className="hud-dim-item" title="Pipeline Length (px)">
+                              <span className="hud-dim-label">L:</span>
+                              <input
+                                id="hudInputLength"
+                                type="number"
+                                className="hud-dim-input"
+                                value={singlePipeLength || 0}
+                                min="10"
+                                max="4000"
+                                step="10"
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val >= 10) {
+                                    handleUpdatePipeLength(val);
+                                  }
+                                }}
+                              />
+                            </label>
+                            <label className="hud-dim-item" title="Pipeline Diameter (px)">
+                              <span className="hud-dim-label">D:</span>
+                              <input
+                                id="hudInputDiameter"
+                                type="number"
+                                className="hud-dim-input"
+                                value={representativePipe?.w || 20}
+                                min="6"
+                                max="100"
+                                step="2"
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val >= 6) {
+                                    updateSelectedPipe({ w: val });
+                                  }
+                                }}
+                              />
+                            </label>
+                          </>
+                        ) : (
+                          <>
+                            <label className="hud-dim-item" title="Item Width (px)">
+                              <span className="hud-dim-label">W:</span>
+                              <input
+                                id="hudInputWidth"
+                                type="number"
+                                className="hud-dim-input"
+                                value={selectedElementW}
+                                min="10"
+                                max="3000"
+                                step="5"
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val >= 10) {
+                                    handleUpdateElementDimension({ w: val });
+                                  }
+                                }}
+                              />
+                            </label>
+                            <label className="hud-dim-item" title="Item Height (px)">
+                              <span className="hud-dim-label">H:</span>
+                              <input
+                                id="hudInputHeight"
+                                type="number"
+                                className="hud-dim-input"
+                                value={selectedElementH}
+                                min="10"
+                                max="3000"
+                                step="5"
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val >= 10) {
+                                    handleUpdateElementDimension({ h: val });
+                                  }
+                                }}
+                              />
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {currentTool === 'draw_pipe' && (
+                    <>
+                      <div className="hud-divider" />
+                      <button
+                        id="finishPipeBtn"
+                        type="button"
+                        className="hud-icon-btn active"
+                        onClick={() => {
+                          dragRef.current.drawingPipeStart = null;
+                          dragRef.current.extendingPipe = null;
+                          if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+                          setCurrentTool('select');
+                        }}
+                        title="Finish current pipe"
+                        aria-label="Finish Pipe"
+                      >
+                        <HudIcons.Check />
+                      </button>
+                    </>
+                  )}
+
+                  {selectedIds.size > 0 && (
+                    <>
+                      <div className="hud-divider" />
+                      <div className="tool-group">
+                        <button
+                          id="hudFrontBtn"
+                          type="button"
+                          className="hud-icon-btn"
+                          disabled={selectedIds.size === 0}
+                          onClick={bringToFront}
+                          title="Bring to Front (])"
+                          aria-label="Bring to Front"
+                        >
+                          <HudIcons.BringToFront />
+                        </button>
+                        <button
+                          id="hudBackBtn"
+                          type="button"
+                          className="hud-icon-btn"
+                          disabled={selectedIds.size === 0}
+                          onClick={sendToBack}
+                          title="Send to Back ([)"
+                          aria-label="Send to Back"
+                        >
+                          <HudIcons.SendToBack />
+                        </button>
+                        <button
+                          id="hudDeleteBtn"
+                          type="button"
+                          className="hud-icon-btn btn-danger-outline"
+                          disabled={selectedIds.size === 0}
+                          onClick={() => {
+                            saveHistory('Delete Item');
+                            const updatedElements = elements.filter(el => !selectedIds.has(el.id));
+                            const updatedPipes = pipes.filter(p => !selectedIds.has(p.id));
+                            setElements(updatedElements);
+                            setPipes(updatedPipes);
+                            setSelectedIds(new Set());
+                            saveScape({
+                              id: activeScapeId,
+                              title: projectTitle,
+                              tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                              zones,
+                              elements: updatedElements,
+                              pipes: updatedPipes
+                            });
+                          }}
+                          title="Delete selected items (Delete key)"
+                          aria-label="Delete Selected"
+                        >
+                          <HudIcons.Delete />
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {contentBounds.hasContent && (
+                    <>
+                      <div className="hud-divider" />
+                      <button
+                        id="toolRealSize"
+                        type="button"
+                        className={`hud-icon-btn ${isRealSizePreview ? 'active' : ''}`}
+                        onMouseDown={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
+                        onMouseUp={() => setIsRealSizePreview(false)}
+                        onMouseLeave={() => setIsRealSizePreview(false)}
+                        onTouchStart={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
+                        onTouchEnd={() => setIsRealSizePreview(false)}
+                        title={`Hold to preview Real Picture Size (${contentBounds.width}×${contentBounds.height}px)`}
+                        aria-label="Real Size Preview"
+                      >
+                        <HudIcons.RealSize />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Hidden JSON file input for importing layout config */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleFileInputChange}
+                style={{ display: 'none' }}
+                aria-hidden="true"
+              />
+
+              {/* Floating Inspector Reopen Button (when Inspector is closed but an element is selected) */}
+              {(scapeMode === 'editor') && !showInspector && hasSelection && (
+                <div className="ps-inspector-toggle-float">
+                  <button
+                    className="hud-btn"
+                    onClick={() => setIsInspectorOpen(true)}
+                    title="Open Inspector Panel"
+                  >
+                    <span>⚙️</span> Inspector
+                  </button>
+                </div>
+              )}
+
+              {/* Bottom Floating Canvas Tools HUD in Modify Scape (Editor Mode only) */}
+              {scapeMode === 'editor' && (
+                <div className="canvas-floating-hud zoom-hud" id="psModifyPageTools">
+                  <div className="tool-group">
+                    <button
+                      id="toolZoomOut"
+                      type="button"
+                      className="hud-icon-btn"
+                      onClick={() => {
+                        const rect = viewportRef.current?.getBoundingClientRect();
+                        const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                        const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                        zoomAtPoint(cx, cy, 1 / 1.15);
+                      }}
+                      title="Zoom Out (-)"
+                      aria-label="Zoom Out"
+                    >
+                      <HudIcons.ZoomOut />
+                    </button>
+
+                    <button
+                      id="toolZoomReset"
+                      type="button"
+                      className="zoom-text hud-btn-zoom-reset"
+                      onClick={resetView}
+                      title="Reset Zoom to 100% (Click to reset)"
+                      aria-label="Zoom Percentage"
+                    >
+                      {Math.round((view?.zoom || 1) * 100)}%
+                    </button>
+
+                    <button
+                      id="toolZoomIn"
+                      type="button"
+                      className="hud-icon-btn"
+                      onClick={() => {
+                        const rect = viewportRef.current?.getBoundingClientRect();
+                        const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                        const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                        zoomAtPoint(cx, cy, 1.15);
+                      }}
+                      title="Zoom In (+)"
+                      aria-label="Zoom In"
+                    >
+                      <HudIcons.ZoomIn />
+                    </button>
+                  </div>
+
+                  <div className="hud-divider" />
+
+                  <button
+                    id="toolZoomFit"
+                    type="button"
+                    className="hud-icon-btn"
+                    onClick={focusSelectedOrCenter}
+                    title="Focus / Fit Whole Canvas (F)"
+                    aria-label="Focus / Fit Whole Canvas"
+                  >
+                    <HudIcons.ZoomFit />
+                  </button>
+
+                  <div className="hud-divider" />
+
+                  <button
+                    id="toolModifyBoundsResizer"
+                    type="button"
+                    className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      handleToggleBoundsResizer();
+                    }}
+                    title={isBoundsResizerActive ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
+                    aria-label="Diagram Bounds Resizer"
+                  >
+                    <HudIcons.BoundsScale />
+                  </button>
+                </div>
+              )}
+
+              {/* Bottom Floating Canvas Tools HUD in Live View (Runtime Mode) */}
+              {scapeMode === 'runtime' && (
+                <div className="canvas-floating-hud zoom-hud ps-runtime-page-tools" id="psRuntimePageTools">
+                  <div className="tool-group">
+                    <button
+                      id="toolRuntimeZoomOut"
+                      type="button"
+                      className="hud-icon-btn"
+                      onClick={() => {
+                        const rect = viewportRef.current?.getBoundingClientRect();
+                        const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                        const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                        zoomAtPoint(cx, cy, 1 / 1.15);
+                      }}
+                      title="Zoom Out (-)"
+                      aria-label="Zoom Out"
+                    >
+                      <HudIcons.ZoomOut />
+                    </button>
+
+                    <button
+                      id="toolRuntimeZoomReset"
+                      type="button"
+                      className="zoom-text hud-btn-zoom-reset"
+                      onClick={resetView}
+                      title="Reset Zoom to 100% (Click to reset)"
+                      aria-label="Zoom Percentage"
+                    >
+                      {Math.round((view?.zoom || 1) * 100)}%
+                    </button>
+
+                    <button
+                      id="toolRuntimeZoomIn"
+                      type="button"
+                      className="hud-icon-btn"
+                      onClick={() => {
+                        const rect = viewportRef.current?.getBoundingClientRect();
+                        const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                        const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                        zoomAtPoint(cx, cy, 1.15);
+                      }}
+                      title="Zoom In (+)"
+                      aria-label="Zoom In"
+                    >
+                      <HudIcons.ZoomIn />
+                    </button>
+                  </div>
+
+                  <div className="hud-divider" />
+
+                  {/* Combined Diagram Bounds Resizer & Sensor Card Repositioning Tool */}
+                  <button
+                    id="toolRuntimeBoundsResizer"
+                    type="button"
+                    className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      handleToggleBoundsResizer();
+                    }}
+                    title={isBoundsResizerActive ? "Confirm & Apply Layout Changes (Save Size & Positions)" : "Resize Diagram & Move Attached Sensor Cards"}
+                    aria-label="Resize Diagram & Move Attached Sensor Cards"
+                  >
+                    <HudIcons.BoundsScale />
+                  </button>
+                </div>
+              )}
+
+              {/* Scalable SVG World Scene */}
+              <svg className="ps-scene-svg">
+                <defs>
+                  <filter id="softCardShadow" x="-10%" y="-10%" width="125%" height="125%">
+                    <feDropShadow dx="0" dy="4" stdDeviation="6" floodOpacity="0.08" />
+                  </filter>
+                  <filter id="badgeShadow" x="-10%" y="-10%" width="125%" height="125%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
+                  </filter>
+                </defs>
+
+                <g id="worldGroup" transform={`translate(${view.x}, ${view.y}) scale(${view.zoom})`}>
+                  {/* Dynamic Real Picture Bounds Guide (Shown only when holding 'Real Size' button) */}
+                  {isRealSizePreview && contentBounds.hasContent && (
+                    <g className="ps-real-bounds-guide" pointerEvents="none">
+                      <rect
+                        x={contentBounds.x}
+                        y={contentBounds.y}
+                        width={contentBounds.width}
+                        height={contentBounds.height}
+                        rx={6}
+                        fill="rgba(0, 172, 134, 0.08)"
+                        stroke="#00ac86"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        opacity={0.9}
+                      />
+                      <g transform={`translate(${contentBounds.x + 8}, ${contentBounds.y - 8})`}>
+                        <rect x={-4} y={-14} width={154} height={18} rx={4} fill="#0f172a" opacity={0.92} />
+                        <text x={4} y={-1} fontSize={10} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
+                          📐 Real Size: {contentBounds.width}×{contentBounds.height}px
+                        </text>
+                      </g>
+                    </g>
+                  )}
+
+                  {/* Background Zones */}
+                  {zones.map(z => (
+                    <g key={z.id} transform={`translate(${z.x}, ${z.y})`} pointerEvents="none">
+                      <rect
+                        x={0} y={0} width={z.w} height={z.h} rx={16}
+                        fill={isDarkMode ? '#131922' : '#f8fafc'}
+                        stroke={isDarkMode ? '#243042' : '#e2e8f0'}
+                        strokeWidth={1.5}
+                      />
+                      <rect
+                        x={0} y={z.headerPosition === 'bottom' ? z.h - 44 : 0}
+                        width={z.w} height={44}
+                        rx={16}
+                        fill="#00a876"
+                      />
+                      <rect
+                        x={0} y={z.headerPosition === 'bottom' ? z.h - 44 : 20}
+                        width={z.w} height={24}
+                        fill="#00a876"
+                      />
+                      <text
+                        x={z.w / 2}
+                        y={z.headerPosition === 'bottom' ? z.h - 16 : 28}
+                        textAnchor="middle"
+                        fontSize={16}
+                        fontWeight={800}
+                        fill="#ffffff"
+                        fontFamily="sans-serif"
+                        letterSpacing="0.8px"
+                      >
+                        {z.title}
+                      </text>
+                      {z.watermark && (
+                        <text
+                          x={z.w - 16}
+                          y={z.headerPosition === 'bottom' ? z.h - 16 : 28}
+                          textAnchor="end"
+                          fontSize={11}
+                          fontWeight={600}
+                          fill="rgba(255,255,255,0.8)"
+                          fontFamily="sans-serif"
+                        >
+                          {z.watermark}
+                        </text>
+                      )}
+                    </g>
+                  ))}
+
+                  {/* Dynamic Diagram Elements & Pipes */}
+                  <g ref={diagramLayerRef} />
+
+                  {/* Interactive Layer (Anchors, Lead lines, Reticles) */}
+                  <g ref={interactionLayerRef} />
+
+                  {/* Diagram Bounding Box Resizer Tool Overlay */}
+                  {isBoundsResizerActive && resizingBox && (
+                    <g id="boundsResizerGroup" className="ps-bounds-resizer-group">
+                      <rect
+                        x={resizingBox.x}
+                        y={resizingBox.y}
+                        width={resizingBox.w}
+                        height={resizingBox.h}
+                        fill="rgba(0, 172, 134, 0.05)"
+                        stroke="#00ac86"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        rx={4}
+                        pointerEvents="none"
+                      />
+                      <g transform={`translate(${resizingBox.x + 8}, ${resizingBox.y - 10})`} pointerEvents="none">
+                        <rect x={-4} y={-14} width={164} height={20} rx={4} fill="#0f172a" opacity={0.92} />
+                        <text x={6} y={1} fontSize={11} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
+                          📐 Diagram: {Math.round(resizingBox.w)}×{Math.round(resizingBox.h)}px
+                        </text>
+                      </g>
+                      {[
+                        // Side edge handles first (10x10 px)
+                        { type: 'n', x: resizingBox.x + resizingBox.w / 2, y: resizingBox.y, cursor: 'ns-resize', isCorner: false },
+                        { type: 'e', x: resizingBox.x + resizingBox.w, y: resizingBox.y + resizingBox.h / 2, cursor: 'ew-resize', isCorner: false },
+                        { type: 's', x: resizingBox.x + resizingBox.w / 2, y: resizingBox.y + resizingBox.h, cursor: 'ns-resize', isCorner: false },
+                        { type: 'w', x: resizingBox.x, y: resizingBox.y + resizingBox.h / 2, cursor: 'ew-resize', isCorner: false },
+                        // Corner handles second so they render on top with prominent 14x14 px styling
+                        { type: 'nw', x: resizingBox.x, y: resizingBox.y, cursor: 'nwse-resize', isCorner: true },
+                        { type: 'ne', x: resizingBox.x + resizingBox.w, y: resizingBox.y, cursor: 'nesw-resize', isCorner: true },
+                        { type: 'se', x: resizingBox.x + resizingBox.w, y: resizingBox.y + resizingBox.h, cursor: 'nwse-resize', isCorner: true },
+                        { type: 'sw', x: resizingBox.x, y: resizingBox.y + resizingBox.h, cursor: 'nesw-resize', isCorner: true },
+                      ].map(h => (
+                        <g
+                          key={h.type}
+                          className="ps-bounds-handle"
+                          data-handle={h.type}
+                          transform={`translate(${h.x}, ${h.y})`}
+                          style={{ cursor: h.cursor }}
+                          pointerEvents="all"
+                        >
+                          {/* Generous invisible hit target (28x28 px) for effortless clicking without precision strain */}
+                          <rect
+                            x={-14}
+                            y={-14}
+                            width={28}
+                            height={28}
+                            fill="transparent"
+                            style={{ cursor: h.cursor }}
+                            pointerEvents="all"
+                          />
+                          {/* Crisp, stable visual handle (14x14 px for 4 corners, 10x10 px for 4 edge midpoints) */}
+                          <rect
+                            className="ps-bounds-handle-rect"
+                            x={h.isCorner ? -7 : -5}
+                            y={h.isCorner ? -7 : -5}
+                            width={h.isCorner ? 14 : 10}
+                            height={h.isCorner ? 14 : 10}
+                            rx={h.isCorner ? 3 : 2}
+                            fill="#ffffff"
+                            stroke="#00ac86"
+                            strokeWidth={h.isCorner ? 2.5 : 2}
+                            style={{ cursor: h.cursor }}
+                            pointerEvents="none"
+                          />
+                        </g>
+                      ))}
+                    </g>
+                  )}
+                </g>
+              </svg>
+            </main>
+
+            {/* Right Inspector Panel (Editor Mode only) */}
+            {scapeMode === 'editor' && (
+              <aside
+                ref={inspectorElRef}
+                style={inspectorStyle}
+                className={`ps-inspector ${showInspector ? '' : 'collapsed'} ${isDraggingInspector ? 'is-dragging' : ''}`}
+              >
+                <div
+                  className="ps-inspector-header"
+                  onMouseDown={handleInspectorHeaderMouseDown}
+                  onTouchStart={handleInspectorHeaderTouchStart}
+                  onDoubleClick={() => setInspectorPos(null)}
+                  title="Drag to reposition • Double-click to reset position"
                 >
-                  🗑 Delete Pipeline {selectedPipes.length > 1 ? `(${selectedPipes.length} segments)` : ''}
-                </button>
-              </>
-            ) : null}
-          </div>
-        </aside>
+                  <div className="ps-inspector-title-wrap">
+                    <span className="ps-inspector-drag-grip" aria-hidden="true">⠿</span>
+                    <div className="ps-inspector-title">
+                      {singleSelectedElement
+                        ? (singleSelectedElement.tag || singleSelectedElement.text || 'Item Config')
+                        : isPipeSelection
+                          ? (selectedPipes.length > 1
+                            ? `Pipeline (${selectedPipes.length} segments)`
+                            : 'Pipe Config')
+                          : 'Inspector'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="ps-inspector-close-btn"
+                    onClick={() => setIsInspectorOpen(false)}
+                    title="Close Inspector"
+                    aria-label="Close Inspector"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="ps-inspector-body">
+                  {!singleSelectedElement && !isPipeSelection ? (
+                    <div className="ps-empty-inspector">
+                      <div style={{ fontSize: 32 }}>🎯</div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>No Item Selected</div>
+                      <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                        Click an equipment asset, pipe, or sensor card on the canvas to configure parameters and live data channels.
+                      </div>
+                    </div>
+                  ) : singleSelectedElement?.type === 'sensor_card' ? (
+                    /* Sensor Mode Card Inspector */
+                    <>
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">Sensor Tag Name</label>
+                        <input
+                          className="ps-input"
+                          value={selectedElement.tag || ''}
+                          onChange={(e) => updateSelectedElement({ tag: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">Title Position</label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            type="button"
+                            className={`hud-btn-sm ${selectedElement.titlePosition === 'left' ? 'btn-primary' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => updateSelectedElement({ titlePosition: 'left' })}
+                          >
+                            Left Tag
+                          </button>
+                          <button
+                            type="button"
+                            className={`hud-btn-sm ${selectedElement.titlePosition === 'top' ? 'btn-primary' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => updateSelectedElement({ titlePosition: 'top' })}
+                          >
+                            Top Banner
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">Linked Device (Sensor / Gateway)</label>
+                        <select
+                          className="ps-select"
+                          value={selectedElement.attachedAssetId || ''}
+                          onChange={(e) => {
+                            const val = e.target.value || null;
+                            updateSelectedElement({ attachedAssetId: val });
+                          }}
+                        >
+                          <option value="">(None - Free Floating)</option>
+                          {elements.filter(e => isSensorOrGateway(e)).map(dev => (
+                            <option key={dev.id} value={dev.id}>
+                              {dev.tag || ASSET_DEFS[dev.type]?.name || dev.id}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Relative placement shortcuts */}
+                      {selectedElement.attachedAssetId && (
+                        <div className="ps-form-group">
+                          <label className="ps-form-label">Quick Position vs Linked Device</label>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) - 80 })}>Above</button>
+                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) + 80 })}>Below</button>
+                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) - 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Left</button>
+                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) + 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Right</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Assigned Telemetry Channels */}
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">
+                          Assigned Telemetry Channels ({(selectedElement.channels || []).length})
+                        </label>
+                        {(selectedElement.channels || []).length === 0 ? (
+                          <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
+                            No channels assigned. Use <strong>Sensor & Measurement Point Manager</strong> to detect and bind channels.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                            {(selectedElement.channels || []).map((ch, idx) => (
+                              <div
+                                key={ch.id || idx}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '4px 8px',
+                                  background: 'rgba(15, 23, 42, 0.03)',
+                                  borderRadius: 4,
+                                  fontSize: 11
+                                }}
+                              >
+                                <span style={{ fontWeight: 600, color: '#0f172a' }}>{ch.name}</span>
+                                <span style={{ fontFamily: 'monospace', color: '#0284c7' }}>{ch.unit || ''}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="hud-btn-sm btn-danger-outline"
+                        style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
+                        onClick={() => {
+                          saveHistory('Delete Sensor');
+                          const updated = elements.filter(e => e.id !== singleSelectedElement.id);
+                          setElements(updated);
+                          setSelectedIds(new Set());
+                          saveScape({
+                            id: activeScapeId,
+                            title: projectTitle,
+                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                            zones,
+                            elements: updated,
+                            pipes
+                          });
+                        }}
+                      >
+                        🗑 Delete Sensor Card
+                      </button>
+                    </>
+                  ) : singleSelectedElement ? (
+                    /* Equipment / Asset Node Inspector */
+                    <>
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">Equipment Tag Name</label>
+                        <input
+                          className="ps-input"
+                          value={singleSelectedElement.tag ?? ''}
+                          placeholder="(Optional tag / empty)"
+                          onChange={(e) => updateSelectedElement({ tag: e.target.value })}
+                        />
+                      </div>
+
+                      {/* Solid Flat Color Theme Swatches (Single-line compact options) */}
+                      <div className="ps-form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label className="ps-form-label" style={{ margin: 0 }}>Color Theme</label>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                            {(EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue).name}
+                          </span>
+                        </div>
+                        <div className="ps-swatches-row">
+                          {Object.values(EQUIPMENT_COLOR_THEMES).map(theme => (
+                            <button
+                              type="button"
+                              key={theme.id}
+                              className={`ps-swatch-circle-btn ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
+                              title={theme.name}
+                              aria-label={theme.name}
+                              onClick={() => {
+                                saveHistory('Change Theme');
+                                updateSelectedElement({ colorTheme: theme.id });
+                              }}
+                              style={{ backgroundColor: theme.main }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Proportional Size Control Slider */}
+                      <div className="ps-form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label className="ps-form-label" style={{ margin: 0 }}>Device Size</label>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
+                            {Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}%
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>40%</span>
+                          <input
+                            id="itemScaleSlider"
+                            type="range"
+                            min="40"
+                            max="250"
+                            step="5"
+                            style={{ flex: 1, accentColor: '#00ac86' }}
+                            value={Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}
+                            onChange={(e) => {
+                              const pct = parseInt(e.target.value, 10);
+                              const newScale = Math.round((pct / 100) * 100) / 100;
+                              const def = ASSET_DEFS[singleSelectedElement.type] || { w: 100, h: 80 };
+                              const newW = Math.round(def.w * newScale);
+                              const newH = Math.round(def.h * newScale);
+                              saveHistory('Resize Device');
+                              updateSelectedElement({ scale: newScale, w: newW, h: newH });
+                            }}
+                          />
+                          <span style={{ fontSize: 11, color: '#64748b', minWidth: 32, textAlign: 'right' }}>250%</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11, color: '#64748b' }}>
+                          <span>
+                            {Math.round(singleSelectedElement.w || (ASSET_DEFS[singleSelectedElement.type]?.w || 100) * (singleSelectedElement.scale || 1))} × {Math.round(singleSelectedElement.h || (ASSET_DEFS[singleSelectedElement.type]?.h || 80) * (singleSelectedElement.scale || 1))} px
+                          </span>
+                          <button
+                            type="button"
+                            className="hud-btn-sm"
+                            style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+                            onClick={() => {
+                              const def = ASSET_DEFS[singleSelectedElement.type] || { w: 100, h: 80 };
+                              saveHistory('Reset Device Size');
+                              updateSelectedElement({ scale: 1, w: def.w, h: def.h });
+                            }}
+                            title="Reset to 100% standard size"
+                          >
+                            Reset (100%)
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="hud-btn-sm btn-danger-outline"
+                        style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
+                        onClick={() => {
+                          saveHistory('Delete Equipment');
+                          const updated = elements.filter(e => e.id !== singleSelectedElement.id);
+                          setElements(updated);
+                          setSelectedIds(new Set());
+                          saveScape({
+                            id: activeScapeId,
+                            title: projectTitle,
+                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                            zones,
+                            elements: updated,
+                            pipes
+                          });
+                        }}
+                      >
+                        🗑 Delete Equipment
+                      </button>
+                    </>
+                  ) : isPipeSelection && representativePipe ? (
+                    /* Pipe Inspector (Works for both single pipe and grouped pipelines) */
+                    <>
+                      {selectedPipes.length > 1 && (
+                        <div style={{
+                          fontSize: 11.5,
+                          color: '#00ac86',
+                          fontWeight: 600,
+                          background: 'rgba(0, 172, 134, 0.08)',
+                          border: '1px solid rgba(0, 172, 134, 0.25)',
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          marginBottom: 12,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}>
+                          <span>🔗</span> Grouped Pipeline ({selectedPipes.length} segments)
+                        </div>
+                      )}
+
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">Pipe Thickness ({representativePipe.w || 20}px)</label>
+                        <input
+                          type="range"
+                          min="10"
+                          max="40"
+                          step="2"
+                          value={representativePipe.w || 20}
+                          onChange={(e) => updateSelectedPipe({ w: parseInt(e.target.value, 10) })}
+                        />
+                      </div>
+
+                      <div className="ps-form-group">
+                        <label className="ps-form-label">Flow Direction</label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            className={`hud-btn-sm ${(!representativePipe.flow || representativePipe.flow === 'forward') ? 'btn-primary' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => updateSelectedPipe({ flow: 'forward' })}
+                            title="Animate fluid flow from start to end"
+                          >
+                            ▶ Forward
+                          </button>
+                          <button
+                            type="button"
+                            className={`hud-btn-sm ${representativePipe.flow === 'reverse' ? 'btn-primary' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => updateSelectedPipe({ flow: 'reverse' })}
+                            title="Animate fluid flow from end to start"
+                          >
+                            ◀ Reverse
+                          </button>
+                          <button
+                            type="button"
+                            className={`hud-btn-sm ${representativePipe.flow === 'none' ? 'btn-primary' : ''}`}
+                            style={{ flex: 0.8, justifyContent: 'center' }}
+                            onClick={() => updateSelectedPipe({ flow: 'none' })}
+                            title="Turn off flow animation"
+                          >
+                            ⏹ Off
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="hud-btn-sm btn-danger-outline"
+                        style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
+                        onClick={() => {
+                          saveHistory('Delete Pipeline');
+                          const targetGroupIds = new Set(
+                            selectedPipes.filter(p => p.groupId).map(p => p.groupId)
+                          );
+                          const deletedPipeIds = new Set(
+                            pipes.filter(p => selectedIds.has(p.id) || (p.groupId && targetGroupIds.has(p.groupId))).map(p => p.id)
+                          );
+                          const updatedPipes = pipes.filter(p => !deletedPipeIds.has(p.id));
+                          const updatedElements = elements.map(el => {
+                            if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
+                              const updated = { ...el };
+                              delete updated.attachedPipeId;
+                              delete updated.pipeT;
+                              delete updated.pipeOffsetX;
+                              delete updated.pipeOffsetY;
+                              return updated;
+                            }
+                            return el;
+                          });
+                          setPipes(updatedPipes);
+                          setElements(updatedElements);
+                          setSelectedIds(new Set());
+                          saveScape({
+                            id: activeScapeId,
+                            title: projectTitle,
+                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                            zones,
+                            elements: updatedElements,
+                            pipes: updatedPipes
+                          });
+                        }}
+                      >
+                        🗑 Delete Pipeline {selectedPipes.length > 1 ? `(${selectedPipes.length} segments)` : ''}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </aside>
+            )}
+          </>
         )}
       </div>
 

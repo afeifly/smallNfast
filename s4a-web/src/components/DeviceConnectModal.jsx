@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TauriSutoAPI from '../api/TauriSutoAPI';
 import BleSutoAPI from '../api/BleSutoAPI';
 import { checkIsNative, isMobile } from '../util/platform';
@@ -10,6 +10,7 @@ import {
 } from '../api/lanScanner';
 import { buildModbusDevice } from '../modules/processscape/engine/sensorManagerStorage';
 import { MODBUS_DATA_TYPES, normalizeModbusDataType } from '../api/modbusProtocol';
+import { pausePolling, resumePolling } from '../util/liveDataSource';
 import './DeviceConnectModal.css';
 
 const MODBUS_PRESETS = {
@@ -107,6 +108,18 @@ export default function DeviceConnectModal({
     setModbusTestResults(null);
     setSelectedScalingIdx(null);
     setError(null);
+  };
+
+  const handleSwitchTab = (newTab) => {
+    if (newTab === tab) return;
+    setTab(newTab);
+    setError(null);
+    setDetectedSutoInfo(null);
+    setModbusTestResults(null);
+    if (lanScanning && scanAbortRef.current) {
+      scanAbortRef.current.abort();
+      setLanScanning(false);
+    }
   };
 
   const handleDetectSutoDevice = () => {
@@ -276,8 +289,8 @@ export default function DeviceConnectModal({
       }
 
       const defaultName = devModel
-        ? `${devModel}${devSerial ? ` (${devSerial})` : ''}`
-        : (isRtu ? `Modbus RTU (${modbusSerialPort})` : `Modbus TCP (${modbusHost}:${port})`);
+        ? devModel
+        : (isRtu ? `Modbus RTU (${modbusSerialPort})` : `Modbus TCP (${modbusHost}${port === 502 ? '' : `:${port}`})`);
       const name = modbusName.trim() || defaultName;
 
       const devItem = buildModbusDevice({
@@ -308,7 +321,7 @@ export default function DeviceConnectModal({
         slaveId,
         isRtu,
         name,
-        serial: devSerial,
+        serial: devItem.serial,
         clearOthers: singleDeviceMode,
         channels: devItem.sensors[0]?.channels || []
       });
@@ -316,6 +329,8 @@ export default function DeviceConnectModal({
       if (typeof onConnected === 'function') {
         onConnected({
           ...conn,
+          activeTab: 'modbus',
+          transport: isRtu ? 'MODBUS_RTU' : 'MODBUS_TCP',
           deviceItem: devItem
         });
       }
@@ -330,6 +345,7 @@ export default function DeviceConnectModal({
 
   useEffect(() => {
     if (isOpen) {
+      pausePolling();
       if (initialTab) {
         setTab(initialTab);
       } else {
@@ -339,6 +355,9 @@ export default function DeviceConnectModal({
         setLanDetectMode(initialMode);
       }
       setError(null);
+      return () => {
+        resumePolling();
+      };
     }
   }, [isOpen, initialTab, initialMode, isNative]);
 
@@ -369,7 +388,7 @@ export default function DeviceConnectModal({
         await TauriSutoAPI.disconnect();
       }
       const conn = await TauriSutoAPI.connectUsb();
-      onConnected(conn);
+      onConnected({ ...conn, activeTab: 'usb', transport: 'USB' });
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] USB connect error:', err);
@@ -393,7 +412,7 @@ export default function DeviceConnectModal({
         throw new Error('Please enter a valid TCP port number (1-65535)');
       }
       const conn = await TauriSutoAPI.connectTcp(tcpHost.trim(), port);
-      onConnected(conn);
+      onConnected({ ...conn, activeTab: 'tcp', transport: 'TCP' });
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] TCP connect error:', err);
@@ -412,7 +431,7 @@ export default function DeviceConnectModal({
         await TauriSutoAPI.disconnect();
       }
       const conn = await TauriSutoAPI.connectApi(apiHost.trim(), 8080);
-      onConnected(conn);
+      onConnected({ ...conn, activeTab: 'api', transport: 'API' });
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] WebAPI connect error:', err);
@@ -567,7 +586,7 @@ export default function DeviceConnectModal({
         await TauriSutoAPI.disconnect();
       }
       const conn = await TauriSutoAPI.connectBle({ deviceId: dev.id, name: dev.name });
-      onConnected(conn);
+      onConnected({ ...conn, activeTab: 'ble', transport: 'BLE' });
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] BLE connect error:', err);
@@ -587,7 +606,7 @@ export default function DeviceConnectModal({
         await TauriSutoAPI.disconnect();
       }
       const conn = await TauriSutoAPI.connectBle({ acceptAll: showAllBle });
-      onConnected(conn);
+      onConnected({ ...conn, activeTab: 'ble', transport: 'BLE' });
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] BLE connect error:', err);
@@ -1252,35 +1271,35 @@ export default function DeviceConnectModal({
             <>
               <button
                 className={`modal-tab-btn ${tab === 'usb' ? 'active' : ''}`}
-                onClick={() => { setTab('usb'); setError(null); }}
+                onClick={() => handleSwitchTab('usb')}
               >
                 <span>🔌</span>
                 <span>{isMobile ? 'USB OTG' : 'Direct USB'}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
-                onClick={() => { setTab('ble'); setError(null); }}
+                onClick={() => handleSwitchTab('ble')}
               >
                 <span>📶</span>
                 <span>Bluetooth (BLE)</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
-                onClick={() => { setTab('tcp'); setError(null); }}
+                onClick={() => handleSwitchTab('tcp')}
               >
                 <span>🌐</span>
                 <span>Ethernet TCP</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'api' ? 'active' : ''}`}
-                onClick={() => { setTab('api'); setError(null); }}
+                onClick={() => handleSwitchTab('api')}
               >
                 <span>⚡</span>
                 <span>WebAPI</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'modbus' ? 'active' : ''}`}
-                onClick={() => { setTab('modbus'); setError(null); }}
+                onClick={() => handleSwitchTab('modbus')}
               >
                 <span>📟</span>
                 <span>Modbus (TCP/RTU)</span>
@@ -1290,7 +1309,7 @@ export default function DeviceConnectModal({
             <>
               <button
                 className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
-                onClick={() => { setTab('ble'); setError(null); }}
+                onClick={() => handleSwitchTab('ble')}
               >
                 <span>📶</span>
                 <span>Bluetooth (BLE)</span>
@@ -1327,8 +1346,8 @@ export default function DeviceConnectModal({
                   {isNative
                     ? 'Native Bluetooth Low Energy (BLE) engine is active and ready.'
                     : BleSutoAPI.isSupported()
-                    ? 'Web Bluetooth is supported in your current browser.'
-                    : (BleSutoAPI.getSupportIssue() || 'Web Bluetooth requires Chrome or a Chromium-based browser.')}
+                      ? 'Web Bluetooth is supported in your current browser.'
+                      : (BleSutoAPI.getSupportIssue() || 'Web Bluetooth requires Chrome or a Chromium-based browser.')}
                 </span>
               </div>
 

@@ -209,6 +209,9 @@ function App() {
     const handleLocChanged = (e) => {
       const locs = e.detail || getLocations();
       setLocationsList(locs);
+      if (Array.isArray(locs) && locs.length === 0) {
+        setSelectedLocationId(null);
+      }
     };
     window.addEventListener('sensor-locations-changed', handleLocChanged);
     return () => window.removeEventListener('sensor-locations-changed', handleLocChanged);
@@ -2347,14 +2350,19 @@ function App() {
         onClose={() => setShowSensorManagerModal(false)}
         activeLocationId={selectedLocationId}
         onSyncToScape={(targetScapeId, targetLocId) => {
+          if (!targetScapeId) {
+            try { setActiveScapeId(''); } catch (_) {}
+            setSelectedLocationId(null);
+            psActionsRef.current?.switchScape?.('');
+            psActionsRef.current?.reloadActiveScape?.('');
+            return;
+          }
           if (targetLocId) {
             setSelectedLocationId(targetLocId);
             psActionsRef.current?.setActiveLocationId?.(targetLocId);
           }
-          if (targetScapeId) {
-            try { setActiveScapeId(targetScapeId); } catch (_) {}
-            psActionsRef.current?.switchScape?.(targetScapeId);
-          }
+          try { setActiveScapeId(targetScapeId); } catch (_) {}
+          psActionsRef.current?.switchScape?.(targetScapeId);
           psActionsRef.current?.reloadActiveScape?.(targetScapeId);
         }}
         activeDeviceInfo={deviceInfo}

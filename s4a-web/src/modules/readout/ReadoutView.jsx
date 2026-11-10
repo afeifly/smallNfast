@@ -211,6 +211,7 @@ export default function ReadoutView({
 
   // Read progress and results
   const [readingProgress, setReadingProgress] = useState(null);
+  const [readoutProgressInfo, setReadoutProgressInfo] = useState(null);
   const [readResult, setReadResult] = useState(null);
 
   // Screenshots state
@@ -723,89 +724,142 @@ export default function ReadoutView({
     }
   };
 
-  const handleReadS461Log = async () => {
-    if (!TauriSutoAPI.isAvailable()) {
-      alert('Real S461 logger readout is available in desktop application mode with an active device connection.');
-      return;
-    }
-
-    setReadingProgress(5);
+  const executeHardwareTimeRangeReadout = async (readerFn, startSec, stopSec, label = 'Device') => {
+    setReadingProgress(2);
+    setReadoutProgressInfo(null);
     setReadResult(null);
 
     try {
-      const stopTimeMs = loggerStatus?.end_time ? loggerStatus.end_time * 1000 : Date.now();
-      let tryStartTimeMs = stopTimeMs - 3600 * 1000;
-      let stopTimeL = stopTimeMs;
-
-      if (s461Period === 'last_hour') {
-        tryStartTimeMs = stopTimeMs - 3600 * 1000;
-        stopTimeL = stopTimeMs;
-      } else if (s461Period === 'last_day') {
-        tryStartTimeMs = stopTimeMs - 24 * 3600 * 1000;
-        stopTimeL = stopTimeMs;
-      } else if (s461Period === 'last_week') {
-        const d = new Date(stopTimeMs);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        const monday = new Date(d.setDate(diff));
-        monday.setHours(0, 0, 0, 0);
-        monday.setMilliseconds(0);
-        tryStartTimeMs = monday.getTime();
-        stopTimeL = stopTimeMs;
-      } else if (s461Period === 'last_month') {
-        const d = new Date(stopTimeMs);
-        const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-        tryStartTimeMs = firstOfMonth.getTime();
-        stopTimeL = stopTimeMs;
-      } else if (s461Period === 'period') {
-        if (!s461StartDate || !s461EndDate) {
-          alert('Please select both start and end dates.');
-          setReadingProgress(null);
-          return;
+      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `${label} logger read started (${new Date(startSec * 1000).toLocaleString()} → ${new Date(stopSec * 1000).toLocaleString()})`);
+      const res = await readerFn(startSec, stopSec, (pct, info) => {
+        if (typeof pct === 'number') {
+          setReadingProgress(pct);
         }
-        const [sy, sm, sd] = s461StartDate.split('-').map(Number);
-        const [ey, em, ed] = s461EndDate.split('-').map(Number);
-        const startCal = new Date(sy, sm - 1, sd, parseInt(s461StartHour || '0', 10), 0, 0, 0);
-        const endCal = new Date(ey, em - 1, ed, parseInt(s461EndHour || '0', 10), 0, 0, 0);
-
-        if (startCal.getTime() >= endCal.getTime()) {
-          alert('Please select a reasonable time period! Start date/hour must be earlier than End date/hour.');
-          setReadingProgress(null);
-          return;
+        if (info && typeof info.total === 'number' && info.total > 0) {
+          setReadoutProgressInfo({ current: info.current || 0, total: info.total });
         }
-        tryStartTimeMs = startCal.getTime();
-        stopTimeL = endCal.getTime();
-      }
+      });
+      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `${label} logger read finished: ${res.row_count ?? res.rowCount ?? 0} rows`);
 
-      if (loggerStatus?.start_time && tryStartTimeMs < loggerStatus.start_time * 1000) {
-        tryStartTimeMs = loggerStatus.start_time * 1000;
-      }
-
-      const startSec = Math.floor(tryStartTimeMs / 1000);
-      const stopSec = Math.floor(stopTimeL / 1000);
-
-      setReadingProgress(20);
-      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `S461 logger read started (${new Date(startSec * 1000).toLocaleString()} → ${new Date(stopSec * 1000).toLocaleString()})`);
-      const res = await TauriSutoAPI.readS461Log(startSec, stopSec);
-      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `S461 logger read finished: ${res.rowCount} rows`);
-
-      setReadingProgress(90);
       const blob = new Blob([res.csv_text], { type: 'text/csv;charset=utf-8;' });
       const filename = res.filename || `${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Logger_Data.csv`;
 
       setReadingProgress(100);
-      await new Promise((r) => setTimeout(r, 60));
+      await new Promise((r) => setTimeout(r, 120));
       setReadingProgress(null);
+      setReadoutProgressInfo(null);
 
       setReadResult({
         filename,
         blob,
-        rowCount: res.row_count,
+        rowCount: res.row_count ?? res.rowCount ?? 0,
       });
     } catch (err) {
       setReadingProgress(null);
+      setReadoutProgressInfo(null);
       alert(`Readout error: ${err.message || err}`);
     }
+  };
+
+  const handleReadS418Log = async () => {
+    if (!TauriSutoAPI.isAvailable()) {
+      const count = s418Period === 'last_hour' ? 60 : s418Period === 'last_day' ? 1440 : 2500;
+      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Quick read started: ${count} samples`);
+      performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Readout.csv`, count);
+      return;
+    }
+
+    const stopTimeMs = loggerStatus?.end_time ? loggerStatus.end_time * 1000 : Date.now();
+    let tryStartTimeMs = stopTimeMs - 24 * 3600 * 1000;
+    let stopTimeL = stopTimeMs;
+
+    if (s418Period === 'last_hour') {
+      tryStartTimeMs = stopTimeMs - 3600 * 1000;
+    } else if (s418Period === 'last_day') {
+      tryStartTimeMs = stopTimeMs - 24 * 3600 * 1000;
+    } else if (s418Period === 'last_week') {
+      tryStartTimeMs = stopTimeMs - 7 * 24 * 3600 * 1000;
+    } else if (s418Period === 'all') {
+      tryStartTimeMs = loggerStatus?.start_time ? loggerStatus.start_time * 1000 : stopTimeMs - 30 * 24 * 3600 * 1000;
+    } else if (s418Period === 'custom') {
+      if (!s418CustomStart || !s418CustomEnd) {
+        alert('Please select both start and end dates.');
+        return;
+      }
+      const sMs = new Date(s418CustomStart).getTime();
+      const eMs = new Date(s418CustomEnd).getTime();
+      if (isNaN(sMs) || isNaN(eMs) || sMs >= eMs) {
+        alert('Please select a reasonable time period! Start time must be earlier than End time.');
+        return;
+      }
+      tryStartTimeMs = sMs;
+      stopTimeL = eMs;
+    }
+
+    if (loggerStatus?.start_time && tryStartTimeMs < loggerStatus.start_time * 1000) {
+      tryStartTimeMs = loggerStatus.start_time * 1000;
+    }
+
+    const startSec = Math.floor(tryStartTimeMs / 1000);
+    const stopSec = Math.floor(stopTimeL / 1000);
+    await executeHardwareTimeRangeReadout(TauriSutoAPI.readS418Log.bind(TauriSutoAPI), startSec, stopSec, 'S418');
+  };
+
+  const handleReadS461Log = async () => {
+    if (!TauriSutoAPI.isAvailable()) {
+      alert('Real S461/S463 logger readout is available in desktop application mode with an active device connection.');
+      return;
+    }
+
+    const stopTimeMs = loggerStatus?.end_time ? loggerStatus.end_time * 1000 : Date.now();
+    let tryStartTimeMs = stopTimeMs - 3600 * 1000;
+    let stopTimeL = stopTimeMs;
+
+    if (s461Period === 'last_hour') {
+      tryStartTimeMs = stopTimeMs - 3600 * 1000;
+      stopTimeL = stopTimeMs;
+    } else if (s461Period === 'last_day') {
+      tryStartTimeMs = stopTimeMs - 24 * 3600 * 1000;
+      stopTimeL = stopTimeMs;
+    } else if (s461Period === 'last_week') {
+      const d = new Date(stopTimeMs);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(d.setDate(diff));
+      monday.setHours(0, 0, 0, 0);
+      monday.setMilliseconds(0);
+      tryStartTimeMs = monday.getTime();
+      stopTimeL = stopTimeMs;
+    } else if (s461Period === 'last_month') {
+      const d = new Date(stopTimeMs);
+      const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+      tryStartTimeMs = firstOfMonth.getTime();
+      stopTimeL = stopTimeMs;
+    } else if (s461Period === 'period') {
+      if (!s461StartDate || !s461EndDate) {
+        alert('Please select both start and end dates.');
+        return;
+      }
+      const [sy, sm, sd] = s461StartDate.split('-').map(Number);
+      const [ey, em, ed] = s461EndDate.split('-').map(Number);
+      const startCal = new Date(sy, sm - 1, sd, parseInt(s461StartHour || '0', 10), 0, 0, 0);
+      const endCal = new Date(ey, em - 1, ed, parseInt(s461EndHour || '0', 10), 0, 0, 0);
+
+      if (startCal.getTime() >= endCal.getTime()) {
+        alert('Please select a reasonable time period! Start date/hour must be earlier than End date/hour.');
+        return;
+      }
+      tryStartTimeMs = startCal.getTime();
+      stopTimeL = endCal.getTime();
+    }
+
+    if (loggerStatus?.start_time && tryStartTimeMs < loggerStatus.start_time * 1000) {
+      tryStartTimeMs = loggerStatus.start_time * 1000;
+    }
+
+    const startSec = Math.floor(tryStartTimeMs / 1000);
+    const stopSec = Math.floor(stopTimeL / 1000);
+    await executeHardwareTimeRangeReadout(TauriSutoAPI.readS461Log.bind(TauriSutoAPI), startSec, stopSec, 'S461/S463');
   };
 
   const handleOpenInS4A = () => {
@@ -1048,7 +1102,11 @@ export default function ReadoutView({
             <div className="readout-progress-spin" />
             <div className="readout-progress-info">
               <h4>Transferring Readout Data from Device...</h4>
-              <p>Transferring records and formatting to CSV ({readingProgress}%)</p>
+              <p>
+                {readoutProgressInfo?.total
+                  ? `Transferring records (${readoutProgressInfo.current.toLocaleString()} / ${readoutProgressInfo.total.toLocaleString()}) and formatting to CSV (${readingProgress}%)`
+                  : `Transferring records and formatting to CSV (${readingProgress}%)`}
+              </p>
               <div className="readout-progress-bar">
                 <div className="readout-progress-fill" style={{ width: `${readingProgress}%` }} />
               </div>
@@ -1346,13 +1404,10 @@ export default function ReadoutView({
             <div className="readout-bottom-bar" style={{ justifyContent: 'flex-end' }}>
               <button
                 className="readout-btn-primary"
-                onClick={() => {
-                  const count = s418Period === 'last_hour' ? 60 : s418Period === 'last_day' ? 1440 : 2500;
-                  TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Quick read started: ${count} samples`);
-                  performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Readout.csv`, count);
-                }}
+                onClick={handleReadS418Log}
+                disabled={Boolean(readingProgress)}
               >
-                Read to CSV
+                {readingProgress ? 'Reading from device...' : 'Read to CSV'}
               </button>
             </div>
           </div>

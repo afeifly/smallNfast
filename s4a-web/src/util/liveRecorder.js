@@ -10,7 +10,7 @@
  * block, channel table, then Date Time + one column per channel).
  */
 
-import { subscribeLive, setRecordingDemand } from './liveDataSource';
+import { subscribeLive, setRecordingDemand, setRecordingChannels } from './liveDataSource';
 import { formatChannelValue } from './resolution';
 
 let state = {
@@ -110,6 +110,7 @@ export function start(opts = {}) {
   };
   unsubscribe = subscribeLive(feed);
   setRecordingDemand(true);
+  setRecordingChannels(selectedChannels);
   notify('start');
 }
 
@@ -299,6 +300,7 @@ export function stop() {
     unsubscribe = null;
   }
   setRecordingDemand(false);
+  setRecordingChannels(null);
   state.recording = false;
 
   const result = state.rows.length > 0 ? buildResult(state) : null;
@@ -325,6 +327,7 @@ export function clearSession() {
   if (state.recording) {
     stop();
   }
+  setRecordingChannels(null);
   state.rows = [];
   state.channelIds = [];
   state.channelMeta = {};

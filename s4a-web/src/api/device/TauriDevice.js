@@ -76,8 +76,12 @@ export const TauriDevice = {
     return await TauriSutoAPI.getLoggerFiles();
   },
 
-  async readS461Log(startTime, stopTime) {
-    return await TauriSutoAPI.readS461Log(startTime, stopTime);
+  async readS461Log(startTime, stopTime, onProgress) {
+    return await TauriSutoAPI.readS461Log(startTime, stopTime, onProgress);
+  },
+
+  async readS418Log(startTime, stopTime, onProgress) {
+    return await TauriSutoAPI.readS418Log(startTime, stopTime, onProgress);
   },
 
   async getScreenshots() {

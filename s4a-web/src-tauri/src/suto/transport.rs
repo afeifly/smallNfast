@@ -27,7 +27,8 @@ pub trait SutoTransport: Send + Sync {
             Some(packet),
         );
 
-        self.write(packet, 200)?;
+        let write_timeout = timeout_ms.min(2500).max(1500);
+        self.write(packet, write_timeout)?;
 
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_millis(timeout_ms as u64);

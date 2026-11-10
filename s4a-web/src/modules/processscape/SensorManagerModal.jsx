@@ -14,7 +14,7 @@ import {
   upsertDeviceList,
   isSameDevice
 } from './engine/sensorManagerStorage';
-import { getAllScapes, createNewScape, getActiveScapeId } from './engine/scapeStorage';
+import { getAllScapes, createNewScape, getActiveScapeId, setActiveScapeId } from './engine/scapeStorage';
 
 export default function SensorManagerModal({
   isOpen,
@@ -39,22 +39,64 @@ export default function SensorManagerModal({
   const [syncFeedback, setSyncFeedback] = useState(null);
   const [pendingDeleteDevice, setPendingDeleteDevice] = useState(null);
 
-  // Set of channel IDs assigned anywhere across all locations (guarantees channel exclusivity per device & channel)
+  // Set of channel keys assigned anywhere across all locations (guarantees channel exclusivity per device & channel)
   const assignedChannelIdSet = useMemo(() => {
     const set = new Set();
     locations.forEach(loc => {
       (loc.measurementPoints || []).forEach(mp => {
         (mp.channels || []).forEach(ch => {
-          if (ch.id) set.add(String(ch.id));
-          if (ch.channelId) set.add(String(ch.channelId));
-          // Compound key per device + channel ensures two devices with channels named 'Flow' or channel_id: 1 do not falsely collide.
-          // Prioritize deviceId (e.g. dev_tcp_127_0_0_1_502) to avoid false collisions between distinct devices sharing the same model name.
-          const dId = ch.deviceId || ch.device;
-          if (dId && ch.channel_id !== undefined && ch.channel_id !== null) {
-            set.add(`${dId}_${ch.channel_id}`);
+          if (!ch) return;
+          // 1. Add full unique channel ID, ignoring non-scoped generic IDs (e.g. '1' or 'cid_1')
+          const isGenericId = !ch.id || /^(?:cid_)?\d+$/i.test(String(ch.id)) || /^ch_\d+$/i.test(String(ch.id));
+          if (ch.id && !isGenericId) {
+            set.add(String(ch.id));
           }
-          if (ch.deviceId && ch.name) {
-            set.add(`${ch.deviceId}_${ch.name.toLowerCase()}`);
+
+          const sn = ch.deviceSerial || (ch.deviceId && ch.deviceId.includes('_sn_') ? ch.deviceId.split('_sn_')[1] : null);
+          const dId = ch.deviceId;
+          const cid = ch.channel_id ?? ch.channelId;
+          const chName = (ch.name || ch.channelName || '').toLowerCase();
+          const sensKey = (ch.sensorName || ch.sensorId || ch.sensor_description || ch.sensorDescription || '').trim().toLowerCase();
+          const reg = ch.mBValueAddr;
+
+          // 2. Modbus register address compound key (physical register on device)
+          if (reg !== undefined && reg !== null) {
+            if (sn) set.add(`sn_${sn}_reg_${reg}`);
+            if (dId) set.add(`dev_${dId}_reg_${reg}`);
+          }
+
+          // 3. Sensor-card-scoped compound keys (guarantees sensor card isolation within device!)
+          if (sensKey) {
+            if (sn) {
+              if (cid !== undefined && cid !== null) set.add(`sn_${sn}_sens_${sensKey}_ch_${cid}`);
+              if (chName) set.add(`sn_${sn}_sens_${sensKey}_name_${chName}`);
+            }
+            if (dId) {
+              if (cid !== undefined && cid !== null) set.add(`dev_${dId}_sens_${sensKey}_ch_${cid}`);
+              if (chName) set.add(`dev_${dId}_sens_${sensKey}_name_${chName}`);
+            }
+          } else {
+            // Only if sensor card is truly unspecified (legacy single-sensor device)
+            if (sn) {
+              if (cid !== undefined && cid !== null) set.add(`sn_${sn}_ch_${cid}`);
+              if (chName) set.add(`sn_${sn}_name_${chName}`);
+            }
+            if (dId) {
+              if (cid !== undefined && cid !== null) set.add(`dev_${dId}_ch_${cid}`);
+              if (chName) set.add(`dev_${dId}_name_${chName}`);
+            }
+          }
+
+          // 4. Device Name fallback (only if neither serial nor deviceId is known)
+          const dev = ch.device;
+          if (!sn && !dId && dev) {
+            if (sensKey) {
+              if (cid !== undefined && cid !== null) set.add(`name_${dev}_sens_${sensKey}_ch_${cid}`);
+              if (chName) set.add(`name_${dev}_sens_${sensKey}_name_${chName}`);
+            } else {
+              if (cid !== undefined && cid !== null) set.add(`name_${dev}_ch_${cid}`);
+              if (chName) set.add(`name_${dev}_name_${chName}`);
+            }
           }
         });
       });
@@ -62,23 +104,58 @@ export default function SensorManagerModal({
     return set;
   }, [locations]);
 
-  const isChannelAssigned = useCallback((ch, devName = '', devId = '') => {
+  const isChannelAssigned = useCallback((ch, devName = '', devId = '', devSerial = '', sensName = '', sensId = '') => {
     if (!ch) return false;
-    if (ch.id && assignedChannelIdSet.has(String(ch.id))) return true;
-    if (ch.channelId && assignedChannelIdSet.has(String(ch.channelId))) return true;
+    // 1. Exact full channel ID match (highest priority, definitive unique ID)
+    const isGenericId = !ch.id || /^(?:cid_)?\d+$/i.test(String(ch.id)) || /^ch_\d+$/i.test(String(ch.id));
+    if (ch.id && !isGenericId && assignedChannelIdSet.has(String(ch.id))) return true;
+
+    const cid = ch.channel_id ?? ch.channelId;
+    const chName = (ch.name || ch.channelName || '').toLowerCase();
+    const sn = ch.deviceSerial || devSerial || (ch.deviceId && ch.deviceId.includes('_sn_') ? ch.deviceId.split('_sn_')[1] : null);
     const dId = ch.deviceId || devId;
-    if (dId && ch.channel_id !== undefined && ch.channel_id !== null) {
-      if (assignedChannelIdSet.has(`${dId}_${ch.channel_id}`)) return true;
+    const dName = ch.device || devName;
+    const sensKey = (sensName || sensId || ch.sensorName || ch.sensorId || ch.sensor_description || ch.sensorDescription || '').trim().toLowerCase();
+    const reg = ch.mBValueAddr;
+
+    // 2. Modbus register address match
+    if (reg !== undefined && reg !== null) {
+      if (sn && assignedChannelIdSet.has(`sn_${sn}_reg_${reg}`)) return true;
+      if (dId && assignedChannelIdSet.has(`dev_${dId}_reg_${reg}`)) return true;
     }
-    if (dId && ch.name && assignedChannelIdSet.has(`${dId}_${ch.name.toLowerCase()}`)) return true;
-    // Fallback only if no deviceId is available
-    if (!dId) {
-      const dev = ch.device || devName;
-      if (dev && ch.channel_id !== undefined && ch.channel_id !== null) {
-        if (assignedChannelIdSet.has(`${dev}_${ch.channel_id}`)) return true;
+
+    // 3. Sensor-card-scoped match (guarantees separate sensor cards NEVER cross-match!)
+    if (sensKey) {
+      if (sn) {
+        if (cid !== undefined && cid !== null && assignedChannelIdSet.has(`sn_${sn}_sens_${sensKey}_ch_${cid}`)) return true;
+        if (chName && assignedChannelIdSet.has(`sn_${sn}_sens_${sensKey}_name_${chName}`)) return true;
       }
-      if (dev && ch.name && assignedChannelIdSet.has(`${dev}_${ch.name.toLowerCase()}`)) return true;
+      if (dId) {
+        if (cid !== undefined && cid !== null && assignedChannelIdSet.has(`dev_${dId}_sens_${sensKey}_ch_${cid}`)) return true;
+        if (chName && assignedChannelIdSet.has(`dev_${dId}_sens_${sensKey}_name_${chName}`)) return true;
+      }
+      if (!sn && !dId && dName) {
+        if (cid !== undefined && cid !== null && assignedChannelIdSet.has(`name_${dName}_sens_${sensKey}_ch_${cid}`)) return true;
+        if (chName && assignedChannelIdSet.has(`name_${dName}_sens_${sensKey}_name_${chName}`)) return true;
+      }
+      // Sensor card is known: NEVER fall through to unscoped channel indices of other sensor cards!
+      return false;
     }
+
+    // 4. Fallback for legacy single-sensor devices where sensKey is not specified:
+    if (sn) {
+      if (cid !== undefined && cid !== null && assignedChannelIdSet.has(`sn_${sn}_ch_${cid}`)) return true;
+      if (chName && assignedChannelIdSet.has(`sn_${sn}_name_${chName}`)) return true;
+    }
+    if (dId) {
+      if (cid !== undefined && cid !== null && assignedChannelIdSet.has(`dev_${dId}_ch_${cid}`)) return true;
+      if (chName && assignedChannelIdSet.has(`dev_${dId}_name_${chName}`)) return true;
+    }
+    if (!sn && !dId && dName) {
+      if (cid !== undefined && cid !== null && assignedChannelIdSet.has(`name_${dName}_ch_${cid}`)) return true;
+      if (chName && assignedChannelIdSet.has(`name_${dName}_name_${chName}`)) return true;
+    }
+
     return false;
   }, [assignedChannelIdSet]);
 
@@ -139,51 +216,93 @@ export default function SensorManagerModal({
 
     try {
       if (conn?.deviceItem) {
+        const incomingDev = conn.deviceItem;
+        const currentDevs = getSavedDevices();
+        const alreadyExists = currentDevs.some(d => isSameDevice(d, incomingDev)) || devices.some(d => isSameDevice(d, incomingDev));
+        if (alreadyExists) {
+          setSyncFeedback(`⚠️ "${incomingDev.name}" is already in Sensor Manager`);
+          setLoadingDevices(false);
+          setTimeout(() => setSyncFeedback(null), 3500);
+          return;
+        }
         setDevices(prev => {
-          const updated = upsertDeviceList(prev, [conn.deviceItem]);
+          const updated = upsertDeviceList(prev, [incomingDev]);
           saveDevices(updated);
           return updated;
         });
         if (typeof onDeviceConnected === 'function') {
           onDeviceConnected(conn);
         }
-        const chCount = (conn.deviceItem.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
-        setSyncFeedback(`✓ Collected "${conn.deviceItem.name}" (${chCount} channels) via ${conn.deviceItem.transport}`);
+        const chCount = (incomingDev.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
+        setSyncFeedback(`✓ Collected "${incomingDev.name}" (${chCount} channels) via ${incomingDev.transport}`);
         setTimeout(() => setSyncFeedback(null), 4000);
         return;
       }
       let rawChs = [];
       let sysInfo = null;
 
-      try {
-        if (typeof TauriSutoAPI.getChannels === 'function') {
-          rawChs = await TauriSutoAPI.getChannels();
-        }
-      } catch (err) {
-        console.warn('[SensorManager] getChannels note:', err);
-      }
+      const transport = conn?.transport || TauriSutoAPI?.getActiveTransport?.() || 'USB';
+      const transportType = (typeof transport === 'string' ? transport : 'USB').toLowerCase();
+      const isBle = transportType.includes('ble') || (conn?.activeTab || '').toLowerCase().includes('ble');
 
-      if (!rawChs || rawChs.length === 0) {
-        // Give Bluetooth UART or network connection a brief moment to stabilize and retry once
-        await new Promise(r => setTimeout(r, 400));
+      if (isBle) {
+        // Read ONLY BLE channels! Never mix with Modbus or previous connections
+        try {
+          if (typeof BleSutoAPI?.getChannels === 'function') {
+            rawChs = await BleSutoAPI.getChannels();
+          }
+        } catch (_) {}
+        if (!rawChs || rawChs.length === 0) {
+          try {
+            if (typeof TauriSutoAPI.getChannels === 'function') {
+              rawChs = await TauriSutoAPI.getChannels();
+            }
+          } catch (_) {}
+        }
+        // Strict guard: filter out any leaked Modbus channels from previous sessions
+        rawChs = (Array.isArray(rawChs) ? rawChs : []).filter(c => {
+          const devDesc = (c.device_description || c.device || '').toLowerCase();
+          const name = (c.name || c.channel_name || '').toLowerCase();
+          return !devDesc.includes('modbus') && !name.startsWith('modbus');
+        });
+        // SysInfo strictly from BLE
+        try {
+          if (typeof BleSutoAPI?.getSystemInfo === 'function') {
+            sysInfo = await BleSutoAPI.getSystemInfo();
+          }
+        } catch (_) {}
+      } else {
         try {
           if (typeof TauriSutoAPI.getChannels === 'function') {
             rawChs = await TauriSutoAPI.getChannels();
           }
-        } catch (_) {}
-      }
-
-      try {
-        if (typeof TauriSutoAPI.getSystemInfo === 'function') {
-          sysInfo = await TauriSutoAPI.getSystemInfo();
+        } catch (err) {
+          console.warn('[SensorManager] getChannels note:', err);
         }
-      } catch (err) {
-        console.warn('[SensorManager] getSystemInfo note:', err);
+
+        if (!rawChs || rawChs.length === 0) {
+          // Give connection a brief moment to stabilize and retry once
+          await new Promise(r => setTimeout(r, 400));
+          try {
+            if (typeof TauriSutoAPI.getChannels === 'function') {
+              rawChs = await TauriSutoAPI.getChannels();
+            }
+          } catch (_) {}
+        }
       }
 
-      const transport = conn?.transport || TauriSutoAPI?.getActiveTransport?.() || 'USB';
-      const transportType = (typeof transport === 'string' ? transport : 'USB').toLowerCase();
-      const devName = sysInfo?.device_name || conn?.name || conn?.device || `SUTO ${transport.toUpperCase()} Sensor`;
+      if (!sysInfo) {
+        try {
+          if (typeof TauriSutoAPI.getSystemInfo === 'function') {
+            sysInfo = await TauriSutoAPI.getSystemInfo();
+          }
+        } catch (err) {
+          console.warn('[SensorManager] getSystemInfo note:', err);
+        }
+      }
+
+      const devName = (isBle ? (conn?.name || conn?.device || sysInfo?.device_name) : (sysInfo?.device_name || conn?.name || conn?.device)) || `SUTO ${transport.toUpperCase()} Sensor`;
+      const devSerial = isBle ? (conn?.serial || conn?.serial_number || sysInfo?.serial_number) : (sysInfo?.serial_number || conn?.serial || conn?.serial_number);
       const host = conn?.host || conn?.ip || sysInfo?.ip || sysInfo?.host || null;
       const port = conn?.port || sysInfo?.port || (transportType === 'api' ? 8080 : (transportType === 'tcp' ? 502 : null));
 
@@ -198,6 +317,10 @@ export default function SensorManagerModal({
       const connectionMeta = {
         ...(conn || {}),
         ...(sysInfo || {}),
+        serial: devSerial,
+        serial_number: devSerial,
+        name: devName,
+        device_name: devName,
         host,
         port,
         transport: conn?.transport || transport
@@ -211,7 +334,17 @@ export default function SensorManagerModal({
         connectionMeta
       );
 
-      // Deduplicate & append/update device in collected list
+      // Guard: do not add again if this device is already in Sensor Manager's left side
+      const currentDevs = getSavedDevices();
+      const alreadyExists = currentDevs.some(d => isSameDevice(d, newDevice)) || devices.some(d => isSameDevice(d, newDevice));
+      if (alreadyExists) {
+        setSyncFeedback(`⚠️ "${devName}" is already in Sensor Manager`);
+        setLoadingDevices(false);
+        setTimeout(() => setSyncFeedback(null), 3500);
+        return;
+      }
+
+      // Append new device in collected list
       setDevices(prev => {
         const updated = upsertDeviceList(prev, [newDevice]);
         saveDevices(updated);
@@ -245,17 +378,32 @@ export default function SensorManagerModal({
     setShowConnectModal(false);
     if (!Array.isArray(deviceItems) || deviceItems.length === 0) return;
 
+    const currentDevs = getSavedDevices();
+    const newItems = deviceItems.filter(incoming =>
+      !currentDevs.some(existing => isSameDevice(existing, incoming)) &&
+      !devices.some(existing => isSameDevice(existing, incoming))
+    );
+
+    if (newItems.length === 0) {
+      setSyncFeedback('⚠️ Selected device(s) are already in Sensor Manager');
+      setTimeout(() => setSyncFeedback(null), 3500);
+      return;
+    }
+
     setDevices(prev => {
-      const updated = upsertDeviceList(prev, deviceItems);
+      const updated = upsertDeviceList(prev, newItems);
       saveDevices(updated);
       return updated;
     });
 
-    const totalChannels = deviceItems.reduce((acc, d) => {
+    const totalChannels = newItems.reduce((acc, d) => {
       return acc + (d.sensors || []).reduce((sAcc, s) => sAcc + (s.channels?.length || 0), 0);
     }, 0);
 
-    setSyncFeedback(`✓ Collected ${deviceItems.length} network device(s) (${totalChannels} channels) via Ethernet Auto-Detect`);
+    const skippedCount = deviceItems.length - newItems.length;
+    const skipMsg = skippedCount > 0 ? ` (${skippedCount} already in manager)` : '';
+
+    setSyncFeedback(`✓ Collected ${newItems.length} network device(s) (${totalChannels} channels) via Ethernet Auto-Detect${skipMsg}`);
     setTimeout(() => setSyncFeedback(null), 5000);
 
     if (typeof window !== 'undefined' && window.showAppNotification) {
@@ -320,6 +468,55 @@ export default function SensorManagerModal({
           // If resume fails (e.g. requires browser picker permission renewal), prompt user
           return await TauriSutoAPI.connectBle({ acceptAll: false });
         });
+
+        // Query strictly BLE channels to refresh this specific device; never leak Modbus channels
+        let rawChs = [];
+        try {
+          if (typeof BleSutoAPI?.getChannels === 'function') {
+            rawChs = await BleSutoAPI.getChannels();
+          }
+        } catch (_) {}
+        rawChs = (Array.isArray(rawChs) ? rawChs : []).filter(c => {
+          const devDesc = (c.device_description || c.device || '').toLowerCase();
+          const name = (c.name || c.channel_name || '').toLowerCase();
+          return !devDesc.includes('modbus') && !name.startsWith('modbus');
+        });
+
+        if (rawChs.length > 0) {
+          const connectionMeta = {
+            serial_number: conn?.serial_number || conn?.serial || dev.serial,
+            device_name: conn?.name || conn?.device || dev.name,
+            device_id: conn?.device_id || conn?.deviceId || dev.id,
+            deviceId: conn?.deviceId || config.deviceId || dev.id,
+            transport: 'BLE'
+          };
+          const refreshed = buildDeviceFromRawChannels(
+            rawChs,
+            dev.name,
+            dev.transport,
+            dev.transportType,
+            connectionMeta
+          );
+          setDevices(prev => {
+            const updated = upsertDeviceList(prev, [refreshed]);
+            saveDevices(updated);
+            return updated;
+          });
+        } else {
+          setDevices(prev => {
+            const updated = prev.map(d => d.id === dev.id ? { ...d, isOnline: true } : d);
+            saveDevices(updated);
+            return updated;
+          });
+        }
+
+        if (typeof onDeviceConnected === 'function' && conn) {
+          onDeviceConnected(conn);
+        }
+        setSyncFeedback(`✓ Connected to "${dev.name}"`);
+        setTimeout(() => setSyncFeedback(null), 4000);
+        setLoadingDevices(false);
+        return;
       } else if (transport.includes('api')) {
         const host = config.host || dev.host || dev.ip || (typeof dev.transport === 'string' && dev.transport.match(/(\d+\.\d+\.\d+\.\d+)/)?.[1]);
         const port = config.port || dev.port || (typeof dev.transport === 'string' && dev.transport.match(/:(\d+)/)?.[1]) || 8080;
@@ -438,26 +635,43 @@ export default function SensorManagerModal({
   const handleUpdateLocations = useCallback((updated) => {
     setLocations(updated);
     saveLocations(updated);
+    if (!updated || updated.length === 0) {
+      setActiveScapeId('');
+    }
   }, []);
 
   const getTargetScapeId = useCallback(() => {
+    let currentScapes = scapes;
+    if (!currentScapes || currentScapes.length === 0) {
+      const fresh = createNewScape('Default Plant');
+      currentScapes = [fresh];
+      setScapes([fresh]);
+      return fresh.id;
+    }
     // If there is an unassigned scape (a scape that currently has no locations mapped to it),
     // default the new location to that unassigned scape so two locations do not collide on the same scape
     const assignedScapeIds = new Set((locations || []).map(l => l.scapeId).filter(Boolean));
-    const unassignedScape = scapes.find(s => !assignedScapeIds.has(s.id));
+    const unassignedScape = currentScapes.find(s => !assignedScapeIds.has(s.id));
     if (unassignedScape && locations.length > 0) {
       return unassignedScape.id;
     }
     const activeId = getActiveScapeId();
-    if (activeId && scapes.some(s => s.id === activeId)) {
+    if (activeId && currentScapes.some(s => s.id === activeId)) {
       return activeId;
     }
-    return scapes[0]?.id || 'scape_example_demo';
+    const realScapes = currentScapes.filter(s => !s.isExample);
+    if (realScapes.length > 0) {
+      return realScapes[0].id;
+    }
+    return currentScapes[0]?.id;
   }, [scapes, locations]);
 
   const handleAddLocation = () => {
     if (loadingDevices) return;
     const targetScapeId = getTargetScapeId();
+    if (targetScapeId) {
+      setActiveScapeId(targetScapeId);
+    }
     const newLoc = {
       id: `loc_${Date.now()}`,
       name: `Location ${locations.length + 1}`,
@@ -472,6 +686,12 @@ export default function SensorManagerModal({
     if (loadingDevices) return;
     const remaining = locations.filter(l => l.id !== locId);
     handleUpdateLocations(remaining);
+    if (remaining.length === 0) {
+      setActiveScapeId('');
+      if (onSyncToScape) {
+        onSyncToScape('', null);
+      }
+    }
     if (activeTargetLocId === locId) {
       setActiveTargetLocId(remaining[0]?.id || null);
     }
@@ -566,30 +786,45 @@ export default function SensorManagerModal({
     }
   };
 
-  const handleQuickAssignChannel = (ch, sensorName, devInfo) => {
+  const handleQuickAssignChannel = (ch, sensorName, devInfo, sensInfo) => {
     if (loadingDevices) return;
     const devName = typeof devInfo === 'object' ? devInfo?.name : devInfo;
     const devId = typeof devInfo === 'object' ? devInfo?.id : (ch.deviceId || null);
     const devSerial = typeof devInfo === 'object' ? devInfo?.serial : (ch.deviceSerial || null);
     const devPort = typeof devInfo === 'object' ? devInfo?.connectionConfig?.port : (ch.devicePort || null);
+    const sensName = sensorName || (typeof sensInfo === 'object' ? sensInfo?.name : null) || ch.sensorName || ch.sensor_description || '';
+    const sensId = (typeof sensInfo === 'object' ? sensInfo?.id : null) || ch.sensorId || '';
 
-    if (isChannelAssigned(ch, devName, devId)) return;
+    if (isChannelAssigned(ch, devName, devId, devSerial, sensName, sensId)) return;
+
+    const cleanSerial = devSerial ? String(devSerial).replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+    const cleanSensKey = sensName ? String(sensName).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_') : (sensId ? String(sensId).replace(/[^a-zA-Z0-9_-]/g, '_') : '');
+    const isGenericId = !ch.id || /^(?:cid_)?\d+$/i.test(String(ch.id)) || /^ch_\d+$/i.test(String(ch.id));
+    const channelUniqueId = (!isGenericId && ch.id) ? ch.id : (cleanSerial ? `ch_sn_${cleanSerial}_${cleanSensKey ? `${cleanSensKey}_` : ''}${ch.channel_id ?? ch.name}` : (devId ? `ch_${devId}_${cleanSensKey ? `${cleanSensKey}_` : ''}${ch.channel_id ?? ch.name}` : `cid_${ch.channel_id}`));
 
     const cleanCh = {
-      id: ch.id || (devName ? `ch_${devName}_${ch.channel_id ?? ch.name}` : `cid_${ch.channel_id}`),
+      id: channelUniqueId,
       channel_id: ch.channel_id ?? ch.channelId,
+      channelId: ch.channel_id ?? ch.channelId,
       name: ch.name || ch.channelName || 'Channel',
       unit: ch.unit,
       device: ch.device || devName,
       deviceId: ch.deviceId || devId,
       deviceSerial: ch.deviceSerial || devSerial,
-      devicePort: ch.devicePort || devPort
+      devicePort: ch.devicePort || devPort,
+      sensorName: sensName,
+      sensorId: sensId,
+      slaver_addr: ch.slaver_addr,
+      mBValueAddr: ch.mBValueAddr
     };
 
     const updatedLocs = [...locations];
 
     if (updatedLocs.length === 0) {
       const targetScapeId = getTargetScapeId();
+      if (targetScapeId) {
+        setActiveScapeId(targetScapeId);
+      }
       const newLoc = {
         id: `loc_${Date.now()}`,
         name: 'Location 1',
@@ -640,24 +875,39 @@ export default function SensorManagerModal({
     const devSerial = typeof devInfo === 'object' ? devInfo?.serial : null;
     const devPort = typeof devInfo === 'object' ? devInfo?.connectionConfig?.port : null;
 
-    const unassignedChs = (sens.channels || []).filter(c => !isChannelAssigned(c, devName, devId));
+    const unassignedChs = (sens.channels || []).filter(c => !isChannelAssigned(c, devName, devId, devSerial, sens.name, sens.id));
     if (unassignedChs.length === 0) return;
 
-    const chs = unassignedChs.map(c => ({
-      id: c.id || (devName ? `ch_${devName}_${c.channel_id ?? c.name}` : `cid_${c.channel_id}`),
-      channel_id: c.channel_id ?? c.channelId,
-      name: c.name || c.channelName,
-      unit: c.unit,
-      device: c.device || devName,
-      deviceId: c.deviceId || devId,
-      deviceSerial: c.deviceSerial || devSerial,
-      devicePort: c.devicePort || devPort
-    }));
+    const cleanSerial = devSerial ? String(devSerial).replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+    const cleanSensKey = sens.name ? String(sens.name).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_') : (sens.id ? String(sens.id).replace(/[^a-zA-Z0-9_-]/g, '_') : '');
+
+    const chs = unassignedChs.map((c, idx) => {
+      const isGenericId = !c.id || /^(?:cid_)?\d+$/i.test(String(c.id)) || /^ch_\d+$/i.test(String(c.id));
+      const channelUniqueId = (!isGenericId && c.id) ? c.id : (cleanSerial ? `ch_sn_${cleanSerial}_${cleanSensKey ? `${cleanSensKey}_` : ''}${c.channel_id ?? idx + 1}` : (devId ? `ch_${devId}_${cleanSensKey ? `${cleanSensKey}_` : ''}${c.channel_id ?? idx + 1}` : `cid_${c.channel_id}`));
+      return {
+        id: channelUniqueId,
+        channel_id: c.channel_id ?? c.channelId,
+        channelId: c.channel_id ?? c.channelId,
+        name: c.name || c.channelName,
+        unit: c.unit,
+        device: c.device || devName,
+        deviceId: c.deviceId || devId,
+        deviceSerial: c.deviceSerial || devSerial,
+        devicePort: c.devicePort || devPort,
+        sensorName: sens.name,
+        sensorId: sens.id,
+        slaver_addr: c.slaver_addr,
+        mBValueAddr: c.mBValueAddr
+      };
+    });
 
     const updatedLocs = [...locations];
 
     if (updatedLocs.length === 0) {
       const targetScapeId = getTargetScapeId();
+      if (targetScapeId) {
+        setActiveScapeId(targetScapeId);
+      }
       const newLoc = {
         id: `loc_${Date.now()}`,
         name: 'Location 1',
@@ -743,23 +993,38 @@ export default function SensorManagerModal({
       if (payload.type === 'sensor' || (payload.channels && Array.isArray(payload.channels))) {
         // Entire sensor moved to location -> create Measurement Point named after sensor (e.g. 'S403')
         const sensName = payload.sensorName || payload.name || 'Sensor';
-        const unassignedChs = (payload.channels || []).filter(c => !isChannelAssigned(c, payload.device || payload.name, payload.id || payload.deviceId));
+        const pDev = payload.device || payload.name;
+        const pDevId = payload.deviceId || payload.id;
+        const pSerial = payload.deviceSerial || payload.serial;
+        const unassignedChs = (payload.channels || []).filter(c => !isChannelAssigned(c, pDev, pDevId, pSerial, sensName, payload.id));
         if (unassignedChs.length === 0) {
           setSyncFeedback(`⚠️ All channels of "${sensName}" are already assigned`);
           setTimeout(() => setSyncFeedback(null), 2500);
           return;
         }
 
-        const chs = unassignedChs.map(c => ({
-          id: c.id,
-          channel_id: c.channel_id ?? c.id,
-          name: c.name,
-          unit: c.unit,
-          device: c.device || payload.device || payload.name,
-          deviceId: c.deviceId || payload.deviceId || payload.id,
-          deviceSerial: c.deviceSerial || payload.deviceSerial || payload.serial,
-          devicePort: c.devicePort || payload.devicePort || payload.port
-        }));
+        const cleanSerial = pSerial ? String(pSerial).replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+        const cleanSensKey = sensName ? String(sensName).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+
+        const chs = unassignedChs.map((c, idx) => {
+          const isGenericId = !c.id || /^(?:cid_)?\d+$/i.test(String(c.id)) || /^ch_\d+$/i.test(String(c.id));
+          const channelUniqueId = (!isGenericId && c.id) ? c.id : (cleanSerial ? `ch_sn_${cleanSerial}_${cleanSensKey ? `${cleanSensKey}_` : ''}${c.channel_id ?? idx + 1}` : (pDevId ? `ch_${pDevId}_${cleanSensKey ? `${cleanSensKey}_` : ''}${c.channel_id ?? idx + 1}` : `cid_${c.channel_id}`));
+          return {
+            id: channelUniqueId,
+            channel_id: c.channel_id ?? c.id,
+            channelId: c.channel_id ?? c.id,
+            name: c.name,
+            unit: c.unit,
+            device: c.device || pDev,
+            deviceId: c.deviceId || pDevId,
+            deviceSerial: c.deviceSerial || pSerial,
+            devicePort: c.devicePort || payload.devicePort || payload.port,
+            sensorName: sensName,
+            sensorId: payload.id,
+            slaver_addr: c.slaver_addr,
+            mBValueAddr: c.mBValueAddr
+          };
+        });
 
         handleUpdateLocations(locations.map(l => {
           if (l.id !== locId) return l;
@@ -791,7 +1056,12 @@ export default function SensorManagerModal({
         setTimeout(() => setSyncFeedback(null), 3000);
       } else {
         // Single channel moved directly to location
-        if (isChannelAssigned(payload, payload.device || payload.sensorName, payload.deviceId)) {
+        const pDev = payload.device || payload.sensorName;
+        const pDevId = payload.deviceId;
+        const pSerial = payload.deviceSerial || payload.serial;
+        const pSensName = payload.sensorName;
+        const pSensId = payload.sensorId;
+        if (isChannelAssigned(payload, pDev, pDevId, pSerial, pSensName, pSensId)) {
           setSyncFeedback(`⚠️ Channel "${payload.name || payload.channelName}" is already assigned to a Measurement Point`);
           setTimeout(() => setSyncFeedback(null), 2500);
           return;
@@ -799,15 +1069,25 @@ export default function SensorManagerModal({
 
         const ch = payload;
         const sensName = ch.sensorName || ch.device || 'Measurement Point 1';
+        const cleanSerial = pSerial ? String(pSerial).replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+        const cleanSensKey = sensName ? String(sensName).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+        const isGenericId = !ch.id || /^(?:cid_)?\d+$/i.test(String(ch.id)) || /^ch_\d+$/i.test(String(ch.id));
+        const channelUniqueId = (!isGenericId && ch.id) ? ch.id : (cleanSerial ? `ch_sn_${cleanSerial}_${cleanSensKey ? `${cleanSensKey}_` : ''}${ch.channel_id ?? ch.name}` : (pDevId ? `ch_${pDevId}_${cleanSensKey ? `${cleanSensKey}_` : ''}${ch.channel_id ?? ch.name}` : `cid_${ch.channel_id}`));
+
         const cleanCh = {
-          id: ch.id || ch.channelId || `cid_${ch.channel_id}`,
+          id: channelUniqueId,
           channel_id: ch.channel_id ?? ch.channelId,
+          channelId: ch.channel_id ?? ch.channelId,
           name: ch.name || ch.channelName,
           unit: ch.unit,
-          device: ch.device || ch.sensorName,
-          deviceId: ch.deviceId || payload.deviceId || payload.id,
-          deviceSerial: ch.deviceSerial || payload.deviceSerial || payload.serial,
-          devicePort: ch.devicePort || payload.devicePort || payload.port
+          device: ch.device || pDev,
+          deviceId: ch.deviceId || pDevId,
+          deviceSerial: ch.deviceSerial || pSerial,
+          devicePort: ch.devicePort || payload.devicePort || payload.port,
+          sensorName: pSensName,
+          sensorId: pSensId,
+          slaver_addr: ch.slaver_addr,
+          mBValueAddr: ch.mBValueAddr
         };
 
         handleUpdateLocations(locations.map(l => {
@@ -898,22 +1178,37 @@ export default function SensorManagerModal({
       }
 
       if (payload.type === 'sensor' || (payload.channels && Array.isArray(payload.channels))) {
-        const unassignedChs = (payload.channels || []).filter(c => !isChannelAssigned(c, payload.device || payload.name, payload.id || payload.deviceId));
+        const sensName = payload.sensorName || payload.name || 'Sensor';
+        const pDev = payload.device || payload.name;
+        const pDevId = payload.deviceId || payload.id;
+        const pSerial = payload.deviceSerial || payload.serial;
+        const unassignedChs = (payload.channels || []).filter(c => !isChannelAssigned(c, pDev, pDevId, pSerial, sensName, payload.id));
         if (unassignedChs.length === 0) {
           setSyncFeedback(`⚠️ All channels of this sensor are already assigned`);
           setTimeout(() => setSyncFeedback(null), 2500);
           return;
         }
-        const cleanChs = unassignedChs.map(c => ({
-          id: c.id || c.channelId || `cid_${c.channel_id}`,
-          channel_id: c.channel_id ?? c.channelId,
-          name: c.name || c.channelName,
-          unit: c.unit,
-          device: c.device || payload.device || payload.name,
-          deviceId: c.deviceId || payload.deviceId || payload.id,
-          deviceSerial: c.deviceSerial || payload.deviceSerial || payload.serial,
-          devicePort: c.devicePort || payload.devicePort || payload.port
-        }));
+        const cleanSerial = pSerial ? String(pSerial).replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+        const cleanSensKey = sensName ? String(sensName).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+        const cleanChs = unassignedChs.map((c, idx) => {
+          const isGenericId = !c.id || /^(?:cid_)?\d+$/i.test(String(c.id)) || /^ch_\d+$/i.test(String(c.id));
+          const channelUniqueId = (!isGenericId && c.id) ? c.id : (cleanSerial ? `ch_sn_${cleanSerial}_${cleanSensKey ? `${cleanSensKey}_` : ''}${c.channel_id ?? idx + 1}` : (pDevId ? `ch_${pDevId}_${cleanSensKey ? `${cleanSensKey}_` : ''}${c.channel_id ?? idx + 1}` : `cid_${c.channel_id}`));
+          return {
+            id: channelUniqueId,
+            channel_id: c.channel_id ?? c.channelId ?? (idx + 1),
+            channelId: c.channel_id ?? c.channelId ?? (idx + 1),
+            name: c.name || c.channelName,
+            unit: c.unit,
+            device: c.device || pDev,
+            deviceId: c.deviceId || pDevId,
+            deviceSerial: c.deviceSerial || pSerial,
+            devicePort: c.devicePort || payload.devicePort || payload.port,
+            sensorName: sensName,
+            sensorId: payload.id,
+            slaver_addr: c.slaver_addr,
+            mBValueAddr: c.mBValueAddr
+          };
+        });
 
         handleUpdateLocations(locations.map(l => {
           if (l.id !== locId) return l;
@@ -922,8 +1217,8 @@ export default function SensorManagerModal({
             measurementPoints: (l.measurementPoints || []).map(m => {
               if (m.id !== mpId) return m;
               const existingIds = new Set((m.channels || []).map(ch => ch.id));
-              const existingDevCids = new Set((m.channels || []).map(ch => `${ch.deviceId || ch.device || ''}_${ch.channel_id}`).filter(Boolean));
-              const toAdd = cleanChs.filter(ch => !existingIds.has(ch.id) && !existingDevCids.has(`${ch.deviceId || ch.device || ''}_${ch.channel_id}`));
+              const existingDevCids = new Set((m.channels || []).map(ch => `${ch.deviceId || ch.device || ''}_${ch.sensorName || ''}_${ch.channel_id}`).filter(Boolean));
+              const toAdd = cleanChs.filter(ch => !existingIds.has(ch.id) && !existingDevCids.has(`${ch.deviceId || ch.device || ''}_${ch.sensorName || ''}_${ch.channel_id}`));
               return {
                 ...m,
                 channels: [...(m.channels || []), ...toAdd]
@@ -935,7 +1230,12 @@ export default function SensorManagerModal({
         setTimeout(() => setSyncFeedback(null), 3000);
         return;
       } else {
-        if (isChannelAssigned(payload, payload.device || payload.sensorName, payload.deviceId)) {
+        const pDev = payload.device || payload.sensorName;
+        const pDevId = payload.deviceId;
+        const pSerial = payload.deviceSerial || payload.serial;
+        const pSensName = payload.sensorName;
+        const pSensId = payload.sensorId;
+        if (isChannelAssigned(payload, pDev, pDevId, pSerial, pSensName, pSensId)) {
           setSyncFeedback(`⚠️ Channel "${payload.name || payload.channelName}" is already assigned to a Measurement Point`);
           setTimeout(() => setSyncFeedback(null), 2500);
           return;
@@ -954,28 +1254,47 @@ export default function SensorManagerModal({
         ...l,
         measurementPoints: (l.measurementPoints || []).map(m => {
           if (m.id !== mpId) return m;
-          const targetId = channel.id || channel.channelId || `cid_${channel.channel_id}`;
+          const chSerial = channel.deviceSerial || channel.serial;
+          const cleanSerial = chSerial ? String(chSerial).replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+          const sensName = channel.sensorName || channel.device || '';
+          const cleanSensKey = sensName ? String(sensName).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+          const isGenericId = !channel.id || /^(?:cid_)?\d+$/i.test(String(channel.id)) || /^ch_\d+$/i.test(String(channel.id));
+          const targetId = (!isGenericId && channel.id) ? channel.id : (cleanSerial ? `ch_sn_${cleanSerial}_${cleanSensKey ? `${cleanSensKey}_` : ''}${channel.channel_id ?? 1}` : (channel.deviceId ? `ch_${channel.deviceId}_${cleanSensKey ? `${cleanSensKey}_` : ''}${channel.channel_id ?? 1}` : `cid_${channel.channel_id}`));
           const chDev = channel.device || channel.sensorName || '';
           const chDevId = channel.deviceId || '';
-          const exists = (m.channels || []).some(c =>
-            (c.id && c.id === targetId) ||
-            (((c.deviceId && chDevId && c.deviceId === chDevId) || (c.device || '') === chDev) && (
-              (c.channel_id !== undefined && channel.channel_id !== undefined && c.channel_id === channel.channel_id) ||
-              (c.channelId && channel.channelId && c.channelId === channel.channelId)
-            ))
-          );
+          const exists = (m.channels || []).some(c => {
+            const cSens = c.sensorName;
+            const cSensId = c.sensorId;
+            const matchesSensor = (!channel.sensorName && !cSens) ||
+              (channel.sensorName && cSens && channel.sensorName === cSens) ||
+              (channel.sensorId && cSensId && channel.sensorId === cSensId);
+            return (c.id && c.id === targetId) ||
+              (matchesSensor && chSerial && c.deviceSerial && c.deviceSerial === chSerial && (
+                (c.channel_id !== undefined && channel.channel_id !== undefined && c.channel_id === channel.channel_id) ||
+                (c.channelId && channel.channelId && c.channelId === channel.channelId)
+              )) ||
+              (matchesSensor && chDevId && c.deviceId && c.deviceId === chDevId && (
+                (c.channel_id !== undefined && channel.channel_id !== undefined && c.channel_id === channel.channel_id) ||
+                (c.channelId && channel.channelId && c.channelId === channel.channelId)
+              ));
+          });
           if (exists) return m;
           return {
             ...m,
             channels: [...(m.channels || []), {
               id: targetId,
               channel_id: channel.channel_id ?? channel.channelId,
+              channelId: channel.channel_id ?? channel.channelId,
               name: channel.name || channel.channelName,
               unit: channel.unit,
               device: channel.device || channel.sensorName,
               deviceId: channel.deviceId,
-              deviceSerial: channel.deviceSerial,
-              devicePort: channel.devicePort
+              deviceSerial: chSerial,
+              devicePort: channel.devicePort,
+              sensorName: channel.sensorName,
+              sensorId: channel.sensorId,
+              slaver_addr: channel.slaver_addr,
+              mBValueAddr: channel.mBValueAddr
             }]
           };
         })
@@ -1026,6 +1345,17 @@ export default function SensorManagerModal({
   const handleConfirmAndSyncAll = () => {
     if (loadingDevices) return;
     saveLocations(locations);
+    if (locations.length === 0) {
+      setActiveScapeId('');
+      if (onSyncToScape) {
+        onSyncToScape('', null);
+      }
+      setSyncFeedback('✓ Settings saved');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+      return;
+    }
     const res = syncAllLocationsToScapes(locations);
     const activeLoc = locations.find(l => l.id === activeTargetLocId) || locations[0];
     const targetScapeId = activeLoc?.scapeId || getActiveScapeId() || scapes[0]?.id;
@@ -1176,20 +1506,31 @@ export default function SensorManagerModal({
                 ) : (
                   filteredDevices.map(dev => {
                     const isCollapsed = collapsedDevices.has(dev.id);
+                    const displayName = (dev.name || 'Sensor')
+                      .replace(dev.serial ? new RegExp(`\\s*\\(${dev.serial}\\)$`, 'i') : '', '')
+                      .replace(/\s*\(\d{6,10}\)$/, '')
+                      .trim();
+
+                    const cleanTransport = (dev.transport || '')
+                      .replace(/:502(?=[^0-9]|$)/, '')
+                      .replace(/\s+ID:\d+/i, '')
+                      .replace(/\s+SN:[a-zA-Z0-9_-]+/i, '')
+                      .trim();
+
                     return (
                       <div key={dev.id} className="ps-sm-device-node">
-                        <div className="ps-sm-device-header" onClick={() => toggleDeviceCollapse(dev.id)}>
-                          <span className="ps-sm-device-title">
-                            <span>{isCollapsed ? '►' : '▼'}</span>
-                            <span>📡 {dev.name}</span>
-                            {dev.serial && !/^SN-(USB|TCP|BLE|API)-/i.test(dev.serial) && (
-                              <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontFamily: 'monospace' }}>
-                                (SN: {dev.serial})
+                            <div className="ps-sm-device-header" onClick={() => toggleDeviceCollapse(dev.id)}>
+                              <span className="ps-sm-device-title">
+                                <span>{isCollapsed ? '►' : '▼'}</span>
+                                <span>📡 {displayName}</span>
+                                {dev.serial && !/^SN-(USB|TCP|BLE|API)-/i.test(dev.serial) && (
+                                  <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontFamily: 'monospace' }}>
+                                    (SN: {dev.serial})
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                          <div className="ps-sm-device-badges">
-                            <span className={`ps-sm-device-pill ${dev.transportType || ''}`}>{dev.transport}</span>
+                              <div className="ps-sm-device-badges">
+                                <span className={`ps-sm-device-pill ${dev.transportType || ''}`}>{cleanTransport || dev.transport}</span>
                             <button
                               type="button"
                               className="ps-sm-device-reconnect-btn"
@@ -1215,8 +1556,8 @@ export default function SensorManagerModal({
                           <div>
                             {(dev.sensors || []).map((sens, sIdx) => {
                               const allAssigned = (sens.channels || []).length > 0 &&
-                                (sens.channels || []).every(c => isChannelAssigned(c, dev.name, dev.id));
-                              const unassignedChannels = (sens.channels || []).filter(c => !isChannelAssigned(c, dev.name, dev.id));
+                                (sens.channels || []).every(c => isChannelAssigned(c, dev.name, dev.id, dev.serial, sens.name, sens.id));
+                              const unassignedChannels = (sens.channels || []).filter(c => !isChannelAssigned(c, dev.name, dev.id, dev.serial, sens.name, sens.id));
 
                               return (
                                 <div key={sens.id || `${dev.id}_s_${sIdx}`} className="ps-sm-sensor-group">
@@ -1231,6 +1572,7 @@ export default function SensorManagerModal({
                                       handleStartDrag(e, {
                                         type: 'sensor',
                                         sensorName: sens.name,
+                                        sensorId: sens.id,
                                         device: dev.name,
                                         deviceId: dev.id,
                                         deviceSerial: dev.serial,
@@ -1273,7 +1615,7 @@ export default function SensorManagerModal({
 
                                   <div className="ps-sm-channels-list">
                                     {(sens.channels || []).map((ch, chIdx) => {
-                                      const assigned = isChannelAssigned(ch, dev.name, dev.id);
+                                      const assigned = isChannelAssigned(ch, dev.name, dev.id, dev.serial, sens.name, sens.id);
 
                                       return (
                                         <div
@@ -1289,13 +1631,17 @@ export default function SensorManagerModal({
                                               type: 'channel',
                                               id: ch.id,
                                               channel_id: ch.channel_id,
+                                              channelId: ch.channelId || ch.channel_id,
                                               name: ch.name,
                                               unit: ch.unit,
                                               device: dev.name,
                                               deviceId: dev.id,
-                                              deviceSerial: dev.serial,
+                                              deviceSerial: dev.serial || ch.deviceSerial,
                                               devicePort: dev.connectionConfig?.port,
-                                              sensorName: sens.name
+                                              sensorName: sens.name,
+                                              sensorId: sens.id,
+                                              slaver_addr: ch.slaver_addr,
+                                              mBValueAddr: ch.mBValueAddr
                                             });
                                           }}
                                           onDragEnd={handleEndDrag}
@@ -1318,7 +1664,7 @@ export default function SensorManagerModal({
                                                 className="ps-sm-quick-assign-btn"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  handleQuickAssignChannel(ch, sens.name, dev);
+                                                  handleQuickAssignChannel(ch, sens.name, dev, sens);
                                                 }}
                                                 disabled={loadingDevices}
                                                 title="Quick-assign this channel to a Measurement Point"

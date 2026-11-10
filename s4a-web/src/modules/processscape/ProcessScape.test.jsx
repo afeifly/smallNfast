@@ -14,6 +14,7 @@ import {
   deleteScape,
   createNewScape
 } from './engine/scapeStorage.js';
+import ScapeManagerModal from './ScapeManagerModal.jsx';
 import SensorManagerModal from './SensorManagerModal.jsx';
 import DeviceConnectModal from '../../components/DeviceConnectModal.jsx';
 import TauriSutoAPI from '../../api/TauriSutoAPI.js';
@@ -26,6 +27,8 @@ import {
   syncMeasurementPointToScape,
   syncAllLocationsToScapes,
   buildDeviceFromRawChannels,
+  buildModbusDevice,
+  generateModbusSerialNumber,
   getSavedDevices,
   saveDevices,
   getDeviceChannelAssignments,
@@ -1430,7 +1433,8 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(container.querySelector('.ps-mgr-modal')).toBeNull();
   });
 
-  it('scapeStorage handles CRUD, defaults, duplication, and protection of last scape', () => {
+  it('scapeStorage handles CRUD, defaults, duplication, and allows deleting the only scape', () => {
+    localStorage.clear();
     const scapes = getAllScapes();
     expect(scapes.length).toBeGreaterThan(0);
     expect(scapes[0].title).toBeDefined();
@@ -1444,9 +1448,87 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(dup).not.toBeNull();
     expect(dup.title).toContain('(Copy)');
 
-    // Delete
+    // Delete duplicated scape
     const deleted = deleteScape(dup.id);
     expect(deleted).toBe(true);
+
+    // Delete the remaining scape(s) down to 0, ensuring scapes list becomes empty
+    const remaining = getAllScapes();
+    remaining.forEach(s => {
+      deleteScape(s.id);
+    });
+    const afterDeleteAll = getAllScapes();
+    expect(afterDeleteAll.length).toBe(0);
+    expect(getActiveScapeId()).toBe('');
+    expect(getActiveScape().id).toBe('');
+
+    // Restore localStorage so other tests have clean state
+    localStorage.clear();
+  });
+
+  it('auto-creates a clean Default Plant scape when syncing a location if 0 scapes exist', () => {
+    localStorage.clear();
+    // Simulate user having deleted all scapes
+    localStorage.setItem('s4a_processscapes_v1', JSON.stringify([]));
+    expect(getAllScapes().length).toBe(0);
+
+    const testLocs = [{
+      id: 'loc_auto_scape',
+      name: 'Workshop 1',
+      scapeId: '',
+      measurementPoints: [{
+        id: 'mp_auto',
+        name: 'Inlet Pressure',
+        channels: [{ id: 'ch_press', name: 'Pressure', unit: 'bar', value: 7.2 }]
+      }]
+    }];
+
+    const res = syncAllLocationsToScapes(testLocs);
+    expect(res.success).toBe(true);
+
+    const scapes = getAllScapes();
+    expect(scapes.length).toBe(1);
+    expect(scapes[0].title).toBe('Default Plant');
+    expect(scapes[0].elements.some(e => e.type === 'sensor_card')).toBe(true);
+
+    localStorage.clear();
+  });
+
+  it('ScapeManagerModal renders delete button even when only one scape exists and handles in-app confirm delete', () => {
+    localStorage.clear();
+    const scapes = getAllScapes();
+    expect(scapes.length).toBe(1);
+
+    const onSelectActive = vi.fn();
+    const { container } = render(
+      <ScapeManagerModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onSelectActiveScape={onSelectActive}
+      />
+    );
+
+    // Delete button must be present on the single scape card
+    const deleteBtn = container.querySelector('.btn-delete');
+    expect(deleteBtn).not.toBeNull();
+
+    // Clicking delete opens the in-app confirmation dialog
+    fireEvent.click(deleteBtn);
+    expect(container.querySelector('.ps-mgr-confirm-dialog')).not.toBeNull();
+    expect(container.textContent).toContain('Delete Plant Scape');
+
+    // Clicking confirm delete inside the in-app dialog
+    const confirmBtn = container.querySelector('.ps-mgr-btn-danger');
+    expect(confirmBtn).not.toBeNull();
+    fireEvent.click(confirmBtn);
+
+    expect(onSelectActive).toHaveBeenCalled();
+    const updatedScapes = getAllScapes();
+    expect(updatedScapes.length).toBe(0);
+    expect(container.querySelector('.ps-mgr-empty-state')).not.toBeNull();
+
+    // Restore localStorage so other tests have clean state
+    localStorage.clear();
   });
 
   it('renders anchor handle with anchor-handle-core and without ghost offsets or redundant origin dots', () => {
@@ -3456,6 +3538,8 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     // Buttons are re-enabled
     expect(container.querySelector('.ps-sm-close-btn').disabled).toBe(false);
     expect(container.querySelector('.ps-sm-detect-btn').disabled).toBe(false);
+
+    vi.restoreAllMocks();
   });
 
   it('SensorManagerModal has concise Locations header, removes subtitle, and provides search clear button', () => {
@@ -4847,6 +4931,753 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     connectTcpSpy.mockRestore();
     connectModbusSpy.mockRestore();
+  });
+
+  it('assigns 99xxxxxx serial number to pure Modbus device and prevents channel collisions with BLE devices having same local channel_id', () => {
+    window.localStorage.removeItem('s4a_sensor_locations_v1');
+    window.localStorage.removeItem('s4a_sensor_devices_v1');
+
+    // 1. Generate serial for pure Modbus device: must start with '99' and be 8 digits long
+    const modbusSn = generateModbusSerialNumber('192.168.5.67:502', 1);
+    expect(modbusSn).toMatch(/^99\d{6}$/);
+
+    // 2. Build pure Modbus device without factory serial
+    const modbusDev = buildModbusDevice({
+      name: 'Modbus Flow Meter',
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      channels: [
+        { channel_id: 1, name: 'Flow Rate', unit: 'm³/h' },
+        { channel_id: 2, name: 'Pressure', unit: 'bar' }
+      ]
+    });
+    expect(modbusDev.serial).toMatch(/^99\d{6}$/);
+    expect(modbusDev.id).toBe(`dev_modbus_tcp_sn_${modbusDev.serial}`);
+    expect(modbusDev.sensors[0].channels[0].id).toBe(`ch_sn_${modbusDev.serial}_1`);
+    expect(modbusDev.sensors[0].channels[0].deviceSerial).toBe(modbusDev.serial);
+
+    // 3. Build BLE device with factory hardware serial (e.g. 02000001) and same local channel_id (1, 2)
+    const bleDev = buildDeviceFromRawChannels(
+      [
+        { channel_id: 1, name: 'Air Speed', unit: 'm/s' },
+        { channel_id: 2, name: 'Temperature', unit: '°C' }
+      ],
+      'SUTO BLE S403',
+      'Bluetooth (BLE)',
+      'ble',
+      { serial: '02000001', serial_number: '02000001' }
+    );
+    expect(bleDev.serial).toBe('02000001');
+    expect(bleDev.sensors[0].channels[0].id).toBe('ch_sn_02000001_1_0');
+    expect(bleDev.sensors[0].channels[0].deviceSerial).toBe('02000001');
+
+    saveDevices([modbusDev, bleDev]);
+
+    // 4. Assign Modbus Channel 1 to Location 1
+    const loc1 = {
+      id: 'loc_1',
+      name: 'Compressor Room',
+      measurementPoints: [
+        {
+          id: 'mp_1',
+          name: 'Main Pipe',
+          channels: [
+            {
+              id: modbusDev.sensors[0].channels[0].id,
+              channel_id: 1,
+              channelId: 1,
+              name: 'Flow Rate',
+              unit: 'm³/h',
+              device: modbusDev.name,
+              deviceId: modbusDev.id,
+              deviceSerial: modbusDev.serial
+            }
+          ]
+        }
+      ]
+    };
+    saveLocations([loc1]);
+
+    // 5. Verify getDeviceChannelAssignments does not cross-pollute
+    const modbusAssignments = getDeviceChannelAssignments(modbusDev);
+    expect(modbusAssignments.length).toBe(1);
+    expect(modbusAssignments[0].channelName).toBe('Flow Rate');
+
+    const bleAssignments = getDeviceChannelAssignments(bleDev);
+    // BLE channels MUST NOT be considered assigned to Location 1!
+    expect(bleAssignments.length).toBe(0);
+
+    // 6. Render SensorManagerModal and verify BLE channel 1 is NOT marked as assigned
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    const deviceNodes = container.querySelectorAll('.ps-sm-device-node');
+    expect(deviceNodes.length).toBe(2);
+
+    // Modbus device channels: channel 1 should be assigned, channel 2 unassigned
+    const modbusChannelItems = deviceNodes[0].querySelectorAll('.ps-sm-channel-item');
+    expect(modbusChannelItems[0].classList.contains('is-assigned')).toBe(true);
+    expect(modbusChannelItems[1].classList.contains('is-assigned')).toBe(false);
+
+    // BLE device channels: channel 1 MUST NOT be assigned! Both channels must be unassigned
+    const bleChannelItems = deviceNodes[1].querySelectorAll('.ps-sm-channel-item');
+    expect(bleChannelItems[0].classList.contains('is-assigned')).toBe(false);
+    expect(bleChannelItems[0].getAttribute('draggable')).toBe('true');
+    expect(bleChannelItems[1].classList.contains('is-assigned')).toBe(false);
+    expect(bleChannelItems[1].getAttribute('draggable')).toBe('true');
+
+    // BLE sensor group must NOT have "✓ All Assigned" or "🔒"
+    const bleSensorHeader = deviceNodes[1].querySelector('.ps-sm-sensor-name');
+    expect(bleSensorHeader.classList.contains('is-all-assigned')).toBe(false);
+    expect(bleSensorHeader.textContent).toContain('+ Assign All');
+  });
+
+  it('when all locations are removed, deactivates the scape (no active scape) and renders the empty page', () => {
+    // 1. Setup a real scape and a location pointing to it
+    const scape = createNewScape('Plant Section A');
+    saveScape(scape);
+    setActiveScapeId(scape.id);
+
+    const loc1 = {
+      id: 'loc_test_1',
+      name: 'Compressor Bay',
+      scapeId: scape.id,
+      measurementPoints: []
+    };
+    saveLocations([loc1]);
+    expect(getActiveScapeId()).toBe(scape.id);
+
+    // 2. Render ProcessScapeView with the active location & scape
+    const { container } = render(
+      <ProcessScapeView initialMode="runtime" />
+    );
+    // When location and active scape exist, the empty stage page is NOT shown
+    expect(container.querySelector('.ps-empty-stage-page')).toBeNull();
+
+    // 3. Render SensorManagerModal and remove the location (removing all locations)
+    const { container: modalContainer } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+    const delLocBtn = modalContainer.querySelector('button[title="Delete Location"]');
+    expect(delLocBtn).not.toBeNull();
+    fireEvent.click(delLocBtn);
+
+    // 4. Verify in storage: locations list is now empty and active scape is deactivated
+    expect(getLocations().length).toBe(0);
+    expect(getActiveScapeId()).toBe('');
+    expect(getActiveScape().id).toBe('');
+
+    // 5. Verify ProcessScapeView now renders the empty page (no location and no active scape)
+    expect(container.querySelector('.ps-empty-stage-page')).not.toBeNull();
+    expect(container.querySelector('.ps-empty-stage-title').textContent).toContain('No Location');
+    expect(container.querySelector('.ps-empty-stage-desc').textContent).toContain('All locations have been removed');
+    expect(container.querySelector('.ps-empty-stage-btn-primary').textContent).toContain('Configure Locations');
+  });
+
+  it('allows a device with multiple sensor cards to assign channel 1 of Card A without cross-assigning channel 1 of Card B', () => {
+    // 1. Setup an S331 device with 2 distinct sensor cards (e.g. S451 Flow and S212 Dew Point)
+    const multiCardDev = {
+      id: 'dev_modbus_tcp_sn_99887766',
+      name: 'S331 Data Acquisition Hub',
+      serial: '99887766',
+      transport: 'Modbus TCP (192.168.1.100:502 SN:99887766)',
+      transportType: 'modbus_tcp',
+      isOnline: true,
+      sensors: [
+        {
+          id: 'sens_s331_card_1',
+          name: 'S451 Flow Sensor',
+          desc: 'External Flow Sensor',
+          channels: [
+            {
+              id: 'ch_sn_99887766_s451_1_0',
+              channel_id: 1,
+              channelId: 1,
+              name: 'Flow',
+              unit: 'm³/h',
+              device: 'S331 Data Acquisition Hub',
+              deviceId: 'dev_modbus_tcp_sn_99887766',
+              deviceSerial: '99887766',
+              sensorName: 'S451 Flow Sensor',
+              sensorId: 'sens_s331_card_1'
+            },
+            {
+              id: 'ch_sn_99887766_s451_2_1',
+              channel_id: 2,
+              channelId: 2,
+              name: 'Temperature',
+              unit: '°C',
+              device: 'S331 Data Acquisition Hub',
+              deviceId: 'dev_modbus_tcp_sn_99887766',
+              deviceSerial: '99887766',
+              sensorName: 'S451 Flow Sensor',
+              sensorId: 'sens_s331_card_1'
+            }
+          ]
+        },
+        {
+          id: 'sens_s331_card_2',
+          name: 'S212 Dew Point Sensor',
+          desc: 'External Dew Point Sensor',
+          channels: [
+            {
+              id: 'ch_sn_99887766_s212_1_0',
+              channel_id: 1,
+              channelId: 1,
+              name: 'Dew Point',
+              unit: '°C Td',
+              device: 'S331 Data Acquisition Hub',
+              deviceId: 'dev_modbus_tcp_sn_99887766',
+              deviceSerial: '99887766',
+              sensorName: 'S212 Dew Point Sensor',
+              sensorId: 'sens_s331_card_2'
+            },
+            {
+              id: 'ch_sn_99887766_s212_2_1',
+              channel_id: 2,
+              channelId: 2,
+              name: 'Pressure',
+              unit: 'bar',
+              device: 'S331 Data Acquisition Hub',
+              deviceId: 'dev_modbus_tcp_sn_99887766',
+              deviceSerial: '99887766',
+              sensorName: 'S212 Dew Point Sensor',
+              sensorId: 'sens_s331_card_2'
+            }
+          ]
+        }
+      ]
+    };
+
+    saveDevices([multiCardDev]);
+
+    // Setup Location 1
+    const loc1 = {
+      id: 'loc_multi_test',
+      name: 'Main Plant Location',
+      measurementPoints: [
+        {
+          id: 'mp_test_1',
+          name: 'Monitoring Point',
+          channels: []
+        }
+      ]
+    };
+    saveLocations([loc1]);
+
+    // 2. Render SensorManagerModal
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    const sensorGroups = container.querySelectorAll('.ps-sm-sensor-group');
+    expect(sensorGroups.length).toBe(2);
+
+    // Sensor Card 1 (S451) channels
+    const s451Channels = sensorGroups[0].querySelectorAll('.ps-sm-channel-item');
+    expect(s451Channels.length).toBe(2);
+    expect(s451Channels[0].classList.contains('is-assigned')).toBe(false);
+
+    // Sensor Card 2 (S212) channels
+    const s212Channels = sensorGroups[1].querySelectorAll('.ps-sm-channel-item');
+    expect(s212Channels.length).toBe(2);
+    expect(s212Channels[0].classList.contains('is-assigned')).toBe(false);
+
+    // 3. Click "+ Assign" on Channel 1 (Flow) of Sensor Card 1 (S451)
+    const assignBtnS451Ch1 = s451Channels[0].querySelector('.ps-sm-quick-assign-btn');
+    expect(assignBtnS451Ch1).not.toBeNull();
+    fireEvent.click(assignBtnS451Ch1);
+
+    // 4. VERIFY: S451 Channel 1 is now marked as assigned!
+    expect(s451Channels[0].classList.contains('is-assigned')).toBe(true);
+    expect(s451Channels[0].textContent).toContain('✓ Assigned');
+
+    // 5. CRUCIAL VERIFICATION: S212 Channel 1 (Dew Point) MUST NOT BE ASSIGNED!
+    // It shares the same channel_id (1) and same deviceSerial / deviceId,
+    // but belongs to a different sensor card, so it must remain completely unassigned!
+    expect(s212Channels[0].classList.contains('is-assigned')).toBe(false);
+    expect(s212Channels[0].querySelector('.ps-sm-quick-assign-btn')).not.toBeNull();
+    expect(s212Channels[0].textContent).toContain('+ Assign');
+
+    // 6. Now assign Channel 1 of Sensor Card 2 (S212) as well
+    const assignBtnS212Ch1 = s212Channels[0].querySelector('.ps-sm-quick-assign-btn');
+    fireEvent.click(assignBtnS212Ch1);
+
+    // Now BOTH channel 1 of Card 1 and channel 1 of Card 2 are assigned
+    expect(s212Channels[0].classList.contains('is-assigned')).toBe(true);
+    expect(s212Channels[0].textContent).toContain('✓ Assigned');
+
+    // 7. Verify both channels exist independently in storage measurement point
+    const savedLocs = getLocations();
+    const assignedChs = savedLocs[0].measurementPoints[0].channels;
+    expect(assignedChs.length).toBe(2);
+    expect(assignedChs.some(c => c.name === 'Flow' && c.sensorName === 'S451 Flow Sensor')).toBe(true);
+    expect(assignedChs.some(c => c.name === 'Dew Point' && c.sensorName === 'S212 Dew Point Sensor')).toBe(true);
+  });
+
+  it('prevents adding duplicate devices to Sensor Manager and rejects re-adding existing hardware', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    const existingModbusDev = {
+      id: 'dev_modbus_tcp_sn_50199615',
+      name: 'S331',
+      serial: '50199615',
+      transport: 'Modbus TCP (192.168.5.67)',
+      transportType: 'modbus_tcp',
+      isOnline: true,
+      sensors: [
+        {
+          id: 'sens_s331',
+          name: 'S331',
+          channels: [
+            { id: 'ch_s331_1', channel_id: 1, name: 'Flow', unit: 'm³/h' }
+          ]
+        }
+      ]
+    };
+    saveDevices([existingModbusDev]);
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Initial state: 1 device
+    expect(container.querySelectorAll('.ps-sm-device-node').length).toBe(1);
+
+    // Open Connect Modal
+    const addBtn = container.querySelector('.ps-sm-connect-btn');
+    fireEvent.click(addBtn);
+
+    // The DeviceConnectModal opens
+    const modalEl = document.querySelector('.device-connect-modal');
+    expect(modalEl).not.toBeNull();
+
+    // Now simulate attempting to connect the same device again via Modbus
+    const duplicateDev = {
+      id: 'dev_modbus_tcp_sn_50199615_copy',
+      name: 'S331 (50199615)',
+      serial: '50199615',
+      transport: 'Modbus TCP (192.168.5.67:502)',
+      transportType: 'modbus_tcp',
+      sensors: [
+        {
+          id: 'sens_s331_copy',
+          name: 'S331',
+          channels: [
+            { id: 'ch_s331_1_copy', channel_id: 1, name: 'Flow', unit: 'm³/h' }
+          ]
+        }
+      ]
+    };
+
+    // Verify isSameDevice detects they are identical
+    expect(isSameDevice(existingModbusDev, duplicateDev)).toBe(true);
+
+    // Device list in storage must still be exactly 1
+    const current = getSavedDevices();
+    expect(current.length).toBe(1);
+  });
+
+  it('BLE connection strictly isolates channels and system info from previously connected Modbus devices', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // 1. Setup active Modbus device
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus Hub',
+      serial: '50199615',
+      channels: [
+        { id: 1, channel_id: 1, name: 'Modbus Flow', unit: 'm³/h', regAddr: 1000 }
+      ]
+    });
+
+    // When Modbus is active, channels should have Modbus Flow
+    const modbusChs = await TauriSutoAPI.getChannels();
+    expect(modbusChs.some(c => c.channel_name === 'Modbus Flow')).toBe(true);
+
+    // 2. Now simulate connecting via BLE (web or native)
+    window.__TAURI_INTERNALS__ = {
+      invoke: vi.fn().mockImplementation((cmd) => {
+        if (cmd === 'suto_connect_ble') return Promise.resolve('BLE_ADDR');
+        if (cmd === 'suto_get_system_info') return Promise.resolve({ device_name: 'S403 BLE Sensor', serial_number: '12345678', device_id: 403 });
+        if (cmd === 'suto_get_channels') return Promise.resolve([
+          { id: 1, description: 'BLE Velocity', unit: 'm/s', sensor_id: 1, device_id: 403 }
+        ]);
+        return Promise.resolve(null);
+      })
+    };
+
+    const bleConn = await TauriSutoAPI.connectBle({ deviceId: 'test_ble_1', name: 'S403 BLE Sensor' });
+    expect(bleConn.transport).toBe('BLE');
+
+    // 3. VERIFY: TauriSutoAPI.getChannels() under active BLE transport MUST NOT contain Modbus Flow!
+    const activeBleChs = await TauriSutoAPI.getChannels();
+    expect(activeBleChs.some(c => c.channel_name === 'BLE Velocity')).toBe(true);
+    expect(activeBleChs.some(c => c.channel_name === 'Modbus Flow')).toBe(false);
+
+    // 4. VERIFY: TauriSutoAPI.getSystemInfo() under active BLE transport returns BLE device, NOT S331 Modbus!
+    const sysInfo = await TauriSutoAPI.getSystemInfo();
+    expect(sysInfo.serial_number).toBe('12345678');
+    expect(sysInfo.device_name).toBe('S403 BLE Sensor');
+    expect(sysInfo.serial_number).not.toBe('50199615');
+
+    // Clean up
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('reconnecting a BLE device preserves its BLE channels and does not corrupt or refresh with Modbus channels', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // Setup active Modbus device
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus',
+      serial: '50199615',
+      channels: [
+        { id: 1, channel_id: 1, name: 'Modbus Pressure', unit: 'bar', regAddr: 2000 }
+      ]
+    });
+
+    const bleDev = {
+      id: 'dev_ble_s403_12345678',
+      name: 'S403 BLE',
+      serial: '12345678',
+      transport: 'Bluetooth (BLE)',
+      transportType: 'ble',
+      isOnline: false,
+      connectionConfig: {
+        transport: 'ble',
+        deviceId: 'ble_s403_12345678',
+        name: 'S403 BLE',
+        serial: '12345678'
+      },
+      sensors: [
+        {
+          id: 'sens_s403_ble',
+          name: 'S403 Flow',
+          channels: [
+            { id: 'ch_s403_flow_1', channel_id: 1, name: 'BLE Flow Rate', unit: 'm³/h' }
+          ]
+        }
+      ]
+    };
+
+    saveDevices([bleDev]);
+
+    // Mock resumeBleConnection and BleSutoAPI.getChannels
+    vi.spyOn(BleSutoAPI, 'getChannels').mockResolvedValue([
+      { id: 1, channel_id: 1, channel_name: 'BLE Flow Rate', unit_in_ascii: 'm³/h', device: 'S403 BLE' }
+    ]);
+    vi.spyOn(TauriSutoAPI, 'resumeBleConnection').mockResolvedValue({
+      transport: 'BLE',
+      deviceId: 'ble_s403_12345678',
+      name: 'S403 BLE',
+      serial: '12345678'
+    });
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Click Reconnect (↻) on the BLE device
+    const reconnectBtn = container.querySelector('.ps-sm-device-reconnect-btn');
+    expect(reconnectBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(reconnectBtn);
+    });
+
+    // Device in storage MUST still be the BLE device with BLE Flow Rate, NEVER Modbus Pressure!
+    const saved = getSavedDevices();
+    expect(saved.length).toBe(1);
+    expect(saved[0].name).toBe('S403 BLE');
+    expect(saved[0].transportType).toBe('ble');
+    expect(saved[0].sensors[0].channels[0].name).toBe('BLE Flow Rate');
+    expect(saved[0].sensors[0].channels.some(c => c.name.includes('Modbus'))).toBe(false);
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('TauriSutoAPI.getMeasurementData combines telemetry from both BLE and Modbus devices concurrently', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // 1. Connect Modbus device
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus',
+      serial: '50199615',
+      channels: [
+        { id: 10, channel_id: 10, name: 'Modbus Flow', unit: 'm³/h', regAddr: 1000 }
+      ]
+    });
+
+    // 2. Mock BleSutoAPI as active and returning measurements
+    vi.spyOn(BleSutoAPI, 'isConnected').mockReturnValue(true);
+    vi.spyOn(BleSutoAPI, 'getMeasurementData').mockResolvedValue([
+      {
+        channel_id: 1,
+        id: 1,
+        unit: 'm/s',
+        value: 14.5,
+        device: 'S403 BLE',
+        serial: '12345678'
+      }
+    ]);
+
+    // 3. Poll combined measurement data
+    const combined = await TauriSutoAPI.getMeasurementData();
+
+    // Verify BOTH BLE channel (14.5 m/s) and Modbus channel are present!
+    expect(combined.some(item => item.channel_id === 1 && item.device === 'S403 BLE')).toBe(true);
+    expect(combined.some(item => item.channel_id === 10)).toBe(true);
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('TauriSutoAPI.getMeasurementData skips Modbus TCP polling when active location only has BLE channels', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // 1. Connect Modbus device
+    const modbusSpy = vi.spyOn(TauriSutoAPI, 'readModbusChannel').mockResolvedValue({
+      value: 42,
+      success: true
+    });
+
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus',
+      serial: '50199615',
+      channels: [
+        { id: 10, channel_id: 10, name: 'Modbus Flow', unit: 'm³/h', regAddr: 1000 }
+      ]
+    });
+
+    // 2. Connect BLE device
+    vi.spyOn(BleSutoAPI, 'isConnected').mockReturnValue(true);
+    const bleSpy = vi.spyOn(BleSutoAPI, 'getMeasurementData').mockResolvedValue([
+      {
+        channel_id: 1,
+        id: 1,
+        unit: 'm/s',
+        value: 14.5,
+        device: 'S403 BLE',
+        serial: '12345678'
+      }
+    ]);
+
+    // Clear initial probe calls
+    modbusSpy.mockClear();
+    bleSpy.mockClear();
+
+    // 3. Poll with demandedChannels containing ONLY BLE channel (active location has only BLE)
+    const bleOnlyDemand = [
+      {
+        id: 'ch_sn_12345678_1',
+        channel_id: 1,
+        device: 'S403 BLE',
+        deviceSerial: '12345678',
+        transport: 'Bluetooth (BLE)',
+        isBle: true
+      }
+    ];
+
+    const result = await TauriSutoAPI.getMeasurementData(undefined, { demandedChannels: bleOnlyDemand });
+
+    // BLE was polled!
+    expect(bleSpy).toHaveBeenCalled();
+    expect(result.some(item => item.channel_id === 1)).toBe(true);
+
+    // Modbus TCP was NOT polled at all!
+    expect(modbusSpy).not.toHaveBeenCalled();
+    expect(result.some(item => item.channel_id === 10)).toBe(false);
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('TauriSutoAPI.getMeasurementData polls both when recording combines active BLE location and Modbus recording', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    const modbusSpy = vi.spyOn(TauriSutoAPI, 'readModbusChannel').mockResolvedValue({
+      value: 88,
+      success: true
+    });
+
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus',
+      serial: '50199615',
+      channels: [
+        { id: 10, channel_id: 10, name: 'Modbus Flow', unit: 'm³/h', regAddr: 1000 }
+      ]
+    });
+
+    vi.spyOn(BleSutoAPI, 'isConnected').mockReturnValue(true);
+    const bleSpy = vi.spyOn(BleSutoAPI, 'getMeasurementData').mockResolvedValue([
+      {
+        channel_id: 1,
+        id: 1,
+        unit: 'm/s',
+        value: 14.5,
+        device: 'S403 BLE',
+        serial: '12345678'
+      }
+    ]);
+
+    modbusSpy.mockClear();
+    bleSpy.mockClear();
+
+    // Active location has BLE channel, but recording includes Modbus channel
+    const combinedDemand = [
+      {
+        id: 'ch_sn_12345678_1',
+        channel_id: 1,
+        device: 'S403 BLE',
+        deviceSerial: '12345678',
+        transport: 'Bluetooth (BLE)'
+      },
+      {
+        id: 'ch_sn_50199615_10',
+        channel_id: 10,
+        device: 'S331 Modbus',
+        deviceSerial: '50199615',
+        transport: 'Modbus TCP (192.168.5.67:502)'
+      }
+    ];
+
+    const result = await TauriSutoAPI.getMeasurementData(undefined, { demandedChannels: combinedDemand });
+
+    // Both BLE and Modbus were polled!
+    expect(bleSpy).toHaveBeenCalled();
+    expect(modbusSpy).toHaveBeenCalled();
+    expect(result.some(item => item.channel_id === 1)).toBe(true);
+    expect(result.some(item => item.channel_id === 10)).toBe(true);
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('TauriSutoAPI.getMeasurementData returns immediately without polling when demandedChannels is empty', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    const modbusSpy = vi.spyOn(TauriSutoAPI, 'readModbusChannel').mockResolvedValue({
+      value: 10,
+      success: true
+    });
+
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus',
+      serial: '50199615',
+      channels: [
+        { id: 10, channel_id: 10, name: 'Modbus Flow', unit: 'm³/h', regAddr: 1000 }
+      ]
+    });
+
+    vi.spyOn(BleSutoAPI, 'isConnected').mockReturnValue(true);
+    const bleSpy = vi.spyOn(BleSutoAPI, 'getMeasurementData').mockResolvedValue([]);
+
+    modbusSpy.mockClear();
+    bleSpy.mockClear();
+
+    // No channels demanded (e.g. no locations exist in ProcessScape and not recording)
+    const result = await TauriSutoAPI.getMeasurementData(undefined, { demandedChannels: [] });
+
+    expect(result).toEqual([]);
+    expect(bleSpy).not.toHaveBeenCalled();
+    expect(modbusSpy).not.toHaveBeenCalled();
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('TauriSutoAPI._isNativeDemanded recognizes USB device channels without explicit transport field and excludes Modbus TCP channels', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'S331 Modbus',
+      serial: '50199615',
+      channels: [
+        { id: 10, channel_id: 10, name: 'Modbus Flow', unit: 'm³/h', regAddr: 1000 }
+      ]
+    });
+
+    // Simulate USB location channel object saved from buildDeviceFromRawChannels (even without transport property)
+    const usbLocDemand = [
+      {
+        id: 'ch_sn_SN-4866_1_0',
+        channel_id: 1,
+        channelId: 1,
+        name: 'Flow',
+        device: 'Connected Device (USB)',
+        deviceId: 'dev_usb_sn_SN-4866',
+        deviceSerial: 'SN-4866'
+      }
+    ];
+    expect(TauriSutoAPI._isNativeDemanded(usbLocDemand)).toBe(true);
+
+    // Even if deviceId/device name doesn't contain 'usb', a non-Modbus/non-BLE channel still demands native polling
+    const genericNativeDemand = [
+      {
+        id: 'ch_sn_88776655_1_0',
+        channel_id: 1,
+        name: 'Flow',
+        device: 'SUTO S463',
+        deviceId: 'dev_sn_88776655',
+        deviceSerial: '88776655'
+      }
+    ];
+    expect(TauriSutoAPI._isNativeDemanded(genericNativeDemand)).toBe(true);
+
+    // When active location has ONLY Modbus TCP channels, native USB polling must NOT be demanded
+    const modbusLocDemand = [
+      {
+        id: 'ch_sn_50199615_10',
+        channel_id: 10,
+        device: 'S331 Modbus',
+        deviceId: 'dev_modbus_tcp_sn_50199615',
+        deviceSerial: '50199615'
+      }
+    ];
+    expect(TauriSutoAPI._isNativeDemanded(modbusLocDemand)).toBe(false);
+
+    await TauriSutoAPI.disconnect();
   });
 });
 

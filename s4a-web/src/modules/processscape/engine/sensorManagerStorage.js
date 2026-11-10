@@ -6,7 +6,7 @@
  */
 
 import TauriSutoAPI from '../../../api/TauriSutoAPI';
-import { getAllScapes, saveScape, getActiveScapeId, getSavedScapeView } from './scapeStorage';
+import { getAllScapes, saveScape, createNewScape, getActiveScapeId, getSavedScapeView } from './scapeStorage';
 import { pollOnce } from '../../../util/liveDataSource';
 
 export const STORAGE_KEY_SENSOR_LOCATIONS = 's4a_sensor_locations_v1';
@@ -105,21 +105,41 @@ export function getSavedDevices() {
       }).map(s => {
         const cleanChannels = (s.channels || []).filter(c => {
           return !c.name?.toLowerCase()?.includes('ressure ch80');
-        }).map(c => ({
-          ...c,
-          name: /^ressure/i.test(c.name || '') ? 'P' + c.name : c.name,
-          unit: (c.unit === 'u0' || c.unit === 'u255') ? '' : c.unit
-        }));
+        }).map((c, cIdx) => {
+          const chId = c.channel_id ?? c.channelId ?? (cIdx + 1);
+          const cleanSerial = d.serial ? String(d.serial).replace(/[^a-zA-Z0-9_-]/g, '_') : 'dev';
+          const cleanSensKey = String(s.name || 'sens').toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+          const isGenericId = !c.id || /^(?:cid_)?\d+$/i.test(String(c.id)) || /^ch_\d+$/i.test(String(c.id));
+          return {
+            ...c,
+            id: (!isGenericId && c.id) ? c.id : `ch_sn_${cleanSerial}_${cleanSensKey}_${chId}_${cIdx}`,
+            channel_id: chId,
+            channelId: chId,
+            name: /^ressure/i.test(c.name || '') ? 'P' + c.name : c.name,
+            unit: (c.unit === 'u0' || c.unit === 'u255') ? '' : c.unit,
+            device: c.device || d.name,
+            deviceId: c.deviceId || d.id,
+            deviceSerial: c.deviceSerial || d.serial,
+            sensorName: c.sensorName || s.name,
+            sensorId: c.sensorId || s.id
+          };
+        });
         return { ...s, channels: cleanChannels };
       });
 
-      // Auto-consolidate split transducer groups (e.g. "451" flow core + "Pressure" transducer on S403)
-      const hasSplitTransducers = cleanSensors.length > 1 && cleanSensors.some(s => {
-        const n = (s.name || '').toLowerCase();
-        return n.includes('451') || n.includes('pressure') || n.includes('transducer');
-      });
-      const isStandaloneOrS403 = /S\s?40[1-9]|S\s?421|S\s?45[0-9]|S\s?530/i.test(d.name || d.model || '')
-        || hasSplitTransducers;
+      // Auto-consolidate split transducer groups ONLY for standalone instruments (e.g. S403 with internal flow core + pressure)
+      // Never consolidate multi-sensor cards on data loggers / hubs (e.g. S331, S330, S551, Modbus gateways)
+      const isKnownHub = /^(S\s?33[0-9]|S\s?32[0-9]|S\s?55[0-9]|DS\s?350|LOGGER|HUB)/i.test(d.name || d.model || '');
+      const isStandaloneOrS403 = !isKnownHub && /S\s?40[1-9]|S\s?421|S\s?45[0-9]|S\s?530/i.test(d.name || d.model || '');
+
+      const cleanedName = d.serial
+        ? (d.name || '').replace(new RegExp(`\\s*\\(${d.serial}\\)$`, 'i'), '').trim()
+        : (d.name || '').replace(/\s*\(\d{6,10}\)$/, '').trim();
+      const cleanedTransport = (d.transport || '')
+        .replace(/:502(?=[^0-9]|$)/, '')
+        .replace(/\s+ID:\d+/i, '')
+        .replace(/\s+SN:[a-zA-Z0-9_-]+/i, '')
+        .trim();
 
       if (isStandaloneOrS403 && cleanSensors.length > 1) {
         const allChannels = [];
@@ -131,9 +151,11 @@ export function getSavedDevices() {
         const modelMatch = (d.name || d.model || '').match(/([A-Z]\s?\d{3}[A-Z]?)/i);
         const unifiedName = modelMatch
           ? modelMatch[1].replace(/\s+/g, '').toUpperCase()
-          : (d.model && !d.model.includes('Connected') ? d.model : (d.name || 'S403'));
+          : (d.model && !d.model.includes('Connected') ? d.model : (cleanedName || d.name || 'S403'));
         return {
           ...d,
+          name: cleanedName || d.name,
+          transport: cleanedTransport || d.transport,
           sensors: [{
             id: `sens_${d.id}_unified`,
             name: unifiedName,
@@ -143,7 +165,12 @@ export function getSavedDevices() {
         };
       }
 
-      return { ...d, sensors: cleanSensors };
+      return {
+        ...d,
+        name: cleanedName || d.name,
+        transport: cleanedTransport || d.transport,
+        sensors: cleanSensors
+      };
     });
 
     // Auto-heal / normalize network devices and migrate corrupted IDs (e.g. dev_tcp_ble_4197 -> dev_tcp_127_0_0_1_502)
@@ -285,6 +312,29 @@ export function saveDevices(devices) {
 }
 
 /**
+ * Generate a unique virtual serial number for pure Modbus devices lacking a factory serial number.
+ * Conforms to the standard 8-digit format starting with '99' ('99xxxxxx').
+ * Derives the 6 suffix digits deterministically from host/port/slaveId when provided,
+ * so repeated connections to the same Modbus endpoint preserve the same serial number,
+ * or generates a random 6-digit suffix if no endpoint is specified.
+ */
+export function generateModbusSerialNumber(hostOrPort = '', slaveId = 1) {
+  if (hostOrPort) {
+    const seed = `${String(hostOrPort).trim()}_slave_${slaveId}`;
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const positiveHash = Math.abs(hash);
+    const suffix = String(100000 + (positiveHash % 900000));
+    return `99${suffix}`;
+  }
+  const randSuffix = String(Math.floor(100000 + Math.random() * 900000));
+  return `99${randSuffix}`;
+}
+
+/**
  * Generate a deterministic, consistent device ID based on hardware identifiers.
  * 1. Hardware Serial Number (SN) - Definitive hardware identifier from getSN / serial_number.
  * 2. Network IP + Port (for TCP/API/Ethernet) when SN is not yet available.
@@ -295,9 +345,9 @@ export function generateDeterministicDeviceId(transportType, sysInfo = {}, devNa
 
   // 1. Hardware Serial Number (SN) - Definitive hardware identifier!
   // Uses getSN / serial_number so physical hardware and simulator instances with unique serials
-  // (e.g. SN 12344321, 12344322, 12344323) are uniquely identified.
+  // (e.g. SN 12344321, 12344322, 12344323) or pure Modbus virtual serials (99xxxxxx) are uniquely identified.
   const sn = sysInfo.serial_number || sysInfo.serial;
-  const isGenericSn = (s) => !s || /^SN-(USB|TCP|BLE|API)-/i.test(String(s)) || String(s).length < 3;
+  const isGenericSn = (s) => !s || /^ID-\d+$/i.test(String(s)) || String(s).length < 3;
   if (sn && !isGenericSn(sn)) {
     return `dev_${safeTransport}_sn_${String(sn).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
   }
@@ -363,14 +413,20 @@ export function generateDeterministicDeviceId(transportType, sysInfo = {}, devNa
 export function isSameDevice(d1, d2) {
   if (!d1 || !d2) return false;
 
+  const t1 = (d1.transportType || d1.connectionConfig?.transport || d1.transport || '').toLowerCase();
+  const t2 = (d2.transportType || d2.connectionConfig?.transport || d2.transport || '').toLowerCase();
+  const isBle1 = t1.includes('ble');
+  const isBle2 = t2.includes('ble');
+  // Different hardware transports (e.g. BLE vs Modbus/Ethernet/USB) are NEVER the same device!
+  if (isBle1 !== isBle2) return false;
+
   // 1. Hardware Serial Number (SN) match:
   // If both devices have a valid hardware serial number (SN), this is the definitive physical identifier.
   // Distinct serial numbers (e.g. SN 12344321 vs SN 12344322) ALWAYS represent different devices!
   const extractSn = (d) => {
     const raw = String(d.serial || d.serial_number || d.connectionConfig?.serial || d.connectionConfig?.serial_number || '').trim();
-    if (raw && !/^SN-(USB|TCP|BLE|API)-/i.test(raw) && raw.length >= 3) return raw;
-    const fromName = (d.name || d.connectionConfig?.name || '').match(/(\d{6,10})/);
-    return fromName ? fromName[1] : '';
+    if (raw && !/^ID-\d+$/i.test(raw) && raw.length >= 3) return raw;
+    return '';
   };
 
   const sn1 = extractSn(d1);
@@ -382,8 +438,6 @@ export function isSameDevice(d1, d2) {
   // 2. Exact ID match (if serial numbers are not present or generic)
   if (d1.id && d2.id && d1.id === d2.id) return true;
 
-  const t1 = (d1.transportType || d1.connectionConfig?.transport || d1.transport || '').toLowerCase();
-  const t2 = (d2.transportType || d2.connectionConfig?.transport || d2.transport || '').toLowerCase();
   const isNet1 = t1.includes('tcp') || t1.includes('api') || t1.includes('ethernet') || t1.includes('lan');
   const isNet2 = t2.includes('tcp') || t2.includes('api') || t2.includes('ethernet') || t2.includes('lan');
 
@@ -520,7 +574,9 @@ export function upsertDeviceList(existingDevices = [], newDevices = []) {
             ...newCh,
             // Retain original channel id so any existing measurement point assignments in locations stay linked!
             id: matchedCh?.id || newCh.id,
-            device: existing.name || newDev.name
+            device: existing.name || newDev.name,
+            deviceSerial: existing.serial || newDev.serial,
+            deviceId: existing.id || newDev.id
           };
         });
 
@@ -558,16 +614,37 @@ export function upsertDeviceList(existingDevices = [], newDevices = []) {
  */
 export function buildDeviceFromRawChannels(list, devName, transportLabel, transportType, sysInfo = {}) {
   const safeTransport = (transportType || 'usb').toLowerCase();
-  const devId = generateDeterministicDeviceId(safeTransport, sysInfo, devName);
-  const sensorsMap = new Map();
-  const rawList = Array.isArray(list) ? list : (list?.channels || list?.logging_chs || []);
-
   const rawDevName = sysInfo?.device_name || devName || 'Sensor';
   const modelMatch = rawDevName.match(/([A-Z]\s?\d{3}[A-Z]?)/i);
   const primaryModel = modelMatch ? modelMatch[1].replace(/\s+/g, '').toUpperCase() : (sysInfo?.device_name || devName || 'Sensor');
 
   const model = sysInfo?.device_name || sysInfo?.model || devName;
-  const serial = sysInfo?.serial_number || sysInfo?.serial || (sysInfo?.device_id ? `SN-${sysInfo.device_id}` : `SN-${safeTransport.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`);
+  let serial = sysInfo?.serial_number || sysInfo?.serial;
+  if (!serial || /^ID-\d+$/i.test(String(serial)) || String(serial).length < 3) {
+    if (safeTransport.includes('modbus')) {
+      const hostOrPort = sysInfo?.host || sysInfo?.ip || sysInfo?.path || '';
+      const slaveId = sysInfo?.slaveId || sysInfo?.slave_id || 1;
+      serial = generateModbusSerialNumber(hostOrPort, slaveId);
+    } else if (sysInfo?.device_id && !['4196', '4197', '4198', '4199', '4200'].includes(String(sysInfo.device_id))) {
+      serial = `SN-${sysInfo.device_id}`;
+    } else if (sysInfo?.deviceId || sysInfo?.id) {
+      const rawId = String(sysInfo.deviceId || sysInfo.id);
+      let hash = 0;
+      for (let i = 0; i < rawId.length; i++) {
+        hash = ((hash << 5) - hash) + rawId.charCodeAt(i);
+        hash |= 0;
+      }
+      const suffix = String(100000 + (Math.abs(hash) % 900000));
+      serial = `98${suffix}`;
+    } else {
+      serial = `98${Math.floor(100000 + Math.random() * 900000)}`;
+    }
+  }
+
+  const cleanSerial = String(serial).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const devId = generateDeterministicDeviceId(safeTransport, { ...sysInfo, serial }, devName);
+  const sensorsMap = new Map();
+  const rawList = Array.isArray(list) ? list : (list?.channels || list?.logging_chs || []);
 
   // Detect whether this is a data logger / acquisition hub (e.g. S330, S331, S551, DS350, S320)
   // or a standalone instrument (e.g. S403, S401, S421, S450, S530 with multiple parameters).
@@ -642,13 +719,25 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
       let chName = ch.channel_name || ch.name || ch.logic_channel_description || `Channel ${idx + 1}`;
       if (/^ressure/i.test(chName)) chName = 'P' + chName;
 
+      const cleanSensKey = String(sensName || `sens_${sensorsMap.size}`).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const cid = ch.channel_id ?? ch.id ?? (idx + 1);
+
       sens.channels.push({
-        id: `ch_${devId}_${ch.channel_id ?? ch.id ?? idx + 1}_${idx}`,
-        channel_id: ch.channel_id ?? ch.id ?? (idx + 1),
+        id: ch.id || `ch_sn_${cleanSerial}_${cid}_${idx}`,
+        channel_id: cid,
+        channelId: cid,
         name: chName,
         unit,
         device: devName,
         deviceId: devId,
+        deviceSerial: serial,
+        transport: transportLabel || safeTransport.toUpperCase(),
+        transportType: safeTransport,
+        sensorName: sensName,
+        sensorId: sens.id,
+        sensorIndex: sensorsMap.size,
+        slaver_addr: ch.slaver_addr ?? ch.slaverAddr,
+        mBValueAddr: ch.mBValueAddr ?? ch.regAddr,
         desc: ch.description || ch.fullName || ''
       });
     });
@@ -701,18 +790,33 @@ export function buildModbusDevice({
   const cleanHost = isRtu
     ? String(serialPort || 'COM1').replace(/[^a-zA-Z0-9_-]/g, '_')
     : String(host).replace(/[^a-zA-Z0-9_-]/g, '_');
-  const deviceId = isRtu
-    ? `dev_modbus_rtu_${cleanHost}_baud_${baudRate}_slave_${sId}`
-    : `dev_modbus_tcp_${cleanHost}_${p}_slave_${sId}`;
+
+  // If a valid hardware serial was detected (e.g. from SUTO S331 Modbus query) use it;
+  // otherwise, assign a virtual serial number starting with '99xxxxxx'
+  const isGenericSerial = (s) => !s || /^ID-\d+$/i.test(String(s)) || /^SN-(USB|TCP|BLE|API)-/i.test(String(s)) || String(s).length < 3;
+  const finalSerial = (serial && !isGenericSerial(serial))
+    ? String(serial).trim()
+    : generateModbusSerialNumber(isRtu ? `${cleanHost}_${baudRate}` : `${cleanHost}_${p}`, sId);
+
+  const cleanSerial = String(finalSerial).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const deviceId = `dev_${transportType}_sn_${cleanSerial}`;
+  const pFormatted = p === 502 ? '' : `:${p}`;
   const transportLabel = isRtu
-    ? `Modbus RTU (${serialPort || 'COM'} @ ${baudRate} ID:${sId})`
-    : `Modbus TCP (${host}:${p}${sId ? ` ID:${sId}` : ''})`;
+    ? `Modbus RTU (${serialPort || 'COM'})`
+    : `Modbus TCP (${host}${pFormatted})`;
 
   const formattedChannels = (channels || []).map((ch, idx) => {
     const chId = ch.channel_id ?? ch.id ?? (idx + 1);
     const chName = ch.name || ch.channel_name || `Channel ${chId}`;
+    const explicitSensor = (ch.sensor_description || ch.sensorDescription || ch.sensor_name || '').trim();
+    let sensName = explicitSensor;
+    if (/^451$/i.test(sensName)) sensName = 'S451';
+    if (/^212$/i.test(sensName)) sensName = 'S212';
+    if (!sensName) sensName = `${name} Channels`;
+    const cleanSensKey = String(sensName).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+
     return {
-      id: `${deviceId}_ch_${chId}`,
+      id: ch.id || `ch_sn_${cleanSerial}_${chId}`,
       channel_id: chId,
       channelId: chId,
       name: chName,
@@ -720,8 +824,11 @@ export function buildModbusDevice({
       resolution: ch.resolution ?? 2,
       device: name,
       deviceId,
-      sensor_description: ch.sensor_description || ch.sensorDescription || ch.sensor_name || '',
-      sensorDescription: ch.sensor_description || ch.sensorDescription || ch.sensor_name || '',
+      deviceSerial: finalSerial,
+      devicePort: isRtu ? null : p,
+      sensorName: sensName,
+      sensor_description: explicitSensor,
+      sensorDescription: explicitSensor,
       slaver_addr: ch.slaver_addr ?? ch.slaverAddr ?? sId,
       mBAccessFuncCode: ch.mBAccessFuncCode ?? ch.funcCode ?? 3,
       mBValueAddr: ch.mBValueAddr ?? ch.regAddr ?? 0,
@@ -759,7 +866,7 @@ export function buildModbusDevice({
     id: deviceId,
     name,
     model: model || (isRtu ? 'Modbus RTU Device' : 'Modbus TCP Device'),
-    serial: serial || `ID-${sId}`,
+    serial: finalSerial,
     softwareVersion: softwareVersion || '1.0',
     transport: transportLabel,
     transportType: isRtu ? 'modbus_rtu' : 'modbus_tcp',
@@ -780,7 +887,7 @@ export function buildModbusDevice({
       slaveId: sId,
       name,
       model: model || null,
-      serial: serial || null
+      serial: finalSerial
     },
     sensors: finalSensors.length > 0 ? finalSensors : [
       {
@@ -997,11 +1104,22 @@ export function syncMeasurementPointToScape(locationId, mpId, customLocations = 
  * Synchronize all measurement points across all locations to their matched ProcessScapes
  */
 export function syncAllLocationsToScapes(customLocations = null) {
-  const allScapes = getAllScapes();
+  let allScapes = getAllScapes();
+  const rawLocations = customLocations || getLocations();
+
+  // If locations exist or are being synced, but there are 0 scapes in the system,
+  // automatically create a clean default empty scape so the sensor cards have a canvas to display on!
+  const hasChannels = rawLocations.some(l =>
+    (l.measurementPoints || []).some(mp => Array.isArray(mp.channels) && mp.channels.length > 0)
+  );
+  if (allScapes.length === 0 && (rawLocations.length > 0 || hasChannels)) {
+    const fresh = createNewScape('Default Plant');
+    allScapes = [fresh];
+  }
+
   const currentActiveId = getActiveScapeId();
   const fallbackScapeId = currentActiveId || allScapes[0]?.id;
 
-  const rawLocations = customLocations || getLocations();
   const locations = rawLocations.map(loc => {
     // If location already has a valid scapeId that exists in allScapes, strictly preserve it!
     // Never overwrite an assigned scape when multiple locations and scapes exist.
@@ -1212,14 +1330,13 @@ export function getDeviceChannelAssignments(device, customLocations = null) {
   const locations = customLocations || getLocations();
 
   const devChannelIds = new Set();
+  const devSerial = String(device.serial || device.connectionConfig?.serial || '').trim();
+  const devId = String(device.id || '').trim();
+  const devName = String(device.name || '').trim();
+
   (device.sensors || []).forEach(s => {
     (s.channels || []).forEach(c => {
       if (c.id) devChannelIds.add(String(c.id));
-      if (c.channel_id !== undefined && c.channel_id !== null) {
-        devChannelIds.add(String(c.channel_id));
-        devChannelIds.add(`cid_${c.channel_id}`);
-      }
-      if (c.channelId) devChannelIds.add(String(c.channelId));
     });
   });
 
@@ -1227,12 +1344,18 @@ export function getDeviceChannelAssignments(device, customLocations = null) {
   locations.forEach(loc => {
     (loc.measurementPoints || []).forEach(mp => {
       (mp.channels || []).forEach(ch => {
-        const matchesId = (ch.id && devChannelIds.has(String(ch.id))) ||
-          (ch.channel_id !== undefined && devChannelIds.has(String(ch.channel_id))) ||
-          (ch.channelId && devChannelIds.has(String(ch.channelId)));
-        const matchesDeviceName = ch.device && device.name && ch.device === device.name;
+        if (!ch) return;
+        // Strict matching to prevent cross-device collision:
+        // 1. Exact full channel ID match
+        const matchesExactId = ch.id && devChannelIds.has(String(ch.id));
+        // 2. Hardware / virtual serial number match (highest priority physical hardware identifier)
+        const matchesSerial = Boolean(devSerial && ch.deviceSerial && String(ch.deviceSerial) === devSerial);
+        // 3. Exact device ID match
+        const matchesDevId = Boolean(devId && ((ch.deviceId && String(ch.deviceId) === devId) || (typeof ch.id === 'string' && ch.id.includes(devId))));
+        // 4. Device Name match ONLY if neither device has a serial or deviceId
+        const matchesDeviceName = Boolean(!devSerial && !devId && !ch.deviceSerial && !ch.deviceId && ch.device && devName && ch.device === devName);
 
-        if (matchesId || matchesDeviceName) {
+        if (matchesExactId || matchesSerial || matchesDevId || matchesDeviceName) {
           assignments.push({
             channelId: ch.id || ch.channel_id,
             channelName: ch.name || ch.channelName || 'Channel',

@@ -122,10 +122,51 @@ pub const CMD_GET_ONLINE_VAL_PREFIX: [u8; 3] = [0x04, 0x01, 0x01];
 // System-Info "get max channel count" (`Commands.commandGetMaxChannelCount`).
 pub const CMD_GET_MAX_CHANNELS: [u8; 3] = [0x01, 0xFF, 0x23];
 
-// Device identifications that require the transformed (0x0B) channel-settings
-// command when firmware >= 1.54 (`CSCOMMExtend.refreshChannelInformation`).
+// Device identifications (Mirrors CSLib & modbusProtocol.js)
 pub const DEVICE_TYPE_S330: u16 = 0x1064;
 pub const DEVICE_TYPE_S331: u16 = 0x1065;
+pub const DEVICE_TYPE_S551: u16 = 0x1066;
+pub const DEVICE_TYPE_S551_P6: u16 = 0x1067;
+pub const DEVICE_TYPE_S600: u16 = 0x1068;
+pub const DEVICE_TYPE_DS350: u16 = 0x1055;
+pub const DEVICE_TYPE_DS320: u16 = 0x1052;
+pub const DEVICE_TYPE_DS330: u16 = 0x1053;
+pub const DEVICE_TYPE_S550_P2: u16 = 0x1060;
+pub const DEVICE_TYPE_S550_P4: u16 = 0x1061;
+pub const DEVICE_TYPE_S550_P6: u16 = 0x1062;
+
+// Standalone Sensors
+pub const DEVICE_TYPE_S401: u16 = 0x1049;
+pub const DEVICE_TYPE_S120: u16 = 0x104B;
+pub const DEVICE_TYPE_S505_DP500: u16 = 0x1080;
+pub const DEVICE_TYPE_S505_DP520: u16 = 0x1082;
+pub const DEVICE_TYPE_S418_MIN: u16 = 0x120E;
+pub const DEVICE_TYPE_S418_MAX: u16 = 0x122E;
+pub const DEVICE_TYPE_S461: u16 = 0x1300;
+pub const DEVICE_TYPE_S463: u16 = 0x1302;
+
+/// Check whether a device identification represents an S461 or S463 clamp-on ultrasonic meter
+pub fn is_s461_family(id: u16) -> bool {
+    matches!(id, DEVICE_TYPE_S461 | DEVICE_TYPE_S463)
+}
+
+/// Check whether a device identification represents a multi-channel acquisition hub/display
+pub fn is_hub_device(id: u16) -> bool {
+    matches!(
+        id,
+        DEVICE_TYPE_S330
+            | DEVICE_TYPE_S331
+            | DEVICE_TYPE_S551
+            | DEVICE_TYPE_S551_P6
+            | DEVICE_TYPE_S600
+            | DEVICE_TYPE_DS350
+            | DEVICE_TYPE_DS320
+            | DEVICE_TYPE_DS330
+            | DEVICE_TYPE_S550_P2
+            | DEVICE_TYPE_S550_P4
+            | DEVICE_TYPE_S550_P6
+    )
+}
 
 /// Decoded device information from the discovery (`'A'` / 0x41) reply.
 /// Mirrors CSLib `CSCOMM_DEVICE_ID` (8-byte struct).
@@ -236,6 +277,69 @@ pub fn lookup_unit(unit_index: u8, ascii_custom: &str) -> String {
         45 => "A".into(),
         46 => "kg/s".into(),
         47 => "kg".into(),
+        48 => "m³/h av".into(),
+        49 => "l/h av".into(),
+        50 => "kg/h av".into(),
+        51 => "cf/h av".into(),
+        52 => "kg/h".into(),
+        53 => "kg/min".into(),
+        54 => "g/m³ atm".into(),
+        55 => "mg/m³ atm".into(),
+        60 => "m³/d".into(),
+        61 => "m³/h".into(),
+        62 => "m³/min".into(),
+        63 => "m³/s".into(),
+        64 => "l/d".into(),
+        65 => "l/h".into(),
+        66 => "l/min".into(),
+        67 => "l/s".into(),
+        68 => "gal/d".into(),
+        69 => "gal/h".into(),
+        70 => "gal/min".into(),
+        71 => "gal/s".into(),
+        80 => "cf/d".into(),
+        81 => "cf/h".into(),
+        82 => "cf/min".into(),
+        83 => "cfs".into(),
+        92 => "m³".into(),
+        93 => "l".into(),
+        94 => "gal".into(),
+        97 => "cf".into(),
+        100 => "A".into(),
+        101 => "V".into(),
+        102 => "kW".into(),
+        103 => "kvar".into(),
+        104 => "Hz".into(),
+        105 => "kWh".into(),
+        106 => "kvarh".into(),
+        107 => "kVA".into(),
+        109 => "%".into(),
+        110 => "ppm".into(),
+        121 => "MW".into(),
+        122 => "MWh".into(),
+        123 => "kBTU".into(),
+        124 => "MBTU".into(),
+        133 => "GJ/h".into(),
+        134 => "kcal/h".into(),
+        135 => "Mbtu/h".into(),
+        136 => "kJ/h".into(),
+        137 => "Btu/h".into(),
+        138 => "GJ".into(),
+        139 => "kcal".into(),
+        140 => "Mbtu".into(),
+        141 => "KJ".into(),
+        142 => "Btu".into(),
+        143 => "USG/min".into(),
+        144 => "IG/min".into(),
+        145 => "bbl/min".into(),
+        146 => "UG".into(),
+        147 => "bbl".into(),
+        148 => "IG".into(),
+        149 => "°Ctd (PDP)".into(),
+        150 => "°Ctd (ADP)".into(),
+        151 => "ml/m³".into(),
+        152 => "°Ftd (PDP)".into(),
+        153 => "°Ftd (ADP)".into(),
         _ => custom_unit_fallback(unit_index, ascii_custom),
     }
 }

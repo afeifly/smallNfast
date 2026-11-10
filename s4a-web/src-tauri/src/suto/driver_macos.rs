@@ -111,12 +111,34 @@ impl MacUsbTransport {
             }
         }
 
-        // Fallback: If no explicit match and no SUTO VID found, look for any device with bulk endpoints if specified
+        // Helper to verify a device actually has bulk IN and OUT endpoints (avoids picking up keyboards/hubs)
+        fn has_bulk_endpoints(dev: &Device<GlobalContext>) -> bool {
+            if let Ok(config_desc) = dev.active_config_descriptor().or_else(|_| dev.config_descriptor(0)) {
+                for iface in config_desc.interfaces() {
+                    for iface_desc in iface.descriptors() {
+                        let mut has_in = false;
+                        let mut has_out = false;
+                        for ep in iface_desc.endpoint_descriptors() {
+                            if ep.transfer_type() == TransferType::Bulk {
+                                if ep.direction() == Direction::In { has_in = true; }
+                                if ep.direction() == Direction::Out { has_out = true; }
+                            }
+                        }
+                        if has_in && has_out {
+                            return true;
+                        }
+                    }
+                }
+            }
+            false
+        }
+
+        // Fallback: If no explicit match and no SUTO VID found, look for any non-Apple device with valid bulk endpoints
         if target_device.is_none() && path.is_none() {
             for dev in devices.iter() {
                 if let Ok(desc) = dev.device_descriptor() {
-                    // Skip root hubs
-                    if desc.vendor_id() != 0x05ac && desc.vendor_id() != 0x0000 {
+                    // Skip root hubs, Apple devices, and devices without bulk endpoints
+                    if desc.vendor_id() != 0x05ac && desc.vendor_id() != 0x0000 && has_bulk_endpoints(&dev) {
                         target_device = Some(dev);
                         target_desc = Some(desc);
                         break;
@@ -126,7 +148,7 @@ impl MacUsbTransport {
         }
 
         let dev = target_device.ok_or_else(|| {
-            "No SUTO USB device detected. Please verify that your SUTO hardware is connected via USB-C.".to_string()
+            "No SUTO USB bulk device (VID: 0x16C0) detected. If your sensor is connected via a USB-to-RS485 cable/adapter (e.g. CH340 / FTDI), please connect via the 'Modbus RTU' tab instead.".to_string()
         })?;
         let desc = target_desc.unwrap();
 

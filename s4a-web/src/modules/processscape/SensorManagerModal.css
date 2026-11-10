@@ -200,6 +200,8 @@
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
+  height: calc(100% - 58px);
 }
 
 /* Left Column: Device & Sensor Tree */
@@ -209,6 +211,9 @@
   display: flex;
   flex-direction: column;
   background: #f8fafc;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .theme-dark .ps-sm-col-left {
@@ -309,11 +314,36 @@
 .ps-sm-tree-container {
   position: relative;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.theme-dark .ps-sm-tree-container {
+  scrollbar-color: #475569 transparent;
+}
+
+.ps-sm-tree-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ps-sm-tree-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ps-sm-tree-container::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.theme-dark .ps-sm-tree-container::-webkit-scrollbar-thumb {
+  background-color: #475569;
 }
 
 /* Circular progress loading overlay for ps-sm-tree-container */
@@ -439,6 +469,9 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   overflow: hidden;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .theme-dark .ps-sm-device-node {
@@ -606,6 +639,7 @@
   cursor: grab;
   user-select: none;
   transition: all 0.12s ease;
+  flex-shrink: 0;
 }
 
 .theme-dark .ps-sm-channel-item {
@@ -728,6 +762,9 @@
   display: flex;
   flex-direction: column;
   background: #ffffff;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .theme-dark .ps-sm-col-right {
@@ -736,11 +773,36 @@
 
 .ps-sm-locations-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.theme-dark .ps-sm-locations-container {
+  scrollbar-color: #475569 transparent;
+}
+
+.ps-sm-locations-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ps-sm-locations-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ps-sm-locations-container::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.theme-dark .ps-sm-locations-container::-webkit-scrollbar-thumb {
+  background-color: #475569;
 }
 
 .ps-sm-empty-locations {
@@ -760,6 +822,9 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: all 0.15s ease;
   cursor: pointer;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ps-sm-location-card.is-active-target {
@@ -927,6 +992,7 @@
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .theme-dark .ps-sm-mp-card {

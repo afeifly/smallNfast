@@ -1371,5 +1371,127 @@
   background: rgba(15, 23, 42, 0.94);
 }
 
+/* --- Empty Stage Page (When all locations are removed and no active scape) --- */
+.ps-empty-stage-page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background-color: var(--ps-card, #ffffff);
+  min-height: 100%;
+  width: 100%;
+}
+
+.ps-empty-stage-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  max-width: 480px;
+  padding: 48px 36px;
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+.theme-dark .ps-empty-stage-card {
+  background: #131922;
+  border-color: #334155;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.ps-empty-stage-icon {
+  font-size: 52px;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.ps-empty-stage-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.3px;
+}
+
+.theme-dark .ps-empty-stage-title {
+  color: #f8fafc;
+}
+
+.ps-empty-stage-desc {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0 0 24px 0;
+  line-height: 1.5;
+}
+
+.theme-dark .ps-empty-stage-desc {
+  color: #94a3b8;
+}
+
+.ps-empty-stage-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.ps-empty-stage-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #00ac86;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 172, 134, 0.25);
+}
+
+.ps-empty-stage-btn-primary:hover {
+  background: #009372;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 172, 134, 0.35);
+}
+
+.ps-empty-stage-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ps-empty-stage-btn-secondary:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.theme-dark .ps-empty-stage-btn-secondary {
+  background: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+.theme-dark .ps-empty-stage-btn-secondary:hover {
+  background: #283548;
+  color: #f8fafc;
+}
+
 
 

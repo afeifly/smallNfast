@@ -60,13 +60,13 @@
             />
           </div>
 
-          <!-- Additional Text -->
-          <div class="form-group">
+          <!-- Additional Text (Read-only, shown only if note1 is present) -->
+          <div class="form-group" v-if="additionalText && additionalText.trim()">
             <label>Additional Text</label>
             <input 
               type="text" 
-              v-model="additionalText" 
-              placeholder="e.g. Additional text (optional)" 
+              :value="additionalText" 
+              readonly 
             />
           </div>
 
@@ -132,6 +132,7 @@
                 <th>Item Number</th>
                 <th>Product Name</th>
                 <th>Default Band / Logo</th>
+                <th>Note 1 (Additional Text)</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -144,13 +145,14 @@
                     {{ product.band === 'pneumatech' ? 'Pneumatech' : 'Atlas Copco' }}
                   </span>
                 </td>
+                <td>{{ product.note1 || '-' }}</td>
                 <td class="actions-cell">
                   <button class="edit-action" @click="openEditModal(product)">Edit</button>
                   <button class="delete-action" @click="deleteProduct(product.item)">Delete</button>
                 </td>
               </tr>
               <tr v-if="searchedProducts.length === 0">
-                <td colspan="4" class="no-data">No products found</td>
+                <td colspan="5" class="no-data">No products found</td>
               </tr>
             </tbody>
           </table>
@@ -204,6 +206,14 @@
               <option value="atlascopco">Atlas Copco</option>
               <option value="pneumatech">Pneumatech</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label>Note 1 (Additional Text)</label>
+            <input 
+              type="text" 
+              v-model="productForm.note1" 
+              placeholder="e.g. Additional text on label (optional)"
+            />
           </div>
           
           <p v-if="productFormError" class="modal-error">{{ productFormError }}</p>
@@ -303,6 +313,9 @@ async function fetchProducts() {
         selectedItemNumber.value = products.value[0].item;
         productName.value = products.value[0].name;
         selectedBand.value = products.value[0].band || 'atlascopco';
+        additionalText.value = products.value[0].note1 || '';
+      } else {
+        additionalText.value = match.note1 || '';
       }
     }
   } catch (error) {
@@ -314,6 +327,7 @@ function onItemNumberChange() {
   const prod = products.value.find(p => p.item === selectedItemNumber.value);
   productName.value = prod ? prod.name : '';
   selectedBand.value = prod ? (prod.band || 'atlascopco') : 'atlascopco';
+  additionalText.value = prod ? (prod.note1 || '') : '';
 }
 
 function toggleDropdown() {
@@ -555,14 +569,19 @@ const searchedProducts = computed(() => {
 
 function openAddModal() {
   modalMode.value = 'add';
-  productForm.value = { item: '', name: '', band: 'atlascopco' };
+  productForm.value = { item: '', name: '', band: 'atlascopco', note1: '' };
   productFormError.value = '';
   showProductModal.value = true;
 }
 
 function openEditModal(product) {
   modalMode.value = 'edit';
-  productForm.value = { item: product.item, name: product.name, band: product.band || 'atlascopco' };
+  productForm.value = { 
+    item: product.item, 
+    name: product.name, 
+    band: product.band || 'atlascopco',
+    note1: product.note1 || ''
+  };
   productFormError.value = '';
   showProductModal.value = true;
 }

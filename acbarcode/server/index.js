@@ -453,13 +453,14 @@ app.get('/api/products', (req, res) => {
 });
 
 app.post('/api/products', adminAuth, (req, res) => {
-  const { item, name, band } = req.body;
+  const { item, name, band, note1 } = req.body;
   if (!item || !name) {
     return res.status(400).json({ error: 'Item number and name are required' });
   }
   const cleanItem = item.trim();
   const cleanName = name.trim();
   const cleanBand = (band || 'atlascopco').trim();
+  const cleanNote1 = note1 && typeof note1 === 'string' && note1.trim() ? note1.trim() : null;
 
   const productsList = loadProducts();
   const existing = productsList.find(p => p.item.toLowerCase() === cleanItem.toLowerCase());
@@ -467,7 +468,7 @@ app.post('/api/products', adminAuth, (req, res) => {
     return res.status(400).json({ error: `Product with item number ${cleanItem} already exists` });
   }
 
-  const newProduct = { item: cleanItem, name: cleanName, band: cleanBand };
+  const newProduct = { item: cleanItem, name: cleanName, band: cleanBand, note1: cleanNote1 };
   productsList.push(newProduct);
   if (saveProducts(productsList)) {
     res.status(201).json(newProduct);
@@ -478,12 +479,13 @@ app.post('/api/products', adminAuth, (req, res) => {
 
 app.put('/api/products/:item', adminAuth, (req, res) => {
   const targetItem = req.params.item;
-  const { name, band } = req.body;
+  const { name, band, note1 } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Product name is required' });
   }
   const cleanName = name.trim();
   const cleanBand = (band || 'atlascopco').trim();
+  const cleanNote1 = note1 && typeof note1 === 'string' && note1.trim() ? note1.trim() : null;
 
   const productsList = loadProducts();
   const index = productsList.findIndex(p => p.item.toLowerCase() === targetItem.toLowerCase());
@@ -493,6 +495,7 @@ app.put('/api/products/:item', adminAuth, (req, res) => {
 
   productsList[index].name = cleanName;
   productsList[index].band = cleanBand;
+  productsList[index].note1 = cleanNote1;
 
   if (saveProducts(productsList)) {
     res.json(productsList[index]);

@@ -1,5 +1,5 @@
 import { ASSET_DEFS, EQUIPMENT_COLOR_THEMES, SENSOR_CARD_TEMPLATES } from './constants.js';
-import { getPointAlongPipe, isPipeEndpointOpen, resolvePipelineFlowDirections } from './pipeUtils.js';
+import { getPointAlongPipe, isPipeEndpointOpen, measureTextNoteBox, resolvePipelineFlowDirections } from './pipeUtils.js';
 
 // Helper to create an SVG element with attributes and optional text content
 export function svgEl(tag, attrs = {}, textContent = null) {
@@ -2138,11 +2138,58 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
       cursor: 'move'
     });
 
+    const noteColor = node.color || '#64748b';
+    const box = measureTextNoteBox(node);
+
+    // Hit-test background / outline border
+    const borderAttrs = {
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      rx: box.outlineStyle === 'pill' ? Math.round(box.height / 2) : (box.outlineStyle === 'double' ? 4 : 3),
+      fill: box.outlineStyle === 'pill' ? 'rgba(15, 23, 42, 0.03)' : 'transparent',
+      stroke: box.hasBorder ? noteColor : 'none',
+      'stroke-width': box.outlineStyle === 'dotted' ? 1.4 : (box.outlineStyle === 'double' ? 1 : (box.hasBorder ? 1.1 : 0))
+    };
+    if (box.outlineStyle === 'dotted') {
+      borderAttrs['stroke-dasharray'] = '1.5 3';
+      borderAttrs['stroke-linecap'] = 'round';
+    } else if (box.outlineStyle === 'dashed') {
+      borderAttrs['stroke-dasharray'] = '5 3';
+    }
+    tG.appendChild(svgEl('rect', borderAttrs));
+
+    if (box.outlineStyle === 'double') {
+      tG.appendChild(svgEl('rect', {
+        x: box.x + 2.5,
+        y: box.y + 2.5,
+        width: Math.max(4, box.width - 5),
+        height: Math.max(4, box.height - 5),
+        rx: 2,
+        fill: 'none',
+        stroke: noteColor,
+        'stroke-width': 0.9,
+        'pointer-events': 'none'
+      }));
+    }
+
     const txtEl = svgEl('text', {
-      x: 0, y: 0, fill: node.color || '#64748b', 'font-size': node.fontSize || 13,
-      'font-weight': 700, 'font-family': 'JetBrains Mono, sans-serif'
+      x: 0,
+      y: 0,
+      fill: noteColor,
+      'font-size': box.fontSize,
+      'font-weight': 700,
+      'font-family': 'JetBrains Mono, sans-serif'
     });
-    txtEl.textContent = node.text || 'Text Note';
+    box.lines.forEach((lineStr, lineIdx) => {
+      const tspan = svgEl('tspan', {
+        x: 0,
+        dy: lineIdx === 0 ? 0 : box.lineHeight
+      });
+      tspan.textContent = lineStr === '' ? '\u00A0' : lineStr;
+      txtEl.appendChild(tspan);
+    });
     tG.appendChild(txtEl);
 
     // Dotted line connecting anchor point to the pipe branch (shown in modify/editor mode only)
@@ -2169,10 +2216,17 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
     }
 
     if (isSel) {
-      const tw = (node.text ? node.text.length : 8) * 9;
       tG.appendChild(svgEl('rect', {
-        x: -4, y: -(node.fontSize || 13) - 2, width: tw + 8, height: (node.fontSize || 13) + 8, rx: 3,
-        fill: 'rgba(0, 168, 118, 0.12)', stroke: '#00a876', 'stroke-width': 1.5, 'stroke-dasharray': '3 2'
+        x: box.x - 3,
+        y: box.y - 3,
+        width: box.width + 6,
+        height: box.height + 6,
+        rx: 4,
+        fill: 'rgba(0, 168, 118, 0.08)',
+        stroke: '#00a876',
+        'stroke-width': 1.5,
+        'stroke-dasharray': '3 2',
+        'pointer-events': 'none'
       }));
 
       const anchorG = svgEl('g', {

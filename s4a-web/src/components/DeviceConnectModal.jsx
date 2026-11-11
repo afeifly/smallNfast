@@ -18,34 +18,34 @@ const MODBUS_PRESETS = {
     label: 'Custom Channel Configuration',
     name: 'Modbus Device',
     channels: [
-      { id: 1, name: 'Channel 1', unit: 'm³/h', funcCode: 3, regAddr: 0, dataType: 8, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Channel 1', unit: 'm³/h', resolution: 1, funcCode: 3, regAddr: 0, dataType: 8, a1: 1.0, a0: 0.0 }
     ]
   },
   s401_flow: {
     label: 'Flow, Velocity & Consumption (m³/h, m/s, m³)',
     name: 'Flow Meter',
     channels: [
-      { id: 1, name: 'Flow', unit: 'm³/h', funcCode: 3, regAddr: 0, dataType: 8, a1: 1.0, a0: 0.0 },
-      { id: 2, name: 'Velocity', unit: 'm/s', funcCode: 3, regAddr: 2, dataType: 8, a1: 1.0, a0: 0.0 },
-      { id: 3, name: 'Consumption', unit: 'm³', funcCode: 3, regAddr: 4, dataType: 8, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Flow', unit: 'm³/h', resolution: 1, funcCode: 3, regAddr: 0, dataType: 8, a1: 1.0, a0: 0.0 },
+      { id: 2, name: 'Velocity', unit: 'm/s', resolution: 2, funcCode: 3, regAddr: 2, dataType: 8, a1: 1.0, a0: 0.0 },
+      { id: 3, name: 'Consumption', unit: 'm³', resolution: 0, funcCode: 3, regAddr: 4, dataType: 8, a1: 1.0, a0: 0.0 }
     ]
   },
   s520_dew: {
     label: 'Dew Point & Pressure (°C, bar)',
     name: 'Dew Point Sensor',
     channels: [
-      { id: 1, name: 'Dew Point', unit: '°C', funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 2, name: 'Pressure', unit: 'bar', funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Dew Point', unit: '°C', resolution: 1, funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
+      { id: 2, name: 'Pressure', unit: 'bar', resolution: 2, funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 }
     ]
   },
   power_meter: {
     label: 'Generic 3-Phase Power Meter (V, A, kW, kWh)',
     name: 'Power Meter',
     channels: [
-      { id: 1, name: 'Voltage', unit: 'V', funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 2, name: 'Current', unit: 'A', funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 3, name: 'Active Power', unit: 'kW', funcCode: 3, regAddr: 4, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 4, name: 'Total Energy', unit: 'kWh', funcCode: 3, regAddr: 6, dataType: 7, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Voltage', unit: 'V', resolution: 1, funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
+      { id: 2, name: 'Current', unit: 'A', resolution: 2, funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 },
+      { id: 3, name: 'Active Power', unit: 'kW', resolution: 2, funcCode: 3, regAddr: 4, dataType: 7, a1: 1.0, a0: 0.0 },
+      { id: 4, name: 'Total Energy', unit: 'kWh', resolution: 1, funcCode: 3, regAddr: 6, dataType: 7, a1: 1.0, a0: 0.0 }
     ]
   }
 };
@@ -202,6 +202,7 @@ export default function DeviceConnectModal({
         id: nextId,
         name: `Channel ${nextId}`,
         unit: '',
+        resolution: 2,
         funcCode: 3,
         regAddr: nextReg,
         dataType: 8,
@@ -808,8 +809,8 @@ export default function DeviceConnectModal({
       <div className="modbus-section">
         {/* Connection Info */}
         {!isRtu ? (
-          <div className="modbus-grid-row">
-            <div className="form-group" style={{ flex: 1.6 }}>
+          <div className="modbus-grid-row modbus-tcp-row">
+            <div className="form-group" style={{ flex: 1.5 }}>
               <label className="form-label">Device Name</label>
               <input
                 type="text"
@@ -831,7 +832,7 @@ export default function DeviceConnectModal({
                 disabled={loading}
               />
             </div>
-            <div className="form-group" style={{ flex: 0.9 }}>
+            <div className="form-group modbus-port-group">
               <label className="form-label">Port</label>
               <input
                 type="number"
@@ -842,20 +843,17 @@ export default function DeviceConnectModal({
                 disabled={loading}
               />
             </div>
-            <div className="form-group" style={{ flex: 0.9 }}>
-              <label className="form-label" title="Unit ID / Slave ID (default: 1)">
-                Unit ID <span style={{ fontSize: 10, color: '#94a3b8' }}>(Opt)</span>
-              </label>
-              <input
-                type="number"
-                className="form-input"
-                value={modbusSlaveId}
-                onChange={(e) => setModbusSlaveId(e.target.value)}
-                placeholder="1"
-                min="0"
-                max="255"
-                disabled={loading}
-              />
+            <div className="form-group modbus-scan-group">
+              <button
+                type="button"
+                className="modbus-scan-channels-link"
+                onClick={handleDetectSutoDevice}
+                disabled={loading || modbusDiscovering || !modbusHost}
+                title={!modbusHost ? "Enter Host IP first to scan SUTO channels" : "Query device at this IP and read SUTO channels"}
+              >
+                {modbusDiscovering && <span className="spinner-sm" style={{ marginRight: '6px' }} />}
+                <span>Scan Channels (SUTO only)</span>
+              </button>
             </div>
           </div>
         ) : (
@@ -980,7 +978,8 @@ export default function DeviceConnectModal({
         <div className={`modbus-channels-header ${isFixedSuto ? 'fixed-suto-header' : ''}`}>
           <span>Channel Name</span>
           <span>Unit</span>
-          <span>Func Code</span>
+          {!isFixedSuto && <span>Resolution</span>}
+          <span>Func</span>
           <span>Reg Addr</span>
           <span>Data Type</span>
           {!isFixedSuto && <span style={{ textAlign: 'center' }}>Scaling Range</span>}
@@ -1011,14 +1010,29 @@ export default function DeviceConnectModal({
                   disabled={loading || isFixedSuto}
                   readOnly={isFixedSuto}
                 />
+                {!isFixedSuto && (
+                  <select
+                    className="modbus-input-sm"
+                    value={ch.resolution !== undefined ? ch.resolution : 2}
+                    onChange={(e) => handleUpdateModbusChannel(idx, 'resolution', parseInt(e.target.value, 10))}
+                    disabled={loading}
+                    title="Channel display decimal resolution"
+                  >
+                    <option value={0}>0 (1)</option>
+                    <option value={1}>0.1</option>
+                    <option value={2}>0.01</option>
+                    <option value={3}>0.001</option>
+                    <option value={4}>0.0001</option>
+                  </select>
+                )}
                 <select
                   className="modbus-input-sm"
                   value={ch.funcCode}
                   onChange={(e) => handleUpdateModbusChannel(idx, 'funcCode', parseInt(e.target.value, 10))}
                   disabled={loading || isFixedSuto}
                 >
-                  <option value={3}>FC 03 (Holding)</option>
-                  <option value={4}>FC 04 (Input)</option>
+                  <option value={3}>03</option>
+                  <option value={4}>04</option>
                 </select>
                 <input
                   type="number"
@@ -1509,37 +1523,30 @@ export default function DeviceConnectModal({
           )}
 
           {tab === 'modbus' && (
-            <div className="modbus-footer-btn-group">
-              <button
-                type="button"
-                className="modbus-test-btn"
-                onClick={handleDetectSutoDevice}
-                disabled={loading || modbusDiscovering || (modbusProtocolType === 'tcp' && !modbusHost) || (modbusProtocolType === 'rtu' && !modbusSerialPort)}
-                title="Clear current channels and automatically detect SUTO channels from device firmware"
-              >
-                {modbusDiscovering && <span className="spinner-sm" style={{ marginRight: '6px' }} />}
-                Auto detect(SUTO only)
-              </button>
-              <button
-                type="button"
-                className="connect-action-btn"
-                onClick={handleConnectModbus}
-                disabled={loading || modbusTesting || modbusDiscovering || modbusChannels.length === 0}
-              >
-                {loading ? 'Connecting...' : 'Connect to device'}
-              </button>
-            </div>
+            <button
+              type="button"
+              className="connect-action-btn"
+              onClick={handleConnectModbus}
+              disabled={loading || modbusTesting || modbusDiscovering || modbusChannels.length === 0}
+            >
+              {loading ? 'Connecting...' : 'Connect to device'}
+            </button>
           )}
         </div>
 
-        {/* Auto-detect warning confirmation dialog */}
+        {/* Channel scan warning confirmation dialog */}
         {showAutoDetectConfirm && (
           <div className="modbus-confirm-overlay" onClick={() => setShowAutoDetectConfirm(false)}>
             <div className="modbus-confirm-card" onClick={(e) => e.stopPropagation()}>
               <div className="modbus-confirm-icon">⚠️</div>
-              <div className="modbus-confirm-title">Clear Channels &amp; Auto-Detect?</div>
+              <div className="modbus-confirm-title">Replace Current Channels?</div>
               <div className="modbus-confirm-msg">
-                Auto-detect will clear the current channel list ({modbusChannels.length} channel{modbusChannels.length === 1 ? '' : 's'}) and scan the connected SUTO device for channels.
+                <p style={{ margin: '0 0 10px 0' }}>
+                  Scanning will clear the current channel list ({modbusChannels.length} channel{modbusChannels.length === 1 ? '' : 's'}) and query <strong>{modbusHost || 'the device'}</strong> to discover channels.
+                </p>
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px 10px', lineHeight: 1.45, textAlign: 'left' }}>
+                  ℹ️ <strong>Note:</strong> Auto-fetching channel structures is only supported on certain SUTO devices and gateways with built-in metadata support. Standard 3rd-party Modbus devices should be configured manually using &ldquo;Add Channel&rdquo;.
+                </p>
               </div>
               <div className="modbus-confirm-actions">
                 <button
@@ -1554,7 +1561,7 @@ export default function DeviceConnectModal({
                   className="modbus-confirm-proceed-btn"
                   onClick={executeAutoDetect}
                 >
-                  Yes, Auto-Detect
+                  Yes, Scan Channels
                 </button>
               </div>
             </div>

@@ -3,6 +3,8 @@ import './ProcessScapeView.css';
 import {
   ASSET_DEFS,
   EQUIPMENT_COLOR_THEMES,
+  NOTE_OUTLINE_STYLES,
+  NOTE_COLOR_PALETTE,
   SENSOR_CARD_TEMPLATES,
   PIPE_PRESETS,
   TIPS_LIST
@@ -976,9 +978,10 @@ export default function ProcessScapeView({
         const newNote = {
           id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           type: 'text_note',
-          text: 'Modbus / RTU',
+          text: 'Note:',
+          outlineStyle: 'single',
           fontSize: 12,
-          color: '#64748b',
+          color: '#475569',
           x: dropX,
           y: dropY,
           zIndex: 30
@@ -2136,6 +2139,22 @@ export default function ProcessScapeView({
       setSelectedIds(new Set(allConnected));
       return;
     }
+    const textEl = e.target.closest('.plant-text-group');
+    if (textEl && scapeMode === 'editor') {
+      const tId = textEl.getAttribute('data-text-id');
+      if (tId) {
+        setSelectedIds(new Set([tId]));
+        setIsInspectorOpen(true);
+        setTimeout(() => {
+          const inputEl = document.getElementById('psTextNoteInput');
+          if (inputEl) {
+            inputEl.focus();
+            inputEl.select();
+          }
+        }, 30);
+        return;
+      }
+    }
     const targetItem = e.target.closest('.plant-asset-group') || e.target.closest('.sensor-badge-group') || e.target.closest('.plant-text-group');
     if (targetItem) {
       const w = clientToWorld(e.clientX, e.clientY);
@@ -3163,7 +3182,7 @@ export default function ProcessScapeView({
                         </div>
                         <div className="ps-card-info">
                           <div className="ps-card-title">Text Note / Label</div>
-                          <div className="ps-card-desc">Editable text annotation (e.g. Modbus, Tag, Zone)</div>
+                          <div className="ps-card-desc">Editable text note with border styles &amp; custom sizing</div>
                         </div>
                       </div>
                     );
@@ -4036,6 +4055,145 @@ export default function ProcessScapeView({
                         }}
                       >
                         🗑 Delete Sensor Card
+                      </button>
+                    </>
+                  ) : singleSelectedElement?.type === 'text_note' ? (
+                    /* Dedicated Text Note / Label Inspector */
+                    <>
+                      <div className="ps-form-group">
+                        <label className="ps-form-label" htmlFor="psTextNoteInput">Note Text</label>
+                        <textarea
+                          id="psTextNoteInput"
+                          className="ps-input ps-textarea"
+                          rows={2}
+                          value={singleSelectedElement.text ?? ''}
+                          placeholder="Enter note text..."
+                          onChange={(e) => updateSelectedElement({ text: e.target.value })}
+                        />
+                      </div>
+
+                      {/* Outline Border Style Selector */}
+                      <div className="ps-form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label className="ps-form-label" style={{ margin: 0 }}>Outline Style</label>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                            {(NOTE_OUTLINE_STYLES.find(s => s.id === (singleSelectedElement.outlineStyle || 'none')) || NOTE_OUTLINE_STYLES[0]).name}
+                          </span>
+                        </div>
+                        <div className="ps-note-outline-grid">
+                          {NOTE_OUTLINE_STYLES.map(opt => {
+                            const active = (singleSelectedElement.outlineStyle || 'none') === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                className={`ps-note-outline-btn ${active ? 'active' : ''}`}
+                                title={opt.desc}
+                                aria-label={`Outline: ${opt.name}`}
+                                onClick={() => {
+                                  saveHistory('Change Note Outline');
+                                  updateSelectedElement({ outlineStyle: opt.id });
+                                }}
+                              >
+                                <span className={`ps-outline-preview style-${opt.id}`} aria-hidden="true">Abc</span>
+                                <span className="ps-outline-label">{opt.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Text & Border Color Swatches */}
+                      <div className="ps-form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label className="ps-form-label" style={{ margin: 0 }}>Text &amp; Border Color</label>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                            {(NOTE_COLOR_PALETTE.find(c => c.hex.toLowerCase() === (singleSelectedElement.color || '#64748b').toLowerCase())?.name) || 'Custom'}
+                          </span>
+                        </div>
+                        <div className="ps-swatches-row">
+                          {NOTE_COLOR_PALETTE.map(c => {
+                            const isActive = (singleSelectedElement.color || '#64748b').toLowerCase() === c.hex.toLowerCase();
+                            return (
+                              <button
+                                type="button"
+                                key={c.id}
+                                className={`ps-swatch-circle-btn ${isActive ? 'active' : ''}`}
+                                title={c.name}
+                                aria-label={c.name}
+                                onClick={() => {
+                                  saveHistory('Change Note Color');
+                                  updateSelectedElement({ color: c.hex });
+                                }}
+                                style={{ backgroundColor: c.hex }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Font Size Slider (Tailored for Text Note, not Device Size) */}
+                      <div className="ps-form-group">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label className="ps-form-label" style={{ margin: 0 }}>Text Size</label>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
+                            {singleSelectedElement.fontSize || 12} px
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 11, color: '#64748b', minWidth: 26 }}>10px</span>
+                          <input
+                            id="noteFontSizeSlider"
+                            type="range"
+                            min="10"
+                            max="32"
+                            step="1"
+                            style={{ flex: 1, accentColor: '#00ac86' }}
+                            value={singleSelectedElement.fontSize || 12}
+                            onChange={(e) => {
+                              const sz = parseInt(e.target.value, 10) || 12;
+                              saveHistory('Resize Note Text');
+                              updateSelectedElement({ fontSize: sz });
+                            }}
+                          />
+                          <span style={{ fontSize: 11, color: '#64748b', minWidth: 30, textAlign: 'right' }}>32px</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                          <button
+                            type="button"
+                            className="hud-btn-sm"
+                            style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+                            onClick={() => {
+                              saveHistory('Reset Note Size');
+                              updateSelectedElement({ fontSize: 12 });
+                            }}
+                            title="Reset font size to 12px"
+                          >
+                            Reset (12px)
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="hud-btn-sm btn-danger-outline"
+                        style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
+                        onClick={() => {
+                          saveHistory('Delete Text Note');
+                          const updated = elements.filter(e => e.id !== singleSelectedElement.id);
+                          setElements(updated);
+                          setSelectedIds(new Set());
+                          saveScape({
+                            id: activeScapeId,
+                            title: projectTitle,
+                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                            zones,
+                            elements: updated,
+                            pipes
+                          });
+                        }}
+                      >
+                        🗑 Delete Note
                       </button>
                     </>
                   ) : singleSelectedElement ? (

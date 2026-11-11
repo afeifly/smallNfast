@@ -310,6 +310,26 @@ export const TIPS_LIST = [
   'Pro Tip: Use the Resolution Dialog on the HUD to switch between 16:9 widescreen, 4:3 standard, square, and custom screen dimensions.'
 ];
 
+export const NOTE_OUTLINE_STYLES = [
+  { id: 'none',   name: 'None',        desc: 'Plain text without border' },
+  { id: 'single', name: 'Thin Single', desc: 'Thin single-line rectangular border' },
+  { id: 'double', name: 'Thin Double', desc: 'Thin double-line architectural border' },
+  { id: 'dotted', name: 'Dotted',      desc: 'Dotted outline border' },
+  { id: 'dashed', name: 'Dashed',      desc: 'Dashed outline border' },
+  { id: 'pill',   name: 'Rounded Pill', desc: 'Soft pill-shaped border' }
+];
+
+export const NOTE_COLOR_PALETTE = [
+  { id: 'slate',   name: 'Slate',     hex: '#475569' },
+  { id: 'dark',    name: 'Charcoal',  hex: '#0f172a' },
+  { id: 'teal',    name: 'SUTO Teal', hex: '#00ac86' },
+  { id: 'blue',    name: 'Blue',      hex: '#0284c7' },
+  { id: 'amber',   name: 'Amber',     hex: '#d97706' },
+  { id: 'red',     name: 'Alert Red', hex: '#dc2626' },
+  { id: 'violet',  name: 'Violet',    hex: '#7c3aed' },
+  { id: 'emerald', name: 'Green',     hex: '#16a34a' }
+];
+
 export function isSensorOrGateway(e) {
   if (!e || !e.type) return false;
   if (e.type === 'sensor_card') return false;

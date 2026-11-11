@@ -432,7 +432,9 @@
 }
 
 @keyframes lanSpin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lan-progress-container {
@@ -982,7 +984,7 @@
 
 .modbus-channels-header {
   display: grid;
-  grid-template-columns: 1.5fr 0.8fr 1fr 1fr 1.3fr 1.3fr 32px;
+  grid-template-columns: 1.8fr 0.8fr 1fr 0.65fr 0.9fr 1.2fr 1.2fr 30px;
   gap: 8px;
   padding: 0 10px;
   font-size: 11px;
@@ -992,7 +994,7 @@
 }
 
 .modbus-channels-header.fixed-suto-header {
-  grid-template-columns: 1.6fr 0.9fr 1.1fr 1fr 1.3fr;
+  grid-template-columns: 1.8fr 0.9fr 0.8fr 1fr 1.3fr;
 }
 
 .modbus-channels-container {
@@ -1006,7 +1008,7 @@
 
 .modbus-channel-row {
   display: grid;
-  grid-template-columns: 1.5fr 0.8fr 1fr 1fr 1.3fr 1.3fr 32px;
+  grid-template-columns: 1.8fr 0.8fr 1fr 0.65fr 0.9fr 1.2fr 1.2fr 30px;
   gap: 8px;
   align-items: center;
   background: #ffffff;
@@ -1017,7 +1019,7 @@
 }
 
 .modbus-channel-row.fixed-suto-row {
-  grid-template-columns: 1.6fr 0.9fr 1.1fr 1fr 1.3fr;
+  grid-template-columns: 1.8fr 0.9fr 0.8fr 1fr 1.3fr;
 }
 
 .modbus-channel-row.fixed-suto-row input[readonly],
@@ -1221,7 +1223,9 @@
 }
 
 .modbus-input-sm {
-  padding: 4px 6px;
+  height: 28px;
+  line-height: 20px;
+  padding: 3px 6px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   font-size: 11px;
@@ -1229,6 +1233,11 @@
   outline: none;
   width: 100%;
   box-sizing: border-box;
+}
+
+select.modbus-input-sm {
+  padding: 2px 4px;
+  appearance: auto;
 }
 
 .modbus-input-sm:focus {
@@ -1394,6 +1403,58 @@
   box-shadow: none;
 }
 
+.modbus-tcp-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.modbus-port-group {
+  flex: 0 0 70px;
+  width: 70px;
+  min-width: 60px;
+  max-width: 80px;
+}
+
+.modbus-scan-group {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: left;
+  height: 38px;
+  margin-bottom: 1px;
+}
+
+.modbus-scan-channels-link {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  padding: 0 2px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.modbus-scan-channels-link:hover:not(:disabled) {
+  color: #00ac86;
+}
+
+.modbus-scan-channels-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: #94a3b8;
+  text-decoration: none;
+}
+
 .modbus-footer-btn-group {
   display: flex;
   align-items: center;
@@ -1462,6 +1523,7 @@
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -1530,6 +1592,3 @@
 .modbus-confirm-proceed-btn:hover {
   background: #009674;
 }
-
-
-

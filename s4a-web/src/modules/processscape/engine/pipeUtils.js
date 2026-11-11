@@ -178,6 +178,39 @@ export function rectsIntersect(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h) {
   return !(r2x > r1x + r1w || r2x + r2w < r1x || r2y > r1y + r1h || r2y + r2h < r1y);
 }
 
+/**
+ * Measure layout box dimensions for a `text_note` annotation node.
+ * Shared between SVG rendering and bounding-box / fit calculations.
+ */
+export function measureTextNoteBox(node) {
+  const fontSize = Math.max(8, Number(node?.fontSize) || 12);
+  const rawText = (node?.text !== undefined && node?.text !== null) ? String(node.text) : 'Note:';
+  const lines = (rawText || ' ').split('\n');
+  const lineHeight = Math.round(fontSize * 1.32);
+
+  let maxLineW = 0;
+  for (const line of lines) {
+    let w = 0;
+    for (const ch of line) {
+      w += /[^\u0000-\u00ff]/.test(ch) ? fontSize * 1.05 : fontSize * 0.64;
+    }
+    if (w > maxLineW) maxLineW = w;
+  }
+  maxLineW = Math.max(maxLineW, fontSize * 2);
+
+  const outlineStyle = node?.outlineStyle || 'none';
+  const hasBorder = outlineStyle !== 'none';
+  const padX = hasBorder ? 10 : 4;
+  const padY = hasBorder ? 6 : 3;
+
+  const width = Math.ceil(maxLineW + padX * 2);
+  const height = Math.ceil((lines.length - 1) * lineHeight + Math.round(fontSize * 1.15) + padY * 2);
+  const x = -padX;
+  const y = -Math.round(fontSize * 0.85) - padY;
+
+  return { x, y, width, height, padX, padY, lineHeight, fontSize, lines, outlineStyle, hasBorder };
+}
+
 export function getElementBBox(el) {
   if (!el) return { x: 0, y: 0, w: 0, h: 0 };
   if (el.type === 'sensor_card') {
@@ -221,9 +254,8 @@ export function getElementBBox(el) {
   }
 
   if (el.type === 'text_note') {
-    const tw = (el.text ? el.text.length : 8) * 8.5;
-    const th = (el.fontSize || 13) + 6;
-    return { x: el.x - 4, y: el.y - (el.fontSize || 13), w: tw + 8, h: th };
+    const box = measureTextNoteBox(el);
+    return { x: el.x + box.x, y: el.y + box.y, w: box.width, h: box.height };
   }
 
   const def = ASSET_DEFS[el.type];

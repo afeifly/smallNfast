@@ -873,6 +873,107 @@
   border-color: var(--ps-primary);
 }
 
+.ps-textarea {
+  height: auto;
+  min-height: 56px;
+  padding: 7px 10px;
+  line-height: 1.45;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+/* Text Note Outline Border Selector */
+.ps-note-outline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.ps-note-outline-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--ps-border);
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.theme-dark .ps-note-outline-btn {
+  background: #0f172a;
+  color: #cbd5e1;
+}
+
+.ps-note-outline-btn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.theme-dark .ps-note-outline-btn:hover {
+  background: #1e293b;
+}
+
+.ps-note-outline-btn.active {
+  border-color: var(--ps-primary);
+  background: rgba(0, 172, 134, 0.08);
+  color: #008768;
+  box-shadow: 0 0 0 1px var(--ps-primary);
+}
+
+.ps-outline-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 18px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: currentColor;
+  box-sizing: border-box;
+}
+
+.ps-outline-preview.style-none {
+  border: 1px solid transparent;
+}
+
+.ps-outline-preview.style-single {
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+
+.ps-outline-preview.style-double {
+  border: 3px double currentColor;
+  border-radius: 3px;
+}
+
+.ps-outline-preview.style-dotted {
+  border: 1.5px dotted currentColor;
+  border-radius: 3px;
+}
+
+.ps-outline-preview.style-dashed {
+  border: 1px dashed currentColor;
+  border-radius: 3px;
+}
+
+.ps-outline-preview.style-pill {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.ps-outline-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Color theme swatches (Single-line compact circles) */
 .ps-swatches-row {
   display: flex;

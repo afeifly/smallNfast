@@ -6204,6 +6204,74 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(latestState?.activeScapeId).toBe('');
     expect(getLocations().find(l => l.id === 'loc_2')?.scapeId).toBe('');
   });
+
+  it('drops Text Note with default "Note:", renders dedicated Text Note Inspector (no Device Size / Equipment Tag Name), and supports border outline styles', () => {
+    localStorage.clear();
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[]}
+        initialPipes={[]}
+      />
+    );
+
+    const viewport = container.querySelector('.ps-canvas-viewport');
+    expect(viewport).not.toBeNull();
+
+    // 1. Simulate dropping text_note onto canvas
+    const dataTransfer = {
+      getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'text_note', key: 'text_note' }) : '')
+    };
+    fireEvent.drop(viewport, { dataTransfer, clientX: 250, clientY: 180 });
+
+    // Rendered SVG text node defaults to 'Note:' (not 'Modbus / RTU')
+    const textGroup = container.querySelector('.plant-text-group');
+    expect(textGroup).not.toBeNull();
+    expect(textGroup.textContent).toContain('Note:');
+
+    // 2. Open Inspector (open via HUD Properties button or double-click text group)
+    fireEvent.doubleClick(textGroup);
+    const inspector = container.querySelector('.ps-inspector');
+    expect(inspector).not.toBeNull();
+
+    // Dedicated Text Note Inspector: shows Note Text, Outline Style, Text Size; must NOT show Equipment Tag Name or Device Size
+    expect(inspector.textContent).toContain('Note Text');
+    expect(inspector.textContent).toContain('Outline Style');
+    expect(inspector.textContent).toContain('Text Size');
+    expect(inspector.textContent).not.toContain('Equipment Tag Name');
+    expect(inspector.textContent).not.toContain('Device Size');
+
+    // 3. Edit Note Text input -> SVG text updates immediately
+    const noteInput = container.querySelector('#psTextNoteInput');
+    expect(noteInput).not.toBeNull();
+    expect(noteInput.value).toBe('Note:');
+    fireEvent.change(noteInput, { target: { value: 'Zone B Header' } });
+    expect(container.querySelector('.plant-text-group text').textContent).toContain('Zone B Header');
+
+    // 4. Switch Outline Styles: Thin Double, Dotted, None
+    const doubleBtn = container.querySelector('button[aria-label="Outline: Thin Double"]');
+    expect(doubleBtn).not.toBeNull();
+    fireEvent.click(doubleBtn);
+    // Thin Double renders outer + inner rects plus selection halo rect (3 rects total when selected)
+    const doubleRects = container.querySelectorAll('.plant-text-group rect');
+    expect(doubleRects.length).toBe(3);
+
+    const dottedBtn = container.querySelector('button[aria-label="Outline: Dotted"]');
+    fireEvent.click(dottedBtn);
+    const dottedRect = container.querySelector('.plant-text-group rect');
+    expect(dottedRect.getAttribute('stroke-dasharray')).toBe('1.5 3');
+
+    const noneBtn = container.querySelector('button[aria-label="Outline: None"]');
+    fireEvent.click(noneBtn);
+    const plainRect = container.querySelector('.plant-text-group rect');
+    expect(plainRect.getAttribute('stroke')).toBe('none');
+
+    // 5. Adjust Text Size slider
+    const fontSlider = container.querySelector('#noteFontSizeSlider');
+    expect(fontSlider).not.toBeNull();
+    fireEvent.change(fontSlider, { target: { value: '20' } });
+    expect(container.querySelector('.plant-text-group text').getAttribute('font-size')).toBe('20');
+  });
 });
 
 

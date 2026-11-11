@@ -188,9 +188,11 @@ function App() {
           setSelectedLocationId(activeLocId);
           const activeLoc = locs.find(l => l.id === activeLocId);
           if (activeLoc?.scapeId) {
+            try { setActiveScapeId(activeLoc.scapeId); } catch (_) {}
             psActionsRef.current?.switchScape?.(activeLoc.scapeId);
-          } else if (prevCount === 0) {
-            psActionsRef.current?.reloadActiveScape?.();
+          } else {
+            try { setActiveScapeId(''); } catch (_) {}
+            psActionsRef.current?.switchScape?.('');
           }
           psActionsRef.current?.setActiveLocationId?.(activeLocId);
         } else {
@@ -240,6 +242,9 @@ function App() {
     if (found?.scapeId) {
       try { setActiveScapeId(found.scapeId); } catch (_) {}
       psActionsRef.current?.switchScape?.(found.scapeId);
+    } else {
+      try { setActiveScapeId(''); } catch (_) {}
+      psActionsRef.current?.switchScape?.('');
     }
     psActionsRef.current?.setActiveLocationId?.(locId);
   };
@@ -1067,12 +1072,12 @@ function App() {
                 className="tab-btn"
                 onClick={() => setShowSensorManagerModal(true)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-                title="Sensor Manager (Detect Devices, Locations, Measurement Points, Channels)"
+                title="Location & sensors (Detect Devices, Locations, Measurement Points, Channels)"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
                 </svg>
-                Sensor Manager
+                Location & sensors
               </button>
             )}
           </div>
@@ -1274,22 +1279,6 @@ function App() {
                 </>
               )}
 
-              {/* Scape Manager (Shown in both runtime and editor mode) */}
-              <Tooltip title="Scape Manager (Switch / Create Scapes)">
-                <IconButton
-                  className="header-icon-btn"
-                  onClick={() => psActionsRef.current?.openScapeManager?.()}
-                  style={{ color: '#0f172a' }}
-                  aria-label="Scape Manager"
-                >
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                    <polyline points="2 17 12 22 22 17" />
-                    <polyline points="2 12 12 17 22 12" />
-                  </svg>
-                </IconButton>
-              </Tooltip>
-
               {/* Import JSON, Export JSON, Export PNG (Only when Editor mode needs this) */}
               {psMode === 'editor' && (
                 <>
@@ -1487,13 +1476,18 @@ function App() {
                   if (screenSize) setPsScreenSize(screenSize);
                   if (projectTitle != null) setPsTitle(projectTitle);
                   if (scapeMode) setPsMode(scapeMode);
-                  if (newActiveScapeId && newActiveScapeId !== currentActiveScapeIdRef.current) {
-                    currentActiveScapeIdRef.current = newActiveScapeId;
-                    const locs = getLocations();
-                    const matchedLoc = locs.find(l => l.scapeId === newActiveScapeId);
-                    if (matchedLoc && matchedLoc.id !== selectedLocationId) {
-                      setSelectedLocationId(matchedLoc.id);
-                      psActionsRef.current?.setActiveLocationId?.(matchedLoc.id);
+                  if (newActiveScapeId !== undefined && newActiveScapeId !== currentActiveScapeIdRef.current) {
+                    currentActiveScapeIdRef.current = newActiveScapeId || '';
+                    if (newActiveScapeId) {
+                      const locs = getLocations();
+                      const hasValidSelectedLoc = locs.some(l => l.id === selectedLocationId);
+                      if (!hasValidSelectedLoc) {
+                        const matchedLoc = locs.find(l => l.scapeId === newActiveScapeId);
+                        if (matchedLoc) {
+                          setSelectedLocationId(matchedLoc.id);
+                          psActionsRef.current?.setActiveLocationId?.(matchedLoc.id);
+                        }
+                      }
                     }
                   }
                 }}
@@ -1634,7 +1628,6 @@ function App() {
                     <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>SCADA Architecture:</div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>Piping Flow</span>
-                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>8 Color Themes</span>
                       <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#b45309', fontWeight: 600 }}>Live Telemetry</span>
                     </div>
                   </div>
@@ -2350,16 +2343,17 @@ function App() {
         onClose={() => setShowSensorManagerModal(false)}
         activeLocationId={selectedLocationId}
         onSyncToScape={(targetScapeId, targetLocId) => {
-          if (!targetScapeId) {
-            try { setActiveScapeId(''); } catch (_) {}
-            setSelectedLocationId(null);
-            psActionsRef.current?.switchScape?.('');
-            psActionsRef.current?.reloadActiveScape?.('');
-            return;
-          }
           if (targetLocId) {
             setSelectedLocationId(targetLocId);
             psActionsRef.current?.setActiveLocationId?.(targetLocId);
+          } else if (!targetScapeId) {
+            setSelectedLocationId(null);
+          }
+          if (!targetScapeId) {
+            try { setActiveScapeId(''); } catch (_) {}
+            psActionsRef.current?.switchScape?.('');
+            psActionsRef.current?.reloadActiveScape?.('');
+            return;
           }
           try { setActiveScapeId(targetScapeId); } catch (_) {}
           psActionsRef.current?.switchScape?.(targetScapeId);

@@ -48,7 +48,7 @@ import {
   hasSavedLocations,
   DEFAULT_COMPRESSED_AIR_SCAPE
 } from './engine/scapeStorage.js';
-import { syncAllLocationsToScapes } from './engine/sensorManagerStorage.js';
+import { syncAllLocationsToScapes, getLocations, saveLocations } from './engine/sensorManagerStorage.js';
 import ScapeManagerModal from './ScapeManagerModal.jsx';
 import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
 
@@ -181,6 +181,13 @@ const HudIcons = {
       <rect x="18" y="18" width="4" height="4" fill="currentColor" />
       <rect x="2" y="18" width="4" height="4" fill="currentColor" />
     </svg>
+  ),
+  ScapeManager: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </svg>
   )
 };
 
@@ -200,12 +207,6 @@ export default function ProcessScapeView({
   const [scapeMode, setScapeMode] = useState(defaultMode); // 'runtime' | 'editor'
   const [activeLocationId, setActiveLocationId] = useState(initialActiveLocationId);
 
-  useEffect(() => {
-    if (initialActiveLocationId !== undefined) {
-      setActiveLocationId(initialActiveLocationId);
-    }
-  }, [initialActiveLocationId]);
-
   const [isScapeManagerOpen, setIsScapeManagerOpen] = useState(false);
   const [isBannerMinimized, setIsBannerMinimized] = useState(false);
 
@@ -223,8 +224,27 @@ export default function ProcessScapeView({
         zones: []
       };
     }
+    if (activeLocationId && activeLocationId !== 'example_demo') {
+      const locs = getLocations();
+      const curLoc = locs.find(l => l.id === activeLocationId);
+      if (curLoc && !curLoc.scapeId) {
+        return {
+          id: '',
+          title: 'ProcessScape',
+          tempCanvasSize: { width: 1024, height: 800 },
+          zones: [],
+          elements: [],
+          pipes: []
+        };
+      }
+      if (curLoc?.scapeId) {
+        const all = getAllScapes();
+        const found = all.find(s => s.id === curLoc.scapeId);
+        if (found) return found;
+      }
+    }
     return getActiveScape();
-  }, [initialElements, initialPipes, scapeVersion]);
+  }, [initialElements, initialPipes, activeLocationId, scapeVersion]);
 
   const [activeScapeId, setActiveScapeIdState] = useState(() => activeScape?.id || '');
   const [projectTitle, setProjectTitle] = useState(() => activeScape?.title || 'ProcessScape');
@@ -236,6 +256,93 @@ export default function ProcessScapeView({
   const [zones, setZones] = useState(() => activeScape?.zones || []);
   const [pipes, setPipes] = useState(() => (initialPipes.length > 0 ? initialPipes : (activeScape?.pipes || [])));
   const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape?.elements || [])));
+
+
+  const applyScapeToCanvas = useCallback((scape, resetModeToRuntime = false) => {
+    if (!scape || !scape.id) {
+      setActiveScapeIdState('');
+      setProjectTitle('ProcessScape');
+      setScreenSize({ w: 1024, h: 800 });
+      setZones([]);
+      setElements([]);
+      setPipes([]);
+      setSelectedIds(new Set());
+      if (resetModeToRuntime) setScapeMode('runtime');
+      setScapeVersion(v => v + 1);
+      return;
+    }
+    setActiveScapeIdState(scape.id);
+    setProjectTitle(scape.title || 'ProcessScape');
+    setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
+    setZones(scape.zones || []);
+    setElements(scape.elements || []);
+    setPipes(scape.pipes || []);
+    setSelectedIds(new Set());
+    if (resetModeToRuntime) setScapeMode('runtime');
+    setScapeVersion(v => v + 1);
+    const saved = getSavedScapeView(scape.id);
+    if (saved) {
+      setView(saved);
+    }
+  }, []);
+
+  const handleSelectActiveScape = useCallback((scape) => {
+    applyScapeToCanvas(scape, true);
+  }, [applyScapeToCanvas]);
+
+  const handleSelectScapeFromManager = useCallback((scape) => {
+    if (activeLocationId && activeLocationId !== 'example_demo' && initialElements.length === 0 && initialPipes.length === 0) {
+      const locs = getLocations();
+      const curLoc = locs.find(l => l.id === activeLocationId);
+      if (curLoc) {
+        const nextScapeId = scape?.id || '';
+        const updatedLocs = locs.map(l => (l.id === activeLocationId ? { ...l, scapeId: nextScapeId } : l));
+        saveLocations(updatedLocs);
+        syncAllLocationsToScapes(updatedLocs);
+        if (nextScapeId) {
+          setActiveScapeId(nextScapeId);
+          const refreshed = getAllScapes().find(s => s.id === nextScapeId) || scape;
+          applyScapeToCanvas(refreshed, true);
+        } else {
+          setActiveScapeId('');
+          applyScapeToCanvas(null, true);
+        }
+        return;
+      }
+    }
+    applyScapeToCanvas(scape, true);
+  }, [activeLocationId, initialElements.length, initialPipes.length, applyScapeToCanvas]);
+
+  const syncScapeForLocation = useCallback((locId) => {
+    if (!locId || locId === 'example_demo') return;
+    if (initialElements.length > 0 || initialPipes.length > 0) return;
+    const locs = getLocations();
+    const curLoc = locs.find(l => l.id === locId);
+    if (!curLoc) return;
+    const matchedScapeId = curLoc.scapeId || '';
+    if (matchedScapeId) {
+      const all = getAllScapes();
+      const target = all.find(s => s.id === matchedScapeId);
+      if (target) {
+        setActiveScapeId(target.id);
+        applyScapeToCanvas(target, false);
+        return;
+      }
+    }
+    setActiveScapeId('');
+    applyScapeToCanvas(null, false);
+  }, [initialElements.length, initialPipes.length, applyScapeToCanvas]);
+
+  const prevInitialLocRef = useRef(initialActiveLocationId);
+  useEffect(() => {
+    if (initialActiveLocationId !== undefined) {
+      setActiveLocationId(initialActiveLocationId);
+      if (prevInitialLocRef.current !== initialActiveLocationId) {
+        prevInitialLocRef.current = initialActiveLocationId;
+        syncScapeForLocation(initialActiveLocationId);
+      }
+    }
+  }, [initialActiveLocationId, syncScapeForLocation]);
 
   // Listen for locations changed in storage (e.g. from SensorManagerModal)
   useEffect(() => {
@@ -252,9 +359,7 @@ export default function ProcessScapeView({
         setScapeVersion(v => v + 1);
       } else {
         const curActiveId = getActiveScapeId();
-        if (curActiveId) {
-          setActiveScapeIdState(curActiveId);
-        }
+        setActiveScapeIdState(curActiveId || '');
         setScapeVersion(v => v + 1);
       }
     };
@@ -277,32 +382,6 @@ export default function ProcessScapeView({
     return true;
   }, [isBannerDismissed, initialElements, initialPipes, activeScape, activeScapeId, scapeVersion]);
 
-  const handleSelectActiveScape = useCallback((scape) => {
-    if (!scape || !scape.id) {
-      setActiveScapeIdState('');
-      setProjectTitle('ProcessScape');
-      setZones([]);
-      setElements([]);
-      setPipes([]);
-      setSelectedIds(new Set());
-      setScapeMode('runtime');
-      setScapeVersion(v => v + 1);
-      return;
-    }
-    setActiveScapeIdState(scape.id);
-    setProjectTitle(scape.title || 'ProcessScape');
-    setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
-    setZones(scape.zones || []);
-    setElements(scape.elements || []);
-    setPipes(scape.pipes || []);
-    setSelectedIds(new Set());
-    setScapeMode('runtime');
-    setScapeVersion(v => v + 1);
-    const saved = getSavedScapeView(scape.id);
-    if (saved) {
-      setView(saved);
-    }
-  }, []);
 
   const handleEditScapeFromManager = useCallback((scape) => {
     if (!scape || !scape.id) return;
@@ -317,18 +396,41 @@ export default function ProcessScapeView({
     setScapeVersion(v => v + 1);
   }, []);
 
-  const handleSaveAndExitEditor = useCallback(() => {
+  const finishEditorAndRestore = useCallback(() => {
+    const editedScapeId = activeScapeId;
+    const locs = getLocations();
+    const curLoc = (activeLocationId && activeLocationId !== 'example_demo')
+      ? locs.find(l => l.id === activeLocationId)
+      : null;
+    const isEditingDifferentScape = Boolean(curLoc && (curLoc.scapeId || '') !== (editedScapeId || ''));
+
     saveScape({
-      id: activeScapeId,
+      id: editedScapeId,
       title: projectTitle,
       tempCanvasSize: { width: screenSize.w, height: screenSize.h },
       zones,
       elements,
       pipes
-    });
+    }, { setActive: !isEditingDifferentScape });
+
     // Ensure all location measurement points and sensor cards are preserved and synced
     syncAllLocationsToScapes();
-    const updatedScape = getActiveScape();
+
+    const allScapes = getAllScapes();
+    if (isEditingDifferentScape) {
+      const targetLocScapeId = curLoc.scapeId || '';
+      setActiveScapeId(targetLocScapeId);
+      const locScape = targetLocScapeId ? allScapes.find(s => s.id === targetLocScapeId) : null;
+      applyScapeToCanvas(locScape || null, false);
+      setSelectedIds(new Set());
+      setScapeMode('runtime');
+      if (typeof window !== 'undefined' && window.showAppNotification) {
+        window.showAppNotification('Scape Saved', `"${projectTitle}" saved. Returned to ${curLoc.name || 'current location'}.`, 'success');
+      }
+      return;
+    }
+
+    const updatedScape = (editedScapeId ? allScapes.find(s => s.id === editedScapeId) : null) || getActiveScape();
     if (updatedScape && Array.isArray(updatedScape.elements)) {
       setElements(updatedScape.elements);
     }
@@ -337,34 +439,24 @@ export default function ProcessScapeView({
     if (typeof window !== 'undefined' && window.showAppNotification) {
       window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
     }
-  }, [activeScapeId, projectTitle, screenSize, zones, elements, pipes]);
+  }, [activeScapeId, activeLocationId, projectTitle, screenSize, zones, elements, pipes, applyScapeToCanvas]);
+
+  const handleSaveAndExitEditor = useCallback(() => {
+    finishEditorAndRestore();
+  }, [finishEditorAndRestore]);
 
   const changeScapeMode = useCallback((newMode) => {
     if (newMode === 'runtime' && scapeMode === 'editor') {
-      saveScape({
-        id: activeScapeId,
-        title: projectTitle,
-        tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-        zones,
-        elements,
-        pipes
-      });
-      syncAllLocationsToScapes();
-      const updatedScape = getActiveScape();
-      if (updatedScape && Array.isArray(updatedScape.elements)) {
-        setElements(updatedScape.elements);
-      }
-      if (typeof window !== 'undefined' && window.showAppNotification) {
-        window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
-      }
+      finishEditorAndRestore();
+    } else {
+      setSelectedIds(new Set());
+      setScapeMode(newMode);
     }
-    setSelectedIds(new Set());
     setIsBoundsResizerActive(false);
     setIsLiveDndActive(false);
     setResizingBox(null);
     boundsBoxRef.current = null;
-    setScapeMode(newMode);
-  }, [activeScapeId, projectTitle, screenSize, zones, elements, pipes, scapeMode]);
+  }, [scapeMode, finishEditorAndRestore]);
 
   // Dynamic real picture bounding box based on placed items with 16px margin to edge
   const contentBounds = useMemo(() => getContentBounds(elements, pipes, 16), [elements, pipes]);
@@ -2799,7 +2891,10 @@ export default function ProcessScapeView({
         openScapeManager: () => setIsScapeManagerOpen(true),
         setScapeMode: changeScapeMode,
         reloadActiveScape,
-        setActiveLocationId: (locId) => setActiveLocationId(locId),
+        setActiveLocationId: (locId) => {
+          setActiveLocationId(locId);
+          syncScapeForLocation(locId);
+        },
         switchScape: (scapeId) => {
           if (!scapeId) {
             setActiveScapeId('');
@@ -2821,7 +2916,7 @@ export default function ProcessScapeView({
         }
       });
     }
-  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape, handleSelectActiveScape]);
+  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape, handleSelectActiveScape, syncScapeForLocation]);
 
   useEffect(() => {
     if (onStateChange) {
@@ -2843,9 +2938,9 @@ export default function ProcessScapeView({
           <div className="ps-empty-stage-page">
             <div className="ps-empty-stage-card">
               <div className="ps-empty-stage-icon">📍</div>
-              <h2 className="ps-empty-stage-title">No Locations or Active Scape</h2>
+              <h2 className="ps-empty-stage-title">No Locations Configured</h2>
               <p className="ps-empty-stage-desc">
-                All locations have been removed. Configure a location in Sensor Manager to map sensor measurement points and activate your plant ProcessScape.
+                Configure a location in Location & sensors to map sensor measurement points and activate your plant ProcessScape.
               </p>
               <div className="ps-empty-stage-actions">
                 <button
@@ -2858,15 +2953,6 @@ export default function ProcessScapeView({
                   <span style={{ fontSize: 16 }}>+</span>
                   <span>Configure Locations</span>
                 </button>
-                {getAllScapes().filter(s => !s.isExample).length > 0 && (
-                  <button
-                    type="button"
-                    className="ps-empty-stage-btn-secondary"
-                    onClick={() => setIsScapeManagerOpen(true)}
-                  >
-                    <span>Plant SCADA Scapes</span>
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -3606,6 +3692,20 @@ export default function ProcessScapeView({
                   >
                     <HudIcons.BoundsScale />
                   </button>
+
+                  <div className="hud-divider" />
+
+                  {/* Scape Manager (Switch / Create Scapes) */}
+                  <button
+                    id="toolRuntimeScapeManager"
+                    type="button"
+                    className="hud-icon-btn"
+                    onClick={() => setIsScapeManagerOpen(true)}
+                    title="Scape Manager (Switch / Create Scapes)"
+                    aria-label="Scape Manager"
+                  >
+                    <HudIcons.ScapeManager />
+                  </button>
                 </div>
               )}
 
@@ -4167,7 +4267,8 @@ export default function ProcessScapeView({
       <ScapeManagerModal
         isOpen={isScapeManagerOpen}
         onClose={() => setIsScapeManagerOpen(false)}
-        onSelectActiveScape={handleSelectActiveScape}
+        currentScapeId={activeScapeId}
+        onSelectActiveScape={handleSelectScapeFromManager}
         onEditScape={handleEditScapeFromManager}
       />
     </div>

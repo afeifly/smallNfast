@@ -254,6 +254,20 @@ export function getSavedDevices() {
       locations.forEach(loc => {
         (loc.measurementPoints || []).forEach(mp => {
           (mp.channels || []).forEach(ch => {
+            const dTransport = (d.transportType || d.connectionConfig?.transport || d.transport || '').toLowerCase();
+            const chTransport = (ch.transport || ch.transportType || '').toLowerCase();
+            const isChExplicitModbus = chTransport.includes('modbus') || String(ch.id).toLowerCase().includes('modbus') || String(ch.device || '').toLowerCase().includes('modbus') || ch.regAddr !== undefined || ch.mBValueAddr !== undefined;
+            const isDExplicitModbus = dTransport.includes('modbus') || String(d.id).toLowerCase().includes('modbus') || String(d.name || '').toLowerCase().includes('modbus');
+            if (isChExplicitModbus !== isDExplicitModbus) return; // Strict guard: never mix Modbus and non-Modbus
+
+            const isChExplicitBle = ch.isBle || chTransport.includes('ble');
+            const isDExplicitUsb = dTransport.includes('usb') && !dTransport.includes('ble');
+            if (isChExplicitBle && isDExplicitUsb) return;
+
+            const isChExplicitUsb = chTransport.includes('usb');
+            const isDExplicitBle = dTransport.includes('ble');
+            if (isChExplicitUsb && isDExplicitBle) return;
+
             const matchesDev = (ch.device && d.name && (ch.device === d.name || ch.device.toLowerCase() === d.name.toLowerCase())) ||
               (ch.id && String(ch.id).includes(d.id)) ||
               (ch.deviceId && ch.deviceId === d.id);
@@ -419,6 +433,18 @@ export function isSameDevice(d1, d2) {
   const isBle2 = t2.includes('ble');
   // Different hardware transports (e.g. BLE vs Modbus/Ethernet/USB) are NEVER the same device!
   if (isBle1 !== isBle2) return false;
+
+  const isModbus1 = t1.includes('modbus');
+  const isModbus2 = t2.includes('modbus');
+  if (isModbus1 !== isModbus2) return false;
+
+  const isUsb1 = t1.includes('usb');
+  const isUsb2 = t2.includes('usb');
+  if (isUsb1 !== isUsb2) return false;
+
+  const isApi1 = t1.includes('api');
+  const isApi2 = t2.includes('api');
+  if (isApi1 !== isApi2) return false;
 
   // 1. Hardware Serial Number (SN) match:
   // If both devices have a valid hardware serial number (SN), this is the definitive physical identifier.
@@ -644,7 +670,25 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
   const cleanSerial = String(serial).replace(/[^a-zA-Z0-9_-]/g, '_');
   const devId = generateDeterministicDeviceId(safeTransport, { ...sysInfo, serial }, devName);
   const sensorsMap = new Map();
-  const rawList = Array.isArray(list) ? list : (list?.channels || list?.logging_chs || []);
+  const unverifiedList = Array.isArray(list) ? list : (list?.channels || list?.logging_chs || []);
+
+  // Strict isolation guard: Non-Modbus devices (USB, BLE, TCP, API) must NEVER absorb Modbus channels.
+  // Modbus devices must NEVER absorb BLE/USB channels.
+  const rawList = unverifiedList.filter(ch => {
+    const devDesc = String(ch.device_description || ch.device || ch.device_desc || '').toLowerCase();
+    const chName = String(ch.name || ch.channel_name || '').toLowerCase();
+    const sDesc = String(ch.sensor_description || ch.sensor_desc || ch.sensorDescription || ch.sensor_name || '').toLowerCase();
+    const isChModbus = devDesc.includes('modbus') || chName.startsWith('modbus') || sDesc.includes('modbus');
+
+    if (!safeTransport.includes('modbus') && isChModbus) {
+      return false;
+    }
+    if (safeTransport.includes('modbus')) {
+      const isChBle = devDesc.includes('ble') || chName.startsWith('ble') || sDesc.includes('ble');
+      if (isChBle) return false;
+    }
+    return true;
+  });
 
   // Detect whether this is a data logger / acquisition hub (e.g. S330, S331, S551, DS350, S320)
   // or a standalone instrument (e.g. S403, S401, S421, S450, S530 with multiple parameters).
@@ -716,7 +760,7 @@ export function buildDeviceFromRawChannels(list, devName, transportLabel, transp
       const sens = sensorsMap.get(sensName);
       const rawUnit = ch.unit || ch.unit_in_ascii || '';
       const unit = (rawUnit === 'u0' || rawUnit === 'u255') ? '' : rawUnit;
-      let chName = ch.channel_name || ch.name || ch.logic_channel_description || `Channel ${idx + 1}`;
+      let chName = ch.channel_name || ch.name || ch.description || ch.logic_channel_description || `Channel ${idx + 1}`;
       if (/^ressure/i.test(chName)) chName = 'P' + chName;
 
       const cleanSensKey = String(sensName || `sens_${sensorsMap.size}`).toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -908,15 +952,19 @@ export async function detectSensorsByTransport(transportType = 'active', options
   const results = [];
 
   const activeTransport = TauriSutoAPI?.getActiveTransport?.();
-  if (activeTransport) {
+  const targetTransport = (transportType && transportType !== 'active' && transportType !== 'all')
+    ? transportType
+    : activeTransport;
+
+  if (targetTransport) {
     try {
       if (typeof TauriSutoAPI.getChannels === 'function') {
-        const rawChs = await TauriSutoAPI.getChannels();
+        const rawChs = await TauriSutoAPI.getChannels({ transport: targetTransport });
         const list = Array.isArray(rawChs) ? rawChs : (rawChs?.logging_chs || []);
         if (list && list.length > 0) {
-          const sysInfo = await TauriSutoAPI.getSystemInfo?.().catch(() => null);
-          const devName = sysInfo?.device_name || `Connected Device (${activeTransport.toUpperCase()})`;
-          results.push(buildDeviceFromRawChannels(list, devName, `Live ${activeTransport.toUpperCase()}`, activeTransport, sysInfo));
+          const sysInfo = await TauriSutoAPI.getSystemInfo?.({ transport: targetTransport }).catch(() => null);
+          const devName = sysInfo?.device_name || `Connected Device (${targetTransport.toUpperCase()})`;
+          results.push(buildDeviceFromRawChannels(list, devName, `Live ${targetTransport.toUpperCase()}`, targetTransport, sysInfo));
         }
       }
     } catch (err) {
@@ -1126,8 +1174,13 @@ export function syncAllLocationsToScapes(customLocations = null) {
     if (loc.scapeId && allScapes.some(s => s.id === loc.scapeId)) {
       return loc;
     }
-    // Only if scapeId is empty or points to a deleted scape, fall back to the active scape:
-    return { ...loc, scapeId: fallbackScapeId };
+    // If there is only ONE location in the system and scapeId was not set, allow single-location fallback:
+    if (rawLocations.length === 1 && !loc.scapeId && allScapes.length > 0 && fallbackScapeId) {
+      return { ...loc, scapeId: fallbackScapeId };
+    }
+    // When multiple locations exist, a location without an assigned scape MUST remain empty!
+    // Never force an unassigned location to share another location's scape.
+    return { ...loc, scapeId: '' };
   });
 
   const hadPatchedLocs = locations.some((l, i) => l.scapeId !== rawLocations[i]?.scapeId);

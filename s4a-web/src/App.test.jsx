@@ -332,8 +332,8 @@ describe('App', () => {
     });
 
     // In current runtime mode:
-    // 1. Center has Sensor Manager tab
-    expect(screen.getByText('Sensor Manager')).toBeDefined();
+    // 1. Center has Location & sensors tab
+    expect(screen.getByText('Location & sensors')).toBeDefined();
     // 2. NO Modify Scape button
     expect(screen.queryByLabelText('Modify Scape')).toBeNull();
     // 3. NO Import JSON, Export JSON, Export PNG

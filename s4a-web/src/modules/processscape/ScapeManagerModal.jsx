@@ -14,7 +14,8 @@ export default function ScapeManagerModal({
   isOpen,
   onClose,
   onSelectActiveScape,
-  onEditScape
+  onEditScape,
+  currentScapeId
 }) {
   const [scapes, setScapes] = useState([]);
   const [activeId, setActiveId] = useState('');
@@ -25,9 +26,9 @@ export default function ScapeManagerModal({
 
   const refreshList = () => {
     const list = getAllScapes();
-    const curId = getActiveScapeId();
+    const curId = currentScapeId !== undefined ? currentScapeId : getActiveScapeId();
     setScapes(list);
-    setActiveId(curId);
+    setActiveId(curId || '');
   };
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function ScapeManagerModal({
       setShowCreateForm(false);
       setNewTitle('');
     }
-  }, [isOpen]);
+  }, [isOpen, currentScapeId]);
 
   if (!isOpen) return null;
 
@@ -51,8 +52,6 @@ export default function ScapeManagerModal({
   };
 
   const handleEdit = (id) => {
-    setActiveScapeId(id);
-    setActiveId(id);
     const allLatest = getAllScapes();
     const target = allLatest.find(s => s.id === id) || scapes.find(s => s.id === id);
     if (onEditScape && target) {
@@ -64,7 +63,7 @@ export default function ScapeManagerModal({
   const handleCreateNew = (e) => {
     e.preventDefault();
     const title = newTitle.trim() || 'New Plant Scape';
-    const created = createNewScape(title);
+    const created = createNewScape(title, '', { setActive: false });
     refreshList();
     if (onEditScape) {
       onEditScape(created);
@@ -153,15 +152,15 @@ export default function ScapeManagerModal({
               type="button"
               className="ps-mgr-icon-btn ps-mgr-btn-outline"
               onClick={() => fileInputRef.current?.click()}
-              title="Import Scape JSON file"
-              aria-label="Import Scape JSON"
+              title="Import Scape"
+              aria-label="Import Scape"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              <span>Import JSON</span>
+              <span>Import Scape</span>
             </button>
             <input
               ref={fileInputRef}
@@ -224,7 +223,7 @@ export default function ScapeManagerModal({
             </div>
           ) : (
             scapes.map((scape) => {
-              const isActive = scape.id === activeId;
+              const isActive = Boolean(activeId && scape.id === activeId);
               const elemCount = scape.elements?.length || 0;
               const pipeCount = scape.pipes?.length || 0;
               const dateStr = scape.updatedAt
@@ -234,21 +233,20 @@ export default function ScapeManagerModal({
               return (
                 <div
                   key={scape.id}
-                  className={`ps-mgr-card ${isActive ? 'is-active' : ''}`}
-                  onClick={() => handleSetActive(scape.id)}
+                  className="ps-mgr-card"
                 >
                   <div className="ps-mgr-card-top">
                     <div className="ps-mgr-card-title-row">
                       <h3 className="ps-mgr-card-title">{scape.title || 'Untitled Scape'}</h3>
                       {isActive ? (
-                        <span className="ps-mgr-active-badge">Active (Current)</span>
+                        <span className="ps-mgr-active-badge" title="Used by current location">Current</span>
                       ) : (
                         <button
                           type="button"
                           className="ps-mgr-card-switch-btn"
                           onClick={(e) => { e.stopPropagation(); handleSetActive(scape.id); }}
                         >
-                          Set Active
+                          Select
                         </button>
                       )}
                     </div>
@@ -286,8 +284,8 @@ export default function ScapeManagerModal({
                       type="button"
                       className="ps-mgr-action-icon-btn"
                       onClick={(e) => handleExportJson(scape, e)}
-                      title="Export JSON"
-                      aria-label="Export"
+                      title="Export Scape"
+                      aria-label="Export Scape"
                     >
                       ⬇️
                     </button>

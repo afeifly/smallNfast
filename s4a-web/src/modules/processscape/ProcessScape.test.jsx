@@ -23,6 +23,7 @@ import * as lanScannerModule from '../../api/lanScanner.js';
 import {
   getLocations,
   saveLocations,
+  detectSensorsByTransport,
   detectConnectedSensors,
   syncMeasurementPointToScape,
   syncAllLocationsToScapes,
@@ -1585,7 +1586,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     );
 
     // Modal title & two columns
-    expect(container.querySelector('.ps-sm-title').textContent).toContain('Sensor & Measurement Point Manager');
+    expect(container.querySelector('.ps-sm-title').textContent).toContain('Location and Sensors');
     expect(container.querySelector('.ps-sm-col-left')).not.toBeNull();
     expect(container.querySelector('.ps-sm-col-right')).not.toBeNull();
 
@@ -4307,9 +4308,9 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const openPsBtn = await screen.findByText('Open ProcessScape');
     fireEvent.click(openPsBtn);
 
-    // Verify ProcessScape mode top bar: Sensor Manager is present, Graphic & Table are NOT present
+    // Verify ProcessScape mode top bar: Location & sensors is present, Graphic & Table are NOT present
     await waitFor(() => {
-      expect(screen.getByText('Sensor Manager')).toBeDefined();
+      expect(screen.getByText('Location & sensors')).toBeDefined();
       expect(screen.queryByRole('button', { name: 'Graphic View' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Table View' })).toBeNull();
     });
@@ -4333,12 +4334,12 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     // Recording is now active!
     // Top bar contains Graphic View and Table View tabs (no redundant ProcessScape tab in header-tabs),
-    // Sensor Manager is HIDDEN, and ProcessScape mode indicator is a button that returns to canvas!
+    // Location & sensors is HIDDEN, and ProcessScape mode indicator is a button that returns to canvas!
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Graphic View' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Table View' })).toBeDefined();
       expect(document.querySelector('.header-mode-indicator.processscape')).not.toBeNull();
-      expect(screen.queryByRole('button', { name: /Sensor Manager/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Location & sensors/i })).toBeNull();
     });
 
     // Verify channel list format for ProcessScape recording uses Location / Measurement Point format without 'L/M:'
@@ -4361,11 +4362,11 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(stopRecBtn).not.toBeNull();
     fireEvent.click(stopRecBtn);
 
-    // Graphic View and Table View MUST now be hidden, and Sensor Manager reappears!
+    // Graphic View and Table View MUST now be hidden, and Location & sensors reappears!
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Graphic View' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Table View' })).toBeNull();
-      expect(screen.getByRole('button', { name: /Sensor Manager/i })).toBeDefined();
+      expect(screen.getByRole('button', { name: /Location & sensors/i })).toBeDefined();
     });
 
     liveRecorder.clearSession();
@@ -4391,9 +4392,9 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const openPsBtn = await screen.findByText('Open ProcessScape');
     fireEvent.click(openPsBtn);
 
-    // Verify in ProcessScape top bar: Sensor Manager is present, but Record button is NOT present!
+    // Verify in ProcessScape top bar: Location & sensors is present, but Record button is NOT present!
     await waitFor(() => {
-      expect(screen.getByText('Sensor Manager')).toBeDefined();
+      expect(screen.getByText('Location & sensors')).toBeDefined();
       expect(screen.queryByRole('button', { name: /Record/i })).toBeNull();
     });
 
@@ -5078,7 +5079,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     // 5. Verify ProcessScapeView now renders the empty page (no location and no active scape)
     expect(container.querySelector('.ps-empty-stage-page')).not.toBeNull();
     expect(container.querySelector('.ps-empty-stage-title').textContent).toContain('No Location');
-    expect(container.querySelector('.ps-empty-stage-desc').textContent).toContain('All locations have been removed');
+    expect(container.querySelector('.ps-empty-stage-desc').textContent).toContain('Configure a location in Location & sensors');
     expect(container.querySelector('.ps-empty-stage-btn-primary').textContent).toContain('Configure Locations');
   });
 
@@ -5421,6 +5422,260 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     await TauriSutoAPI.disconnect();
   });
 
+  it('USB device detection strictly isolates channels from previously saved Modbus device (Step 1 -> Step 2)', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // Step 1: Modbus has a device with 3 channels, saved to a location
+    const modbusDev = {
+      id: 'dev_modbus_tcp_192_168_5_67_502',
+      name: 'Modbus Station Flow',
+      serial: '99123456',
+      transport: 'Modbus TCP (192.168.5.67:502)',
+      transportType: 'modbus_tcp',
+      connectionConfig: {
+        transport: 'modbus_tcp',
+        host: '192.168.5.67',
+        port: 502,
+        slaveId: 1,
+        serial: '99123456',
+        name: 'Modbus Station Flow'
+      },
+      sensors: [
+        {
+          id: 'sens_modbus_1',
+          name: 'Modbus Station Flow Channels',
+          channels: [
+            { id: 'ch_mb_1', channel_id: 1, name: 'Modbus Flow', unit: 'm³/h' },
+            { id: 'ch_mb_2', channel_id: 2, name: 'Modbus Total', unit: 'm³' },
+            { id: 'ch_mb_3', channel_id: 3, name: 'Modbus Pressure', unit: 'bar' }
+          ]
+        }
+      ]
+    };
+
+    saveDevices([modbusDev]);
+
+    const locationWithModbus = {
+      id: 'loc_step1',
+      name: 'Compressor Room 1',
+      measurementPoints: [
+        {
+          id: 'mp_mb',
+          name: 'Main Header',
+          channels: [
+            { id: 'ch_mb_1', channel_id: 1, name: 'Modbus Flow', unit: 'm³/h', device: 'Modbus Station Flow', deviceId: modbusDev.id },
+            { id: 'ch_mb_2', channel_id: 2, name: 'Modbus Total', unit: 'm³', device: 'Modbus Station Flow', deviceId: modbusDev.id },
+            { id: 'ch_mb_3', channel_id: 3, name: 'Modbus Pressure', unit: 'bar', device: 'Modbus Station Flow', deviceId: modbusDev.id }
+          ]
+        }
+      ]
+    };
+    saveLocations([locationWithModbus]);
+
+    // Modbus device is active in memory
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'Modbus Station Flow',
+      serial: '99123456',
+      channels: [
+        { id: 1, channel_id: 1, name: 'Modbus Flow', unit: 'm³/h' },
+        { id: 2, channel_id: 2, name: 'Modbus Total', unit: 'm³' },
+        { id: 3, channel_id: 3, name: 'Modbus Pressure', unit: 'bar' }
+      ]
+    });
+
+    // Step 2: In USB detect a new device (e.g. S461 with 3 channels)
+    window.__TAURI_INTERNALS__ = {
+      invoke: vi.fn().mockImplementation((cmd) => {
+        if (cmd === 'suto_connect_usb') return Promise.resolve('COM3');
+        if (cmd === 'suto_get_system_info') return Promise.resolve({ device_name: 'S461', serial_number: '12345678', device_id: 0x1300 });
+        if (cmd === 'suto_get_channels') return Promise.resolve([
+          { id: 1, description: 'Flow', unit: 'm³/h', sensor_id: 1, sensor_desc: 'S461' },
+          { id: 2, description: 'Consumption', unit: 'm³', sensor_id: 1, sensor_desc: 'S461' },
+          { id: 3, description: 'Temperature', unit: '°C', sensor_id: 1, sensor_desc: 'S461' }
+        ]);
+        return Promise.resolve(null);
+      })
+    };
+
+    const usbConn = await TauriSutoAPI.connectUsb();
+    expect(usbConn.transport).toBe('USB');
+
+    // 1. VERIFY: TauriSutoAPI.getChannels() under USB MUST NOT contain any Modbus channels!
+    const usbChs = await TauriSutoAPI.getChannels();
+    expect(usbChs.length).toBe(3);
+    expect(usbChs.map(c => c.channel_name)).toEqual(['Flow', 'Consumption', 'Temperature']);
+    expect(usbChs.some(c => c.channel_name.includes('Modbus'))).toBe(false);
+
+    // 2. VERIFY: detectSensorsByTransport detects S461 with ONLY 3 USB channels
+    const rawDetected = await detectSensorsByTransport('usb');
+    expect(rawDetected.length).toBe(1);
+    const newUsbDevice = rawDetected[0];
+
+    expect(newUsbDevice.name).toBe('S461');
+    expect(newUsbDevice.transportType).toBe('usb');
+    // MUST have exactly 1 sensor (S461), NEVER a second sensor for Modbus!
+    expect(newUsbDevice.sensors.length).toBe(1);
+    expect(newUsbDevice.sensors[0].name).toBe('S461');
+    expect(newUsbDevice.sensors[0].channels.length).toBe(3);
+    expect(newUsbDevice.sensors[0].channels.map(c => c.name)).toEqual(['Flow', 'Consumption', 'Temperature']);
+
+    // Check that Modbus channels were NOT merged into this USB device
+    const allChannelsInUsbDev = newUsbDevice.sensors.flatMap(s => s.channels);
+    expect(allChannelsInUsbDev.some(c => c.name.toLowerCase().includes('modbus'))).toBe(false);
+
+    // Clean up
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('Ethernet TCP connection strictly isolates channels from previously active Modbus device', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // 1. Setup active Modbus device
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'Modbus S331',
+      serial: '99123456',
+      channels: [
+        { id: 1, channel_id: 1, name: 'Modbus Pressure', unit: 'bar' }
+      ]
+    });
+
+    // 2. Connect Ethernet TCP (SUTO protocol)
+    window.__TAURI_INTERNALS__ = {
+      invoke: vi.fn().mockImplementation((cmd) => {
+        if (cmd === 'suto_connect') return Promise.resolve('CONNECTED');
+        if (cmd === 'suto_get_system_info') return Promise.resolve({ device_name: 'S330 Hub', serial_number: '20202020', device_id: 4196 });
+        if (cmd === 'suto_get_channels') return Promise.resolve([
+          { id: 1, description: 'Main Flow', unit: 'm³/h', sensor_id: 1, sensor_desc: 'S450' },
+          { id: 2, description: 'Main Temp', unit: '°C', sensor_id: 1, sensor_desc: 'S450' }
+        ]);
+        return Promise.resolve(null);
+      })
+    };
+
+    const tcpConn = await TauriSutoAPI.connectTcp('192.168.1.100', 502);
+    expect(tcpConn.transport).toBe('TCP');
+
+    // 3. Channels must be strictly TCP channels, ZERO Modbus channels
+    const tcpChs = await TauriSutoAPI.getChannels();
+    expect(tcpChs.length).toBe(2);
+    expect(tcpChs.map(c => c.channel_name)).toEqual(['Main Flow', 'Main Temp']);
+    expect(tcpChs.some(c => c.channel_name.includes('Modbus'))).toBe(false);
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('reconnecting a USB device preserves its USB channels and does not corrupt or refresh with Modbus channels', async () => {
+    localStorage.clear();
+    await TauriSutoAPI.disconnect();
+
+    // Setup active Modbus device
+    await TauriSutoAPI.connectModbusTcp({
+      host: '192.168.5.67',
+      port: 502,
+      slaveId: 1,
+      name: 'Modbus Station Flow',
+      serial: '99123456',
+      channels: [
+        { id: 1, channel_id: 1, name: 'Modbus Pressure', unit: 'bar', regAddr: 2000 }
+      ]
+    });
+
+    const usbDev = {
+      id: 'dev_usb_s461_12345678',
+      name: 'S461',
+      serial: '12345678',
+      transport: 'Direct USB',
+      transportType: 'usb',
+      isOnline: false,
+      connectionConfig: {
+        transport: 'usb',
+        name: 'S461',
+        serial: '12345678'
+      },
+      sensors: [
+        {
+          id: 'sens_s461_usb',
+          name: 'S461',
+          channels: [
+            { id: 'ch_s461_flow_1', channel_id: 1, name: 'Flow', unit: 'm³/h' }
+          ]
+        }
+      ]
+    };
+
+    saveDevices([usbDev]);
+
+    // Mock USB connection & channels
+    window.__TAURI_INTERNALS__ = {
+      invoke: vi.fn().mockImplementation((cmd) => {
+        if (cmd === 'suto_connect_usb') return Promise.resolve('COM3');
+        if (cmd === 'suto_get_system_info') return Promise.resolve({ device_name: 'S461', serial_number: '12345678', device_id: 0x1300 });
+        if (cmd === 'suto_get_channels') return Promise.resolve([
+          { id: 1, description: 'Flow', unit: 'm³/h', sensor_id: 1, sensor_desc: 'S461' },
+          { id: 2, description: 'Consumption', unit: 'm³', sensor_id: 1, sensor_desc: 'S461' }
+        ]);
+        return Promise.resolve(null);
+      })
+    };
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    // Click Reconnect (↻) on the USB device
+    const reconnectBtn = container.querySelector('.ps-sm-device-reconnect-btn');
+    expect(reconnectBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(reconnectBtn);
+    });
+
+    // Device in storage MUST still be the USB device with USB Flow & Consumption, NEVER Modbus Pressure!
+    const saved = getSavedDevices();
+    expect(saved.length).toBe(1);
+    expect(saved[0].name).toBe('S461');
+    expect(saved[0].transportType).toBe('usb');
+    expect(saved[0].sensors.length).toBe(1);
+    expect(saved[0].sensors[0].channels.map(c => c.name)).toEqual(['Flow', 'Consumption']);
+    expect(saved[0].sensors[0].channels.some(c => c.name.includes('Modbus'))).toBe(false);
+
+    await TauriSutoAPI.disconnect();
+  });
+
+  it('buildDeviceFromRawChannels strictly sanitizes and rejects cross-transport leaked channels', () => {
+    // 1. Raw list polluted with Modbus channels passed to a USB device build
+    const pollutedList = [
+      { id: 1, channel_id: 1, description: 'USB Velocity', unit: 'm/s', sensor_desc: 'S403' },
+      { id: 101, channel_id: 101, name: 'Modbus Pressure', unit: 'bar', device_description: 'Modbus Station Hub', sensor_description: 'Modbus Station Hub' },
+      { id: 102, channel_id: 102, channel_name: 'Modbus Flow', unit: 'm³/h', device_description: 'Modbus Station Hub' }
+    ];
+
+    const usbDev = buildDeviceFromRawChannels(pollutedList, 'S403', 'Direct USB', 'usb', { serial_number: '12345678' });
+    expect(usbDev.sensors.length).toBe(1);
+    expect(usbDev.sensors[0].channels.length).toBe(1);
+    expect(usbDev.sensors[0].channels[0].name).toBe('USB Velocity');
+
+    // 2. Raw list polluted with BLE channels passed to a Modbus device build
+    const modbusPollutedList = [
+      { id: 1, channel_id: 1, name: 'Modbus Active Power', unit: 'kW', device_description: 'Modbus Meter' },
+      { id: 2, channel_id: 2, channel_name: 'BLE Temperature', unit: '°C', device_description: 'S403 BLE' }
+    ];
+    const mbDev = buildDeviceFromRawChannels(modbusPollutedList, 'Modbus Meter', 'Modbus TCP', 'modbus_tcp', { serial: '99887766' });
+    expect(mbDev.sensors.length).toBe(1);
+    expect(mbDev.sensors[0].channels.length).toBe(1);
+    expect(mbDev.sensors[0].channels[0].name).toBe('Modbus Active Power');
+  });
+
   it('TauriSutoAPI.getMeasurementData combines telemetry from both BLE and Modbus devices concurrently', async () => {
     localStorage.clear();
     await TauriSutoAPI.disconnect();
@@ -5678,6 +5933,276 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(TauriSutoAPI._isNativeDemanded(modbusLocDemand)).toBe(false);
 
     await TauriSutoAPI.disconnect();
+  });
+
+  it('gives the second location another empty default scape instead of sharing the first location scape', () => {
+    localStorage.clear();
+
+    const { container } = render(
+      <SensorManagerModal
+        isOpen={true}
+        onClose={() => {}}
+      />
+    );
+
+    const addLocBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('Add Location'));
+    expect(addLocBtn).toBeTruthy();
+
+    // Add Location 1 -> gets 'Default Plant' empty scape
+    fireEvent.click(addLocBtn);
+    // Add Location 2 -> gets another empty default scape ('Default Plant 2')
+    fireEvent.click(addLocBtn);
+
+    const savedLocs = getLocations();
+    expect(savedLocs.length).toBe(2);
+    expect(savedLocs[0].scapeId).toBeTruthy();
+    expect(savedLocs[1].scapeId).toBeTruthy();
+    expect(savedLocs[0].scapeId).not.toBe(savedLocs[1].scapeId);
+
+    const allScapes = getAllScapes();
+    const scape1 = allScapes.find(s => s.id === savedLocs[0].scapeId);
+    const scape2 = allScapes.find(s => s.id === savedLocs[1].scapeId);
+    expect(scape1).toBeTruthy();
+    expect(scape2).toBeTruthy();
+    expect(scape1.title).toBe('Default Plant');
+    expect(scape2.title).toBe('Default Plant 2');
+    expect(scape1.elements).toEqual([]);
+    expect(scape2.elements).toEqual([]);
+  });
+
+  it('keeps an unassigned second location empty when toggling between a location with a scape and one without a scape', () => {
+    localStorage.clear();
+
+    const scape1 = saveScape({
+      id: 'scape_loc1_only',
+      title: 'Compressor Room Scape',
+      elements: [
+        { id: 'comp_1', type: 'machine_compressor', tag: 'COMP-1', x: 120, y: 120, w: 100, h: 100 }
+      ],
+      pipes: []
+    });
+
+    const loc1 = { id: 'loc_with_scape', name: 'Location 1', scapeId: scape1.id, measurementPoints: [] };
+    const loc2 = { id: 'loc_without_scape', name: 'Location 2', scapeId: '', measurementPoints: [] };
+    saveLocations([loc1, loc2]);
+
+    // Syncing locations must NOT auto-assign scape1 to loc2
+    syncAllLocationsToScapes([loc1, loc2]);
+    const syncedLocs = getLocations();
+    expect(syncedLocs.find(l => l.id === 'loc_with_scape')?.scapeId).toBe(scape1.id);
+    expect(syncedLocs.find(l => l.id === 'loc_without_scape')?.scapeId).toBe('');
+
+    let latestState = null;
+    let actions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        activeLocationId="loc_with_scape"
+        onStateChange={(s) => { latestState = s; }}
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    expect(latestState?.activeScapeId).toBe(scape1.id);
+    expect(container.textContent).toContain('COMP-1');
+
+    // Toggle to Location 2 (no scape) -> canvas must become empty and activeScapeId must be ''
+    act(() => {
+      actions.setActiveLocationId('loc_without_scape');
+    });
+
+    expect(latestState?.activeScapeId).toBe('');
+    expect(container.textContent).not.toContain('COMP-1');
+
+    // Toggle back to Location 1 -> restores scape1 cleanly
+    act(() => {
+      actions.setActiveLocationId('loc_with_scape');
+    });
+
+    expect(latestState?.activeScapeId).toBe(scape1.id);
+    expect(container.textContent).toContain('COMP-1');
+  });
+
+  it('ScapeManagerModal displays Current badge without card active status or card-click navigation, and Select binds scape to current location', () => {
+    localStorage.clear();
+    const scape1 = saveScape({ id: 'scape_loc_a', title: 'Plant A', elements: [], pipes: [] });
+    const scape2 = saveScape({ id: 'scape_loc_b', title: 'Plant B', elements: [], pipes: [] });
+
+    const onSelectMock = vi.fn();
+    const onCloseMock = vi.fn();
+
+    // Even if global active scape is scape2, currentScapeId=scape1 marks Plant A as Current
+    const { container, rerender } = render(
+      <ScapeManagerModal
+        isOpen={true}
+        onClose={onCloseMock}
+        onSelectActiveScape={onSelectMock}
+        currentScapeId={scape1.id}
+      />
+    );
+
+    const badges = container.querySelectorAll('.ps-mgr-active-badge');
+    expect(badges.length).toBe(1);
+    expect(badges[0].textContent).toBe('Current');
+    expect(container.textContent).not.toContain('Active (Current)');
+    // Cards themselves have no active status class
+    expect(container.querySelectorAll('.ps-mgr-card.is-active').length).toBe(0);
+
+    // Clicking the card container itself must NOT trigger navigation/selection
+    const cards = container.querySelectorAll('.ps-mgr-card');
+    expect(cards.length).toBe(2);
+    fireEvent.click(cards[1]);
+    expect(onSelectMock).not.toHaveBeenCalled();
+
+    // Clicking the explicit 'Select' button chooses that scape
+    const selectBtn = container.querySelector('.ps-mgr-card-switch-btn');
+    expect(selectBtn).not.toBeNull();
+    expect(selectBtn.textContent).toBe('Select');
+    fireEvent.click(selectBtn);
+    expect(onSelectMock).toHaveBeenCalledTimes(1);
+    expect(onSelectMock.mock.calls[0][0].id).toBe(scape2.id);
+
+    // When current location has no scape (currentScapeId=''), no card shows Current
+    rerender(
+      <ScapeManagerModal
+        isOpen={true}
+        onClose={onCloseMock}
+        onSelectActiveScape={onSelectMock}
+        currentScapeId=""
+      />
+    );
+    expect(container.querySelectorAll('.ps-mgr-active-badge').length).toBe(0);
+
+    // In ProcessScapeView with 2 locations, clicking 'Select' assigns the chosen scape to the current location
+    localStorage.clear();
+    const sA = saveScape({ id: 'scape_view_a', title: 'Scape A', elements: [{ id: 'el_a', type: 'machine_compressor', tag: 'COMP-A', x: 100, y: 100, w: 100, h: 100 }], pipes: [] });
+    const sB = saveScape({ id: 'scape_view_b', title: 'Scape B', elements: [{ id: 'el_b', type: 'machine_compressor', tag: 'COMP-B', x: 200, y: 200, w: 100, h: 100 }], pipes: [] });
+    saveLocations([
+      { id: 'loc_1', name: 'Loc 1', scapeId: sA.id, measurementPoints: [] },
+      { id: 'loc_2', name: 'Loc 2', scapeId: '', measurementPoints: [] }
+    ]);
+
+    let actions = null;
+    const { container: viewContainer } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        activeLocationId="loc_2"
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    act(() => {
+      actions.openScapeManager();
+    });
+
+    // Click 'Select' on Scape B while on loc_2
+    const modalCards = Array.from(viewContainer.querySelectorAll('.ps-mgr-card'));
+    const cardB = modalCards.find(c => c.textContent.includes('Scape B'));
+    const btnSelectB = cardB.querySelector('.ps-mgr-card-switch-btn');
+    fireEvent.click(btnSelectB);
+
+    const updatedLocs = getLocations();
+    expect(updatedLocs.find(l => l.id === 'loc_2')?.scapeId).toBe(sB.id);
+    expect(updatedLocs.find(l => l.id === 'loc_1')?.scapeId).toBe(sA.id);
+  });
+
+  it('creating or modifying an unbound scape saves changes but returns directly to current location scape without binding or marking it active', () => {
+    localStorage.clear();
+    const scapeA = saveScape({
+      id: 'scape_loc1_main',
+      title: 'Main Station',
+      elements: [{ id: 'comp_main', type: 'machine_compressor', tag: 'MAIN-COMP', x: 120, y: 120, w: 100, h: 100 }],
+      pipes: []
+    });
+    saveLocations([
+      { id: 'loc_1', name: 'Location 1', scapeId: scapeA.id, measurementPoints: [] },
+      { id: 'loc_2', name: 'Location 2', scapeId: '', measurementPoints: [] }
+    ]);
+
+    let latestState = null;
+    let actions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        activeLocationId="loc_1"
+        onStateChange={(s) => { latestState = s; }}
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    expect(latestState?.activeScapeId).toBe(scapeA.id);
+    expect(container.textContent).toContain('MAIN-COMP');
+
+    // Open Scape Manager and create a new scape ('Draft Topology')
+    act(() => {
+      actions.openScapeManager();
+    });
+    const newScapeBtn = Array.from(container.querySelectorAll('button')).find(b => b.textContent.includes('+ New Scape'));
+    fireEvent.click(newScapeBtn);
+
+    const titleInput = container.querySelector('.ps-mgr-input');
+    fireEvent.change(titleInput, { target: { value: 'Draft Topology' } });
+    const createSubmit = container.querySelector('.ps-mgr-create-form button[type="submit"]');
+    fireEvent.click(createSubmit);
+
+    // Editor opens on the newly created scape
+    expect(latestState?.scapeMode).toBe('editor');
+    const draftScapeId = latestState?.activeScapeId;
+    expect(draftScapeId).toBeTruthy();
+    expect(draftScapeId).not.toBe(scapeA.id);
+
+    // Modify the draft scape (update canvas size / title) and exit back to runtime
+    act(() => {
+      actions.setProjectTitle('Draft Topology Modified');
+      actions.setScreenSize({ w: 1280, h: 900 });
+    });
+    act(() => {
+      actions.handleSaveAndExit();
+    });
+
+    // 1. Modifications MUST be saved on Draft Topology
+    const savedDraft = getAllScapes().find(s => s.id === draftScapeId);
+    expect(savedDraft).toBeTruthy();
+    expect(savedDraft.title).toBe('Draft Topology Modified');
+    expect(savedDraft.tempCanvasSize).toEqual({ width: 1280, height: 900 });
+
+    // 2. Location 1 MUST remain bound to scapeA (Draft Topology stays unbound)
+    const locsAfter = getLocations();
+    expect(locsAfter.find(l => l.id === 'loc_1')?.scapeId).toBe(scapeA.id);
+    expect(locsAfter.find(l => l.id === 'loc_2')?.scapeId).toBe('');
+
+    // 3. ProcessScape returned directly to Location 1's scapeA, NOT leaving Draft Topology active/Current
+    expect(latestState?.scapeMode).toBe('runtime');
+    expect(latestState?.activeScapeId).toBe(scapeA.id);
+    expect(getActiveScapeId()).toBe(scapeA.id);
+    expect(container.textContent).toContain('MAIN-COMP');
+
+    // 4. Also verify when active location has NO scape (loc_2), modifying Draft Topology returns to empty canvas
+    act(() => {
+      actions.setActiveLocationId('loc_2');
+    });
+    expect(latestState?.activeScapeId).toBe('');
+
+    act(() => {
+      actions.openScapeManager();
+    });
+    const draftCard = Array.from(container.querySelectorAll('.ps-mgr-card')).find(c => c.textContent.includes('Draft Topology Modified'));
+    const editDraftBtn = draftCard.querySelector('.btn-edit');
+    fireEvent.click(editDraftBtn);
+    expect(latestState?.scapeMode).toBe('editor');
+
+    act(() => {
+      actions.setProjectTitle('Draft Topology v2');
+    });
+    act(() => {
+      actions.handleSaveAndExit();
+    });
+
+    const savedDraftV2 = getAllScapes().find(s => s.id === draftScapeId);
+    expect(savedDraftV2.title).toBe('Draft Topology v2');
+    expect(latestState?.scapeMode).toBe('runtime');
+    expect(latestState?.activeScapeId).toBe('');
+    expect(getLocations().find(l => l.id === 'loc_2')?.scapeId).toBe('');
   });
 });
 

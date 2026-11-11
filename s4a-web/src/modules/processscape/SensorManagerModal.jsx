@@ -274,7 +274,7 @@ export default function SensorManagerModal({
       } else {
         try {
           if (typeof TauriSutoAPI.getChannels === 'function') {
-            rawChs = await TauriSutoAPI.getChannels();
+            rawChs = await TauriSutoAPI.getChannels({ transport });
           }
         } catch (err) {
           console.warn('[SensorManager] getChannels note:', err);
@@ -285,16 +285,26 @@ export default function SensorManagerModal({
           await new Promise(r => setTimeout(r, 400));
           try {
             if (typeof TauriSutoAPI.getChannels === 'function') {
-              rawChs = await TauriSutoAPI.getChannels();
+              rawChs = await TauriSutoAPI.getChannels({ transport });
             }
           } catch (_) {}
+        }
+
+        // Strict guard: Non-Modbus hardware (USB, TCP, API) must NEVER leak Modbus channels!
+        if (!transportType.includes('modbus')) {
+          rawChs = (Array.isArray(rawChs) ? rawChs : []).filter(c => {
+            const devDesc = (c.device_description || c.device || c.device_desc || '').toLowerCase();
+            const name = (c.name || c.channel_name || '').toLowerCase();
+            const sDesc = (c.sensor_description || c.sensor_desc || '').toLowerCase();
+            return !devDesc.includes('modbus') && !name.startsWith('modbus') && !sDesc.includes('modbus');
+          });
         }
       }
 
       if (!sysInfo) {
         try {
           if (typeof TauriSutoAPI.getSystemInfo === 'function') {
-            sysInfo = await TauriSutoAPI.getSystemInfo();
+            sysInfo = await TauriSutoAPI.getSystemInfo({ transport });
           }
         } catch (err) {
           console.warn('[SensorManager] getSystemInfo note:', err);
@@ -531,8 +541,17 @@ export default function SensorManagerModal({
 
       // Re-read channels if available
       if (typeof TauriSutoAPI.getChannels === 'function') {
-        const rawChs = await TauriSutoAPI.getChannels();
-        const sysInfo = await TauriSutoAPI.getSystemInfo?.().catch(() => null);
+        const targetTransport = dev.transportType || dev.transport || transport;
+        let rawChs = await TauriSutoAPI.getChannels({ transport: targetTransport });
+        if (!String(targetTransport).toLowerCase().includes('modbus')) {
+          rawChs = (Array.isArray(rawChs) ? rawChs : []).filter(c => {
+            const devDesc = (c.device_description || c.device || c.device_desc || '').toLowerCase();
+            const name = (c.name || c.channel_name || '').toLowerCase();
+            const sDesc = (c.sensor_description || c.sensor_desc || '').toLowerCase();
+            return !devDesc.includes('modbus') && !name.startsWith('modbus') && !sDesc.includes('modbus');
+          });
+        }
+        const sysInfo = await TauriSutoAPI.getSystemInfo?.({ transport: targetTransport }).catch(() => null);
         const connectionMeta = {
           serial_number: sysInfo?.serial_number || conn?.serial_number || conn?.serial || dev.serial,
           device_name: sysInfo?.device_name || conn?.name || conn?.device || dev.name,
@@ -619,17 +638,13 @@ export default function SensorManagerModal({
       }
     }
 
-    // 5. Toast / Notification feedback
+    // 5. Feedback
     const msg = unassignedCount > 0
       ? `Disconnected "${device.name}" and removed ${unassignedCount} assigned channel(s).`
       : `Disconnected and removed "${device.name}".`;
 
     setSyncFeedback(`✓ ${msg}`);
     setTimeout(() => setSyncFeedback(null), 4000);
-
-    if (typeof window !== 'undefined' && window.showAppNotification) {
-      window.showAppNotification('Device Removed', msg, 'info');
-    }
   };
 
   const handleUpdateLocations = useCallback((updated) => {
@@ -640,31 +655,43 @@ export default function SensorManagerModal({
     }
   }, []);
 
+  const createUniqueDefaultScape = useCallback((existingScapes = []) => {
+    const existingTitles = new Set(
+      (existingScapes || [])
+        .filter(s => !s.isExample && s.title)
+        .map(s => s.title.trim())
+    );
+    let title = 'Default Plant';
+    if (existingTitles.has(title)) {
+      let idx = 2;
+      while (existingTitles.has(`Default Plant ${idx}`)) {
+        idx++;
+      }
+      title = `Default Plant ${idx}`;
+    }
+    const fresh = createNewScape(title);
+    setScapes(getAllScapes());
+    return fresh;
+  }, []);
+
   const getTargetScapeId = useCallback(() => {
-    let currentScapes = scapes;
-    if (!currentScapes || currentScapes.length === 0) {
-      const fresh = createNewScape('Default Plant');
-      currentScapes = [fresh];
-      setScapes([fresh]);
+    const currentScapes = getAllScapes();
+    const realScapes = currentScapes.filter(s => !s.isExample);
+    if (realScapes.length === 0) {
+      const fresh = createUniqueDefaultScape(realScapes);
       return fresh.id;
     }
-    // If there is an unassigned scape (a scape that currently has no locations mapped to it),
-    // default the new location to that unassigned scape so two locations do not collide on the same scape
+    // If there is an unassigned real scape (not mapped to any location yet), use it
     const assignedScapeIds = new Set((locations || []).map(l => l.scapeId).filter(Boolean));
-    const unassignedScape = currentScapes.find(s => !assignedScapeIds.has(s.id));
-    if (unassignedScape && locations.length > 0) {
+    const unassignedScape = realScapes.find(s => !assignedScapeIds.has(s.id));
+    if (unassignedScape) {
       return unassignedScape.id;
     }
-    const activeId = getActiveScapeId();
-    if (activeId && currentScapes.some(s => s.id === activeId)) {
-      return activeId;
-    }
-    const realScapes = currentScapes.filter(s => !s.isExample);
-    if (realScapes.length > 0) {
-      return realScapes[0].id;
-    }
-    return currentScapes[0]?.id;
-  }, [scapes, locations]);
+    // All existing real scapes are already occupied by other locations:
+    // create another clean empty default scape rather than reusing another location's scape!
+    const fresh = createUniqueDefaultScape(realScapes);
+    return fresh.id;
+  }, [locations, createUniqueDefaultScape]);
 
   const handleAddLocation = () => {
     if (loadingDevices) return;
@@ -1350,31 +1377,28 @@ export default function SensorManagerModal({
       if (onSyncToScape) {
         onSyncToScape('', null);
       }
-      setSyncFeedback('✓ Settings saved');
-      setTimeout(() => {
-        onClose();
-      }, 300);
+      onClose();
       return;
     }
     const res = syncAllLocationsToScapes(locations);
     const activeLoc = locations.find(l => l.id === activeTargetLocId) || locations[0];
-    const targetScapeId = activeLoc?.scapeId || getActiveScapeId() || scapes[0]?.id;
+    const targetScapeId = activeLoc?.scapeId || '';
     const targetLocId = activeLoc?.id || null;
 
     if (res.syncCount > 0) {
       setSyncFeedback(`✓ Synced ${res.syncCount} measurement point(s) to ProcessScape`);
-      if (onSyncToScape && targetScapeId) {
+      if (onSyncToScape) {
         onSyncToScape(targetScapeId, targetLocId);
       }
+      setTimeout(() => {
+        onClose();
+      }, 300);
     } else {
-      setSyncFeedback('✓ Settings saved');
-      if (onSyncToScape && targetScapeId) {
+      if (onSyncToScape) {
         onSyncToScape(targetScapeId, targetLocId);
       }
-    }
-    setTimeout(() => {
       onClose();
-    }, 300);
+    }
   };
 
   const toggleDeviceCollapse = (devId) => {
@@ -1404,11 +1428,7 @@ export default function SensorManagerModal({
           <div className="ps-sensor-mgr-header">
             <div className="ps-sm-title-group">
               <div className="ps-sm-title-row">
-                <h2 className="ps-sm-title">Sensor & Measurement Point Manager</h2>
-                <span className="ps-sm-transport-badge">
-                  <span className="ps-sm-transport-dot" />
-                  Live Communication Link
-                </span>
+                <h2 className="ps-sm-title">Location and Sensors</h2>
                 {syncFeedback && (
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#00ac86', marginLeft: 8 }}>
                     {syncFeedback}
@@ -1460,7 +1480,7 @@ export default function SensorManagerModal({
                   Detected Sensors & Channels ({devices.length})
                 </span>
                 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>
-                  Drag channel to right
+                  Drag to right
                 </span>
               </div>
 
@@ -1779,7 +1799,7 @@ export default function SensorManagerModal({
                               onChange={(e) => handleLocationScapeChange(loc.id, e.target.value)}
                               disabled={loadingDevices}
                             >
-                              {!loc.scapeId && <option value="">-- Select ProcessScape --</option>}
+                              <option value="">-- No ProcessScape (Empty) --</option>
                               {scapes.map(s => (
                                 <option key={s.id} value={s.id}>
                                   {s.title}

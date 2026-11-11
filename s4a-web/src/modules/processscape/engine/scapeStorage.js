@@ -242,7 +242,7 @@ export function getActiveScape() {
 /**
  * Save / Update a scape
  */
-export function saveScape(scape) {
+export function saveScape(scape, { setActive = true } = {}) {
   if (!scape || !scape.id) return;
   const storage = getStorage();
   if (!storage) return;
@@ -273,15 +273,16 @@ export function saveScape(scape) {
   }
 
   storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(newList));
-  setActiveScapeId(updatedScape.id);
+  if (setActive) {
+    setActiveScapeId(updatedScape.id);
+  }
   return updatedScape;
 }
 
 /**
  * Create a new scape
  */
-export function createNewScape(title = 'New Plant Scape', description = '') {
-  const storage = getStorage();
+export function createNewScape(title = 'New Plant Scape', description = '', { setActive = true } = {}) {
   const id = `scape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const newScape = {
     id,
@@ -295,8 +296,10 @@ export function createNewScape(title = 'New Plant Scape', description = '') {
     pipes: []
   };
 
-  saveScape(newScape);
-  setActiveScapeId(id);
+  saveScape(newScape, { setActive });
+  if (setActive) {
+    setActiveScapeId(id);
+  }
   return newScape;
 }
 

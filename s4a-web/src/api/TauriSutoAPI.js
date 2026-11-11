@@ -922,13 +922,20 @@ export const TauriSutoAPI = {
 
   /**
    * Get channels formatted for S4A Views
-   * @param {Function} [callback]
+   * Supports optional { transport } filter to query channels strictly from that transport.
+   * @param {Object|Function} [optionsOrCallback]
+   * @param {Function} [maybeCallback]
    */
-  async getChannels(callback) {
-    if (activeTransport === 'API') {
+  async getChannels(optionsOrCallback, maybeCallback) {
+    const opts = (typeof optionsOrCallback === 'object' && optionsOrCallback !== null) ? optionsOrCallback : {};
+    const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+    const reqTransport = (opts.transport || activeTransport || '').toUpperCase();
+    const isAll = reqTransport === 'ALL';
+
+    if (!isAll && reqTransport === 'API') {
       return await ApiDevice.getChannels(callback);
     }
-    if (activeTransport === 'BLE_WEB') {
+    if (!isAll && reqTransport === 'BLE_WEB') {
       try {
         const rawChs = await BleSutoAPI.getChannels();
         const formatted = (Array.isArray(rawChs) ? rawChs : []).map((ch, idx) => {
@@ -980,8 +987,9 @@ export const TauriSutoAPI = {
 
     const allChannels = [];
 
-    // 1. Fetch native Tauri hardware channels if native socket is active
-    if (hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || (!activeTransport && activeModbusDevices.size === 0))) {
+    // 1. Fetch native Tauri hardware channels if native socket is active (or specifically requested)
+    const isNativeDemanded = reqTransport === 'TCP' || reqTransport === 'USB' || reqTransport === 'BLE' || reqTransport === 'BLE_NATIVE' || (!reqTransport && activeModbusDevices.size === 0) || isAll;
+    if (hasTauri() && isNativeDemanded) {
       try {
         const rawChannels = await invoke('suto_get_channels');
         // Format channels to match S4A view schema. `channel_id` stays the
@@ -1021,9 +1029,9 @@ export const TauriSutoAPI = {
       }
     }
 
-    // 2. Append active Modbus devices' channels (ONLY when Modbus or non-BLE transport is active, NEVER for BLE!)
-    const isBleActive = activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || activeTransport === 'BLE_WEB';
-    if (!isBleActive && activeModbusDevices.size > 0) {
+    // 2. Append active Modbus devices' channels (ONLY when Modbus transport is active or specifically requested!)
+    const isModbusDemanded = reqTransport === 'MODBUS_TCP' || reqTransport === 'MODBUS_RTU' || reqTransport === 'MODBUS' || (!reqTransport && activeModbusDevices.size > 0) || isAll;
+    if (isModbusDemanded && activeModbusDevices.size > 0) {
       for (const modbusDev of activeModbusDevices.values()) {
         (modbusDev.channels || []).forEach((ch, idx) => {
           const chId = ch.channel_id ?? ch.id ?? (idx + 1);
@@ -1054,7 +1062,7 @@ export const TauriSutoAPI = {
       return allChannels;
     }
 
-    if (!hasTauri()) {
+    if (!hasTauri() || !isNativeDemanded) {
       if (callback) callback([]);
       return [];
     }
@@ -1651,12 +1659,14 @@ export const TauriSutoAPI = {
 
   /**
    * Get device system information (serial number, firmware version, device name, etc.)
+   * @param {Object} [options] Optional configuration including { transport }
    */
-  async getSystemInfo() {
-    if (activeTransport === 'API') {
+  async getSystemInfo(options = {}) {
+    const reqTransport = (options?.transport || activeTransport || '').toUpperCase();
+    if (reqTransport === 'API') {
       return await ApiDevice.getSystemInfo();
     }
-    if (activeTransport === 'BLE_WEB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE') {
+    if (reqTransport === 'BLE_WEB' || reqTransport === 'BLE' || reqTransport === 'BLE_NATIVE') {
       if (hasTauri()) {
         try {
           const sInfo = await invoke('suto_get_system_info');
@@ -1667,7 +1677,7 @@ export const TauriSutoAPI = {
       }
       return await BleSutoAPI.getSystemInfo();
     }
-    if (hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB')) {
+    if (hasTauri() && (reqTransport === 'TCP' || reqTransport === 'USB')) {
       try {
         const sInfo = await invoke('suto_get_system_info');
         if (sInfo && (sInfo.device_id || sInfo.serial_number || sInfo.device_name)) {
@@ -1675,8 +1685,8 @@ export const TauriSutoAPI = {
         }
       } catch (_) {}
     }
-    const isBleActive = activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || activeTransport === 'BLE_WEB';
-    if (!isBleActive && (activeTransport === 'MODBUS_TCP' || activeTransport === 'MODBUS_RTU' || (activeModbusDevices.size > 0 && !activeTransport))) {
+    const isModbusActive = reqTransport === 'MODBUS_TCP' || reqTransport === 'MODBUS_RTU' || reqTransport === 'MODBUS' || (activeModbusDevices.size > 0 && !reqTransport);
+    if (isModbusActive) {
       const dev = activeModbusDevices.values().next().value;
       if (dev) {
         return {

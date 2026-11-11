@@ -188,20 +188,13 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  cursor: default;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ps-mgr-card:hover {
   border-color: #cbd5e1;
   box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.06);
-  transform: translateY(-1px);
-}
-
-.ps-mgr-card.is-active {
-  border-color: #00ac86;
-  background: #fcfdfd;
-  box-shadow: 0 4px 14px -3px rgba(0, 172, 134, 0.18);
 }
 
 .ps-mgr-card-top {

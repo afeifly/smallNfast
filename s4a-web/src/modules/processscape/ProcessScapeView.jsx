@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import './ProcessScapeView.css';
 import {
   ASSET_DEFS,
   EQUIPMENT_COLOR_THEMES,
   NOTE_OUTLINE_STYLES,
+  LINE_STYLE_OPTIONS,
   NOTE_COLOR_PALETTE,
+  SHAPE_FILL_PALETTE,
   SENSOR_CARD_TEMPLATES,
   PIPE_PRESETS,
-  TIPS_LIST
+  GUIDE_LINE_PRESETS
 } from './engine/constants.js';
 import {
   snap,
@@ -27,7 +30,8 @@ import {
   resolvePipelineFlowDirections,
   getPipeLength,
   adjustPipeLength,
-  distToSegment
+  distToSegment,
+  resolveSensorCardAttachmentAfterDrag
 } from './engine/pipeUtils.js';
 import {
   svgEl,
@@ -56,12 +60,11 @@ import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
 
 const PALETTE_CATEGORIES = [
   { id: 'all', label: 'All' },
-  { id: 'sensors', label: '🏷 Sensors' },
   { id: 'piping', label: '➰ Pipes' },
+  { id: 'sensors', label: 'Sensor & gateway' },
   { id: 'vessels', label: 'Tanks & Air' },
   { id: 'machines', label: 'Machines' },
-  { id: 'gateways', label: 'Gateways' },
-  { id: 'others', label: '🧱 Walls & Others' }
+  { id: 'others', label: 'Others' }
 ];
 
 // Consistent SVG Vector Icons for HUD Controls
@@ -112,11 +115,6 @@ const HudIcons = {
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <line x1="10" y1="11" x2="10" y2="17" />
       <line x1="14" y1="11" x2="14" y2="17" />
-    </svg>
-  ),
-  RealSize: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
     </svg>
   ),
   ZoomFit: () => (
@@ -190,6 +188,16 @@ const HudIcons = {
       <polyline points="2 17 12 22 22 17" />
       <polyline points="2 12 12 17 22 12" />
     </svg>
+  ),
+  DragHandle: () => (
+    <svg width="12" height="15" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
+      <circle cx="3.5" cy="3" r="1.3" />
+      <circle cx="8.5" cy="3" r="1.3" />
+      <circle cx="3.5" cy="8" r="1.3" />
+      <circle cx="8.5" cy="8" r="1.3" />
+      <circle cx="3.5" cy="13" r="1.3" />
+      <circle cx="8.5" cy="13" r="1.3" />
+    </svg>
   )
 };
 
@@ -202,6 +210,7 @@ export default function ProcessScapeView({
   initialPipes = [],
   initialMode,
   activeLocationId: initialActiveLocationId = null,
+  onLocationChange = null,
   onDeviceConnected = null
 }) {
   const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
@@ -215,6 +224,7 @@ export default function ProcessScapeView({
   // Load active scape from storage if custom elements/pipes not explicitly passed
   const [scapeVersion, setScapeVersion] = useState(0);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
+  const [isBubbleDismissed, setIsBubbleDismissed] = useState(false);
 
   const activeScape = useMemo(() => {
     if (initialElements.length > 0 || initialPipes.length > 0) {
@@ -260,7 +270,57 @@ export default function ProcessScapeView({
   const [elements, setElements] = useState(() => (initialElements.length > 0 ? initialElements : (activeScape?.elements || [])));
 
 
+  const resetTransientModeState = useCallback(({ clearHistory = false } = {}) => {
+    setBoundsResizerMode(null);
+    setIsLiveDndActive(false);
+    setResizingBox(null);
+    boundsBoxRef.current = null;
+    setCurrentTool('select');
+    setSelectedIds(new Set());
+    setDockFlyGhost(null);
+    setInspectorDockAnim(null);
+    setIsDraggingInspector(false);
+    setIsSpacePressed(false);
+    isSpacePressedRef.current = false;
+
+    if (runtimeToolsDragCleanupRef.current) {
+      runtimeToolsDragCleanupRef.current();
+      runtimeToolsDragCleanupRef.current = null;
+    }
+    setRuntimeToolsDragPos(null);
+    suppressDragHandleClickRef.current = false;
+
+    if (dragRef.current) {
+      dragRef.current.isDragging = false;
+      dragRef.current.isPanning = false;
+      dragRef.current.didPan = false;
+      dragRef.current.draggingAnchor = null;
+      dragRef.current.draggingVertex = null;
+      dragRef.current.extendingPipe = null;
+      dragRef.current.drawingPipeStart = null;
+      dragRef.current.isMarquee = false;
+      dragRef.current.draggingLiveCard = null;
+      dragRef.current.draggingBoundsHandle = null;
+    }
+    if (interactionLayerRef.current) {
+      interactionLayerRef.current.innerHTML = '';
+    }
+    if (viewportRef.current) {
+      viewportRef.current.classList.remove('panning', 'is-panning', 'drawing-pipe');
+    }
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      if (document.activeElement.closest('.canvas-floating-hud, .ps-inspector')) {
+        document.activeElement.blur();
+      }
+    }
+    if (clearHistory) {
+      historyRef.current = { undo: [], redo: [] };
+      setHistoryVersion(v => v + 1);
+    }
+  }, []);
+
   const applyScapeToCanvas = useCallback((scape, resetModeToRuntime = false) => {
+    resetTransientModeState({ clearHistory: true });
     if (!scape || !scape.id) {
       setActiveScapeIdState('');
       setProjectTitle('ProcessScape');
@@ -268,7 +328,6 @@ export default function ProcessScapeView({
       setZones([]);
       setElements([]);
       setPipes([]);
-      setSelectedIds(new Set());
       if (resetModeToRuntime) setScapeMode('runtime');
       setScapeVersion(v => v + 1);
       return;
@@ -279,14 +338,13 @@ export default function ProcessScapeView({
     setZones(scape.zones || []);
     setElements(scape.elements || []);
     setPipes(scape.pipes || []);
-    setSelectedIds(new Set());
     if (resetModeToRuntime) setScapeMode('runtime');
     setScapeVersion(v => v + 1);
     const saved = getSavedScapeView(scape.id);
     if (saved) {
       setView(saved);
     }
-  }, []);
+  }, [resetTransientModeState]);
 
   const handleSelectActiveScape = useCallback((scape) => {
     applyScapeToCanvas(scape, true);
@@ -352,6 +410,7 @@ export default function ProcessScapeView({
       const locs = e.detail || [];
       if (!Array.isArray(locs) || locs.length === 0) {
         // When all locations are removed, leave no active scape and clear canvas elements
+        resetTransientModeState({ clearHistory: true });
         setActiveScapeId('');
         setActiveScapeIdState('');
         setZones([]);
@@ -369,7 +428,157 @@ export default function ProcessScapeView({
     return () => window.removeEventListener('sensor-locations-changed', handleLocationsChanged);
   }, []);
 
+  const STORAGE_KEY_RUNTIME_TOOLS_CORNER = 's4a_ps_runtime_tools_corner_v1';
+  const STORAGE_KEY_RUNTIME_TOOLS_CONCISE = 's4a_ps_runtime_tools_concise_v1';
+  const workbenchRef = useRef(null);
+  const runtimeToolsRef = useRef(null);
+  const runtimeToolsDragCleanupRef = useRef(null);
+  const suppressDragHandleClickRef = useRef(false);
+
+  const [runtimeToolsCorner, setRuntimeToolsCorner] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_RUNTIME_TOOLS_CORNER);
+      return ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(saved) ? saved : 'top-right';
+    } catch (_) {
+      return 'top-right';
+    }
+  });
+  const [isRuntimeToolsConcise, setIsRuntimeToolsConcise] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_RUNTIME_TOOLS_CONCISE) === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+  const [runtimeToolsDragPos, setRuntimeToolsDragPos] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      if (runtimeToolsDragCleanupRef.current) {
+        runtimeToolsDragCleanupRef.current();
+        runtimeToolsDragCleanupRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleToggleRuntimeToolsConcise = useCallback(() => {
+    setIsRuntimeToolsConcise(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(STORAGE_KEY_RUNTIME_TOOLS_CONCISE, String(next));
+      } catch (_) {}
+      return next;
+    });
+  }, []);
+
+  const handleDragHandleClick = useCallback((e) => {
+    e?.currentTarget?.blur?.();
+    if (suppressDragHandleClickRef.current) {
+      suppressDragHandleClickRef.current = false;
+      return;
+    }
+    handleToggleRuntimeToolsConcise();
+  }, [handleToggleRuntimeToolsConcise]);
+
+  const handleRuntimeToolsMouseDown = useCallback((e) => {
+    e.stopPropagation();
+    const dragHandleClicked = !!e.target.closest('.ps-runtime-drag-handle');
+    if (!dragHandleClicked && e.target.closest('button, select, option, input')) {
+      return;
+    }
+    if (e.button !== 0) return;
+
+    suppressDragHandleClickRef.current = false;
+    if (runtimeToolsDragCleanupRef.current) {
+      runtimeToolsDragCleanupRef.current();
+      runtimeToolsDragCleanupRef.current = null;
+    }
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const vpRect = viewportRef.current?.getBoundingClientRect() || {
+      left: 0,
+      top: 0,
+      width: window.innerWidth || 1024,
+      height: window.innerHeight || 768
+    };
+    const hudEl = runtimeToolsRef.current || e.currentTarget;
+    const hudRect = hudEl.getBoundingClientRect();
+    const hasRealRect = vpRect.width > 0 && vpRect.height > 0;
+    const vpW = hasRealRect ? vpRect.width : (window.innerWidth || 1024);
+    const vpH = hasRealRect ? vpRect.height : (window.innerHeight || 768);
+    const hudW = hudRect.width > 0 ? hudRect.width : 180;
+    const hudH = hudRect.height > 0 ? hudRect.height : 36;
+    const offsetX = hudRect.width > 0 ? (e.clientX - hudRect.left) : hudW / 2;
+    const offsetY = hudRect.height > 0 ? (e.clientY - hudRect.top) : hudH / 2;
+
+    let started = false;
+    let latestCorner = runtimeToolsCorner;
+
+    const computePosition = (clientX, clientY) => {
+      let x = clientX - vpRect.left - offsetX;
+      let y = clientY - vpRect.top - offsetY;
+      if (hasRealRect) {
+        x = Math.max(8, Math.min(Math.max(8, vpW - hudW - 8), x));
+        y = Math.max(8, Math.min(Math.max(8, vpH - hudH - 8), y));
+      }
+      const cx = hasRealRect ? (x + hudW / 2) : (clientX - vpRect.left);
+      const cy = hasRealRect ? (y + hudH / 2) : (clientY - vpRect.top);
+      const vPart = cy < vpH / 2 ? 'top' : 'bottom';
+      const hPart = cx < vpW / 2 ? 'left' : 'right';
+      return { x, y, hoveredCorner: `${vPart}-${hPart}` };
+    };
+
+    const onMouseMove = (me) => {
+      if (!started && Math.hypot(me.clientX - startX, me.clientY - startY) < 4) {
+        return;
+      }
+      started = true;
+      suppressDragHandleClickRef.current = true;
+      const next = computePosition(me.clientX, me.clientY);
+      latestCorner = next.hoveredCorner;
+      setRuntimeToolsDragPos(next);
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      runtimeToolsDragCleanupRef.current = null;
+    };
+
+    const onMouseUp = () => {
+      cleanup();
+      if (started) {
+        setRuntimeToolsCorner(latestCorner);
+        try {
+          localStorage.setItem(STORAGE_KEY_RUNTIME_TOOLS_CORNER, latestCorner);
+        } catch (_) {}
+      }
+      setRuntimeToolsDragPos(null);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    runtimeToolsDragCleanupRef.current = cleanup;
+  }, [runtimeToolsCorner]);
+
   const hasLocations = useMemo(() => hasSavedLocations(), [scapeVersion]);
+  const runtimeLocationsList = useMemo(() => {
+    try {
+      return getLocations();
+    } catch (_) {
+      return [];
+    }
+  }, [scapeVersion, activeLocationId]);
+  const handleRuntimeLocationSelect = useCallback((e) => {
+    const locId = e.target.value;
+    if (onLocationChange) {
+      onLocationChange(locId);
+    } else {
+      setActiveLocationId(locId);
+      syncScapeForLocation(locId);
+    }
+  }, [onLocationChange, syncScapeForLocation]);
   const isEmptyPage = scapeMode !== 'editor' && !hasLocations && (!activeScapeId || !activeScape?.id || activeScape.id === '');
 
   const isExampleShow = useMemo(() => {
@@ -384,19 +593,38 @@ export default function ProcessScapeView({
     return true;
   }, [isBannerDismissed, initialElements, initialPipes, activeScape, activeScapeId, scapeVersion]);
 
+  useEffect(() => {
+    setIsBubbleDismissed(false);
+  }, [activeLocationId, activeScapeId]);
+
+  const isEmptyScape = Boolean(
+    scapeMode === 'runtime' &&
+    !isExampleShow &&
+    pipes.length === 0 &&
+    elements.filter(el => el.type !== 'sensor_card').length === 0
+  );
+
+  const showEmptyScapeIndicator = isEmptyScape && !isBubbleDismissed && !isRuntimeToolsConcise;
+
+  const isToolsTopCorner = runtimeToolsDragPos
+    ? (runtimeToolsDragPos.y < (workbenchRef.current?.clientHeight || 600) / 2)
+    : (runtimeToolsCorner === 'top-right' || runtimeToolsCorner === 'top-left');
+
+  const bubblePlacement = isToolsTopCorner ? 'below' : 'above';
+
 
   const handleEditScapeFromManager = useCallback((scape) => {
     if (!scape || !scape.id) return;
+    resetTransientModeState({ clearHistory: true });
     setActiveScapeIdState(scape.id);
     setProjectTitle(scape.title || 'ProcessScape');
     setScreenSize(scape.tempCanvasSize ? { w: scape.tempCanvasSize.width, h: scape.tempCanvasSize.height } : { w: 1024, h: 800 });
     setZones(scape.zones || []);
     setElements(scape.elements || []);
     setPipes(scape.pipes || []);
-    setSelectedIds(new Set());
     setScapeMode('editor');
     setScapeVersion(v => v + 1);
-  }, []);
+  }, [resetTransientModeState]);
 
   const finishEditorAndRestore = useCallback(() => {
     const editedScapeId = activeScapeId;
@@ -424,7 +652,6 @@ export default function ProcessScapeView({
       setActiveScapeId(targetLocScapeId);
       const locScape = targetLocScapeId ? allScapes.find(s => s.id === targetLocScapeId) : null;
       applyScapeToCanvas(locScape || null, false);
-      setSelectedIds(new Set());
       setScapeMode('runtime');
       if (typeof window !== 'undefined' && window.showAppNotification) {
         window.showAppNotification('Scape Saved', `"${projectTitle}" saved. Returned to ${curLoc.name || 'current location'}.`, 'success');
@@ -436,12 +663,12 @@ export default function ProcessScapeView({
     if (updatedScape && Array.isArray(updatedScape.elements)) {
       setElements(updatedScape.elements);
     }
-    setSelectedIds(new Set());
+    resetTransientModeState();
     setScapeMode('runtime');
     if (typeof window !== 'undefined' && window.showAppNotification) {
       window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
     }
-  }, [activeScapeId, activeLocationId, projectTitle, screenSize, zones, elements, pipes, applyScapeToCanvas]);
+  }, [activeScapeId, activeLocationId, projectTitle, screenSize, zones, elements, pipes, applyScapeToCanvas, resetTransientModeState]);
 
   const handleSaveAndExitEditor = useCallback(() => {
     finishEditorAndRestore();
@@ -451,14 +678,10 @@ export default function ProcessScapeView({
     if (newMode === 'runtime' && scapeMode === 'editor') {
       finishEditorAndRestore();
     } else {
-      setSelectedIds(new Set());
+      resetTransientModeState();
       setScapeMode(newMode);
     }
-    setIsBoundsResizerActive(false);
-    setIsLiveDndActive(false);
-    setResizingBox(null);
-    boundsBoxRef.current = null;
-  }, [scapeMode, finishEditorAndRestore]);
+  }, [scapeMode, finishEditorAndRestore, resetTransientModeState]);
 
   // Dynamic real picture bounding box based on placed items with 16px margin to edge
   const contentBounds = useMemo(() => getContentBounds(elements, pipes, 16), [elements, pipes]);
@@ -474,11 +697,30 @@ export default function ProcessScapeView({
   });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const isSpacePressedRef = useRef(false);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isInspectorPinned, setIsInspectorPinned] = useState(false);
+  const [inspectorDockAnim, setInspectorDockAnim] = useState(null); // 'to-sidebar' | 'to-float' | null
+  const [dockFlyGhost, setDockFlyGhost] = useState(null);
+  const [isInspectorMin, setIsInspectorMin] = useState(() => {
+    try {
+      return localStorage.getItem('s4a_ps_inspector_min_v1') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('s4a_ps_inspector_min_v1', String(isInspectorMin));
+    } catch { }
+  }, [isInspectorMin]);
   const [inspectorPos, setInspectorPos] = useState(null);
+  const [inspectorSize, setInspectorSize] = useState(null);
+  const [benchSize, setBenchSize] = useState(null);
   const [isDraggingInspector, setIsDraggingInspector] = useState(false);
-  const workbenchRef = useRef(null);
+  const [sidebarFooterEl, setSidebarFooterEl] = useState(null);
+  const sidebarRef = useRef(null);
   const inspectorElRef = useRef(null);
+  const dockAnimTimerRef = useRef(null);
+  const dockAnimRafRef = useRef(null);
   const inspectorDragRef = useRef({
     startMouseX: 0,
     startMouseY: 0,
@@ -487,17 +729,24 @@ export default function ProcessScapeView({
     benchWidth: 0,
     benchHeight: 0,
     inspectorWidth: 0,
-    inspectorHeight: 0
+    inspectorHeight: 0,
+    didMove: false
   });
-  const [isRealSizePreview, setIsRealSizePreview] = useState(false);
   const [activePaletteTab, setActivePaletteTab] = useState('all');
+  const [wallPaletteOrientation, setWallPaletteOrientation] = useState('h');
+  const [linePaletteOrientation, setLinePaletteOrientation] = useState('h');
+  const [labelPaletteOrientation, setLabelPaletteOrientation] = useState('h');
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [tipIndex, setTipIndex] = useState(0);
-  const [tipVisible, setTipVisible] = useState(true);
 
-  // Live View Tool States
+  useEffect(() => () => {
+    if (dockAnimTimerRef.current) clearTimeout(dockAnimTimerRef.current);
+    if (dockAnimRafRef.current) cancelAnimationFrame(dockAnimRafRef.current);
+  }, []);
+
+  // Mode-scoped Bounds Resizer state ('editor' | 'runtime' | null) so Modify & Live never share enabled state
   const [isLiveDndActive, setIsLiveDndActive] = useState(false);
-  const [isBoundsResizerActive, setIsBoundsResizerActive] = useState(false);
+  const [boundsResizerMode, setBoundsResizerMode] = useState(null);
+  const isBoundsResizerActive = boundsResizerMode === scapeMode;
   const [resizingBox, setResizingBox] = useState(null);
   const boundsBoxRef = useRef(null);
 
@@ -724,7 +973,7 @@ export default function ProcessScapeView({
     handleZoomFit();
   }, [selectedIds, elements, pipes, centerOnPoint, handleZoomFit]);
 
-  // Diagram Bounding Box Scaler & Pipe Extender Tool (Combined with Sensor Card Repositioning)
+  // Diagram Bounding Box Scaler & Pipe Extender Tool (Combined with Sensor Card Repositioning in Runtime)
   const handleToggleBoundsResizer = useCallback(() => {
     if (!isBoundsResizerActive) {
       const cb = getContentBounds(elements, pipes, 24);
@@ -743,8 +992,8 @@ export default function ProcessScapeView({
         currentPipes: JSON.parse(JSON.stringify(pipes))
       };
       setResizingBox({ ...initialBox });
-      setIsBoundsResizerActive(true);
-      setIsLiveDndActive(true);
+      setBoundsResizerMode(scapeMode);
+      setIsLiveDndActive(scapeMode === 'runtime');
     } else {
       // Clicked again: Confirm, skip bounding box, apply new size, and fit screen!
       const currentBox = resizingBox || (boundsBoxRef.current ? boundsBoxRef.current.currentBox : null);
@@ -767,12 +1016,12 @@ export default function ProcessScapeView({
           saveScapeView(activeScapeId, view);
         }
       }
-      setIsBoundsResizerActive(false);
+      setBoundsResizerMode(null);
       setIsLiveDndActive(false);
       setResizingBox(null);
       boundsBoxRef.current = null;
     }
-  }, [isBoundsResizerActive, resizingBox, elements, pipes, activeScapeId, projectTitle, zones, view]);
+  }, [isBoundsResizerActive, scapeMode, resizingBox, elements, pipes, activeScapeId, projectTitle, zones, view]);
 
   // Layer Stacking (Front / Back)
   const bringToFront = useCallback(() => {
@@ -820,6 +1069,8 @@ export default function ProcessScapeView({
       ...pipes.map((p, idx) => ({ kind: 'pipe', item: p, z: p.zIndex != null ? p.zIndex : 10, origIdx: idx })),
       ...elements.map((e, idx) => {
         let defZ = 20;
+        if (e.type === 'shape_rect' || e.type === 'shape_circle') defZ = 8;
+        if (e.type === 'guide_line') defZ = 15;
         if (e.type === 'text_note') defZ = 30;
         if (e.type === 'sensor_card') defZ = 40;
         return { kind: 'element', item: e, z: e.zIndex != null ? e.zIndex : defZ, origIdx: idx };
@@ -845,7 +1096,7 @@ export default function ProcessScapeView({
           }
           dLayer.appendChild(renderSensorCard(d.item, activeSelectedIds, elements, (scapeMode === 'runtime' && isLiveDndActive)));
         } else {
-          dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes, scapeMode === 'editor'));
+          dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes, scapeMode === 'editor', elements));
         }
       }
     });
@@ -902,15 +1153,16 @@ export default function ProcessScapeView({
 
       if (data.kind === 'asset') {
         const def = ASSET_DEFS[data.key] || { w: 120, h: 120, defaultTag: data.key };
+        const isWallAsset = data.key === 'wall_perimeter_h' || data.key === 'wall_perimeter_v';
         const newNode = {
           id: `asset_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           type: data.key,
-          tag: def.defaultTag,
+          tag: isWallAsset ? '' : def.defaultTag,
           x: dropX,
           y: dropY,
           w: def.w,
           h: def.h,
-          colorTheme: 'blue',
+          ...(isWallAsset ? {} : { colorTheme: 'blue' }),
           zIndex: 20
         };
         setElements(prev => [...prev, newNode]);
@@ -974,11 +1226,50 @@ export default function ProcessScapeView({
         saveHistory('Add Pipe Preset');
         setPipes(prev => [...prev, newPipe]);
         setSelectedIds(new Set([newPipe.id]));
+      } else if (data.kind === 'guide_line') {
+        const tpl = GUIDE_LINE_PRESETS.find(l => l.id === data.key || l.orientation === data.orientation) || GUIDE_LINE_PRESETS[0];
+        const orientation = data.orientation === 'v' ? 'v' : (tpl.orientation || 'h');
+        const newLine = {
+          id: `line_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          type: 'guide_line',
+          orientation,
+          length: tpl.length || 220,
+          strokeWidth: tpl.strokeWidth || 1,
+          lineStyle: tpl.lineStyle || 'single',
+          color: tpl.color || '#475569',
+          x: dropX,
+          y: dropY,
+          zIndex: 15
+        };
+        saveHistory(`Add ${orientation === 'v' ? 'Vertical' : 'Horizontal'} Line`);
+        setElements(prev => [...prev, newLine]);
+        setSelectedIds(new Set([newLine.id]));
+      } else if (data.kind === 'shape_rect' || data.kind === 'shape_circle') {
+        const isCircle = data.kind === 'shape_circle';
+        const newShape = {
+          id: `${isCircle ? 'circle' : 'rect'}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          type: data.kind,
+          w: isCircle ? 120 : 160,
+          h: isCircle ? 120 : 100,
+          fillColor: 'transparent',
+          fillOpacity: 1,
+          lineStyle: 'single',
+          color: '#475569',
+          strokeWidth: 1,
+          x: dropX,
+          y: dropY,
+          zIndex: 8
+        };
+        saveHistory(`Add ${isCircle ? 'Circle' : 'Rectangle'}`);
+        setElements(prev => [...prev, newShape]);
+        setSelectedIds(new Set([newShape.id]));
       } else if (data.kind === 'text_note') {
-        const newNote = {
+        const orientation = (data.orientation === 'v' || data.key === 'text_note_v') ? 'v' : 'h';
+        let newNote = {
           id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           type: 'text_note',
           text: 'Note:',
+          orientation,
           outlineStyle: 'single',
           fontSize: 12,
           color: '#475569',
@@ -986,7 +1277,7 @@ export default function ProcessScapeView({
           y: dropY,
           zIndex: 30
         };
-        saveHistory('Add Text Note');
+        saveHistory('Add Label');
         setElements(prev => [...prev, newNote]);
         setSelectedIds(new Set([newNote.id]));
       }
@@ -1011,17 +1302,42 @@ export default function ProcessScapeView({
     marqueeStart: { x: 0, y: 0 }
   });
 
+  const clearTransientDragState = () => {
+    dragRef.current.pointerDownHasButtons = false;
+    dragRef.current.draggingLiveCard = null;
+    dragRef.current.isDragging = false;
+    dragRef.current.draggingAnchor = null;
+    dragRef.current.draggingVertex = null;
+    dragRef.current.draggingBoundsHandle = null;
+    dragRef.current.isPanning = false;
+    dragRef.current.isMarquee = false;
+    if (viewportRef.current) {
+      viewportRef.current.classList.remove('is-panning');
+      viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line').forEach(node => {
+        node.style.display = '';
+      });
+    }
+    if (interactionLayerRef.current) {
+      interactionLayerRef.current.innerHTML = '';
+    }
+  };
+
   const handleMouseDown = (e) => {
-    if (e.target.closest('.canvas-floating-hud') || e.target.closest('.ps-inspector-toggle-float') || e.target.closest('.ps-inspector')) {
+    if (e.button !== undefined && e.button !== 0) {
+      return;
+    }
+    if (e.target.closest('.canvas-floating-hud') || e.target.closest('.ps-inspector')) {
       return;
     }
 
+    dragRef.current.pointerDownHasButtons = (e.buttons || 0) !== 0;
     const w = clientToWorld(e.clientX, e.clientY);
 
     // Bounding Box Handle Drag (works in runtime and editor modes)
     if (isBoundsResizerActive && resizingBox) {
       const handleEl = e.target.closest('.ps-bounds-handle');
       if (handleEl) {
+        e.preventDefault();
         const handleType = handleEl.getAttribute('data-handle');
         dragRef.current.draggingBoundsHandle = {
           handleType,
@@ -1037,6 +1353,7 @@ export default function ProcessScapeView({
         // 1. Dragging anchor reticle on sensor card
         const anchorEl = e.target.closest('.element-anchor-handle');
         if (anchorEl) {
+          e.preventDefault();
           const elId = anchorEl.getAttribute('data-element-id');
           dragRef.current.draggingAnchor = { elId, startW: { x: w.x, y: w.y } };
           anchorEl.style.display = 'none';
@@ -1049,6 +1366,7 @@ export default function ProcessScapeView({
         // 2. Dragging measurement point card
         const cardEl = e.target.closest('.sensor-badge-group');
         if (cardEl) {
+          e.preventDefault();
           const cardId = cardEl.getAttribute('data-card-id');
           const targetCard = elements.find(item => item.id === cardId);
           if (targetCard) {
@@ -1073,8 +1391,8 @@ export default function ProcessScapeView({
       return;
     }
 
-    // Workspace Pan (Middle click, Right click, Spacebar held, Pan Tool, or Bounds Resizer active)
-    if (e.button === 1 || e.button === 2 || currentTool === 'pan' || isSpacePressedRef.current || isBoundsResizerActive) {
+    // Workspace Pan (Only active in Pan Tool or Spacebar temporary pan — never when toolPan is unchecked)
+    if (currentTool === 'pan' || isSpacePressedRef.current) {
       dragRef.current.isPanning = true;
       dragRef.current.didPan = false;
       dragRef.current.panStart = { x: e.clientX - view.x, y: e.clientY - view.y };
@@ -1294,30 +1612,36 @@ export default function ProcessScapeView({
         idsToSelect = getConnectedPipeIds(clickedId, pipes);
       }
 
+      let nextSelectedIds;
       if (e.shiftKey) {
-        setSelectedIds(prev => {
-          const next = new Set(prev);
-          const allSelected = idsToSelect.every(id => next.has(id));
-          if (allSelected) {
-            idsToSelect.forEach(id => next.delete(id));
-          } else {
-            idsToSelect.forEach(id => next.add(id));
-          }
-          return next;
-        });
+        nextSelectedIds = new Set(selectedIds);
+        const allSelected = idsToSelect.every(id => nextSelectedIds.has(id));
+        if (allSelected) {
+          idsToSelect.forEach(id => nextSelectedIds.delete(id));
+        } else {
+          idsToSelect.forEach(id => nextSelectedIds.add(id));
+        }
+        setSelectedIds(nextSelectedIds);
       } else {
         const isAlreadySelected = idsToSelect.every(id => selectedIds.has(id));
         if (!isAlreadySelected) {
-          setSelectedIds(new Set(idsToSelect));
+          nextSelectedIds = new Set(idsToSelect);
+          setSelectedIds(nextSelectedIds);
+        } else {
+          nextSelectedIds = new Set(selectedIds);
         }
-        setIsInspectorOpen(true);
+      }
+
+      // If Shift+click toggled this target off, do not drag any remaining selected items
+      if (!idsToSelect.some(id => nextSelectedIds.has(id))) {
+        return;
       }
 
       dragRef.current.isDragging = true;
       dragRef.current.dragStart = { x: w.x, y: w.y };
       const origs = new Map();
-      const effectiveIds = new Set(selectedIds);
-      idsToSelect.forEach(id => effectiveIds.add(id));
+      // Derive draggable IDs strictly from the updated selection (never stale selectedIds)
+      const effectiveIds = nextSelectedIds;
 
       elements.forEach(el => {
         if (effectiveIds.has(el.id)) {
@@ -1344,7 +1668,7 @@ export default function ProcessScapeView({
           }
         });
       }
-      // Also track any sensor cards attached to elements being moved
+      // Also track sensor cards attached to elements being moved
       const movingElementIds = new Set(elements.filter(el => effectiveIds.has(el.id)).map(el => el.id));
       if (movingElementIds.size > 0) {
         elements.forEach(el => {
@@ -1366,6 +1690,20 @@ export default function ProcessScapeView({
   };
 
   const handleMouseMove = (e) => {
+    const hasActiveDrag = Boolean(
+      dragRef.current.isPanning ||
+      dragRef.current.draggingBoundsHandle ||
+      dragRef.current.draggingLiveCard ||
+      dragRef.current.draggingAnchor ||
+      dragRef.current.isMarquee ||
+      dragRef.current.draggingVertex ||
+      dragRef.current.isDragging
+    );
+    if (hasActiveDrag && dragRef.current.pointerDownHasButtons && (e.buttons & 1) === 0) {
+      handleMouseUp(e);
+      return;
+    }
+
     // Panning
     if (dragRef.current.isPanning) {
       dragRef.current.didPan = true;
@@ -1524,7 +1862,28 @@ export default function ProcessScapeView({
 
       const updatedElements = origElements.map(el => {
         const pos = posMap.get(el.id);
-        return pos ? { ...el, x: pos.x, y: pos.y } : el;
+        if (!pos) return el;
+        if (el.type === 'guide_line') {
+          const factor = el.orientation === 'v' ? sy : sx;
+          return {
+            ...el,
+            x: pos.x,
+            y: pos.y,
+            length: Math.max(20, Math.round((Number(el.length) || 220) * factor))
+          };
+        }
+        if (el.type === 'shape_rect' || el.type === 'shape_circle') {
+          const defW = el.type === 'shape_circle' ? 120 : 160;
+          const defH = el.type === 'shape_circle' ? 120 : 100;
+          return {
+            ...el,
+            x: pos.x,
+            y: pos.y,
+            w: Math.max(20, Math.round((Number(el.w) || defW) * sx)),
+            h: Math.max(20, Math.round((Number(el.h) || defH) * sy))
+          };
+        }
+        return { ...el, x: pos.x, y: pos.y };
       });
       boundsBoxRef.current.currentElements = updatedElements;
       setElements(updatedElements);
@@ -1743,8 +2102,7 @@ export default function ProcessScapeView({
           cx: anchorPt.x, cy: anchorPt.y, r: 4, fill: closestTarget ? '#00a876' : '#0284c7'
         }));
       } else {
-        // Equipment / Text Note: pipe snap to a specific pipe branch
-        // Only snap to pipe if user dragged cursor away from origin and cursor is close to pipe
+        // Equipment / Label: snap anchor to a pipe branch
         const distFromOrigin = Math.hypot(w.x - el.x, w.y - el.y);
         let closestPipe = null;
         let closestData = null;
@@ -1760,20 +2118,21 @@ export default function ProcessScapeView({
             }
           });
         }
+        const isSnapped = Boolean(closestPipe && closestData);
         const anchorPt = (closestPipe && closestData) ? closestData.point : { x: targetX, y: targetY };
 
         // Dynamic dashed connection line
         iLayer.appendChild(svgEl('line', {
           x1: el.x, y1: el.y, x2: anchorPt.x, y2: anchorPt.y,
-          stroke: closestPipe ? '#00ac86' : '#94a3b8', 'stroke-width': 2, 'stroke-dasharray': '5 3'
+          stroke: isSnapped ? '#00ac86' : '#94a3b8', 'stroke-width': 2, 'stroke-dasharray': '5 3'
         }));
 
-        // Moving anchor reticle following cursor / snapped pipe contact
+        // Moving anchor reticle following cursor / snapped contact
         const reticleG = svgEl('g', { transform: `translate(${anchorPt.x}, ${anchorPt.y})` });
         reticleG.appendChild(svgEl('circle', {
           class: 'anchor-handle-core',
           cx: 0, cy: 0, r: 8,
-          fill: closestPipe ? '#00ac86' : '#0284c7', stroke: '#ffffff', 'stroke-width': 2.5
+          fill: isSnapped ? '#00ac86' : '#0284c7', stroke: '#ffffff', 'stroke-width': 2.5
         }));
         reticleG.appendChild(svgEl('line', { x1: -4, y1: 0, x2: 4, y2: 0, stroke: '#ffffff', 'stroke-width': 1.5 }));
         reticleG.appendChild(svgEl('line', { x1: 0, y1: -4, x2: 0, y2: 4, stroke: '#ffffff', 'stroke-width': 1.5 }));
@@ -1783,6 +2142,8 @@ export default function ProcessScapeView({
   };
 
   const handleMouseUp = (e) => {
+    dragRef.current.pointerDownHasButtons = false;
+
     if (dragRef.current.isPanning) {
       dragRef.current.isPanning = false;
       if (viewportRef.current) {
@@ -1800,41 +2161,24 @@ export default function ProcessScapeView({
       dragRef.current.draggingBoundsHandle = null;
     }
 
+    if (scapeMode !== 'runtime' && dragRef.current.draggingLiveCard) {
+      dragRef.current.draggingLiveCard = null;
+    }
+
     if (scapeMode === 'runtime') {
       if (dragRef.current.draggingLiveCard) {
-        const { cardId } = dragRef.current.draggingLiveCard;
+        const { cardId, origPos } = dragRef.current.draggingLiveCard;
         dragRef.current.draggingLiveCard = null;
         setElements(prev => {
-          const updated = prev.map(el => {
-            if (el.id !== cardId) return el;
-            let closestTarget = null;
-            let minD = 90;
-            prev.forEach(other => {
-              if (other.id !== el.id && other.type !== 'sensor_card') {
-                const d = Math.hypot(other.x - el.x, other.y - el.y);
-                if (d < minD) {
-                  minD = d;
-                  closestTarget = other;
-                }
-              }
-            });
-            if (closestTarget) {
-              return {
-                ...el,
-                userPositioned: true,
-                attachedAssetId: closestTarget.id,
-                targetOffsetX: el.x - closestTarget.x,
-                targetOffsetY: el.y - closestTarget.y
-              };
-            }
-            return {
-              ...el,
-              userPositioned: true,
-              attachedAssetId: null,
-              targetOffsetX: null,
-              targetOffsetY: null
-            };
-          });
+          const movedCard = prev.find(el => el.id === cardId);
+          if (!movedCard || (origPos && movedCard.x === origPos.x && movedCard.y === origPos.y)) {
+            return prev;
+          }
+          const updated = prev.map(el => (
+            el.id === cardId
+              ? resolveSensorCardAttachmentAfterDrag(el, prev, { markUserPositioned: true })
+              : el
+          ));
           if (boundsBoxRef.current) {
             boundsBoxRef.current.origElements = JSON.parse(JSON.stringify(updated));
             boundsBoxRef.current.currentElements = JSON.parse(JSON.stringify(updated));
@@ -1934,6 +2278,7 @@ export default function ProcessScapeView({
 
     if (dragRef.current.isDragging) {
       dragRef.current.isDragging = false;
+      if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
       saveHistory('Move Item(s)');
       // If an element attached to a pipe was moved, update pipeOffsetX / pipeOffsetY relative to pipeT
       // If a measurement point card (sensor_card) was moved, update attachment target or offset
@@ -1952,43 +2297,7 @@ export default function ProcessScapeView({
           }
         }
         if (el.type === 'sensor_card' && dragRef.current.origPositions.has(el.id)) {
-          let closestTarget = null;
-          let minD = 90;
-          prev.forEach(other => {
-            if (other.id !== el.id && other.type !== 'sensor_card') {
-              const d = Math.hypot(other.x - el.x, other.y - el.y);
-              if (d < minD) {
-                minD = d;
-                closestTarget = other;
-              }
-            }
-          });
-          if (closestTarget) {
-            return {
-              ...el,
-              attachedAssetId: closestTarget.id,
-              targetOffsetX: el.x - closestTarget.x,
-              targetOffsetY: el.y - closestTarget.y
-            };
-          } else if (el.attachedAssetId) {
-            const existingTarget = prev.find(p => p.id === el.attachedAssetId);
-            if (existingTarget) {
-              const d = Math.hypot(existingTarget.x - el.x, existingTarget.y - el.y);
-              if (d > 220) {
-                const detached = { ...el };
-                delete detached.attachedAssetId;
-                delete detached.targetOffsetX;
-                delete detached.targetOffsetY;
-                return detached;
-              } else {
-                return {
-                  ...el,
-                  targetOffsetX: el.x - existingTarget.x,
-                  targetOffsetY: el.y - existingTarget.y
-                };
-              }
-            }
-          }
+          return resolveSensorCardAttachmentAfterDrag(el, prev);
         }
         return el;
       }));
@@ -2032,7 +2341,6 @@ export default function ProcessScapeView({
           }));
         }
       } else if (el) {
-        // Equipment / Text Note: bind anchor to a specific pipe branch
         let closestPipe = null;
         let closestData = null;
         let minD = 24;
@@ -2050,18 +2358,15 @@ export default function ProcessScapeView({
           saveHistory('Attach Anchor to Pipe');
           const tVal = Number(closestData.t.toFixed(4));
           const contactPt = closestData.point;
-          setElements(prev => prev.map(item => {
-            if (item.id !== elId) return item;
-            return {
-              ...item,
-              attachedPipeId: closestPipe.id,
-              pipeT: tVal,
-              pipeOffsetX: item.x - contactPt.x,
-              pipeOffsetY: item.y - contactPt.y
-            };
-          }));
+          setElements(prev => prev.map(item => (item.id === elId ? {
+            ...item,
+            attachedPipeId: closestPipe.id,
+            pipeT: tVal,
+            pipeOffsetX: item.x - contactPt.x,
+            pipeOffsetY: item.y - contactPt.y
+          } : item)));
         } else {
-          saveHistory('Detach Anchor from Pipe');
+          saveHistory('Detach Anchor');
           setElements(prev => prev.map(item => {
             if (item.id !== elId) return item;
             const updated = { ...item };
@@ -2117,9 +2422,6 @@ export default function ProcessScapeView({
         const allConnectedPipeIds = expandConnectedPipes(touchedPipeIds, pipes);
         allConnectedPipeIds.forEach(pId => nextSelected.add(pId));
         setSelectedIds(nextSelected);
-        if (nextSelected.size > 0) {
-          setIsInspectorOpen(true);
-        }
       }
     }
   };
@@ -2144,7 +2446,6 @@ export default function ProcessScapeView({
       const tId = textEl.getAttribute('data-text-id');
       if (tId) {
         setSelectedIds(new Set([tId]));
-        setIsInspectorOpen(true);
         setTimeout(() => {
           const inputEl = document.getElementById('psTextNoteInput');
           if (inputEl) {
@@ -2169,8 +2470,22 @@ export default function ProcessScapeView({
     }
   };
 
+  /**
+   * Enter Pan mode and immediately clear all selection, inspector, and active tool previews
+   * so canvas dragging operates solely on the whole viewport.
+   */
+  const activatePanTool = useCallback(() => {
+    dragRef.current.isDragging = false;
+    dragRef.current.isMarquee = false;
+    dragRef.current.drawingPipeStart = null;
+    dragRef.current.extendingPipe = null;
+    if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
+    setSelectedIds(new Set());
+    setCurrentTool('pan');
+  }, []);
+
   const handleClick = (e) => {
-    if (scapeMode === 'runtime') return;
+    if (scapeMode === 'runtime' || currentTool === 'pan' || isSpacePressedRef.current || e.shiftKey) return;
     const nodeEl = e.target.closest('.plant-node');
     const cardEl = e.target.closest('.sensor-badge-group');
     const textEl = e.target.closest('.plant-text-group');
@@ -2187,25 +2502,30 @@ export default function ProcessScapeView({
         idsToSelect = getConnectedPipeIds(clickedId, pipes);
       }
       setSelectedIds(new Set(idsToSelect));
-      setIsInspectorOpen(true);
     }
   };
 
   // Keep mouse handlers continuously attached to window for smooth drag & pan
-  const mouseHandlersRef = useRef({ move: handleMouseMove, up: handleMouseUp });
-  mouseHandlersRef.current = { move: handleMouseMove, up: handleMouseUp };
+  const mouseHandlersRef = useRef({ move: handleMouseMove, up: handleMouseUp, reset: clearTransientDragState });
+  mouseHandlersRef.current = { move: handleMouseMove, up: handleMouseUp, reset: clearTransientDragState };
 
   useEffect(() => {
     const onMouseMove = (e) => mouseHandlersRef.current.move(e);
     const onMouseUp = (e) => {
-      setIsRealSizePreview(false);
       mouseHandlersRef.current.up(e);
+    };
+    const onWindowReset = () => {
+      mouseHandlersRef.current.reset();
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('blur', onWindowReset);
+    window.addEventListener('contextmenu', onWindowReset);
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onWindowReset);
+      window.removeEventListener('contextmenu', onWindowReset);
     };
   }, []);
 
@@ -2219,8 +2539,10 @@ export default function ProcessScapeView({
         const factor = e.deltaY < 0 ? 1.08 : 0.92;
         zoomAtPoint(e.clientX, e.clientY, factor);
       } else {
-        // In runtime mode, fix canvas position unless bounds resizer tool is active
-        if (scapeMode === 'runtime' && !isBoundsResizerActive) {
+        // Only allow pan scrolling when Pan tool is active in Modify mode (or Bounds Resizer in runtime)
+        if (scapeMode === 'runtime') {
+          if (!isBoundsResizerActive) return;
+        } else if (currentTool !== 'pan' && !isSpacePressedRef.current) {
           return;
         }
         setView(v => ({
@@ -2232,12 +2554,32 @@ export default function ProcessScapeView({
     };
     vp.addEventListener('wheel', onWheel, { passive: false });
     return () => vp.removeEventListener('wheel', onWheel);
-  }, [zoomAtPoint]);
+  }, [zoomAtPoint, scapeMode, isBoundsResizerActive, currentTool]);
 
   // Keyboard Delete & Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+      // Single-key fit view works in both runtime and editor
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        focusSelectedOrCenter();
+        return;
+      }
+
+      if (scapeMode === 'runtime' && e.key === 'Escape' && isBoundsResizerActive) {
+        e.preventDefault();
+        setBoundsResizerMode(null);
+        setIsLiveDndActive(false);
+        setResizingBox(null);
+        boundsBoxRef.current = null;
+        mouseHandlersRef.current.reset();
+        return;
+      }
+
+      // All canvas editing / tool shortcuts are strictly scoped to editor (Modify) mode
+      if (scapeMode !== 'editor') return;
 
       // Spacebar temporary pan
       if (e.code === 'Space' && !e.repeat) {
@@ -2251,7 +2593,7 @@ export default function ProcessScapeView({
       // Single-key shortcuts
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key.toLowerCase() === 'h') {
-          setCurrentTool('pan');
+          activatePanTool();
           return;
         }
         if (e.key.toLowerCase() === 'v') {
@@ -2260,11 +2602,6 @@ export default function ProcessScapeView({
         }
         if (e.key.toLowerCase() === 'p') {
           setCurrentTool('draw_pipe');
-          return;
-        }
-        if (e.key.toLowerCase() === 'f') {
-          e.preventDefault();
-          focusSelectedOrCenter();
           return;
         }
       }
@@ -2286,12 +2623,12 @@ export default function ProcessScapeView({
           const deletedPipeIds = new Set(pipes.filter(p => selectedIds.has(p.id)).map(p => p.id));
           const updatedElements = elements.filter(el => !selectedIds.has(el.id)).map(el => {
             if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
-              const updated = { ...el };
-              delete updated.attachedPipeId;
-              delete updated.pipeT;
-              delete updated.pipeOffsetX;
-              delete updated.pipeOffsetY;
-              return updated;
+              const nextEl = { ...el };
+              delete nextEl.attachedPipeId;
+              delete nextEl.pipeT;
+              delete nextEl.pipeOffsetX;
+              delete nextEl.pipeOffsetY;
+              return nextEl;
             }
             return el;
           });
@@ -2336,7 +2673,7 @@ export default function ProcessScapeView({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [currentTool, selectedIds, saveHistory, undo, redo, bringToFront, sendToBack, focusSelectedOrCenter]);
+  }, [scapeMode, currentTool, isBoundsResizerActive, selectedIds, activatePanTool, saveHistory, undo, redo, bringToFront, sendToBack, focusSelectedOrCenter]);
 
   // --- Inspector Helper ---
   const selectedElements = elements.filter(e => selectedIds.has(e.id));
@@ -2353,20 +2690,114 @@ export default function ProcessScapeView({
   const selectedElement = singleSelectedElement;
   const selectedPipe = representativePipe;
   const hasSelection = isPipeSelection || selectedElements.length > 0;
-  const showInspector = (scapeMode === 'editor') && isInspectorOpen && hasSelection;
+  const showFloatingInspector = (scapeMode === 'editor') && !isInspectorPinned && hasSelection;
 
-  const prevSelectedIdsSizeRef = useRef(selectedIds.size);
-  useEffect(() => {
-    if (selectedIds.size > 0 && prevSelectedIdsSizeRef.current === 0) {
-      setIsInspectorOpen(true);
-    } else if (selectedIds.size === 0) {
-      setIsInspectorOpen(false);
+  const getInspectorHeaderTitle = () => {
+    if (singleSelectedElement) {
+      if (singleSelectedElement.type === 'guide_line') {
+        return singleSelectedElement.orientation === 'v' ? 'Vertical Line' : 'Horizontal Line';
+      }
+      if (singleSelectedElement.type === 'shape_rect') return 'Rectangle';
+      if (singleSelectedElement.type === 'shape_circle') return 'Circle / Oval';
+      if (singleSelectedElement.type === 'wall_perimeter_v') return 'Vertical Wall';
+      if (singleSelectedElement.type === 'wall_perimeter_h') return 'Horizontal Wall';
+      return singleSelectedElement.tag || singleSelectedElement.text || 'Item Config';
     }
-    prevSelectedIdsSizeRef.current = selectedIds.size;
-  }, [selectedIds]);
+    if (isPipeSelection) {
+      return selectedPipes.length > 1
+        ? `Pipeline (${selectedPipes.length} segments)`
+        : 'Pipe Config';
+    }
+    return 'Inspector';
+  };
+
+  const triggerDockFlyGhost = (fromRect, toRect, title) => {
+    if (!fromRect || !toRect || fromRect.width <= 0 || fromRect.height <= 0 || toRect.width <= 0) {
+      return;
+    }
+    setDockFlyGhost({
+      title,
+      left: Math.round(fromRect.left),
+      top: Math.round(fromRect.top),
+      width: Math.round(fromRect.width),
+      height: Math.round(fromRect.height),
+      dx: Math.round(toRect.left - fromRect.left),
+      dy: Math.round(toRect.top - fromRect.top),
+      toWidth: Math.round(toRect.width),
+      toHeight: Math.round(toRect.height),
+      active: false
+    });
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      dockAnimRafRef.current = window.requestAnimationFrame(() => {
+        dockAnimRafRef.current = window.requestAnimationFrame(() => {
+          setDockFlyGhost(prev => (prev ? { ...prev, active: true } : null));
+        });
+      });
+    }
+  };
+
+  const handleToggleInspectorPin = () => {
+    if (dockAnimTimerRef.current) clearTimeout(dockAnimTimerRef.current);
+    if (dockAnimRafRef.current) cancelAnimationFrame(dockAnimRafRef.current);
+
+    const headerTitle = getInspectorHeaderTitle();
+
+    if (!isInspectorPinned) {
+      const fromRect = inspectorElRef.current?.getBoundingClientRect();
+      const sidebarRect = sidebarRef.current?.getBoundingClientRect();
+      setIsDraggingInspector(false);
+      setIsInspectorPinned(true);
+      setInspectorDockAnim('to-sidebar');
+      if (fromRect && sidebarRect && sidebarRect.height > 0) {
+        const targetH = isInspectorMin
+          ? 200
+          : Math.min(520, Math.max(260, Math.round(sidebarRect.height * 0.52)));
+        triggerDockFlyGhost(
+          fromRect,
+          {
+            left: sidebarRect.left,
+            top: sidebarRect.bottom - targetH,
+            width: sidebarRect.width,
+            height: targetH
+          },
+          headerTitle
+        );
+      }
+      dockAnimTimerRef.current = setTimeout(() => {
+        setDockFlyGhost(null);
+        setInspectorDockAnim(null);
+      }, 340);
+      return;
+    }
+
+    const fromRect = (inspectorElRef.current || sidebarFooterEl)?.getBoundingClientRect();
+    const benchRect = workbenchRef.current?.getBoundingClientRect();
+    setIsInspectorPinned(false);
+    setInspectorDockAnim('to-float');
+    if (fromRect && benchRect && benchRect.width > 0) {
+      const targetW = isInspectorMin ? 230 : 290;
+      const targetH = 340;
+      const toLeft = inspectorPos
+        ? benchRect.left + (Math.max(0, Math.min(100, inspectorPos.xPct)) / 100) * Math.max(0, benchRect.width - targetW)
+        : benchRect.right - targetW - 16;
+      const toTop = inspectorPos
+        ? benchRect.top + (Math.max(0, Math.min(100, inspectorPos.yPct)) / 100) * Math.max(0, benchRect.height - targetH)
+        : benchRect.top + 14;
+      triggerDockFlyGhost(
+        fromRect,
+        { left: toLeft, top: toTop, width: targetW, height: targetH },
+        headerTitle
+      );
+    }
+    dockAnimTimerRef.current = setTimeout(() => {
+      setDockFlyGhost(null);
+      setInspectorDockAnim(null);
+    }, 300);
+  };
 
   // Floating Inspector DND handlers
   const handleInspectorHeaderMouseDown = (e) => {
+    if (isInspectorPinned) return;
     if (e.button !== 0) return;
     if (e.target.closest('.ps-inspector-close-btn')) return;
 
@@ -2391,13 +2822,15 @@ export default function ProcessScapeView({
       benchWidth: benchRect.width,
       benchHeight: benchRect.height,
       inspectorWidth: inspRect.width,
-      inspectorHeight: inspRect.height
+      inspectorHeight: inspRect.height,
+      didMove: false
     };
 
     setIsDraggingInspector(true);
   };
 
   const handleInspectorHeaderTouchStart = (e) => {
+    if (isInspectorPinned) return;
     if (e.target.closest('.ps-inspector-close-btn')) return;
     if (!e.touches || e.touches.length === 0) return;
 
@@ -2420,7 +2853,8 @@ export default function ProcessScapeView({
       benchWidth: benchRect.width,
       benchHeight: benchRect.height,
       inspectorWidth: inspRect.width,
-      inspectorHeight: inspRect.height
+      inspectorHeight: inspRect.height,
+      didMove: false
     };
 
     setIsDraggingInspector(true);
@@ -2447,6 +2881,9 @@ export default function ProcessScapeView({
 
       const dx = clientX - startMouseX;
       const dy = clientY - startMouseY;
+      if (Math.hypot(dx, dy) > 4) {
+        inspectorDragRef.current.didMove = true;
+      }
 
       const maxLeft = Math.max(0, benchWidth - inspectorWidth);
       const maxTop = Math.max(0, benchHeight - inspectorHeight);
@@ -2454,7 +2891,25 @@ export default function ProcessScapeView({
       const newLeft = Math.max(0, Math.min(maxLeft, startLeft + dx));
       const newTop = Math.max(0, Math.min(maxTop, startTop + dy));
 
-      setInspectorPos({ left: Math.round(newLeft), top: Math.round(newTop) });
+      const xPct = maxLeft > 0 ? Math.max(0, Math.min(100, (newLeft / maxLeft) * 100)) : 0;
+      const yPct = maxTop > 0 ? Math.max(0, Math.min(100, (newTop / maxTop) * 100)) : 0;
+
+      setBenchSize({
+        width: Math.round(benchWidth),
+        height: Math.round(benchHeight)
+      });
+      setInspectorSize({
+        width: Math.round(inspectorWidth),
+        height: Math.round(inspectorHeight)
+      });
+      setInspectorPos({
+        xPct: Math.round(xPct * 100) / 100,
+        yPct: Math.round(yPct * 100) / 100,
+        benchWidth: Math.round(benchWidth),
+        benchHeight: Math.round(benchHeight),
+        inspWidth: Math.round(inspectorWidth),
+        inspHeight: Math.round(inspectorHeight)
+      });
     };
 
     const handlePointerUp = () => {
@@ -2474,10 +2929,58 @@ export default function ProcessScapeView({
     };
   }, [isDraggingInspector]);
 
+  useEffect(() => {
+    if (isInspectorPinned || !inspectorPos) return;
+    const benchEl = workbenchRef.current;
+    const inspEl = inspectorElRef.current;
+
+    const updateBounds = () => {
+      if (benchEl) {
+        const bRect = benchEl.getBoundingClientRect();
+        if (bRect.width > 0 && bRect.height > 0) {
+          setBenchSize(prev => (
+            prev && prev.width === Math.round(bRect.width) && prev.height === Math.round(bRect.height)
+              ? prev
+              : { width: Math.round(bRect.width), height: Math.round(bRect.height) }
+          ));
+        }
+      }
+      if (inspEl) {
+        const iRect = inspEl.getBoundingClientRect();
+        if (iRect.width > 0 && iRect.height > 0) {
+          setInspectorSize(prev => (
+            prev && prev.width === Math.round(iRect.width) && prev.height === Math.round(iRect.height)
+              ? prev
+              : { width: Math.round(iRect.width), height: Math.round(iRect.height) }
+          ));
+        }
+      }
+    };
+
+    updateBounds();
+    window.addEventListener('resize', updateBounds);
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateBounds);
+      if (benchEl) ro.observe(benchEl);
+      if (inspEl) ro.observe(inspEl);
+    }
+    return () => {
+      window.removeEventListener('resize', updateBounds);
+      if (ro) ro.disconnect();
+    };
+  }, [isInspectorPinned, inspectorPos, isInspectorMin]);
+
+  const resolvedBenchW = benchSize?.width || inspectorPos?.benchWidth || 0;
+  const resolvedBenchH = benchSize?.height || inspectorPos?.benchHeight || 0;
+  const resolvedInspW = inspectorSize?.width || inspectorPos?.inspWidth || (isInspectorMin ? 230 : 290);
+  const resolvedInspH = inspectorSize?.height || inspectorPos?.inspHeight || 340;
+  const maxInspLeft = Math.max(0, resolvedBenchW - resolvedInspW);
+  const maxInspTop = Math.max(0, resolvedBenchH - resolvedInspH);
   const inspectorStyle = inspectorPos
     ? {
-      left: `${inspectorPos.left}px`,
-      top: `${inspectorPos.top}px`,
+      left: `${Math.round((Math.max(0, Math.min(100, inspectorPos.xPct)) / 100) * maxInspLeft)}px`,
+      top: `${Math.round((Math.max(0, Math.min(100, inspectorPos.yPct)) / 100) * maxInspTop)}px`,
       right: 'auto',
       bottom: 'auto'
     }
@@ -2486,7 +2989,123 @@ export default function ProcessScapeView({
   const updateSelectedElement = (fields) => {
     if (!singleSelectedElement) return;
     saveHistory('Update Element Config');
-    setElements(prev => prev.map(el => el.id === singleSelectedElement.id ? { ...el, ...fields } : el));
+    setElements(prev => prev.map(el => (el.id === singleSelectedElement.id ? { ...el, ...fields } : el)));
+  };
+
+  /** Compact single-row preview selector for LINE_STYLE_OPTIONS (used by Line Style & Frame Style). */
+  const renderLineStyleField = ({ label, activeStyle = 'single', ariaPrefix = 'Line Style', onSelect }) => (
+    <div className="ps-form-group">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <label className="ps-form-label" style={{ margin: 0 }}>{label}</label>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+          {(LINE_STYLE_OPTIONS.find(s => s.id === activeStyle) || LINE_STYLE_OPTIONS[0]).name}
+        </span>
+      </div>
+      <div className="ps-line-style-row">
+        {LINE_STYLE_OPTIONS.map(opt => {
+          const active = activeStyle === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              className={`ps-note-outline-btn ps-line-style-btn ${active ? 'active' : ''}`}
+              title={opt.name}
+              aria-label={`${ariaPrefix}: ${opt.name}`}
+              onClick={() => onSelect(opt.id)}
+            >
+              <span className={`ps-line-preview style-${opt.id}`} aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  /** Shared Inspector circular color swatch row with optional extra control (e.g. custom picker). */
+  const renderColorSwatchField = ({ label, palette, activeColor, ariaPrefix = '', onSelect, extraControl = null }) => {
+    const normalized = (activeColor || '').toLowerCase();
+    const matchedName = palette.find(c => c.hex.toLowerCase() === normalized)?.name || (activeColor || 'Custom');
+    return (
+      <div className="ps-form-group">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <label className="ps-form-label" style={{ margin: 0 }}>{label}</label>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>{matchedName}</span>
+        </div>
+        <div className="ps-swatches-row">
+          {palette.map(c => {
+            const isActive = normalized === c.hex.toLowerCase();
+            const isTransparent = c.hex === 'transparent';
+            return (
+              <button
+                type="button"
+                key={c.id}
+                className={`ps-swatch-circle-btn ${isTransparent ? 'is-transparent' : ''} ${isActive ? 'active' : ''}`}
+                title={c.name}
+                aria-label={ariaPrefix ? `${ariaPrefix}: ${c.name}` : c.name}
+                onClick={() => onSelect(c.hex)}
+                style={isTransparent ? undefined : { backgroundColor: c.hex }}
+              />
+            );
+          })}
+          {extraControl}
+        </div>
+      </div>
+    );
+  };
+
+  /** Shared Inspector labeled slider control row. */
+  const renderRangeField = ({ id, label, valueText, min, max, step = 1, value, minLabel, maxLabel, onChange, footer = null }) => (
+    <div className="ps-form-group">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <label className="ps-form-label" style={{ margin: 0 }} htmlFor={id}>{label}</label>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>{valueText}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>{minLabel || `${min}px`}</span>
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          style={{ flex: 1, accentColor: '#00ac86' }}
+          value={value}
+          onChange={onChange}
+        />
+        <span style={{ fontSize: 11, color: '#64748b', minWidth: 34, textAlign: 'right' }}>{maxLabel || `${max}px`}</span>
+      </div>
+      {footer}
+    </div>
+  );
+
+  /** Bottom-right aligned uniform Delete action footer rendered at the end of Item Properties. */
+  const renderInspectorDeleteFooter = (onDelete) => (
+    <div className="ps-inspector-delete-row">
+      <button
+        type="button"
+        className="hud-btn-sm btn-danger-outline"
+        onClick={onDelete}
+      >
+        Delete
+      </button>
+    </div>
+  );
+
+  /** Delete the single selected element. */
+  const deleteSingleElement = (historyLabel) => {
+    if (!singleSelectedElement) return;
+    saveHistory(historyLabel);
+    const updated = elements.filter(e => e.id !== singleSelectedElement.id);
+    setElements(updated);
+    setSelectedIds(new Set());
+    saveScape({
+      id: activeScapeId,
+      title: projectTitle,
+      tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+      zones,
+      elements: updated,
+      pipes
+    });
   };
 
   const targetElement = selectedElements.length > 0 ? selectedElements[0] : null;
@@ -2613,6 +3232,14 @@ export default function ProcessScapeView({
           text: el.text || el.tag,
           fontSize: el.fontSize,
           textColor: el.textColor,
+          color: el.color,
+          fillColor: el.fillColor,
+          fillOpacity: el.fillOpacity,
+          lineStyle: el.lineStyle,
+          outlineStyle: el.outlineStyle,
+          orientation: el.orientation,
+          length: el.length,
+          strokeWidth: el.strokeWidth,
           colorTheme: el.colorTheme || 'blue',
           x: el.x,
           y: el.y,
@@ -2652,7 +3279,6 @@ export default function ProcessScapeView({
 
     const clone = svg.cloneNode(true);
     clone.querySelector('#boundaryGuide')?.remove();
-    clone.querySelector('.ps-real-bounds-guide')?.remove();
     clone.querySelector('.ps-bounds-resizer-group')?.remove();
     clone.querySelector('#interactionLayer')?.remove();
     clone.querySelectorAll('.pipe-extend-group')?.forEach(e => e.remove());
@@ -2776,12 +3402,22 @@ export default function ProcessScapeView({
           text: el.text || el.tag || '',
           fontSize: el.fontSize,
           textColor: el.textColor,
+          color: el.color,
+          fillColor: el.fillColor,
+          fillOpacity: el.fillOpacity,
+          lineStyle: el.lineStyle,
+          outlineStyle: el.outlineStyle,
+          orientation: el.orientation,
+          length: el.length,
+          strokeWidth: el.strokeWidth,
           colorTheme: el.colorTheme || 'blue',
           x: typeof el.x === 'number' ? el.x : 0,
           y: typeof el.y === 'number' ? el.y : 0,
           w: el.w,
           h: el.h,
-          zIndex: el.zIndex != null ? el.zIndex : (el.type === 'text_note' ? 30 : 20),
+          zIndex: el.zIndex != null
+            ? el.zIndex
+            : ((el.type === 'shape_rect' || el.type === 'shape_circle') ? 8 : (el.type === 'guide_line' ? 15 : (el.type === 'text_note' ? 30 : 20))),
           attachedPipeId: el.attachedPipeId || null,
           pipeT: el.pipeT != null ? el.pipeT : null,
           pipeOffsetX: el.pipeOffsetX !== undefined ? el.pipeOffsetX : null,
@@ -2858,6 +3494,7 @@ export default function ProcessScapeView({
   }, [loadProcessScapeConfig, handleZoomFit]);
 
   const reloadActiveScape = useCallback((targetScapeId = null) => {
+    resetTransientModeState({ clearHistory: true });
     if (targetScapeId !== null && targetScapeId !== undefined) {
       setActiveScapeId(targetScapeId);
       setActiveScapeIdState(targetScapeId);
@@ -2888,7 +3525,7 @@ export default function ProcessScapeView({
       setActiveScapeIdState('');
     }
     setScapeVersion(v => v + 1);
-  }, [loadProcessScapeConfig, handleZoomFit]);
+  }, [loadProcessScapeConfig, handleZoomFit, resetTransientModeState]);
 
   // Register actions & notify state to parent header
   useEffect(() => {
@@ -2979,7 +3616,7 @@ export default function ProcessScapeView({
           <>
             {/* Left Sidebar Palette (Editor Mode only) */}
             {scapeMode === 'editor' && (
-              <aside className="ps-sidebar">
+              <aside ref={sidebarRef} className="ps-sidebar">
                 <div className="ps-palette-tabs">
                   {PALETTE_CATEGORIES.map(cat => (
                     <button
@@ -3144,13 +3781,151 @@ export default function ProcessScapeView({
                       );
                     };
 
-                    const renderTextNoteCard = () => (
+                    const renderOrientableCard = ({ reactKey, keyName, kind, title, desc, orientation, setOrientation, icon }) => {
+                      const isVert = orientation === 'v';
+                      return (
+                        <div
+                          key={reactKey || keyName}
+                          className="ps-palette-card"
+                          draggable
+                          onDragStart={(e) => {
+                            const payload = { kind, key: keyName, orientation };
+                            if (typeof window !== 'undefined') window.__ps_active_drag = payload;
+                            if (e.dataTransfer) {
+                              e.dataTransfer.effectAllowed = 'copyMove';
+                              const s = JSON.stringify(payload);
+                              try {
+                                e.dataTransfer.setData('application/json', s);
+                                e.dataTransfer.setData('text/plain', s);
+                              } catch (_) { }
+                            }
+                          }}
+                          onDragEnd={() => {
+                            if (typeof window !== 'undefined') {
+                              setTimeout(() => { window.__ps_active_drag = null; }, 200);
+                            }
+                          }}
+                        >
+                          {icon}
+                          <div className="ps-card-info">
+                            <div className="ps-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                              <span>{title}</span>
+                              <span
+                                className="ps-palette-orient-pills"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className={`ps-orient-btn ${!isVert ? 'active' : ''}`}
+                                  title={`Drag Horizontal ${title} (H)`}
+                                  aria-label={`Palette ${title} Horizontal`}
+                                  onClick={(e) => { e.stopPropagation(); setOrientation('h'); }}
+                                >
+                                  H
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`ps-orient-btn ${isVert ? 'active' : ''}`}
+                                  title={`Drag Vertical ${title} (V)`}
+                                  aria-label={`Palette ${title} Vertical`}
+                                  onClick={(e) => { e.stopPropagation(); setOrientation('v'); }}
+                                >
+                                  V
+                                </button>
+                              </span>
+                            </div>
+                            <div className="ps-card-desc">{desc}</div>
+                          </div>
+                        </div>
+                      );
+                    };
+
+                    const renderBrickWallCard = () => {
+                      const wallType = wallPaletteOrientation === 'v' ? 'wall_perimeter_v' : 'wall_perimeter_h';
+                      return renderOrientableCard({
+                        reactKey: 'wall_perimeter',
+                        keyName: wallType,
+                        kind: 'asset',
+                        title: 'Brick Wall',
+                        desc: 'H/V red brick wall with running bond masonry',
+                        orientation: wallPaletteOrientation,
+                        setOrientation: setWallPaletteOrientation,
+                        icon: (
+                          <div className="ps-card-icon-box">
+                            {renderAssetPaletteIcon(wallType, ASSET_DEFS[wallType])}
+                          </div>
+                        )
+                      });
+                    };
+
+                    const renderGuideLineCard = () => {
+                      const isVert = linePaletteOrientation === 'v';
+                      return renderOrientableCard({
+                        keyName: 'guide_line',
+                        kind: 'guide_line',
+                        title: 'Line',
+                        desc: 'H/V divider line with Label styles & line snap',
+                        orientation: linePaletteOrientation,
+                        setOrientation: setLinePaletteOrientation,
+                        icon: (
+                          <div
+                            className="ps-card-icon-box"
+                            style={{
+                              background: '#f8fafc',
+                              border: '1px solid #cbd5e1',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <svg width="26" height="26" viewBox="0 0 26 26">
+                              {isVert ? (
+                                <line x1="13" y1="3" x2="13" y2="23" stroke="#475569" strokeWidth="2.5" strokeLinecap="round" />
+                              ) : (
+                                <line x1="3" y1="13" x2="23" y2="13" stroke="#475569" strokeWidth="2.5" strokeLinecap="round" />
+                              )}
+                            </svg>
+                          </div>
+                        )
+                      });
+                    };
+
+                    const renderTextNoteCard = () => {
+                      const isVert = labelPaletteOrientation === 'v';
+                      return renderOrientableCard({
+                        keyName: 'text_note',
+                        kind: 'text_note',
+                        title: 'Label',
+                        desc: 'H/V editable label with outline styles & line snap',
+                        orientation: labelPaletteOrientation,
+                        setOrientation: setLabelPaletteOrientation,
+                        icon: (
+                          <div
+                            className="ps-card-icon-box"
+                            style={{
+                              background: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              fontWeight: 700,
+                              fontFamily: 'monospace',
+                              fontSize: 15,
+                              color: '#475569',
+                              position: 'relative'
+                            }}
+                          >
+                            <span style={{ display: 'inline-block', transform: isVert ? 'rotate(-90deg)' : 'none' }}>T</span>
+                          </div>
+                        )
+                      });
+                    };
+
+                    const renderShapeCard = ({ kind, title, desc, icon }) => (
                       <div
-                        key="text_note"
+                        key={kind}
                         className="ps-palette-card"
                         draggable
                         onDragStart={(e) => {
-                          const payload = { kind: 'text_note', key: 'text_note' };
+                          const payload = { kind, key: kind };
                           if (typeof window !== 'undefined') window.__ps_active_drag = payload;
                           if (e.dataTransfer) {
                             e.dataTransfer.effectAllowed = 'copyMove';
@@ -3170,40 +3945,64 @@ export default function ProcessScapeView({
                         <div
                           className="ps-card-icon-box"
                           style={{
-                            background: '#f1f5f9',
+                            background: '#f8fafc',
                             border: '1px solid #cbd5e1',
-                            fontWeight: 700,
-                            fontFamily: 'monospace',
-                            fontSize: 16,
-                            color: '#64748b'
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                           }}
                         >
-                          T
+                          {icon}
                         </div>
                         <div className="ps-card-info">
-                          <div className="ps-card-title">Text Note / Label</div>
-                          <div className="ps-card-desc">Editable text note with border styles &amp; custom sizing</div>
+                          <div className="ps-card-title">{title}</div>
+                          <div className="ps-card-desc">{desc}</div>
                         </div>
                       </div>
                     );
 
+                    const renderRectShapeCard = () => renderShapeCard({
+                      kind: 'shape_rect',
+                      title: 'Rectangle',
+                      desc: 'W×H box with fill color & line frame styles',
+                      icon: (
+                        <svg width="26" height="26" viewBox="0 0 26 26">
+                          <rect x="4" y="6" width="18" height="14" rx="1" fill="#e2e8f0" stroke="#475569" strokeWidth="2" />
+                        </svg>
+                      )
+                    });
+
+                    const renderCircleShapeCard = () => renderShapeCard({
+                      kind: 'shape_circle',
+                      title: 'Circle',
+                      desc: 'W×H circle or oval with fill & line frame styles',
+                      icon: (
+                        <svg width="26" height="26" viewBox="0 0 26 26">
+                          <ellipse cx="13" cy="13" rx="9" ry="9" fill="#e2e8f0" stroke="#475569" strokeWidth="2" />
+                        </svg>
+                      )
+                    });
+
                     if (activePaletteTab === 'all') {
                       return (
                         <>
-                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
                           {PIPE_PRESETS.map(p => renderPipePresetCard(p))}
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && (d.category === 'sensors' || d.category === 'gateways')).map(([t, d]) => renderAssetCard(t, d))}
                           {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d))}
                           {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'vessels').map(([t, d]) => renderAssetCard(t, d))}
-                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'gateways').map(([t, d]) => renderAssetCard(t, d))}
-                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'others').map(([t, d]) => renderAssetCard(t, d))}
+                          {Object.entries(ASSET_DEFS).filter(([t, d]) => !d.isAlias && d.category === 'others' && t !== 'wall_perimeter_h' && t !== 'wall_perimeter_v').map(([t, d]) => renderAssetCard(t, d))}
+                          {renderBrickWallCard()}
+                          {renderGuideLineCard()}
                           {renderTextNoteCard()}
+                          {renderRectShapeCard()}
+                          {renderCircleShapeCard()}
                         </>
                       );
                     }
                     if (activePaletteTab === 'sensors') {
                       return (
                         <>
-                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'sensors').map(([t, d]) => renderAssetCard(t, d))}
+                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && (d.category === 'sensors' || d.category === 'gateways')).map(([t, d]) => renderAssetCard(t, d))}
                         </>
                       );
                     }
@@ -3216,14 +4015,15 @@ export default function ProcessScapeView({
                     if (activePaletteTab === 'machines') {
                       return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'machines').map(([t, d]) => renderAssetCard(t, d));
                     }
-                    if (activePaletteTab === 'gateways') {
-                      return Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'gateways').map(([t, d]) => renderAssetCard(t, d));
-                    }
                     if (activePaletteTab === 'others') {
                       return (
                         <>
-                          {Object.entries(ASSET_DEFS).filter(([_, d]) => !d.isAlias && d.category === 'others').map(([t, d]) => renderAssetCard(t, d))}
+                          {Object.entries(ASSET_DEFS).filter(([t, d]) => !d.isAlias && d.category === 'others' && t !== 'wall_perimeter_h' && t !== 'wall_perimeter_v').map(([t, d]) => renderAssetCard(t, d))}
+                          {renderBrickWallCard()}
+                          {renderGuideLineCard()}
                           {renderTextNoteCard()}
+                          {renderRectShapeCard()}
+                          {renderCircleShapeCard()}
                         </>
                       );
                     }
@@ -3231,27 +4031,11 @@ export default function ProcessScapeView({
                   })()}
                 </div>
 
-                {tipVisible && (
-                  <div className="ps-sidebar-footer">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <strong style={{ color: '#00a876', fontSize: 10, textTransform: 'uppercase' }}>💡 Pro Tip</strong>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 10, fontWeight: 700, color: '#00a876' }}
-                          onClick={() => setTipIndex((tipIndex + 1) % TIPS_LIST.length)}
-                        >
-                          Next →
-                        </button>
-                        <button
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: '#94a3b8' }}
-                          onClick={() => setTipVisible(false)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                    <div dangerouslySetInnerHTML={{ __html: TIPS_LIST[tipIndex] }} />
-                  </div>
+                {isInspectorPinned && hasSelection && (
+                  <div
+                    ref={setSidebarFooterEl}
+                    className={`ps-sidebar-footer is-pinned-inspector ${inspectorDockAnim === 'to-sidebar' ? 'is-dock-entering' : ''} ${isInspectorMin ? 'is-min' : ''}`}
+                  />
                 )}
               </aside>
             )}
@@ -3259,7 +4043,7 @@ export default function ProcessScapeView({
             {/* Center Canvas Viewport */}
             <main
               ref={viewportRef}
-              className={`ps-canvas-viewport ${currentTool === 'pan' || isSpacePressed ? 'panning' : ''} ${currentTool === 'draw_pipe' ? 'drawing-pipe' : ''}`}
+              className={`ps-canvas-viewport ${scapeMode === 'editor' && (currentTool === 'pan' || isSpacePressed) ? 'panning' : ''} ${scapeMode === 'editor' && currentTool === 'draw_pipe' ? 'drawing-pipe' : ''}`}
               onMouseDown={handleMouseDown}
               onClick={handleClick}
               onDoubleClick={handleDoubleClick}
@@ -3336,7 +4120,7 @@ export default function ProcessScapeView({
                         if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
                         setCurrentTool('select');
                       }}
-                      title="Select Tool (V)"
+                      title="Select Tool (V) — Select or drag items"
                       aria-label="Select Tool"
                     >
                       <HudIcons.Select />
@@ -3345,16 +4129,39 @@ export default function ProcessScapeView({
                       id="toolPan"
                       type="button"
                       className={`hud-icon-btn ${currentTool === 'pan' ? 'active' : ''}`}
-                      onClick={() => {
-                        dragRef.current.drawingPipeStart = null;
-                        dragRef.current.extendingPipe = null;
-                        if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
-                        setCurrentTool('pan');
-                      }}
-                      title="Pan Tool (H or hold Space)"
+                      onClick={activatePanTool}
+                      title="Pan Tool (H) — Clear selection & drag canvas"
                       aria-label="Pan Tool"
                     >
                       <HudIcons.Pan />
+                    </button>
+                  </div>
+
+                  <div className="hud-divider" />
+
+                  {/* Undo / Redo History Group */}
+                  <div className="tool-group">
+                    <button
+                      id="toolUndo"
+                      type="button"
+                      className="hud-icon-btn"
+                      disabled={!canUndo}
+                      onClick={undo}
+                      title="Undo (Cmd+Z / Ctrl+Z)"
+                      aria-label="Undo"
+                    >
+                      <HudIcons.Undo />
+                    </button>
+                    <button
+                      id="toolRedo"
+                      type="button"
+                      className="hud-icon-btn"
+                      disabled={!canRedo}
+                      onClick={redo}
+                      title="Redo (Cmd+Y / Ctrl+Y)"
+                      aria-label="Redo"
+                    >
+                      <HudIcons.Redo />
                     </button>
                   </div>
 
@@ -3522,26 +4329,6 @@ export default function ProcessScapeView({
                       </div>
                     </>
                   )}
-
-                  {contentBounds.hasContent && (
-                    <>
-                      <div className="hud-divider" />
-                      <button
-                        id="toolRealSize"
-                        type="button"
-                        className={`hud-icon-btn ${isRealSizePreview ? 'active' : ''}`}
-                        onMouseDown={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
-                        onMouseUp={() => setIsRealSizePreview(false)}
-                        onMouseLeave={() => setIsRealSizePreview(false)}
-                        onTouchStart={(e) => { e.preventDefault(); setIsRealSizePreview(true); }}
-                        onTouchEnd={() => setIsRealSizePreview(false)}
-                        title={`Hold to preview Real Picture Size (${contentBounds.width}×${contentBounds.height}px)`}
-                        aria-label="Real Size Preview"
-                      >
-                        <HudIcons.RealSize />
-                      </button>
-                    </>
-                  )}
                 </div>
               )}
 
@@ -3555,22 +4342,9 @@ export default function ProcessScapeView({
                 aria-hidden="true"
               />
 
-              {/* Floating Inspector Reopen Button (when Inspector is closed but an element is selected) */}
-              {(scapeMode === 'editor') && !showInspector && hasSelection && (
-                <div className="ps-inspector-toggle-float">
-                  <button
-                    className="hud-btn"
-                    onClick={() => setIsInspectorOpen(true)}
-                    title="Open Inspector Panel"
-                  >
-                    <span>⚙️</span> Inspector
-                  </button>
-                </div>
-              )}
-
               {/* Bottom Floating Canvas Tools HUD in Modify Scape (Editor Mode only) */}
               {scapeMode === 'editor' && (
-                <div className="canvas-floating-hud zoom-hud" id="psModifyPageTools">
+                <div key="ps-modify-page-tools" className="canvas-floating-hud zoom-hud" id="psModifyPageTools">
                   <div className="tool-group">
                     <button
                       id="toolZoomOut"
@@ -3632,14 +4406,15 @@ export default function ProcessScapeView({
                   <div className="hud-divider" />
 
                   <button
+                    key="tool-modify-bounds-resizer"
                     id="toolModifyBoundsResizer"
                     type="button"
-                    className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
+                    className={`hud-icon-btn ${boundsResizerMode === 'editor' ? 'active' : ''}`}
                     onClick={(e) => {
                       e.currentTarget.blur();
                       handleToggleBoundsResizer();
                     }}
-                    title={isBoundsResizerActive ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
+                    title={boundsResizerMode === 'editor' ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
                     aria-label="Diagram Bounds Resizer"
                   >
                     <HudIcons.BoundsScale />
@@ -3647,84 +4422,178 @@ export default function ProcessScapeView({
                 </div>
               )}
 
-              {/* Bottom Floating Canvas Tools HUD in Live View (Runtime Mode) */}
+              {/* Four-Corner Drop Guides when dragging Runtime Canvas Tools HUD */}
+              {scapeMode === 'runtime' && runtimeToolsDragPos && (
+                <div className="ps-runtime-corner-targets" aria-hidden="true">
+                  {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map(corner => (
+                    <div
+                      key={corner}
+                      className={`ps-corner-drop-zone corner-${corner} ${runtimeToolsDragPos.hoveredCorner === corner ? 'is-active' : ''}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Floating Canvas Tools HUD in Live View (Runtime Mode) */}
               {scapeMode === 'runtime' && (
-                <div className="canvas-floating-hud zoom-hud ps-runtime-page-tools" id="psRuntimePageTools">
-                  <div className="tool-group">
-                    <button
-                      id="toolRuntimeZoomOut"
-                      type="button"
-                      className="hud-icon-btn"
-                      onClick={() => {
-                        const rect = viewportRef.current?.getBoundingClientRect();
-                        const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-                        const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                        zoomAtPoint(cx, cy, 1 / 1.15);
-                      }}
-                      title="Zoom Out (-)"
-                      aria-label="Zoom Out"
-                    >
-                      <HudIcons.ZoomOut />
-                    </button>
-
-                    <button
-                      id="toolRuntimeZoomReset"
-                      type="button"
-                      className="zoom-text hud-btn-zoom-reset"
-                      onClick={resetView}
-                      title="Reset Zoom to 100% (Click to reset)"
-                      aria-label="Zoom Percentage"
-                    >
-                      {Math.round((view?.zoom || 1) * 100)}%
-                    </button>
-
-                    <button
-                      id="toolRuntimeZoomIn"
-                      type="button"
-                      className="hud-icon-btn"
-                      onClick={() => {
-                        const rect = viewportRef.current?.getBoundingClientRect();
-                        const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-                        const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-                        zoomAtPoint(cx, cy, 1.15);
-                      }}
-                      title="Zoom In (+)"
-                      aria-label="Zoom In"
-                    >
-                      <HudIcons.ZoomIn />
-                    </button>
-                  </div>
-
-                  <div className="hud-divider" />
-
-                  {/* Combined Diagram Bounds Resizer & Sensor Card Repositioning Tool */}
+                <div
+                  key="ps-runtime-page-tools"
+                  ref={runtimeToolsRef}
+                  className={`canvas-floating-hud zoom-hud ps-runtime-page-tools corner-${runtimeToolsCorner}${isRuntimeToolsConcise ? ' is-concise' : ''}${runtimeToolsDragPos ? ' is-dragging' : ''}`}
+                  id="psRuntimePageTools"
+                  style={runtimeToolsDragPos ? { left: `${runtimeToolsDragPos.x}px`, top: `${runtimeToolsDragPos.y}px`, right: 'auto', bottom: 'auto' } : undefined}
+                  onMouseDown={handleRuntimeToolsMouseDown}
+                >
                   <button
-                    id="toolRuntimeBoundsResizer"
+                    key="tool-runtime-drag-handle"
+                    id="toolRuntimeDragHandle"
                     type="button"
-                    className={`hud-icon-btn ${isBoundsResizerActive ? 'active' : ''}`}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      handleToggleBoundsResizer();
-                    }}
-                    title={isBoundsResizerActive ? "Confirm & Apply Layout Changes (Save Size & Positions)" : "Resize Diagram & Move Attached Sensor Cards"}
-                    aria-label="Resize Diagram & Move Attached Sensor Cards"
+                    className={`hud-icon-btn ps-runtime-drag-handle ${isRuntimeToolsConcise ? 'is-concise-active' : ''}`}
+                    onClick={handleDragHandleClick}
+                    title={isRuntimeToolsConcise ? "Concise Style — Click to toggle style, drag to corner" : "Click to toggle concise style, drag to corner"}
+                    aria-label="Click to toggle style, drag to corner"
                   >
-                    <HudIcons.BoundsScale />
+                    <HudIcons.DragHandle />
                   </button>
 
-                  <div className="hud-divider" />
+                  {runtimeLocationsList.length > 0 ? (
+                    <>
+                      <div className="ps-runtime-location-picker" title="Toggle Plant Location">
+                        <select
+                          id="toolRuntimeLocationSelect"
+                          className="ps-runtime-location-select"
+                          value={(runtimeLocationsList.some(l => l.id === activeLocationId) ? activeLocationId : runtimeLocationsList[0]?.id) || ''}
+                          onChange={handleRuntimeLocationSelect}
+                          aria-label="Select Plant Location"
+                        >
+                          {runtimeLocationsList.map(loc => (
+                            <option key={loc.id} value={loc.id}>
+                              {loc.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {!isRuntimeToolsConcise && <div className="hud-divider" />}
+                    </>
+                  ) : isRuntimeToolsConcise ? (
+                    <span className="ps-runtime-concise-empty">No Locations</span>
+                  ) : null}
 
-                  {/* Scape Manager (Switch / Create Scapes) */}
-                  <button
-                    id="toolRuntimeScapeManager"
-                    type="button"
-                    className="hud-icon-btn"
-                    onClick={() => setIsScapeManagerOpen(true)}
-                    title="Scape Manager (Switch / Create Scapes)"
-                    aria-label="Scape Manager"
-                  >
-                    <HudIcons.ScapeManager />
-                  </button>
+                  {!isRuntimeToolsConcise && (
+                    <>
+                      <div className="tool-group">
+                        <button
+                          id="toolRuntimeZoomOut"
+                          type="button"
+                          className="hud-icon-btn"
+                          onClick={() => {
+                            const rect = viewportRef.current?.getBoundingClientRect();
+                            const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                            const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                            zoomAtPoint(cx, cy, 1 / 1.15);
+                          }}
+                          title="Zoom Out (-)"
+                          aria-label="Zoom Out"
+                        >
+                          <HudIcons.ZoomOut />
+                        </button>
+
+                        <button
+                          id="toolRuntimeZoomReset"
+                          type="button"
+                          className="zoom-text hud-btn-zoom-reset"
+                          onClick={resetView}
+                          title="Reset Zoom to 100% (Click to reset)"
+                          aria-label="Zoom Percentage"
+                        >
+                          {Math.round((view?.zoom || 1) * 100)}%
+                        </button>
+
+                        <button
+                          id="toolRuntimeZoomIn"
+                          type="button"
+                          className="hud-icon-btn"
+                          onClick={() => {
+                            const rect = viewportRef.current?.getBoundingClientRect();
+                            const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+                            const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+                            zoomAtPoint(cx, cy, 1.15);
+                          }}
+                          title="Zoom In (+)"
+                          aria-label="Zoom In"
+                        >
+                          <HudIcons.ZoomIn />
+                        </button>
+                      </div>
+
+                      <div className="hud-divider" />
+
+                      <div className="tool-group">
+                        {/* Combined Diagram Bounds Resizer & Sensor Card Repositioning Tool */}
+                        <button
+                          key="tool-runtime-bounds-resizer"
+                          id="toolRuntimeBoundsResizer"
+                          type="button"
+                          className={`hud-icon-btn ${boundsResizerMode === 'runtime' ? 'active' : ''}`}
+                          onClick={(e) => {
+                            e.currentTarget.blur();
+                            handleToggleBoundsResizer();
+                          }}
+                          title={boundsResizerMode === 'runtime' ? "Confirm & Apply Layout Changes (Save Size & Positions)" : "Resize Diagram & Move Attached Sensor Cards"}
+                          aria-label="Resize Diagram & Move Attached Sensor Cards"
+                        >
+                          <HudIcons.BoundsScale />
+                        </button>
+
+                        {/* Scape Manager (Switch / Create Scapes) */}
+                        <div className="ps-runtime-scape-manager-anchor">
+                          <button
+                            id="toolRuntimeScapeManager"
+                            type="button"
+                            className={`hud-icon-btn ${showEmptyScapeIndicator ? 'has-indicator' : ''}`}
+                            onClick={() => {
+                              setIsScapeManagerOpen(true);
+                              setIsBubbleDismissed(true);
+                            }}
+                            title="Scape Manager (Switch / Create Scapes)"
+                            aria-label="Scape Manager"
+                          >
+                            <HudIcons.ScapeManager />
+                          </button>
+
+                          {showEmptyScapeIndicator && (
+                            <div
+                              className={`ps-empty-scape-bubble placement-${bubblePlacement}`}
+                              onClick={() => {
+                                setIsScapeManagerOpen(true);
+                                setIsBubbleDismissed(true);
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              title="Start scape layout edit"
+                              aria-label="Start scape layout edit"
+                            >
+                              <span className="ps-bubble-tail" aria-hidden="true" />
+                              <span className="ps-bubble-icon" aria-hidden="true">✏️</span>
+                              <span className="ps-bubble-text">Start scape layout edit</span>
+                              <button
+                                type="button"
+                                className="ps-bubble-close-btn"
+                                title="Dismiss hint"
+                                aria-label="Dismiss hint"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsBubbleDismissed(true);
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -3740,30 +4609,6 @@ export default function ProcessScapeView({
                 </defs>
 
                 <g id="worldGroup" transform={`translate(${view.x}, ${view.y}) scale(${view.zoom})`}>
-                  {/* Dynamic Real Picture Bounds Guide (Shown only when holding 'Real Size' button) */}
-                  {isRealSizePreview && contentBounds.hasContent && (
-                    <g className="ps-real-bounds-guide" pointerEvents="none">
-                      <rect
-                        x={contentBounds.x}
-                        y={contentBounds.y}
-                        width={contentBounds.width}
-                        height={contentBounds.height}
-                        rx={6}
-                        fill="rgba(0, 172, 134, 0.08)"
-                        stroke="#00ac86"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        opacity={0.9}
-                      />
-                      <g transform={`translate(${contentBounds.x + 8}, ${contentBounds.y - 8})`}>
-                        <rect x={-4} y={-14} width={154} height={18} rx={4} fill="#0f172a" opacity={0.92} />
-                        <text x={4} y={-1} fontSize={10} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
-                          📐 Real Size: {contentBounds.width}×{contentBounds.height}px
-                        </text>
-                      </g>
-                    </g>
-                  )}
-
                   {/* Background Zones */}
                   {zones.map(z => (
                     <g key={z.id} transform={`translate(${z.x}, ${z.y})`} pointerEvents="none">
@@ -3891,42 +4736,74 @@ export default function ProcessScapeView({
               </svg>
             </main>
 
-            {/* Right Inspector Panel (Editor Mode only) */}
-            {scapeMode === 'editor' && (
-              <aside
-                ref={inspectorElRef}
-                style={inspectorStyle}
-                className={`ps-inspector ${showInspector ? '' : 'collapsed'} ${isDraggingInspector ? 'is-dragging' : ''}`}
-              >
-                <div
-                  className="ps-inspector-header"
-                  onMouseDown={handleInspectorHeaderMouseDown}
-                  onTouchStart={handleInspectorHeaderTouchStart}
-                  onDoubleClick={() => setInspectorPos(null)}
-                  title="Drag to reposition • Double-click to reset position"
+            {/* Item Properties / Inspector Panel (Floating in Editor workbench or Pinned in ps-sidebar-footer) */}
+            {scapeMode === 'editor' && (() => {
+              const inspectorNode = (
+                <aside
+                  ref={inspectorElRef}
+                  style={isInspectorPinned ? undefined : inspectorStyle}
+                  className={`ps-inspector ${isInspectorPinned ? 'is-pinned' : (showFloatingInspector ? '' : 'collapsed')} ${!isInspectorPinned && isDraggingInspector ? 'is-dragging' : ''} ${isInspectorMin ? 'is-min' : ''} ${!isInspectorPinned && inspectorDockAnim === 'to-float' ? 'is-float-entering' : ''}`}
                 >
-                  <div className="ps-inspector-title-wrap">
-                    <span className="ps-inspector-drag-grip" aria-hidden="true">⠿</span>
-                    <div className="ps-inspector-title">
-                      {singleSelectedElement
-                        ? (singleSelectedElement.tag || singleSelectedElement.text || 'Item Config')
-                        : isPipeSelection
-                          ? (selectedPipes.length > 1
-                            ? `Pipeline (${selectedPipes.length} segments)`
-                            : 'Pipe Config')
-                          : 'Inspector'}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="ps-inspector-close-btn"
-                    onClick={() => setIsInspectorOpen(false)}
-                    title="Close Inspector"
-                    aria-label="Close Inspector"
+                  <div
+                    className="ps-inspector-header"
+                    onMouseDown={handleInspectorHeaderMouseDown}
+                    onTouchStart={handleInspectorHeaderTouchStart}
+                    onDoubleClick={() => {
+                      if (!isInspectorPinned) setInspectorPos(null);
+                    }}
+                    title={isInspectorPinned ? 'Item Properties (Pinned to Sidebar)' : 'Drag header to move • Double-click to reset position'}
                   >
-                    ✕
-                  </button>
-                </div>
+                    <div className="ps-inspector-title-wrap">
+                      <span
+                        className="ps-inspector-drag-grip"
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Toggle Inspector Min/Normal Style"
+                        aria-pressed={isInspectorMin}
+                        title={isInspectorMin ? 'Min style — Click grip for Normal style' : 'Normal style — Click grip for Min style'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (inspectorDragRef.current.didMove) {
+                            inspectorDragRef.current.didMove = false;
+                            return;
+                          }
+                          setIsInspectorMin(prev => !prev);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsInspectorMin(prev => !prev);
+                          }
+                        }}
+                      >
+                        ⠿
+                      </span>
+                      <div className="ps-inspector-title">
+                        {getInspectorHeaderTitle()}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="ps-inspector-close-btn"
+                      onClick={handleToggleInspectorPin}
+                      title={isInspectorPinned ? 'Unpin to Floating Window' : 'Pin Properties to Sidebar'}
+                      aria-label={isInspectorPinned ? 'Unpin to Floating Window' : 'Pin Properties to Sidebar'}
+                    >
+                      {isInspectorPinned ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 17v5" />
+                          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
 
                 <div className="ps-inspector-body">
                   {!singleSelectedElement && !isPipeSelection ? (
@@ -3949,116 +4826,321 @@ export default function ProcessScapeView({
                         />
                       </div>
 
-                      <div className="ps-form-group">
-                        <label className="ps-form-label">Title Position</label>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            type="button"
-                            className={`hud-btn-sm ${selectedElement.titlePosition === 'left' ? 'btn-primary' : ''}`}
-                            style={{ flex: 1, justifyContent: 'center' }}
-                            onClick={() => updateSelectedElement({ titlePosition: 'left' })}
-                          >
-                            Left Tag
-                          </button>
-                          <button
-                            type="button"
-                            className={`hud-btn-sm ${selectedElement.titlePosition === 'top' ? 'btn-primary' : ''}`}
-                            style={{ flex: 1, justifyContent: 'center' }}
-                            onClick={() => updateSelectedElement({ titlePosition: 'top' })}
-                          >
-                            Top Banner
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="ps-form-group">
-                        <label className="ps-form-label">Linked Device (Sensor / Gateway)</label>
-                        <select
-                          className="ps-select"
-                          value={selectedElement.attachedAssetId || ''}
-                          onChange={(e) => {
-                            const val = e.target.value || null;
-                            updateSelectedElement({ attachedAssetId: val });
-                          }}
-                        >
-                          <option value="">(None - Free Floating)</option>
-                          {elements.filter(e => isSensorOrGateway(e)).map(dev => (
-                            <option key={dev.id} value={dev.id}>
-                              {dev.tag || ASSET_DEFS[dev.type]?.name || dev.id}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Relative placement shortcuts */}
-                      {selectedElement.attachedAssetId && (
-                        <div className="ps-form-group">
-                          <label className="ps-form-label">Quick Position vs Linked Device</label>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) - 80 })}>Above</button>
-                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) + 80 })}>Below</button>
-                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) - 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Left</button>
-                            <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) + 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Right</button>
+                      {!isInspectorMin && (
+                        <>
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">Title Position</label>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${selectedElement.titlePosition === 'left' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                onClick={() => updateSelectedElement({ titlePosition: 'left' })}
+                              >
+                                Left Tag
+                              </button>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${selectedElement.titlePosition === 'top' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                onClick={() => updateSelectedElement({ titlePosition: 'top' })}
+                              >
+                                Top Banner
+                              </button>
+                            </div>
                           </div>
-                        </div>
+
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">Linked Device (Sensor / Gateway)</label>
+                            <select
+                              className="ps-select"
+                              value={selectedElement.attachedAssetId || ''}
+                              onChange={(e) => {
+                                const val = e.target.value || null;
+                                updateSelectedElement({ attachedAssetId: val });
+                              }}
+                            >
+                              <option value="">(None - Free Floating)</option>
+                              {elements.filter(e => isSensorOrGateway(e)).map(dev => (
+                                <option key={dev.id} value={dev.id}>
+                                  {dev.tag || ASSET_DEFS[dev.type]?.name || dev.id}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Relative placement shortcuts */}
+                          {selectedElement.attachedAssetId && (
+                            <div className="ps-form-group">
+                              <label className="ps-form-label">Quick Position vs Linked Device</label>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) - 80 })}>Above</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) + 80 })}>Below</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) - 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Left</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) + 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Right</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Assigned Telemetry Channels */}
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">
+                              Assigned Telemetry Channels ({(selectedElement.channels || []).length})
+                            </label>
+                            {(selectedElement.channels || []).length === 0 ? (
+                              <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
+                                No channels assigned. Use <strong>Sensor & Measurement Point Manager</strong> to detect and bind channels.
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                                {(selectedElement.channels || []).map((ch, idx) => (
+                                  <div
+                                    key={ch.id || idx}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '4px 8px',
+                                      background: 'rgba(15, 23, 42, 0.03)',
+                                      borderRadius: 4,
+                                      fontSize: 11
+                                    }}
+                                  >
+                                    <span style={{ fontWeight: 600, color: '#0f172a' }}>{ch.name}</span>
+                                    <span style={{ fontFamily: 'monospace', color: '#0284c7' }}>{ch.unit || ''}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {renderInspectorDeleteFooter(() => deleteSingleElement('Delete Sensor'))}
+                        </>
+                      )}
+                    </>
+                  ) : singleSelectedElement?.type === 'guide_line' ? (
+                    /* Dedicated H / V Guide Line Inspector (Min shows only Line Length) */
+                    <>
+                      {!isInspectorMin && (
+                        <>
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">Orientation</label>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${(singleSelectedElement.orientation || 'h') === 'h' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                aria-label="Line Orientation: Horizontal (H)"
+                                onClick={() => updateSelectedElement({ orientation: 'h' })}
+                              >
+                                Horizontal (H)
+                              </button>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${singleSelectedElement.orientation === 'v' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                aria-label="Line Orientation: Vertical (V)"
+                                onClick={() => updateSelectedElement({ orientation: 'v' })}
+                              >
+                                Vertical (V)
+                              </button>
+                            </div>
+                          </div>
+
+                          {renderLineStyleField({
+                            label: 'Line Style',
+                            activeStyle: singleSelectedElement.lineStyle || 'single',
+                            ariaPrefix: 'Line Style',
+                            onSelect: (id) => updateSelectedElement({ lineStyle: id })
+                          })}
+
+                          {renderColorSwatchField({
+                            label: 'Line Color',
+                            palette: NOTE_COLOR_PALETTE,
+                            activeColor: singleSelectedElement.color || '#475569',
+                            onSelect: (hex) => updateSelectedElement({ color: hex })
+                          })}
+                        </>
                       )}
 
-                      {/* Assigned Telemetry Channels */}
-                      <div className="ps-form-group">
-                        <label className="ps-form-label">
-                          Assigned Telemetry Channels ({(selectedElement.channels || []).length})
-                        </label>
-                        {(selectedElement.channels || []).length === 0 ? (
-                          <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
-                            No channels assigned. Use <strong>Sensor & Measurement Point Manager</strong> to detect and bind channels.
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                            {(selectedElement.channels || []).map((ch, idx) => (
-                              <div
-                                key={ch.id || idx}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  padding: '4px 8px',
-                                  background: 'rgba(15, 23, 42, 0.03)',
-                                  borderRadius: 4,
-                                  fontSize: 11
-                                }}
-                              >
-                                <span style={{ fontWeight: 600, color: '#0f172a' }}>{ch.name}</span>
-                                <span style={{ fontFamily: 'monospace', color: '#0284c7' }}>{ch.unit || ''}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      {renderRangeField({
+                        id: 'guideLineLengthSlider',
+                        label: 'Line Length',
+                        valueText: `${Math.round(singleSelectedElement.length || 220)} px`,
+                        min: 40,
+                        max: 1000,
+                        step: 10,
+                        value: Math.round(singleSelectedElement.length || 220),
+                        onChange: (e) => {
+                          const len = Math.max(20, parseInt(e.target.value, 10) || 220);
+                          updateSelectedElement({ length: len });
+                        }
+                      })}
 
-                      <button
-                        type="button"
-                        className="hud-btn-sm btn-danger-outline"
-                        style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
-                        onClick={() => {
-                          saveHistory('Delete Sensor');
-                          const updated = elements.filter(e => e.id !== singleSelectedElement.id);
-                          setElements(updated);
-                          setSelectedIds(new Set());
-                          saveScape({
-                            id: activeScapeId,
-                            title: projectTitle,
-                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                            zones,
-                            elements: updated,
-                            pipes
-                          });
-                        }}
-                      >
-                        🗑 Delete Sensor Card
-                      </button>
+                      {!isInspectorMin && (
+                        <>
+                          {renderRangeField({
+                            id: 'guideLineWidthSlider',
+                            label: 'Line Thickness',
+                            valueText: `${singleSelectedElement.strokeWidth || 1} px`,
+                            min: 1,
+                            max: 10,
+                            step: 1,
+                            value: singleSelectedElement.strokeWidth || 1,
+                            onChange: (e) => {
+                              const sw = Math.max(1, parseInt(e.target.value, 10) || 1);
+                              updateSelectedElement({ strokeWidth: sw });
+                            }
+                          })}
+
+                          {renderInspectorDeleteFooter(() => deleteSingleElement('Delete Line'))}
+                        </>
+                      )}
                     </>
+                  ) : (singleSelectedElement?.type === 'shape_rect' || singleSelectedElement?.type === 'shape_circle') ? (
+                    /* Dedicated Rectangle & Circle/Oval Inspector (Min shows Width & Height W/H) */
+                    (() => {
+                      const isCircle = singleSelectedElement.type === 'shape_circle';
+                      const shapeW = Math.max(20, Math.round(Number(singleSelectedElement.w) || (isCircle ? 120 : 160)));
+                      const shapeH = Math.max(20, Math.round(Number(singleSelectedElement.h) || (isCircle ? 120 : 100)));
+                      const fillColor = (singleSelectedElement.fillColor && singleSelectedElement.fillColor !== 'none') ? singleSelectedElement.fillColor : 'transparent';
+                      const fillOpacityPct = fillColor === 'transparent'
+                        ? 100
+                        : Math.round((singleSelectedElement.fillOpacity != null ? Number(singleSelectedElement.fillOpacity) : 1) * 100);
+                      const strokeColor = singleSelectedElement.color || '#475569';
+                      const lineStyle = singleSelectedElement.lineStyle || 'single';
+                      const strokeWidth = Math.max(1, Number(singleSelectedElement.strokeWidth) || 1);
+                      const customPickerValue = /^#[0-9a-f]{6}$/i.test(fillColor) ? fillColor : '#ccfbf1';
+
+                      return (
+                        <>
+                          {renderRangeField({
+                            id: 'shapeWidthSlider',
+                            label: 'Width (W)',
+                            valueText: `${shapeW} px`,
+                            min: 20,
+                            max: 1200,
+                            step: 10,
+                            value: shapeW,
+                            onChange: (e) => {
+                              const nextW = Math.max(20, parseInt(e.target.value, 10) || shapeW);
+                              updateSelectedElement({ w: nextW });
+                            }
+                          })}
+
+                          {renderRangeField({
+                            id: 'shapeHeightSlider',
+                            label: 'Height (H)',
+                            valueText: `${shapeH} px`,
+                            min: 20,
+                            max: 1200,
+                            step: 10,
+                            value: shapeH,
+                            onChange: (e) => {
+                              const nextH = Math.max(20, parseInt(e.target.value, 10) || shapeH);
+                              updateSelectedElement({ h: nextH });
+                            },
+                            footer: (!isInspectorMin && isCircle && shapeW !== shapeH) ? (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                                <button
+                                  type="button"
+                                  className="hud-btn-sm"
+                                  style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+                                  onClick={() => {
+                                    saveHistory('Match Circle W = H');
+                                    updateSelectedElement({ h: shapeW });
+                                  }}
+                                  title="Set Height equal to Width to restore a perfect circle"
+                                >
+                                  Make Circle (W=H)
+                                </button>
+                              </div>
+                            ) : null
+                          })}
+
+                          {!isInspectorMin && (
+                            <>
+                              {renderColorSwatchField({
+                                label: 'Fill Color',
+                                palette: SHAPE_FILL_PALETTE,
+                                activeColor: fillColor,
+                                ariaPrefix: 'Fill Color',
+                                onSelect: (hex) => {
+                                  saveHistory('Change Shape Fill Color');
+                                  updateSelectedElement({ fillColor: hex });
+                                },
+                                extraControl: (
+                                  <input
+                                    id="shapeFillColorPicker"
+                                    type="color"
+                                    className="ps-color-picker-btn"
+                                    title="Custom Fill Color"
+                                    aria-label="Custom Fill Color"
+                                    value={customPickerValue}
+                                    onChange={(e) => updateSelectedElement({ fillColor: e.target.value })}
+                                  />
+                                )
+                              })}
+
+                              {fillColor !== 'transparent' && renderRangeField({
+                                id: 'shapeFillOpacitySlider',
+                                label: 'Fill Opacity',
+                                valueText: `${fillOpacityPct}%`,
+                                min: 10,
+                                max: 100,
+                                step: 5,
+                                minLabel: '10%',
+                                maxLabel: '100%',
+                                value: fillOpacityPct,
+                                onChange: (e) => {
+                                  const nextOp = Math.max(0.1, Math.min(1, (parseInt(e.target.value, 10) || 100) / 100));
+                                  updateSelectedElement({ fillOpacity: Number(nextOp.toFixed(2)) });
+                                }
+                              })}
+
+                              {renderLineStyleField({
+                                label: 'Frame Style',
+                                activeStyle: lineStyle,
+                                ariaPrefix: 'Frame Style',
+                                onSelect: (id) => {
+                                  saveHistory('Change Frame Style');
+                                  updateSelectedElement({ lineStyle: id });
+                                }
+                              })}
+
+                              {renderColorSwatchField({
+                                label: 'Frame Color',
+                                palette: NOTE_COLOR_PALETTE,
+                                activeColor: strokeColor,
+                                ariaPrefix: 'Frame Color',
+                                onSelect: (hex) => {
+                                  saveHistory('Change Frame Color');
+                                  updateSelectedElement({ color: hex });
+                                }
+                              })}
+
+                              {renderRangeField({
+                                id: 'shapeStrokeWidthSlider',
+                                label: 'Frame Thickness',
+                                valueText: `${strokeWidth} px`,
+                                min: 1,
+                                max: 10,
+                                step: 1,
+                                value: strokeWidth,
+                                onChange: (e) => {
+                                  const sw = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                  updateSelectedElement({ strokeWidth: sw });
+                                }
+                              })}
+
+                              {renderInspectorDeleteFooter(() => deleteSingleElement(`Delete ${isCircle ? 'Circle' : 'Rectangle'}`))}
+                            </>
+                          )}
+                        </>
+                      );
+                    })()
                   ) : singleSelectedElement?.type === 'text_note' ? (
-                    /* Dedicated Text Note / Label Inspector */
+                    /* Dedicated Label Inspector */
                     <>
                       <div className="ps-form-group">
                         <label className="ps-form-label" htmlFor="psTextNoteInput">Note Text</label>
@@ -4067,70 +5149,100 @@ export default function ProcessScapeView({
                           className="ps-input ps-textarea"
                           rows={2}
                           value={singleSelectedElement.text ?? ''}
-                          placeholder="Enter note text..."
+                          placeholder="Enter label text..."
                           onChange={(e) => updateSelectedElement({ text: e.target.value })}
                         />
                       </div>
 
-                      {/* Outline Border Style Selector */}
-                      <div className="ps-form-group">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <label className="ps-form-label" style={{ margin: 0 }}>Outline Style</label>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                            {(NOTE_OUTLINE_STYLES.find(s => s.id === (singleSelectedElement.outlineStyle || 'none')) || NOTE_OUTLINE_STYLES[0]).name}
-                          </span>
-                        </div>
-                        <div className="ps-note-outline-grid">
-                          {NOTE_OUTLINE_STYLES.map(opt => {
-                            const active = (singleSelectedElement.outlineStyle || 'none') === opt.id;
-                            return (
+                      {/* Orientation H / V & Outline / Color controls (Normal mode) */}
+                      {!isInspectorMin && (
+                        <>
+                          {/* Orientation H / V Style Selector */}
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">Orientation Style</label>
+                            <div style={{ display: 'flex', gap: 6 }}>
                               <button
-                                key={opt.id}
                                 type="button"
-                                className={`ps-note-outline-btn ${active ? 'active' : ''}`}
-                                title={opt.desc}
-                                aria-label={`Outline: ${opt.name}`}
-                                onClick={() => {
-                                  saveHistory('Change Note Outline');
-                                  updateSelectedElement({ outlineStyle: opt.id });
-                                }}
+                                className={`hud-btn-sm ${(singleSelectedElement.orientation || 'h') === 'h' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                aria-label="Label Orientation: Horizontal (H)"
+                                onClick={() => updateSelectedElement({ orientation: 'h' })}
                               >
-                                <span className={`ps-outline-preview style-${opt.id}`} aria-hidden="true">Abc</span>
-                                <span className="ps-outline-label">{opt.name}</span>
+                                Horizontal (H)
                               </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Text & Border Color Swatches */}
-                      <div className="ps-form-group">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <label className="ps-form-label" style={{ margin: 0 }}>Text &amp; Border Color</label>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                            {(NOTE_COLOR_PALETTE.find(c => c.hex.toLowerCase() === (singleSelectedElement.color || '#64748b').toLowerCase())?.name) || 'Custom'}
-                          </span>
-                        </div>
-                        <div className="ps-swatches-row">
-                          {NOTE_COLOR_PALETTE.map(c => {
-                            const isActive = (singleSelectedElement.color || '#64748b').toLowerCase() === c.hex.toLowerCase();
-                            return (
                               <button
                                 type="button"
-                                key={c.id}
-                                className={`ps-swatch-circle-btn ${isActive ? 'active' : ''}`}
-                                title={c.name}
-                                aria-label={c.name}
-                                onClick={() => {
-                                  saveHistory('Change Note Color');
-                                  updateSelectedElement({ color: c.hex });
-                                }}
-                                style={{ backgroundColor: c.hex }}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
+                                className={`hud-btn-sm ${singleSelectedElement.orientation === 'v' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                aria-label="Label Orientation: Vertical (V)"
+                                onClick={() => updateSelectedElement({ orientation: 'v' })}
+                              >
+                                Vertical (V)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Outline Border Style Selector */}
+                          <div className="ps-form-group">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <label className="ps-form-label" style={{ margin: 0 }}>Outline Style</label>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                                {(NOTE_OUTLINE_STYLES.find(s => s.id === (singleSelectedElement.outlineStyle || 'none')) || NOTE_OUTLINE_STYLES[0]).name}
+                              </span>
+                            </div>
+                            <div className="ps-note-outline-grid">
+                              {NOTE_OUTLINE_STYLES.map(opt => {
+                                const active = (singleSelectedElement.outlineStyle || 'none') === opt.id;
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    className={`ps-note-outline-btn ${active ? 'active' : ''}`}
+                                    title={opt.desc}
+                                    aria-label={`Outline: ${opt.name}`}
+                                    onClick={() => {
+                                      saveHistory('Change Note Outline');
+                                      updateSelectedElement({ outlineStyle: opt.id });
+                                    }}
+                                  >
+                                    <span className={`ps-outline-preview style-${opt.id}`} aria-hidden="true">Abc</span>
+                                    <span className="ps-outline-label">{opt.name}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Text & Border Color Swatches */}
+                          <div className="ps-form-group">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <label className="ps-form-label" style={{ margin: 0 }}>Text &amp; Border Color</label>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                                {(NOTE_COLOR_PALETTE.find(c => c.hex.toLowerCase() === (singleSelectedElement.color || '#64748b').toLowerCase())?.name) || 'Custom'}
+                              </span>
+                            </div>
+                            <div className="ps-swatches-row">
+                              {NOTE_COLOR_PALETTE.map(c => {
+                                const isActive = (singleSelectedElement.color || '#64748b').toLowerCase() === c.hex.toLowerCase();
+                                return (
+                                  <button
+                                    type="button"
+                                    key={c.id}
+                                    className={`ps-swatch-circle-btn ${isActive ? 'active' : ''}`}
+                                    title={c.name}
+                                    aria-label={c.name}
+                                    onClick={() => {
+                                      saveHistory('Change Note Color');
+                                      updateSelectedElement({ color: c.hex });
+                                    }}
+                                    style={{ backgroundColor: c.hex }}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       {/* Font Size Slider (Tailored for Text Note, not Device Size) */}
                       <div className="ps-form-group">
@@ -4174,66 +5286,176 @@ export default function ProcessScapeView({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        className="hud-btn-sm btn-danger-outline"
-                        style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
-                        onClick={() => {
-                          saveHistory('Delete Text Note');
-                          const updated = elements.filter(e => e.id !== singleSelectedElement.id);
-                          setElements(updated);
-                          setSelectedIds(new Set());
-                          saveScape({
-                            id: activeScapeId,
-                            title: projectTitle,
-                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                            zones,
-                            elements: updated,
-                            pipes
-                          });
-                        }}
-                      >
-                        🗑 Delete Note
-                      </button>
+                      {!isInspectorMin && renderInspectorDeleteFooter(() => deleteSingleElement('Delete Text Note'))}
                     </>
-                  ) : singleSelectedElement ? (
-                    /* Equipment / Asset Node Inspector */
-                    <>
-                      <div className="ps-form-group">
-                        <label className="ps-form-label">Equipment Tag Name</label>
-                        <input
-                          className="ps-input"
-                          value={singleSelectedElement.tag ?? ''}
-                          placeholder="(Optional tag / empty)"
-                          onChange={(e) => updateSelectedElement({ tag: e.target.value })}
-                        />
-                      </div>
+                  ) : (singleSelectedElement?.type === 'wall_perimeter_h' || singleSelectedElement?.type === 'wall_perimeter_v') ? (
+                    /* Dedicated Brick Wall Inspector (no Equipment Tag Name / Color Theme; Min shows only Wall Length) */
+                    (() => {
+                      const isVertWall = singleSelectedElement.type === 'wall_perimeter_v';
+                      const curDef = ASSET_DEFS[singleSelectedElement.type] || { w: isVertWall ? 24 : 200, h: isVertWall ? 200 : 24 };
+                      const wallLen = Math.max(40, Math.round(isVertWall ? (singleSelectedElement.h || curDef.h) : (singleSelectedElement.w || curDef.w)));
+                      const wallThick = Math.max(12, Math.round(isVertWall ? (singleSelectedElement.w || curDef.w) : (singleSelectedElement.h || curDef.h)));
+                      const applyWallSize = (nextLen, nextThick, nextType = singleSelectedElement.type) => {
+                        const nextVert = nextType === 'wall_perimeter_v';
+                        updateSelectedElement({
+                          type: nextType,
+                          scale: undefined,
+                          w: nextVert ? nextThick : nextLen,
+                          h: nextVert ? nextLen : nextThick
+                        });
+                      };
+                      return (
+                        <>
+                          {!isInspectorMin && (
+                            <div className="ps-form-group">
+                              <label className="ps-form-label">Orientation</label>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                {['h', 'v'].map(orient => {
+                                  const isActive = (isVertWall ? 'v' : 'h') === orient;
+                                  const nextType = orient === 'v' ? 'wall_perimeter_v' : 'wall_perimeter_h';
+                                  return (
+                                    <button
+                                      key={orient}
+                                      type="button"
+                                      className={`hud-btn-sm ${isActive ? 'btn-primary' : ''}`}
+                                      style={{ flex: 1, justifyContent: 'center' }}
+                                      aria-label={`Wall Orientation: ${orient === 'v' ? 'Vertical (V)' : 'Horizontal (H)'}`}
+                                      onClick={() => {
+                                        if (singleSelectedElement.type === nextType) return;
+                                        saveHistory('Toggle Wall Orientation');
+                                        applyWallSize(wallLen, wallThick, nextType);
+                                      }}
+                                    >
+                                      {orient === 'v' ? 'Vertical (V)' : 'Horizontal (H)'}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
 
-                      {/* Solid Flat Color Theme Swatches (Single-line compact options) */}
-                      <div className="ps-form-group">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <label className="ps-form-label" style={{ margin: 0 }}>Color Theme</label>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                            {(EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue).name}
-                          </span>
-                        </div>
-                        <div className="ps-swatches-row">
-                          {Object.values(EQUIPMENT_COLOR_THEMES).map(theme => (
-                            <button
-                              type="button"
-                              key={theme.id}
-                              className={`ps-swatch-circle-btn ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
-                              title={theme.name}
-                              aria-label={theme.name}
-                              onClick={() => {
-                                saveHistory('Change Theme');
-                                updateSelectedElement({ colorTheme: theme.id });
-                              }}
-                              style={{ backgroundColor: theme.main }}
+                          {/* Wall Length Slider (Always visible in Normal & Min style) */}
+                          <div className="ps-form-group">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <label className="ps-form-label" style={{ margin: 0 }}>Wall Length</label>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
+                                {wallLen} px
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>40px</span>
+                              <input
+                                id="wallLengthSlider"
+                                type="range"
+                                min="40"
+                                max="1200"
+                                step="10"
+                                style={{ flex: 1, accentColor: '#00ac86' }}
+                                value={wallLen}
+                                onChange={(e) => {
+                                  const nextLen = parseInt(e.target.value, 10) || 200;
+                                  saveHistory('Resize Wall Length');
+                                  applyWallSize(nextLen, wallThick);
+                                }}
+                              />
+                              <span style={{ fontSize: 11, color: '#64748b', minWidth: 38, textAlign: 'right' }}>1200px</span>
+                            </div>
+                            {!isInspectorMin && (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                                <button
+                                  type="button"
+                                  className="hud-btn-sm"
+                                  style={{ fontSize: 10, height: 20, padding: '0 6px' }}
+                                  onClick={() => {
+                                    saveHistory('Reset Wall Length');
+                                    applyWallSize(200, wallThick);
+                                  }}
+                                  title="Reset wall length to 200px"
+                                >
+                                  Reset (200px)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {!isInspectorMin && (
+                            <>
+                              {/* Wall Thickness Slider */}
+                              <div className="ps-form-group">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                  <label className="ps-form-label" style={{ margin: 0 }}>Wall Thickness</label>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
+                                    {wallThick} px
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>12px</span>
+                                  <input
+                                    id="wallThicknessSlider"
+                                    type="range"
+                                    min="12"
+                                    max="120"
+                                    step="2"
+                                    style={{ flex: 1, accentColor: '#00ac86' }}
+                                    value={wallThick}
+                                    onChange={(e) => {
+                                      const nextThick = parseInt(e.target.value, 10) || 24;
+                                      saveHistory('Change Wall Thickness');
+                                      applyWallSize(wallLen, nextThick);
+                                    }}
+                                  />
+                                  <span style={{ fontSize: 11, color: '#64748b', minWidth: 34, textAlign: 'right' }}>120px</span>
+                                </div>
+                              </div>
+
+                              {renderInspectorDeleteFooter(() => deleteSingleElement('Delete Wall'))}
+                            </>
+                          )}
+                        </>
+                      );
+                    })()
+                  ) : singleSelectedElement ? (
+                    /* Equipment / Asset Node Inspector (Min shows only Device Size) */
+                    <>
+                      {!isInspectorMin && (
+                        <>
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">Equipment Tag Name</label>
+                            <input
+                              className="ps-input"
+                              value={singleSelectedElement.tag ?? ''}
+                              placeholder="(Optional tag / empty)"
+                              onChange={(e) => updateSelectedElement({ tag: e.target.value })}
                             />
-                          ))}
-                        </div>
-                      </div>
+                          </div>
+
+                          {/* Solid Flat Color Theme Swatches (Single-line compact options) */}
+                          <div className="ps-form-group">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <label className="ps-form-label" style={{ margin: 0 }}>Color Theme</label>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+                                {(EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue).name}
+                              </span>
+                            </div>
+                            <div className="ps-swatches-row">
+                              {Object.values(EQUIPMENT_COLOR_THEMES).map(theme => (
+                                <button
+                                  type="button"
+                                  key={theme.id}
+                                  className={`ps-swatch-circle-btn ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
+                                  title={theme.name}
+                                  aria-label={theme.name}
+                                  onClick={() => {
+                                    saveHistory('Change Theme');
+                                    updateSelectedElement({ colorTheme: theme.id });
+                                  }}
+                                  style={{ backgroundColor: theme.main }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
 
                       {/* Proportional Size Control Slider */}
                       <div className="ps-form-group">
@@ -4285,32 +5507,12 @@ export default function ProcessScapeView({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        className="hud-btn-sm btn-danger-outline"
-                        style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
-                        onClick={() => {
-                          saveHistory('Delete Equipment');
-                          const updated = elements.filter(e => e.id !== singleSelectedElement.id);
-                          setElements(updated);
-                          setSelectedIds(new Set());
-                          saveScape({
-                            id: activeScapeId,
-                            title: projectTitle,
-                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                            zones,
-                            elements: updated,
-                            pipes
-                          });
-                        }}
-                      >
-                        🗑 Delete Equipment
-                      </button>
+                      {!isInspectorMin && renderInspectorDeleteFooter(() => deleteSingleElement('Delete Equipment'))}
                     </>
                   ) : isPipeSelection && representativePipe ? (
-                    /* Pipe Inspector (Works for both single pipe and grouped pipelines) */
+                    /* Pipe Inspector (Min shows only Pipe Thickness) */
                     <>
-                      {selectedPipes.length > 1 && (
+                      {!isInspectorMin && selectedPipes.length > 1 && (
                         <div style={{
                           fontSize: 11.5,
                           color: '#00ac86',
@@ -4331,6 +5533,7 @@ export default function ProcessScapeView({
                       <div className="ps-form-group">
                         <label className="ps-form-label">Pipe Thickness ({representativePipe.w || 20}px)</label>
                         <input
+                          id="pipeThicknessSlider"
                           type="range"
                           min="10"
                           max="40"
@@ -4340,86 +5543,112 @@ export default function ProcessScapeView({
                         />
                       </div>
 
-                      <div className="ps-form-group">
-                        <label className="ps-form-label">Flow Direction</label>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            type="button"
-                            className={`hud-btn-sm ${(!representativePipe.flow || representativePipe.flow === 'forward') ? 'btn-primary' : ''}`}
-                            style={{ flex: 1, justifyContent: 'center' }}
-                            onClick={() => updateSelectedPipe({ flow: 'forward' })}
-                            title="Animate fluid flow from start to end"
-                          >
-                            ▶ Forward
-                          </button>
-                          <button
-                            type="button"
-                            className={`hud-btn-sm ${representativePipe.flow === 'reverse' ? 'btn-primary' : ''}`}
-                            style={{ flex: 1, justifyContent: 'center' }}
-                            onClick={() => updateSelectedPipe({ flow: 'reverse' })}
-                            title="Animate fluid flow from end to start"
-                          >
-                            ◀ Reverse
-                          </button>
-                          <button
-                            type="button"
-                            className={`hud-btn-sm ${representativePipe.flow === 'none' ? 'btn-primary' : ''}`}
-                            style={{ flex: 0.8, justifyContent: 'center' }}
-                            onClick={() => updateSelectedPipe({ flow: 'none' })}
-                            title="Turn off flow animation"
-                          >
-                            ⏹ Off
-                          </button>
-                        </div>
-                      </div>
+                      {!isInspectorMin && (
+                        <>
+                          <div className="ps-form-group">
+                            <label className="ps-form-label">Flow Direction</label>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${(!representativePipe.flow || representativePipe.flow === 'forward') ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                onClick={() => updateSelectedPipe({ flow: 'forward' })}
+                                title="Animate fluid flow from start to end"
+                              >
+                                ▶ Forward
+                              </button>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${representativePipe.flow === 'reverse' ? 'btn-primary' : ''}`}
+                                style={{ flex: 1, justifyContent: 'center' }}
+                                onClick={() => updateSelectedPipe({ flow: 'reverse' })}
+                                title="Animate fluid flow from end to start"
+                              >
+                                ◀ Reverse
+                              </button>
+                              <button
+                                type="button"
+                                className={`hud-btn-sm ${representativePipe.flow === 'none' ? 'btn-primary' : ''}`}
+                                style={{ flex: 0.8, justifyContent: 'center' }}
+                                onClick={() => updateSelectedPipe({ flow: 'none' })}
+                                title="Turn off flow animation"
+                              >
+                                ⏹ Off
+                              </button>
+                            </div>
+                          </div>
 
-                      <button
-                        type="button"
-                        className="hud-btn-sm btn-danger-outline"
-                        style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}
-                        onClick={() => {
-                          saveHistory('Delete Pipeline');
-                          const targetGroupIds = new Set(
-                            selectedPipes.filter(p => p.groupId).map(p => p.groupId)
-                          );
-                          const deletedPipeIds = new Set(
-                            pipes.filter(p => selectedIds.has(p.id) || (p.groupId && targetGroupIds.has(p.groupId))).map(p => p.id)
-                          );
-                          const updatedPipes = pipes.filter(p => !deletedPipeIds.has(p.id));
-                          const updatedElements = elements.map(el => {
-                            if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
-                              const updated = { ...el };
-                              delete updated.attachedPipeId;
-                              delete updated.pipeT;
-                              delete updated.pipeOffsetX;
-                              delete updated.pipeOffsetY;
-                              return updated;
-                            }
-                            return el;
-                          });
-                          setPipes(updatedPipes);
-                          setElements(updatedElements);
-                          setSelectedIds(new Set());
-                          saveScape({
-                            id: activeScapeId,
-                            title: projectTitle,
-                            tempCanvasSize: { width: screenSize.w, height: screenSize.h },
-                            zones,
-                            elements: updatedElements,
-                            pipes: updatedPipes
-                          });
-                        }}
-                      >
-                        🗑 Delete Pipeline {selectedPipes.length > 1 ? `(${selectedPipes.length} segments)` : ''}
-                      </button>
+                          {renderInspectorDeleteFooter(() => {
+                            saveHistory('Delete Pipeline');
+                            const targetGroupIds = new Set(
+                              selectedPipes.filter(p => p.groupId).map(p => p.groupId)
+                            );
+                            const deletedPipeIds = new Set(
+                              pipes.filter(p => selectedIds.has(p.id) || (p.groupId && targetGroupIds.has(p.groupId))).map(p => p.id)
+                            );
+                            const updatedPipes = pipes.filter(p => !deletedPipeIds.has(p.id));
+                            const updatedElements = elements.map(el => {
+                              if (el.attachedPipeId && deletedPipeIds.has(el.attachedPipeId)) {
+                                const updated = { ...el };
+                                delete updated.attachedPipeId;
+                                delete updated.pipeT;
+                                delete updated.pipeOffsetX;
+                                delete updated.pipeOffsetY;
+                                return updated;
+                              }
+                              return el;
+                            });
+                            setPipes(updatedPipes);
+                            setElements(updatedElements);
+                            setSelectedIds(new Set());
+                            saveScape({
+                              id: activeScapeId,
+                              title: projectTitle,
+                              tempCanvasSize: { width: screenSize.w, height: screenSize.h },
+                              zones,
+                              elements: updatedElements,
+                              pipes: updatedPipes
+                            });
+                          })}
+                        </>
+                      )}
                     </>
                   ) : null}
                 </div>
-              </aside>
-            )}
+                </aside>
+              );
+
+              if (isInspectorPinned) {
+                return (hasSelection && sidebarFooterEl) ? createPortal(inspectorNode, sidebarFooterEl) : null;
+              }
+              return inspectorNode;
+            })()}
           </>
         )}
       </div>
+
+      {/* Animated Dock/Undock Fly Ghost showing Properties window moving between canvas & ps-sidebar-footer */}
+      {dockFlyGhost && (
+        <div
+          className="ps-inspector-fly-ghost"
+          aria-hidden="true"
+          style={{
+            left: `${dockFlyGhost.left}px`,
+            top: `${dockFlyGhost.top}px`,
+            width: `${dockFlyGhost.active ? dockFlyGhost.toWidth : dockFlyGhost.width}px`,
+            height: `${dockFlyGhost.active ? dockFlyGhost.toHeight : dockFlyGhost.height}px`,
+            transform: dockFlyGhost.active
+              ? `translate3d(${dockFlyGhost.dx}px, ${dockFlyGhost.dy}px, 0) scale(0.98)`
+              : 'translate3d(0px, 0px, 0) scale(1)',
+            borderRadius: dockFlyGhost.active ? '4px' : '12px',
+            opacity: dockFlyGhost.active ? 0.28 : 0.94
+          }}
+        >
+          <div className="ps-inspector-fly-ghost-header">
+            {dockFlyGhost.title}
+          </div>
+        </div>
+      )}
 
       {/* Scape Manager Dialog for switching, creating, and modifying plant environments */}
       <ScapeManagerModal

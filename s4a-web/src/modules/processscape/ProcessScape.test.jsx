@@ -54,7 +54,8 @@ import {
   isPipeEndpointOpen,
   resolvePipelineFlowDirections,
   getPipeLength,
-  adjustPipeLength
+  adjustPipeLength,
+  resolveSensorCardAttachmentAfterDrag
 } from './engine/pipeUtils.js';
 import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
 import ProcessScapeRecordModal from './ProcessScapeRecordModal.jsx';
@@ -262,17 +263,27 @@ describe('ProcessScape Engine & Constants', () => {
 });
 
 describe('ProcessScapeView UI, HUD & Navigation', () => {
-  it('renders wrapped palette tabs with all categories', () => {
+  it('renders wrapped palette tabs with combined Sensor & gateway category next to Pipes', () => {
     const { container } = render(<ProcessScapeView />);
     const tabs = container.querySelectorAll('.ps-palette-tab');
-    expect(tabs.length).toBe(7);
+    expect(tabs.length).toBe(6);
     expect(tabs[0].textContent).toContain('All');
-    expect(tabs[1].textContent).toContain('Sensors');
-    expect(tabs[2].textContent).toContain('Pipes');
+    expect(tabs[1].textContent).toContain('Pipes');
+    expect(tabs[2].textContent).toBe('Sensor & gateway');
     expect(tabs[3].textContent).toContain('Tanks & Air');
     expect(tabs[4].textContent).toContain('Machines');
-    expect(tabs[5].textContent).toContain('Gateways');
-    expect(tabs[6].textContent).toContain('Walls & Others');
+    expect(tabs[5].textContent).toBe('Others');
+
+    // In All tab, Pipe presets render first before devices
+    const firstCardTitle = container.querySelector('.ps-palette-items .ps-card-title')?.textContent;
+    expect(firstCardTitle).toContain('Pipe');
+
+    // Switching to Sensor & gateway tab displays both sensor and gateway devices
+    fireEvent.click(tabs[2]);
+    const sensorGatewayTitles = Array.from(container.querySelectorAll('.ps-palette-items .ps-card-title')).map(el => el.textContent);
+    expect(sensorGatewayTitles).toContain('Dew Point Meter');
+    expect(sensorGatewayTitles).toContain('Stationary Display');
+    expect(sensorGatewayTitles).toContain('Portable Logger Case');
   });
 
   it('renders top HUD with toolSelect and toolPan, and provides page tools (zoom percent, focus, size) in modify scape only', () => {
@@ -285,11 +296,15 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
       />
     );
 
-    // Top HUD is present in editor mode and houses toolSelect and toolPan
+    // Top HUD is present in editor mode and houses toolSelect, toolPan, toolUndo, toolRedo
     const topHud = container.querySelector('.canvas-floating-hud.top-hud.ps-hud-bar');
     expect(topHud).not.toBeNull();
     expect(topHud.querySelector('#toolSelect')).not.toBeNull();
     expect(topHud.querySelector('#toolPan')).not.toBeNull();
+    expect(topHud.querySelector('#toolUndo')).not.toBeNull();
+    expect(topHud.querySelector('#toolRedo')).not.toBeNull();
+    expect(topHud.querySelector('#toolUndo').disabled).toBe(true);
+    expect(topHud.querySelector('#toolRedo').disabled).toBe(true);
 
     // Dimensions and item actions are hidden when nothing is selected
     expect(container.querySelector('#hudDimensionSelector')).toBeNull();
@@ -306,9 +321,15 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(container.querySelector('#hudBackBtn')).not.toBeNull();
     expect(container.querySelector('#hudDeleteBtn')).not.toBeNull();
 
-    // Redundant canvas buttons are removed (they reside cleanly in top bar)
-    expect(container.querySelector('#toolUndo')).toBeNull();
-    expect(container.querySelector('#toolRedo')).toBeNull();
+    // Clicking Undo/Redo in top HUD reverts and restores a history action cleanly
+    fireEvent.click(container.querySelector('#hudFrontBtn'));
+    expect(topHud.querySelector('#toolUndo').disabled).toBe(false);
+    fireEvent.click(topHud.querySelector('#toolUndo'));
+    expect(topHud.querySelector('#toolRedo').disabled).toBe(false);
+    fireEvent.click(topHud.querySelector('#toolRedo'));
+    expect(topHud.querySelector('#toolUndo').disabled).toBe(false);
+
+    // Redundant JSON import/export canvas buttons remain removed
     expect(container.querySelector('#hudImportJsonBtn')).toBeNull();
     expect(container.querySelector('#hudExportJsonBtn')).toBeNull();
 
@@ -365,14 +386,17 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(bounds.y).toBe(bbox.y - 16);
   });
 
-  it('hides the inspector by default and when no element is selected, and allows closing/reopening when selected', () => {
+  it('cleans Pro Tips, hides floating inspector when unselected, and pins/unpins properties to ps-sidebar-footer with animation', () => {
     const { container } = render(<ProcessScapeView />);
     const inspector = container.querySelector('aside.ps-inspector');
     expect(inspector).not.toBeNull();
 
-    // 1. By default with no element selected, inspector is hidden (collapsed)
+    // All Pro Tips are cleaned from ps-sidebar-footer and footer is hidden until pinned
+    expect(container.querySelector('.ps-sidebar-footer')).toBeNull();
+    expect(container.textContent).not.toContain('Pro Tip');
+
+    // 1. By default with no element selected, floating inspector is hidden (collapsed)
     expect(inspector.classList.contains('collapsed')).toBe(true);
-    // Floating reopen button is also NOT shown when no element is selected
     expect(container.querySelector('.ps-inspector-toggle-float')).toBeNull();
 
     // 2. Select an element by dropping onto canvas
@@ -385,30 +409,45 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
       }
     });
 
-    // Now inspector is open and visible
+    // Floating inspector opens with bottom-right 'Delete' button
     expect(inspector.classList.contains('collapsed')).toBe(false);
+    const deleteBtn = inspector.querySelector('.ps-inspector-delete-row button.hud-btn-sm.btn-danger-outline');
+    expect(deleteBtn).not.toBeNull();
+    expect(deleteBtn.textContent).toBe('Delete');
 
-    // 3. Click close button on inspector header
-    const closeBtn = container.querySelector('.ps-inspector-close-btn');
-    expect(closeBtn).not.toBeNull();
-    fireEvent.click(closeBtn);
+    // 3. Click pin/close button on inspector header -> does NOT close; pins into ps-sidebar-footer with dock animation
+    const pinBtn = container.querySelector('.ps-inspector-close-btn');
+    expect(pinBtn).not.toBeNull();
+    fireEvent.click(pinBtn);
 
-    // Inspector should now be collapsed (closed)
-    expect(inspector.classList.contains('collapsed')).toBe(true);
-
-    // Floating reopen button should appear because an element is selected
-    const floatReopenBtn = container.querySelector('.ps-inspector-toggle-float button');
-    expect(floatReopenBtn).not.toBeNull();
-    fireEvent.click(floatReopenBtn);
-
-    // Inspector should now be opened again
-    expect(inspector.classList.contains('collapsed')).toBe(false);
-
-    // 4. Deselect by clicking empty canvas
-    fireEvent.mouseDown(viewport, { clientX: 50, clientY: 50 });
-    // When no element is selected, inspector is hidden
-    expect(inspector.classList.contains('collapsed')).toBe(true);
+    const footer = container.querySelector('.ps-sidebar-footer.is-pinned-inspector');
+    expect(footer).not.toBeNull();
+    expect(footer.classList.contains('is-dock-entering')).toBe(true);
+    const pinnedInspector = footer.querySelector('aside.ps-inspector.is-pinned');
+    expect(pinnedInspector).not.toBeNull();
+    expect(pinnedInspector.classList.contains('collapsed')).toBe(false);
     expect(container.querySelector('.ps-inspector-toggle-float')).toBeNull();
+
+    // 4. Deselecting canvas while pinned hides the pinned properties area too
+    fireEvent.mouseDown(viewport, { clientX: 50, clientY: 50 });
+    expect(container.querySelector('.ps-sidebar-footer')).toBeNull();
+    expect(container.querySelector('aside.ps-inspector')).toBeNull();
+
+    // 5. Re-selecting an item restores properties pinned in ps-sidebar-footer, and clicking unpin pops back to floating
+    fireEvent.click(container.querySelector('.plant-node'));
+    const restoredFooter = container.querySelector('.ps-sidebar-footer.is-pinned-inspector');
+    expect(restoredFooter).not.toBeNull();
+    const unpinBtn = restoredFooter.querySelector('.ps-inspector-close-btn');
+    expect(unpinBtn).not.toBeNull();
+    fireEvent.click(unpinBtn);
+    expect(container.querySelector('.ps-sidebar-footer')).toBeNull();
+    const floatInspectorAgain = container.querySelector('aside.ps-inspector');
+    expect(floatInspectorAgain).not.toBeNull();
+    expect(floatInspectorAgain.classList.contains('collapsed')).toBe(false);
+
+    // 6. Deselecting while floating hides the floating inspector
+    fireEvent.mouseDown(viewport, { clientX: 50, clientY: 50 });
+    expect(floatInspectorAgain.classList.contains('collapsed')).toBe(true);
   });
 
   it('positions worldGroup safely down from top-hud on initial mount to avoid overlap', () => {
@@ -426,7 +465,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(y).toBe(78);
   });
 
-  it('renders Real Size bounds guide hidden unless active and keeps top HUD selection-focused', () => {
+  it('omits redundant Real Size button and keeps top HUD compact & selection-focused', () => {
     const { container } = render(
       <ProcessScapeView
         initialMode="editor"
@@ -436,7 +475,8 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
       />
     );
 
-    // Bounds guide is NOT shown by default when drawing
+    // Real Size button & guide are removed because the Bounds Resizer tool covers bounds visualization & resizing
+    expect(container.querySelector('#toolRealSize')).toBeNull();
     expect(container.querySelector('.ps-real-bounds-guide')).toBeNull();
 
     // hud-stat-pill is removed as requested
@@ -1506,12 +1546,14 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
         isOpen={true}
         onClose={vi.fn()}
         onSelectActiveScape={onSelectActive}
+        currentScapeId=""
       />
     );
 
-    // Delete button must be present on the single scape card
+    // Delete button must be present on the single unused scape card
     const deleteBtn = container.querySelector('.btn-delete');
     expect(deleteBtn).not.toBeNull();
+    expect(deleteBtn.disabled).toBe(false);
 
     // Clicking delete opens the in-app confirmation dialog
     fireEvent.click(deleteBtn);
@@ -1529,6 +1571,53 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(container.querySelector('.ps-mgr-empty-state')).not.toBeNull();
 
     // Restore localStorage so other tests have clean state
+    localStorage.clear();
+  });
+
+  it('ScapeManagerModal disables delete button and prevents deletion for in-use scapes (active or bound to a location)', () => {
+    localStorage.clear();
+    const scapeActive = createNewScape('Active Scape');
+    const scapeBound = createNewScape('Location Bound Scape');
+    const scapeUnused = createNewScape('Unused Scape');
+
+    saveLocations([
+      { id: 'loc_1', name: 'Compressor Room', scapeId: scapeBound.id, measurementPoints: [] }
+    ]);
+
+    const { container } = render(
+      <ScapeManagerModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onSelectActiveScape={vi.fn()}
+        currentScapeId={scapeActive.id}
+      />
+    );
+
+    const cards = Array.from(container.querySelectorAll('.ps-mgr-card'));
+    const findDeleteBtn = (title) => {
+      const card = cards.find(c => c.querySelector('.ps-mgr-card-title')?.textContent === title);
+      return card?.querySelector('.ps-mgr-action-icon-btn.btn-delete');
+    };
+
+    const activeDeleteBtn = findDeleteBtn('Active Scape');
+    const boundDeleteBtn = findDeleteBtn('Location Bound Scape');
+    const unusedDeleteBtn = findDeleteBtn('Unused Scape');
+
+    expect(activeDeleteBtn).not.toBeNull();
+    expect(activeDeleteBtn.disabled).toBe(true);
+    expect(boundDeleteBtn).not.toBeNull();
+    expect(boundDeleteBtn.disabled).toBe(true);
+    expect(unusedDeleteBtn).not.toBeNull();
+    expect(unusedDeleteBtn.disabled).toBe(false);
+
+    // Clicking disabled delete buttons must not open confirmation dialog or remove scapes
+    fireEvent.click(activeDeleteBtn);
+    fireEvent.click(boundDeleteBtn);
+    expect(container.querySelector('.ps-mgr-confirm-dialog')).toBeNull();
+    expect(getAllScapes().map(s => s.id)).toEqual(
+      expect.arrayContaining([scapeActive.id, scapeBound.id, scapeUnused.id])
+    );
+
     localStorage.clear();
   });
 
@@ -4032,6 +4121,41 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(inspector.style.left).toBe('694px');
     expect(inspector.style.top).toBe('164px');
 
+    // Resize workbench from large (1200x800) to small (500x480): position scales proportionally via relative %
+    // xPct = 76.26%, maxLeft = 500 - 290 = 210 -> 160px; yPct = 43.16%, maxTop = 480 - 420 = 60 -> 26px
+    workbench.getBoundingClientRect = () => ({
+      left: 100,
+      top: 50,
+      right: 600,
+      bottom: 530,
+      width: 500,
+      height: 480,
+      x: 100,
+      y: 50
+    });
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(inspector.style.left).toBe('160px');
+    expect(inspector.style.top).toBe('26px');
+
+    // Shrink below inspector dimensions (250x300): clamps safely to 0px so it never disappears off-screen
+    workbench.getBoundingClientRect = () => ({
+      left: 100,
+      top: 50,
+      right: 350,
+      bottom: 350,
+      width: 250,
+      height: 300,
+      x: 100,
+      y: 50
+    });
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(inspector.style.left).toBe('0px');
+    expect(inspector.style.top).toBe('0px');
+
     // 2. Double click header to reset to default top-right
     fireEvent.doubleClick(header);
 
@@ -6271,6 +6395,1036 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(fontSlider).not.toBeNull();
     fireEvent.change(fontSlider, { target: { value: '20' } });
     expect(container.querySelector('.plant-text-group text').getAttribute('font-size')).toBe('20');
+  });
+
+  it('renders locations dropdown inside psRuntimePageTools and invokes onLocationChange when switched', () => {
+    const scape1 = { id: 'scape_loc_1', title: 'Building A', tempCanvasSize: { width: 1024, height: 800 }, elements: [], pipes: [] };
+    const scape2 = { id: 'scape_loc_2', title: 'Building B', tempCanvasSize: { width: 1024, height: 800 }, elements: [], pipes: [] };
+    saveScape(scape1);
+    saveScape(scape2);
+    saveLocations([
+      { id: 'loc_1', name: 'Plant Building A', scapeId: 'scape_loc_1', measurementPoints: [] },
+      { id: 'loc_2', name: 'Plant Building B', scapeId: 'scape_loc_2', measurementPoints: [] }
+    ]);
+
+    const onLocationChangeMock = vi.fn();
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        activeLocationId="loc_1"
+        onLocationChange={onLocationChangeMock}
+      />
+    );
+
+    const runtimeTools = container.querySelector('#psRuntimePageTools');
+    expect(runtimeTools).not.toBeNull();
+
+    const locSelect = runtimeTools.querySelector('#toolRuntimeLocationSelect');
+    expect(locSelect).not.toBeNull();
+    expect(locSelect.value).toBe('loc_1');
+    expect(locSelect.querySelectorAll('option').length).toBe(2);
+
+    fireEvent.change(locSelect, { target: { value: 'loc_2' } });
+    expect(onLocationChangeMock).toHaveBeenCalledWith('loc_2');
+  });
+
+  it('toggles psRuntimePageTools between Normal and Concise style via drag handle click and groups resizer with Scape Manager', () => {
+    localStorage.removeItem('s4a_ps_runtime_tools_concise_v1');
+    const scape1 = { id: 'scape_conc_1', title: 'Zone 1', tempCanvasSize: { width: 1024, height: 800 }, elements: [], pipes: [] };
+    saveScape(scape1);
+    saveLocations([
+      { id: 'loc_conc_1', name: 'East Wing', scapeId: 'scape_conc_1', measurementPoints: [] }
+    ]);
+
+    const { container } = render(
+      <ProcessScapeView initialMode="runtime" activeLocationId="loc_conc_1" />
+    );
+
+    const runtimeTools = container.querySelector('#psRuntimePageTools');
+    expect(runtimeTools.classList.contains('is-concise')).toBe(false);
+    expect(runtimeTools.querySelector('.ps-runtime-location-icon')).toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeConciseToggle')).toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeLocationSelect')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomOut')).not.toBeNull();
+
+    // BoundsResizer and ScapeManager share the same .tool-group
+    const resizerBtn = runtimeTools.querySelector('#toolRuntimeBoundsResizer');
+    const managerBtn = runtimeTools.querySelector('#toolRuntimeScapeManager');
+    expect(resizerBtn).not.toBeNull();
+    expect(managerBtn).not.toBeNull();
+    expect(resizerBtn.closest('.tool-group')).toBe(managerBtn.closest('.tool-group'));
+
+    // Click drag handle -> Switch to Concise mode
+    const dragHandle = runtimeTools.querySelector('#toolRuntimeDragHandle');
+    expect(dragHandle).not.toBeNull();
+    expect(dragHandle.getAttribute('title')).toContain('Click');
+    expect(dragHandle.getAttribute('title')).toContain('drag');
+    fireEvent.click(dragHandle);
+
+    expect(runtimeTools.classList.contains('is-concise')).toBe(true);
+    expect(runtimeTools.querySelector('#toolRuntimeLocationSelect')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomOut')).toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomReset')).toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeZoomIn')).toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeBoundsResizer')).toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeScapeManager')).toBeNull();
+    expect(localStorage.getItem('s4a_ps_runtime_tools_concise_v1')).toBe('true');
+
+    // Click drag handle again -> Toggle back to Normal mode
+    fireEvent.click(dragHandle);
+    expect(runtimeTools.classList.contains('is-concise')).toBe(false);
+    expect(runtimeTools.querySelector('#toolRuntimeZoomOut')).not.toBeNull();
+    expect(runtimeTools.querySelector('#toolRuntimeScapeManager')).not.toBeNull();
+    localStorage.removeItem('s4a_ps_runtime_tools_concise_v1');
+  });
+
+  it('supports free dragging psRuntimePageTools and snapping drop to the nearest of the four corners without toggling concise', () => {
+    localStorage.removeItem('s4a_ps_runtime_tools_corner_v1');
+    localStorage.removeItem('s4a_ps_runtime_tools_concise_v1');
+    const scape1 = { id: 'scape_drag_1', title: 'Drag Zone', tempCanvasSize: { width: 1024, height: 800 }, elements: [], pipes: [] };
+    saveScape(scape1);
+    saveLocations([
+      { id: 'loc_drag_1', name: 'Main Hall', scapeId: 'scape_drag_1', measurementPoints: [] }
+    ]);
+
+    const { container } = render(
+      <ProcessScapeView initialMode="runtime" activeLocationId="loc_drag_1" />
+    );
+
+    const runtimeTools = container.querySelector('#psRuntimePageTools');
+    expect(runtimeTools.classList.contains('corner-top-right')).toBe(true);
+    expect(container.querySelector('.ps-runtime-corner-targets')).toBeNull();
+
+    const dragHandle = runtimeTools.querySelector('#toolRuntimeDragHandle');
+    expect(dragHandle).not.toBeNull();
+
+    // Drag to bottom-left corner (default fallback viewport in jsdom uses innerWidth/innerHeight = 1024x768)
+    fireEvent.mouseDown(dragHandle, { button: 0, clientX: 900, clientY: 20 });
+    fireEvent.mouseMove(window, { clientX: 60, clientY: 700 });
+    expect(container.querySelectorAll('.ps-corner-drop-zone').length).toBe(4);
+    expect(runtimeTools.classList.contains('is-dragging')).toBe(true);
+    expect(container.querySelector('.ps-corner-drop-zone.corner-bottom-left.is-active')).not.toBeNull();
+
+    fireEvent.mouseUp(window);
+    // Simulated click immediately following drag does not toggle concise mode
+    fireEvent.click(dragHandle);
+    expect(runtimeTools.classList.contains('is-concise')).toBe(false);
+    expect(container.querySelector('.ps-runtime-corner-targets')).toBeNull();
+    expect(runtimeTools.classList.contains('corner-bottom-left')).toBe(true);
+    expect(localStorage.getItem('s4a_ps_runtime_tools_corner_v1')).toBe('bottom-left');
+
+    // Drag to top-left corner
+    fireEvent.mouseDown(dragHandle, { button: 0, clientX: 60, clientY: 700 });
+    fireEvent.mouseMove(window, { clientX: 60, clientY: 30 });
+    expect(container.querySelector('.ps-corner-drop-zone.corner-top-left.is-active')).not.toBeNull();
+    fireEvent.mouseUp(window);
+    expect(runtimeTools.classList.contains('corner-top-left')).toBe(true);
+
+    // Drag to bottom-right corner
+    fireEvent.mouseDown(dragHandle, { button: 0, clientX: 60, clientY: 30 });
+    fireEvent.mouseMove(window, { clientX: 960, clientY: 700 });
+    expect(container.querySelector('.ps-corner-drop-zone.corner-bottom-right.is-active')).not.toBeNull();
+    fireEvent.mouseUp(window);
+    expect(runtimeTools.classList.contains('corner-bottom-right')).toBe(true);
+
+    localStorage.removeItem('s4a_ps_runtime_tools_corner_v1');
+    localStorage.removeItem('s4a_ps_runtime_tools_concise_v1');
+  });
+
+  it('includes equipment tag width and vertical offset in getElementBBox and getContentBounds so tags do not overflow diagram bounds', () => {
+    // 1. Narrow scaled-down dewpoint_meter (tag renders ABOVE device) with long EQUIPMENT TAG NAME
+    const dewWithLongTag = {
+      id: 'dp_long_1',
+      type: 'dewpoint_meter',
+      x: 300,
+      y: 300,
+      scale: 0.6,
+      tag: 'Dew Point Transmitter - Main Compressed Air Line'
+    };
+    const dpNoTag = { ...dewWithLongTag, tag: '' };
+    const dpNullTag = { ...dewWithLongTag, tag: null };
+    const dpSpacesTag = { ...dewWithLongTag, tag: '   ' };
+
+    const bboxWithTag = getElementBBox(dewWithLongTag);
+    const bboxWithoutTag = getElementBBox(dpNoTag);
+
+    // Body only is ~38x78 when tag is empty, null, or whitespace-only; with long tag it must expand horizontally and upward
+    expect(bboxWithoutTag).toEqual({ x: 300 - 19, y: 300 - 39, w: 38, h: 78 });
+    expect(getElementBBox(dpNullTag)).toEqual(bboxWithoutTag);
+    expect(getElementBBox(dpSpacesTag)).toEqual(bboxWithoutTag);
+    expect(bboxWithTag.w).toBeGreaterThan(250);
+    expect(bboxWithTag.x).toBeLessThan(bboxWithoutTag.x);
+    expect(bboxWithTag.x + bboxWithTag.w).toBeGreaterThan(bboxWithoutTag.x + bboxWithoutTag.w);
+    expect(bboxWithTag.y).toBeLessThan(bboxWithoutTag.y); // Tag above device expands top edge
+
+    // 2. Machine with tag rendered BELOW expands bottom edge and width if tag is wide
+    const compWithLongTag = {
+      id: 'comp_long_1',
+      type: 'machine_compressor',
+      x: 400,
+      y: 400,
+      scale: 0.5,
+      tag: 'Rotary Screw Air Compressor Station #1'
+    };
+    const compNoTag = { ...compWithLongTag, tag: '' };
+    const compTagBox = getElementBBox(compWithLongTag);
+    const compBodyBox = getElementBBox(compNoTag);
+    expect(compTagBox.y + compTagBox.h).toBeGreaterThan(compBodyBox.y + compBodyBox.h);
+    expect(compTagBox.w).toBeGreaterThan(compBodyBox.w);
+
+    // 3. Bounds Resizer uses getContentBounds including the long tag
+    const bounds = getContentBounds([dewWithLongTag], [], 24);
+    expect(bounds.x).toBe(bboxWithTag.x - 24);
+    expect(bounds.width).toBe(bboxWithTag.w + 48);
+  });
+
+  it('distinguishes toolSelect and toolPan: toolPan clears selection, blocks item selection, and exclusively allows canvas dragging', () => {
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'el_sel_1', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100, w: 140, h: 120 }
+        ]}
+      />
+    );
+
+    const viewport = container.querySelector('.ps-canvas-viewport');
+    const worldGroup = container.querySelector('#worldGroup');
+    const toolSelect = container.querySelector('#toolSelect');
+    const toolPan = container.querySelector('#toolPan');
+    const getNodeEl = () => container.querySelector('.plant-node');
+    const inspector = container.querySelector('.ps-inspector');
+
+    expect(toolSelect.classList.contains('active')).toBe(true);
+    expect(toolPan.classList.contains('active')).toBe(false);
+
+    // 1. In toolSelect, selecting a single item selects it and opens the inspector
+    fireEvent.click(getNodeEl());
+    expect(container.querySelector('#hudDimensionSelector')).not.toBeNull();
+    expect(inspector.classList.contains('collapsed')).toBe(false);
+
+    // 2. Dragging empty canvas (or right-drag) in toolSelect does NOT pan the canvas
+    const initialTransform = worldGroup.getAttribute('transform');
+    fireEvent.mouseDown(viewport, { button: 0, clientX: 500, clientY: 500 });
+    fireEvent.mouseMove(window, { clientX: 620, clientY: 580 });
+    fireEvent.mouseUp(window);
+    expect(worldGroup.getAttribute('transform')).toBe(initialTransform);
+
+    fireEvent.mouseDown(viewport, { button: 2, clientX: 500, clientY: 500 });
+    fireEvent.mouseMove(window, { clientX: 620, clientY: 580 });
+    fireEvent.mouseUp(window);
+    expect(worldGroup.getAttribute('transform')).toBe(initialTransform);
+
+    // Trackpad/wheel pan without Ctrl/Cmd also does NOT pan when toolPan is unchecked
+    fireEvent.wheel(viewport, { deltaX: 80, deltaY: 60 });
+    expect(worldGroup.getAttribute('transform')).toBe(initialTransform);
+
+    // Even with Bounds Resizer enabled, dragging empty canvas does NOT pan when toolPan is unchecked
+    const modifyResizer = container.querySelector('#toolModifyBoundsResizer');
+    fireEvent.click(modifyResizer);
+    expect(modifyResizer.classList.contains('active')).toBe(true);
+    fireEvent.mouseDown(viewport, { button: 0, clientX: 500, clientY: 500 });
+    fireEvent.mouseMove(window, { clientX: 620, clientY: 580 });
+    fireEvent.mouseUp(window);
+    expect(worldGroup.getAttribute('transform')).toBe(initialTransform);
+    fireEvent.click(modifyResizer);
+
+    // Re-select node before activating toolPan
+    fireEvent.click(getNodeEl());
+    expect(container.querySelector('#hudDimensionSelector')).not.toBeNull();
+
+    // 3. Clicking toolPan immediately clears all selection status and hides inspector
+    fireEvent.click(toolPan);
+    expect(toolPan.classList.contains('active')).toBe(true);
+    expect(viewport.classList.contains('panning')).toBe(true);
+    expect(container.querySelector('#hudDimensionSelector')).toBeNull();
+    expect(inspector.classList.contains('collapsed')).toBe(true);
+
+    // Clicking an item while toolPan is active must NOT select it
+    fireEvent.click(getNodeEl());
+    expect(container.querySelector('#hudDimensionSelector')).toBeNull();
+    expect(inspector.classList.contains('collapsed')).toBe(true);
+
+    // 4. Only in Pan mode can the whole canvas be dragged
+    fireEvent.mouseDown(viewport, { button: 0, clientX: 200, clientY: 200 });
+    fireEvent.mouseMove(window, { clientX: 320, clientY: 290 });
+    fireEvent.mouseUp(window);
+    expect(worldGroup.getAttribute('transform')).not.toBe(initialTransform);
+
+    // 5. Switching back to toolSelect via 'v', selecting item, then pressing 'h' also clears selection and enters Pan
+    fireEvent.keyDown(window, { key: 'v' });
+    expect(toolSelect.classList.contains('active')).toBe(true);
+    fireEvent.click(getNodeEl());
+    expect(container.querySelector('#hudDimensionSelector')).not.toBeNull();
+
+    fireEvent.keyDown(window, { key: 'h' });
+    expect(toolPan.classList.contains('active')).toBe(true);
+    expect(container.querySelector('#hudDimensionSelector')).toBeNull();
+    expect(inspector.classList.contains('collapsed')).toBe(true);
+  });
+
+  it('moves only the newly clicked-and-dragged device instead of dragging a previously selected device together', () => {
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'dev_1', type: 'machine_compressor', tag: 'Comp 1', x: 100, y: 100 },
+          { id: 'dev_2', type: 'machine_compressor', tag: 'Comp 2', x: 350, y: 100 }
+        ]}
+      />
+    );
+
+    const getDev1 = () => container.querySelector('.plant-node[data-node-id="dev_1"]');
+    const getDev2 = () => container.querySelector('.plant-node[data-node-id="dev_2"]');
+
+    const dev1InitialTransform = getDev1().getAttribute('transform');
+    const dev2InitialTransform = getDev2().getAttribute('transform');
+
+    // 1. Select dev_1 first
+    fireEvent.click(getDev1());
+    expect(getDev1().classList.contains('selected')).toBe(true);
+    expect(getDev2().classList.contains('selected')).toBe(false);
+
+    // 2. Click and drag dev_2 without Shift: dev_1 must lose focus AND stay in place
+    fireEvent.mouseDown(getDev2(), { button: 0, clientX: 350, clientY: 100 });
+    fireEvent.mouseMove(window, { clientX: 430, clientY: 160 });
+    fireEvent.mouseUp(window);
+
+    expect(getDev1().classList.contains('selected')).toBe(false);
+    expect(getDev2().classList.contains('selected')).toBe(true);
+    expect(getDev1().getAttribute('transform')).toBe(dev1InitialTransform);
+    expect(getDev2().getAttribute('transform')).not.toBe(dev2InitialTransform);
+
+    // 3. Shift-selecting dev_1 adds it cleanly and dragging moves both together
+    const dev2AfterFirstMove = getDev2().getAttribute('transform');
+    fireEvent.mouseDown(getDev1(), { button: 0, shiftKey: true, clientX: 100, clientY: 100 });
+    fireEvent.mouseMove(window, { clientX: 140, clientY: 140 });
+    fireEvent.mouseUp(window);
+
+    expect(getDev1().classList.contains('selected')).toBe(true);
+    expect(getDev2().classList.contains('selected')).toBe(true);
+    expect(getDev1().getAttribute('transform')).not.toBe(dev1InitialTransform);
+    expect(getDev2().getAttribute('transform')).not.toBe(dev2AfterFirstMove);
+  });
+
+  it('provides Others tab with H/V Lines and H/V Labels with correct orientation rendering and BBox', () => {
+    localStorage.clear();
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[]}
+        initialPipes={[]}
+      />
+    );
+
+    // 1. Switch to Others tab and verify unified Line (with H/V pills) and unified Label (with H/V pills)
+    const othersTab = Array.from(container.querySelectorAll('.ps-palette-tab')).find(t => t.textContent === 'Others');
+    expect(othersTab).not.toBeNull();
+    fireEvent.click(othersTab);
+
+    const cardTitles = Array.from(container.querySelectorAll('.ps-palette-items .ps-card-title')).map(el => el.textContent);
+    expect(cardTitles.filter(t => t.startsWith('Brick Wall')).length).toBe(1);
+    expect(cardTitles.filter(t => t.startsWith('Line')).length).toBe(1);
+    expect(cardTitles.filter(t => t.startsWith('Label')).length).toBe(1);
+    expect(cardTitles).not.toContain('Horizontal Brick Wall');
+    expect(cardTitles).not.toContain('Vertical Brick Wall');
+    expect(cardTitles).not.toContain('Horizontal Line');
+    expect(cardTitles).not.toContain('Vertical Line');
+    expect(cardTitles.some(t => t.includes('Text Note / Label'))).toBe(false);
+
+    // Brick Wall & Line cards share the exact same H / V orientation pill pattern as Label
+    // Wall icon matches canvas running-bond masonry SVG (#cbd5e1 mortar + staggered bricks)
+    const wallSvgHoriz = container.querySelector('.ps-wall-palette-svg');
+    expect(wallSvgHoriz).not.toBeNull();
+    expect(wallSvgHoriz.classList.contains('is-horiz')).toBe(true);
+    expect(wallSvgHoriz.querySelector('rect[fill="#cbd5e1"]')).not.toBeNull();
+    const wallHPill = container.querySelector('button[aria-label="Palette Brick Wall Horizontal"]');
+    const wallVPill = container.querySelector('button[aria-label="Palette Brick Wall Vertical"]');
+    expect(wallHPill).not.toBeNull();
+    expect(wallVPill).not.toBeNull();
+    expect(wallHPill.classList.contains('active')).toBe(true);
+    fireEvent.click(wallVPill);
+    expect(wallVPill.classList.contains('active')).toBe(true);
+    expect(wallHPill.classList.contains('active')).toBe(false);
+    expect(container.querySelector('.ps-wall-palette-svg').classList.contains('is-vert')).toBe(true);
+
+    // Line card has H / V orientation pills matching Label
+    const lineHPill = container.querySelector('button[aria-label="Palette Line Horizontal"]');
+    const lineVPill = container.querySelector('button[aria-label="Palette Line Vertical"]');
+    expect(lineHPill).not.toBeNull();
+    expect(lineVPill).not.toBeNull();
+    expect(lineHPill.classList.contains('active')).toBe(true);
+    fireEvent.click(lineVPill);
+    expect(lineVPill.classList.contains('active')).toBe(true);
+    expect(lineHPill.classList.contains('active')).toBe(false);
+
+    const viewport = container.querySelector('.ps-canvas-viewport');
+
+    // Drop Brick Wall (H) and switch orientation in Inspector to V
+    const wallCountBefore = container.querySelectorAll('.plant-node').length;
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'asset', key: 'wall_perimeter_h', orientation: 'h' }) : '') },
+      clientX: 160,
+      clientY: 160
+    });
+    const wallNodes = container.querySelectorAll('.plant-node');
+    expect(wallNodes.length).toBe(wallCountBefore + 1);
+    const droppedWall = wallNodes[wallNodes.length - 1];
+    expect(droppedWall.querySelectorAll('text').length).toBe(0);
+    fireEvent.click(droppedWall);
+    const inspectorPanel = container.querySelector('.ps-inspector');
+    expect(inspectorPanel.textContent).toContain('Horizontal Wall');
+    expect(inspectorPanel.textContent).not.toContain('Equipment Tag Name');
+    expect(inspectorPanel.textContent).not.toContain('Color Theme');
+    expect(container.querySelector('#itemTagInput')).toBeNull();
+    const wallLengthSlider = container.querySelector('#wallLengthSlider');
+    const wallThicknessSlider = container.querySelector('#wallThicknessSlider');
+    expect(wallLengthSlider).not.toBeNull();
+    expect(wallThicknessSlider).not.toBeNull();
+    expect(wallLengthSlider.value).toBe('200');
+    expect(wallThicknessSlider.value).toBe('24');
+    fireEvent.change(wallLengthSlider, { target: { value: '360' } });
+    expect(wallLengthSlider.value).toBe('360');
+    const wallVertBtn = container.querySelector('button[aria-label="Wall Orientation: Vertical (V)"]');
+    expect(wallVertBtn).not.toBeNull();
+    fireEvent.click(wallVertBtn);
+    expect(container.querySelector('button[aria-label="Wall Orientation: Vertical (V)"]').classList.contains('btn-primary')).toBe(true);
+    expect(inspectorPanel.textContent).toContain('Vertical Wall');
+    expect(container.querySelectorAll('.plant-node')[wallNodes.length - 1].querySelectorAll('text').length).toBe(0);
+
+    // 2. Drop Horizontal Line at (300, 200) and Vertical Line at (600, 300)
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'guide_line', key: 'guide_line', orientation: 'h' }) : '') },
+      clientX: 300,
+      clientY: 200
+    });
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'guide_line', key: 'guide_line', orientation: 'v' }) : '') },
+      clientX: 600,
+      clientY: 300
+    });
+
+    const lines = container.querySelectorAll('.plant-line-group');
+    expect(lines.length).toBe(2);
+
+    // Check Line Inspector styles (Thin Double / Dotted / Dashed) and default 1px thickness on the selected V Line
+    fireEvent.doubleClick(lines[1]);
+    expect(container.querySelector('#guideLineWidthSlider').value).toBe('1');
+    const lineStyleButtons = container.querySelectorAll('.ps-line-style-btn');
+    expect(lineStyleButtons.length).toBe(4);
+    lineStyleButtons.forEach(btn => expect(btn.textContent).toBe(''));
+    const doubleLineBtn = container.querySelector('button[aria-label="Line Style: Thin Double"]');
+    expect(doubleLineBtn).not.toBeNull();
+    fireEvent.click(doubleLineBtn);
+    expect(container.querySelectorAll('.plant-line-group')[1].querySelectorAll('line').length).toBe(2);
+
+    // 3. Drop an H Label at (300, 195) and a V Label at (595, 300) without line auto-attach
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'text_note', key: 'text_note', orientation: 'h' }) : '') },
+      clientX: 300,
+      clientY: 195
+    });
+
+    // Switch Label palette pill to V and drop V Label
+    const vPill = container.querySelector('button[aria-label="Palette Label Vertical"]');
+    expect(vPill).not.toBeNull();
+    fireEvent.click(vPill);
+
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'text_note', key: 'text_note', orientation: 'v' }) : '') },
+      clientX: 595,
+      clientY: 300
+    });
+
+    const labels = container.querySelectorAll('.plant-text-group');
+    expect(labels.length).toBe(2);
+    // V Label renders rotated content group and does not show Attach to Line inspector UI
+    expect(labels[1].querySelector('.plant-text-content')?.getAttribute('transform')).toContain('rotate(-90)');
+    expect(container.querySelector('#psLabelAttachLineSelect')).toBeNull();
+
+    // Verify BBox swaps orientation cleanly for H vs V Labels
+    const hBox = getElementBBox({ id: 'lh', type: 'text_note', text: 'Header Section', orientation: 'h', fontSize: 12, x: 100, y: 100 });
+    const vBox = getElementBBox({ id: 'lv', type: 'text_note', text: 'Header Section', orientation: 'v', fontSize: 12, x: 100, y: 100 });
+    expect(hBox.w).toBeGreaterThan(hBox.h);
+    expect(vBox.h).toBeGreaterThan(vBox.w);
+
+    // Dragging the H Line does NOT move the H Label (no line attachment)
+    const hLineEl = container.querySelectorAll('.plant-line-group')[0];
+    const hLabelElBefore = container.querySelectorAll('.plant-text-group')[0].getAttribute('transform');
+    fireEvent.mouseDown(hLineEl, { button: 0, clientX: 300, clientY: 200 });
+    fireEvent.mouseMove(window, { clientX: 340, clientY: 260 });
+    fireEvent.mouseUp(window);
+    const hLabelElAfter = container.querySelectorAll('.plant-text-group')[0].getAttribute('transform');
+    expect(hLabelElAfter).toBe(hLabelElBefore);
+  });
+
+  it('toggles ps-inspector between Normal and Min styles on drag-grip click and shows only essential controls in Min mode', () => {
+    localStorage.removeItem('s4a_ps_inspector_min_v1');
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[
+          { id: 'min_machine_1', type: 'machine_compressor', tag: 'Comp 1', x: 120, y: 120 },
+          { id: 'min_sensor_1', type: 'dewpoint_meter', tag: 'DP-01', x: 260, y: 120 },
+          { id: 'min_wall_1', type: 'wall_perimeter_h', tag: '', x: 180, y: 240 },
+          { id: 'min_line_1', type: 'guide_line', orientation: 'h', x: 400, y: 180, length: 200, strokeWidth: 2 },
+          { id: 'min_note_1', type: 'text_note', orientation: 'h', text: 'Note A', fontSize: 12, x: 400, y: 280 }
+        ]}
+        initialPipes={[
+          { id: 'min_pipe_1', medium: 'gas', w: 14, points: [{ x: 100, y: 360 }, { x: 320, y: 360 }], d: 'M 100,360 L 320,360' }
+        ]}
+      />
+    );
+
+    const inspector = container.querySelector('.ps-inspector');
+    const dragGrip = container.querySelector('.ps-inspector-drag-grip');
+    const inspectorHeader = container.querySelector('.ps-inspector-header');
+    expect(inspector).not.toBeNull();
+    expect(dragGrip).not.toBeNull();
+
+    // 1. Pipe selected -> Normal mode shows Pipe Thickness, Flow Direction, bottom-right 'Delete' button
+    const pipeEl = container.querySelector('.plant-pipe-group[data-pipe-id="min_pipe_1"]');
+    fireEvent.doubleClick(pipeEl);
+    expect(inspector.classList.contains('collapsed')).toBe(false);
+    expect(inspector.classList.contains('is-min')).toBe(false);
+    expect(container.querySelector('#pipeThicknessSlider')).not.toBeNull();
+    expect(inspector.textContent).toContain('Flow Direction');
+    expect(inspector.querySelector('.ps-inspector-delete-row button.hud-btn-sm.btn-danger-outline')?.textContent).toBe('Delete');
+
+    // Click drag grip -> switches to Min mode (shows Pipe Thickness only)
+    fireEvent.mouseDown(dragGrip, { button: 0, clientX: 200, clientY: 20 });
+    fireEvent.mouseUp(window);
+    fireEvent.click(dragGrip);
+
+    expect(inspector.classList.contains('is-min')).toBe(true);
+    expect(dragGrip.getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem('s4a_ps_inspector_min_v1')).toBe('true');
+    expect(container.querySelector('#pipeThicknessSlider')).not.toBeNull();
+    expect(inspector.textContent).not.toContain('Flow Direction');
+    expect(inspector.querySelector('.ps-inspector-delete-row')).toBeNull();
+
+    // 2. Machine, Sensor -> Min mode shows Device Size (#itemScaleSlider) only; Wall -> Min mode shows Wall Length (#wallLengthSlider) only
+    fireEvent.click(container.querySelector('.plant-node[data-node-id="min_machine_1"]'));
+    expect(container.querySelector('#itemScaleSlider')).not.toBeNull();
+    expect(container.querySelector('#itemTagInput')).toBeNull();
+    expect(inspector.textContent).not.toContain('Color Theme');
+    expect(inspector.querySelector('.ps-inspector-delete-row')).toBeNull();
+
+    fireEvent.click(container.querySelector('.plant-node[data-node-id="min_sensor_1"]'));
+    expect(container.querySelector('#itemScaleSlider')).not.toBeNull();
+    expect(container.querySelector('#itemTagInput')).toBeNull();
+    expect(inspector.querySelector('.ps-inspector-delete-row')).toBeNull();
+
+    fireEvent.click(container.querySelector('.plant-node[data-node-id="min_wall_1"]'));
+    expect(container.querySelector('#wallLengthSlider')).not.toBeNull();
+    expect(container.querySelector('#wallThicknessSlider')).toBeNull();
+    expect(container.querySelector('#itemScaleSlider')).toBeNull();
+    expect(container.querySelector('#itemTagInput')).toBeNull();
+    expect(inspector.textContent).not.toContain('Equipment Tag Name');
+    expect(inspector.textContent).not.toContain('Color Theme');
+    expect(inspector.querySelector('.ps-inspector-delete-row')).toBeNull();
+
+    // 3. Guide Line -> Min mode shows Line Length (#guideLineLengthSlider) only
+    fireEvent.click(container.querySelector('.plant-line-group'));
+    expect(container.querySelector('#guideLineLengthSlider')).not.toBeNull();
+    expect(inspector.textContent).not.toContain('Orientation');
+    expect(inspector.textContent).not.toContain('Line Style');
+    expect(inspector.textContent).not.toContain('Line Color');
+    expect(inspector.textContent).not.toContain('Line Thickness');
+    expect(inspector.querySelector('.ps-inspector-delete-row')).toBeNull();
+
+    // 4. Label (text_note) -> Min mode shows Note Text & Text Size only
+    fireEvent.click(container.querySelector('.plant-text-group'));
+    expect(container.querySelector('#psTextNoteInput')).not.toBeNull();
+    expect(container.querySelector('#noteFontSizeSlider')).not.toBeNull();
+    expect(inspector.textContent).not.toContain('Orientation Style');
+    expect(inspector.textContent).not.toContain('Attach to Line');
+    expect(inspector.textContent).not.toContain('Outline Style');
+    expect(inspector.querySelector('.ps-inspector-delete-row')).toBeNull();
+
+    // 5. Dragging the grip/header (> 4px move) does NOT toggle Min back to Normal
+    fireEvent.mouseDown(inspectorHeader, { button: 0, clientX: 200, clientY: 20 });
+    fireEvent.mouseMove(window, { clientX: 240, clientY: 60 });
+    fireEvent.mouseUp(window);
+    fireEvent.click(dragGrip);
+    expect(inspector.classList.contains('is-min')).toBe(true);
+
+    // 6. Clicking drag grip cleanly toggles back to Normal style with uniform 'Delete' button
+    fireEvent.mouseDown(dragGrip, { button: 0, clientX: 240, clientY: 60 });
+    fireEvent.mouseUp(window);
+    fireEvent.click(dragGrip);
+    expect(inspector.classList.contains('is-min')).toBe(false);
+    expect(dragGrip.getAttribute('aria-pressed')).toBe('false');
+    expect(localStorage.getItem('s4a_ps_inspector_min_v1')).toBe('false');
+    expect(inspector.textContent).toContain('Orientation Style');
+    expect(inspector.querySelector('.ps-inspector-delete-row button.hud-btn-sm.btn-danger-outline')?.textContent).toBe('Delete');
+
+    localStorage.removeItem('s4a_ps_inspector_min_v1');
+  });
+
+  it('prevents enabled status and tool state from leaking between Modify (editor) and Live (runtime) modes', () => {
+    localStorage.clear();
+    const testScape = {
+      id: 'scape_iso_1',
+      title: 'Isolation Plant',
+      tempCanvasSize: { width: 1024, height: 800 },
+      elements: [
+        { id: 'iso_m1', type: 'machine_compressor', tag: 'ISO-1', x: 180, y: 180 }
+      ],
+      pipes: [
+        { id: 'iso_p1', medium: 'gas', w: 12, points: [{ x: 100, y: 300 }, { x: 300, y: 300 }], d: 'M 100,300 L 300,300' }
+      ]
+    };
+    saveScape(testScape);
+    saveLocations([
+      { id: 'loc_iso_1', name: 'Room 1', scapeId: 'scape_iso_1', measurementPoints: [] }
+    ]);
+
+    let actions = null;
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        activeLocationId="loc_iso_1"
+        onRegisterActions={(a) => { actions = a; }}
+      />
+    );
+
+    const modifyPageTools = container.querySelector('#psModifyPageTools');
+    const modifyResizerBtn = container.querySelector('#toolModifyBoundsResizer');
+    expect(modifyPageTools).not.toBeNull();
+    expect(modifyResizerBtn).not.toBeNull();
+
+    // 1. In Modify: activate Bounds Resizer and Pan tool (toolRealSize is removed in favor of Bounds Resizer)
+    expect(container.querySelector('#toolRealSize')).toBeNull();
+    fireEvent.click(modifyResizerBtn);
+    expect(modifyResizerBtn.classList.contains('active')).toBe(true);
+    expect(container.querySelector('#boundsResizerGroup')).not.toBeNull();
+
+    fireEvent.click(container.querySelector('#toolPan'));
+    expect(container.querySelector('#toolPan').classList.contains('active')).toBe(true);
+    expect(container.querySelector('.ps-canvas-viewport').classList.contains('panning')).toBe(true);
+
+    // 2. Exit Modify -> Live Runtime View
+    act(() => {
+      actions.handleSaveAndExit();
+    });
+
+    const runtimePageTools = container.querySelector('#psRuntimePageTools');
+    const runtimeResizerBtn = container.querySelector('#toolRuntimeBoundsResizer');
+    const runtimeDragHandle = container.querySelector('#toolRuntimeDragHandle');
+    expect(runtimePageTools).not.toBeNull();
+    expect(runtimePageTools).not.toBe(modifyPageTools);
+    expect(runtimeDragHandle).not.toBeNull();
+    expect(runtimeDragHandle.classList.contains('active')).toBe(false);
+    expect(runtimeDragHandle.classList.contains('is-concise-active')).toBe(false);
+    expect(runtimeResizerBtn).not.toBeNull();
+    expect(runtimeResizerBtn).not.toBe(modifyResizerBtn);
+    expect(runtimeResizerBtn.classList.contains('active')).toBe(false);
+    expect(container.querySelector('#boundsResizerGroup')).toBeNull();
+    expect(container.querySelector('.ps-real-bounds-guide')).toBeNull();
+    expect(container.querySelector('.ps-canvas-viewport').classList.contains('panning')).toBe(false);
+    expect(container.querySelector('.ps-canvas-viewport').classList.contains('drawing-pipe')).toBe(false);
+
+    // Editor shortcuts (Space, p, h) do not leak into Live mode
+    fireEvent.keyDown(window, { code: 'Space' });
+    expect(container.querySelector('.ps-canvas-viewport').classList.contains('panning')).toBe(false);
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(container.querySelector('.ps-canvas-viewport').classList.contains('drawing-pipe')).toBe(false);
+
+    // 3. In Live: enable Bounds Resizer, then go back to Modify Scape via Scape Manager
+    fireEvent.click(runtimeResizerBtn);
+    expect(runtimeResizerBtn.classList.contains('active')).toBe(true);
+    expect(container.querySelector('#boundsResizerGroup')).not.toBeNull();
+
+    fireEvent.click(container.querySelector('#toolRuntimeScapeManager'));
+    const editBtn = Array.from(container.querySelectorAll('.ps-mgr-card .btn-edit'))[0];
+    expect(editBtn).not.toBeNull();
+    fireEvent.click(editBtn);
+
+    // Back in Modify: Bounds Resizer & Pan & Drawing states start cleanly disabled
+    const modifyResizerAgain = container.querySelector('#toolModifyBoundsResizer');
+    expect(modifyResizerAgain).not.toBeNull();
+    expect(modifyResizerAgain.classList.contains('active')).toBe(false);
+    expect(container.querySelector('#boundsResizerGroup')).toBeNull();
+    expect(container.querySelector('#toolSelect').classList.contains('active')).toBe(true);
+    expect(container.querySelector('#toolPan').classList.contains('active')).toBe(false);
+  });
+
+  it('provides Rectangle and Circle shapes in Others with independent W/H (oval), fill color, opacity, line frame styles, and Min mode W/H controls', () => {
+    localStorage.removeItem('s4a_ps_inspector_min_v1');
+
+    const { container } = render(
+      <ProcessScapeView initialMode="editor" />
+    );
+
+    // 1. Switch to Others tab and verify Rectangle & Circle palette cards appear
+    const othersTab = Array.from(container.querySelectorAll('.ps-palette-tab')).find(t => t.textContent === 'Others');
+    expect(othersTab).not.toBeNull();
+    fireEvent.click(othersTab);
+
+    const cardTitles = Array.from(container.querySelectorAll('.ps-palette-card .ps-card-title')).map(el => el.textContent);
+    expect(cardTitles.some(t => t.includes('Rectangle'))).toBe(true);
+    expect(cardTitles.some(t => t.includes('Circle'))).toBe(true);
+
+    const viewport = container.querySelector('.ps-canvas-viewport');
+
+    // 2. Drop a Rectangle and verify SVG, BBox, Fill Color, Fill Opacity, and Line Frame Styles
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'shape_rect', key: 'shape_rect' }) : '') },
+      clientX: 220,
+      clientY: 180
+    });
+    const rectGroup = container.querySelector('.plant-shape-rect');
+    expect(rectGroup).not.toBeNull();
+    fireEvent.click(rectGroup);
+
+    const inspector = container.querySelector('.ps-inspector');
+    expect(inspector.textContent).toContain('Rectangle');
+    const widthSlider = container.querySelector('#shapeWidthSlider');
+    const heightSlider = container.querySelector('#shapeHeightSlider');
+    expect(widthSlider.value).toBe('160');
+    expect(heightSlider.value).toBe('100');
+    expect(container.querySelector('#shapeStrokeWidthSlider').value).toBe('1');
+
+    // Resize Rectangle W=300, H=180
+    fireEvent.change(widthSlider, { target: { value: '300' } });
+    fireEvent.change(heightSlider, { target: { value: '180' } });
+    const updatedRect = container.querySelector('.plant-shape-rect rect');
+    expect(updatedRect.getAttribute('width')).toBe('300');
+    expect(updatedRect.getAttribute('height')).toBe('180');
+
+    // Set Fill Color -> Soft Blue (#dbeafe) and adjust Fill Opacity -> 50%
+    fireEvent.click(container.querySelector('button[aria-label="Fill Color: Soft Blue"]'));
+    expect(container.querySelector('.plant-shape-rect rect').getAttribute('fill')).toBe('#dbeafe');
+    const opacitySlider = container.querySelector('#shapeFillOpacitySlider');
+    expect(opacitySlider).not.toBeNull();
+    fireEvent.change(opacitySlider, { target: { value: '50' } });
+    expect(container.querySelector('.plant-shape-rect rect').getAttribute('fill-opacity')).toBe('0.5');
+
+    // Frame Style -> compact 4-button row without text descriptions; Thin Double (3 rects), Dotted, Dashed, Frame Color -> Blue, Frame Thickness -> 4
+    const frameStyleButtons = container.querySelectorAll('.ps-line-style-btn');
+    expect(frameStyleButtons.length).toBe(4);
+    frameStyleButtons.forEach(btn => expect(btn.textContent).toBe(''));
+    fireEvent.click(container.querySelector('button[aria-label="Frame Style: Thin Double"]'));
+    expect(container.querySelectorAll('.plant-shape-rect rect').length).toBe(3);
+    fireEvent.click(container.querySelector('button[aria-label="Frame Style: Dotted"]'));
+    expect(container.querySelector('.plant-shape-rect rect').getAttribute('stroke-linecap')).toBe('round');
+    fireEvent.click(container.querySelector('button[aria-label="Frame Style: Dashed"]'));
+    fireEvent.click(container.querySelector('button[aria-label="Frame Color: Blue"]'));
+    fireEvent.change(container.querySelector('#shapeStrokeWidthSlider'), { target: { value: '4' } });
+    const styledRect = container.querySelector('.plant-shape-rect rect');
+    expect(styledRect.getAttribute('stroke')).toBe('#0284c7');
+    expect(styledRect.getAttribute('stroke-width')).toBe('4');
+    expect(styledRect.getAttribute('stroke-dasharray')).not.toBeNull();
+
+    // 3. Drop a Circle and change W & H independently so it becomes an oval
+    fireEvent.drop(viewport, {
+      dataTransfer: { getData: (fmt) => (fmt === 'application/json' ? JSON.stringify({ kind: 'shape_circle', key: 'shape_circle' }) : '') },
+      clientX: 460,
+      clientY: 240
+    });
+    const circleGroup = container.querySelector('.plant-shape-circle');
+    expect(circleGroup).not.toBeNull();
+    fireEvent.click(circleGroup);
+    expect(inspector.textContent).toContain('Circle / Oval');
+    expect(container.querySelector('#shapeStrokeWidthSlider').value).toBe('1');
+
+    fireEvent.change(container.querySelector('#shapeWidthSlider'), { target: { value: '240' } });
+    fireEvent.change(container.querySelector('#shapeHeightSlider'), { target: { value: '100' } });
+    const ovalEl = container.querySelector('.plant-shape-circle ellipse');
+    expect(ovalEl.getAttribute('rx')).toBe('120');
+    expect(ovalEl.getAttribute('ry')).toBe('50');
+
+    // Make Circle (W=H) snaps Height back to Width
+    const makeCircleBtn = Array.from(inspector.querySelectorAll('button')).find(b => b.textContent.includes('Make Circle (W=H)'));
+    expect(makeCircleBtn).not.toBeNull();
+    fireEvent.click(makeCircleBtn);
+    const restoredCircleEl = container.querySelector('.plant-shape-circle ellipse');
+    expect(restoredCircleEl.getAttribute('rx')).toBe('120');
+    expect(restoredCircleEl.getAttribute('ry')).toBe('120');
+
+    // Verify Min mode shows W and H sliders only
+    const dragGrip = container.querySelector('.ps-inspector-drag-grip');
+    fireEvent.mouseDown(dragGrip, { button: 0, clientX: 200, clientY: 20 });
+    fireEvent.mouseUp(window);
+    fireEvent.click(dragGrip);
+    expect(inspector.classList.contains('is-min')).toBe(true);
+    expect(container.querySelector('#shapeWidthSlider')).not.toBeNull();
+    expect(container.querySelector('#shapeHeightSlider')).not.toBeNull();
+    expect(container.querySelector('#shapeStrokeWidthSlider')).toBeNull();
+    expect(inspector.textContent).not.toContain('Frame Style');
+    expect(inspector.textContent).not.toContain('Fill Color');
+
+    // Verify getElementBBox for Rectangle and Oval shapes
+    expect(getElementBBox({ id: 'r1', type: 'shape_rect', x: 200, y: 150, w: 300, h: 180 })).toEqual({
+      x: 50,
+      y: 60,
+      w: 300,
+      h: 180
+    });
+    expect(getElementBBox({ id: 'c1', type: 'shape_circle', x: 400, y: 200, w: 240, h: 100 })).toEqual({
+      x: 280,
+      y: 150,
+      w: 240,
+      h: 100
+    });
+
+    localStorage.removeItem('s4a_ps_inspector_min_v1');
+  });
+
+  it('preserves sensor_card device attachment during DND operations instead of cutting attach status', () => {
+    const devA = { id: 'dev_a', type: 'dewpoint_meter', tag: 'DP-A', x: 200, y: 200 };
+    const devB = { id: 'dev_b', type: 'flow_meter', tag: 'FM-B', x: 380, y: 200 };
+
+    // 1. Unit check: already-attached card nudged past 90px (or past 220px, or near another device) keeps attachedAssetId
+    const attachedMoved = resolveSensorCardAttachmentAfterDrag(
+      { id: 'card_1', type: 'sensor_card', tag: 'MP-1', x: 330, y: 200, attachedAssetId: 'dev_a' },
+      [devA, devB],
+      { markUserPositioned: true }
+    );
+    expect(attachedMoved.attachedAssetId).toBe('dev_a');
+    expect(attachedMoved.targetOffsetX).toBe(130);
+    expect(attachedMoved.targetOffsetY).toBe(0);
+    expect(attachedMoved.userPositioned).toBe(true);
+
+    // 2. Unit check: unattached card dragged within 90px auto-attaches; beyond 90px stays unattached
+    const nearAttach = resolveSensorCardAttachmentAfterDrag(
+      { id: 'card_2', type: 'sensor_card', tag: 'MP-2', x: 260, y: 200 },
+      [devA, devB],
+      { markUserPositioned: true }
+    );
+    expect(nearAttach.attachedAssetId).toBe('dev_a');
+    expect(nearAttach.targetOffsetX).toBe(60);
+
+    const farFree = resolveSensorCardAttachmentAfterDrag(
+      { id: 'card_3', type: 'sensor_card', tag: 'MP-3', x: 520, y: 400 },
+      [devA, devB],
+      { markUserPositioned: true }
+    );
+    expect(farFree.attachedAssetId).toBeNull();
+
+    // 3. UI check: small Live DND move in Runtime mode keeps the dashed attachment line to the device
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={[
+          devA,
+          {
+            id: 'card_live_1',
+            type: 'sensor_card',
+            tag: 'MP-Live',
+            x: 320,
+            y: 200,
+            attachedAssetId: 'dev_a',
+            targetOffsetX: 120,
+            targetOffsetY: 0,
+            channels: []
+          }
+        ]}
+        initialPipes={[]}
+      />
+    );
+
+    const boundsResizerBtn = container.querySelector('#toolRuntimeBoundsResizer');
+    expect(boundsResizerBtn).not.toBeNull();
+    fireEvent.click(boundsResizerBtn);
+
+    const cardGroup = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
+    expect(cardGroup).not.toBeNull();
+    // Attachment dotted line exists before DND
+    expect(cardGroup.querySelector('line[stroke-dasharray="4 3"]')).not.toBeNull();
+
+    // Perform a small DND drag (+14px, +8px) while 120px away from dev_a (> 90px)
+    fireEvent.mouseDown(cardGroup, { button: 0, clientX: 320, clientY: 200 });
+    fireEvent.mouseMove(window, { clientX: 334, clientY: 208 });
+    fireEvent.mouseUp(window);
+
+    const updatedCardGroup = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
+    expect(updatedCardGroup).not.toBeNull();
+    // Attachment dashed line MUST still exist after the small DND operation
+    expect(updatedCardGroup.querySelector('line[stroke-dasharray="4 3"]')).not.toBeNull();
+  });
+
+  it('hides static bind line on pipe-attached text_note labels while preserving pipe attachment', () => {
+    const pipe = {
+      id: 'pipe_label_1',
+      medium: 'air',
+      points: [{ x: 100, y: 200 }, { x: 400, y: 200 }],
+      d: 'M100,200 L400,200',
+      w: 20,
+      flow: 'forward',
+      zIndex: 10
+    };
+    const attachedLabel = {
+      id: 'label_pipe_1',
+      type: 'text_note',
+      text: 'Main Header',
+      x: 240,
+      y: 150,
+      attachedPipeId: 'pipe_label_1',
+      pipeT: 0.5,
+      pipeOffsetX: -10,
+      pipeOffsetY: -50,
+      zIndex: 30
+    };
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="editor"
+        initialElements={[attachedLabel]}
+        initialPipes={[pipe]}
+      />
+    );
+
+    const textGroup = container.querySelector('.plant-text-group[data-text-id="label_pipe_1"]');
+    expect(textGroup).not.toBeNull();
+    expect(textGroup.querySelector('.element-anchor-line')).toBeNull();
+
+    fireEvent.click(textGroup);
+    const selectedTextGroup = container.querySelector('.plant-text-group[data-text-id="label_pipe_1"]');
+    expect(selectedTextGroup.querySelector('.element-anchor-line')).toBeNull();
+  });
+
+  it('prevents sticky sensor_card drag control after blur, button release, secondary click, or Escape', () => {
+    const devA = { id: 'dev_a', type: 'compressor', tag: 'C-1', x: 200, y: 200 };
+    const card1 = {
+      id: 'card_live_1',
+      type: 'sensor_card',
+      tag: 'MP-1',
+      x: 320,
+      y: 200,
+      attachedAssetId: 'dev_a',
+      targetOffsetX: 120,
+      targetOffsetY: 0,
+      channels: []
+    };
+    const card2 = {
+      id: 'card_live_2',
+      type: 'sensor_card',
+      tag: 'MP-2',
+      x: 500,
+      y: 300,
+      channels: []
+    };
+
+    const { container } = render(
+      <ProcessScapeView
+        initialMode="runtime"
+        initialElements={[devA, card1, card2]}
+        initialPipes={[]}
+      />
+    );
+
+    fireEvent.click(container.querySelector('#toolRuntimeBoundsResizer'));
+
+    const card1Group = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
+    expect(card1Group).not.toBeNull();
+    expect(card1Group.querySelector('line[stroke-dasharray="4 3"]')?.getAttribute('pointer-events')).toBe('none');
+    card1Group.querySelectorAll('circle').forEach(circle => {
+      if (!circle.closest('.element-anchor-handle')) {
+        expect(circle.getAttribute('pointer-events')).toBe('none');
+      }
+    });
+
+    // Secondary click (right click) must not start dragging card_live_1
+    fireEvent.mouseDown(card1Group, { button: 2, buttons: 2, clientX: 320, clientY: 200 });
+    fireEvent.mouseMove(window, { buttons: 2, clientX: 380, clientY: 240 });
+    expect(container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]').getAttribute('transform')).toBe('translate(320, 200)');
+
+    // Primary drag followed by window blur clears drag state immediately so card_live_1 stops following cursor
+    fireEvent.mouseDown(card1Group, { button: 0, buttons: 1, clientX: 320, clientY: 200 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 340, clientY: 200 });
+    fireEvent.blur(window);
+    const posAfterBlur = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]').getAttribute('transform');
+    fireEvent.mouseMove(window, { buttons: 0, clientX: 460, clientY: 280 });
+    expect(container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]').getAttribute('transform')).toBe(posAfterBlur);
+
+    // Clicking and dragging card_live_2 controls card_live_2 independently, and releasing buttons in mousemove finishes drag cleanly
+    const card2Group = container.querySelector('.sensor-badge-group[data-card-id="card_live_2"]');
+    fireEvent.mouseDown(card2Group, { button: 0, buttons: 1, clientX: 500, clientY: 300 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 530, clientY: 320 });
+    fireEvent.mouseMove(window, { buttons: 0, clientX: 600, clientY: 380 });
+    const posCard2AfterRelease = container.querySelector('.sensor-badge-group[data-card-id="card_live_2"]').getAttribute('transform');
+    expect(posCard2AfterRelease).not.toBe('translate(600, 380)');
+
+    // Escape exits runtime Live DND arrange mode cleanly
+    expect(container.querySelector('#toolRuntimeBoundsResizer').classList.contains('active')).toBe(true);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(container.querySelector('#toolRuntimeBoundsResizer').classList.contains('active')).toBe(false);
+    expect(container.querySelector('.sensor-badge-group.live-dnd-active')).toBeNull();
+  });
+
+  it('renders a comic-book speech bubble indicator below/above toolRuntimeScapeManager on empty scapes', () => {
+    localStorage.removeItem('s4a_ps_runtime_tools_concise_v1');
+    localStorage.setItem('s4a_ps_runtime_tools_corner_v1', 'top-right');
+    const emptyScape = {
+      id: 'scape_empty_test_1',
+      title: 'Empty Plant 1',
+      tempCanvasSize: { width: 1024, height: 800 },
+      elements: [],
+      pipes: []
+    };
+    saveScape(emptyScape);
+    saveLocations([
+      { id: 'loc_empty_1', name: 'Location 1', scapeId: 'scape_empty_test_1', measurementPoints: [] }
+    ]);
+
+    const { container, unmount } = render(
+      <ProcessScapeView initialMode="runtime" activeLocationId="loc_empty_1" />
+    );
+
+    const runtimeTools = container.querySelector('#psRuntimePageTools');
+    expect(runtimeTools).not.toBeNull();
+    const scapeManagerBtn = runtimeTools.querySelector('#toolRuntimeScapeManager');
+    expect(scapeManagerBtn).not.toBeNull();
+    expect(scapeManagerBtn.classList.contains('has-indicator')).toBe(true);
+
+    // Comic-book speech bubble indicator is present with placement-below in top-right corner
+    let bubble = runtimeTools.querySelector('.ps-empty-scape-bubble');
+    expect(bubble).not.toBeNull();
+    expect(bubble.classList.contains('placement-below')).toBe(true);
+    expect(bubble.textContent).toContain('Start scape layout edit');
+    expect(bubble.querySelector('.ps-bubble-tail')).not.toBeNull();
+
+    // Clicking close button dismisses the speech bubble
+    const closeBtn = bubble.querySelector('.ps-bubble-close-btn');
+    fireEvent.click(closeBtn);
+    expect(runtimeTools.querySelector('.ps-empty-scape-bubble')).toBeNull();
+    unmount();
+
+    // Switching to bottom-left corner renders bubble with placement-above
+    localStorage.setItem('s4a_ps_runtime_tools_corner_v1', 'bottom-left');
+    const { container: containerBottom, unmount: unmountBottom } = render(
+      <ProcessScapeView initialMode="runtime" activeLocationId="loc_empty_1" />
+    );
+    const runtimeToolsBottom = containerBottom.querySelector('.ps-runtime-page-tools');
+    const bubbleBottom = runtimeToolsBottom.querySelector('.ps-empty-scape-bubble');
+    expect(bubbleBottom).not.toBeNull();
+    expect(bubbleBottom.classList.contains('placement-above')).toBe(true);
+
+    // Clicking the bubble opens the Scape Manager modal
+    fireEvent.click(bubbleBottom);
+    expect(containerBottom.querySelector('#mgrModalTitle')).not.toBeNull();
+    expect(containerBottom.querySelector('#mgrModalTitle').textContent).toBe('Scape Manager');
+    unmountBottom();
+
+    // Scapes that already have equipment/pipes do NOT show the indicator
+    const populatedScape = {
+      id: 'scape_pop_1',
+      title: 'Populated Plant',
+      tempCanvasSize: { width: 1024, height: 800 },
+      elements: [{ id: 'comp_1', type: 'machine_compressor', x: 200, y: 200 }],
+      pipes: []
+    };
+    saveScape(populatedScape);
+    saveLocations([
+      { id: 'loc_pop_1', name: 'Populated Room', scapeId: 'scape_pop_1', measurementPoints: [] }
+    ]);
+    const { container: containerPop } = render(
+      <ProcessScapeView initialMode="runtime" activeLocationId="loc_pop_1" />
+    );
+    expect(containerPop.querySelector('.ps-empty-scape-bubble')).toBeNull();
   });
 });
 

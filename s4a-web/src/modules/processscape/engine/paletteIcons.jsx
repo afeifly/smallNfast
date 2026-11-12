@@ -295,23 +295,51 @@ export function renderAssetPaletteIcon(type, def) {
       </svg>
     );
   }
-  if (type === 'wall_perimeter_h') {
+  if (type === 'wall_perimeter_h' || type === 'wall_perimeter_v') {
+    const isVert = type === 'wall_perimeter_v';
+    const x = isVert ? 8 : 1;
+    const y = isVert ? 1 : 8;
+    const w = isVert ? 12 : 26;
+    const h = isVert ? 26 : 12;
+    const bW = 6;
+    const bH = 3;
+    const mortar = 0.8;
+    const brickColors = ['#c2410c', '#b91c1c', '#9a3412', '#a1441a', '#b43a0e', '#ea580c'];
+    const bricks = [];
+    const numRows = Math.floor((h - mortar) / (bH + mortar));
+    for (let r = 0; r <= numRows; r++) {
+      const curY = y + mortar + r * (bH + mortar);
+      if (curY >= y + h) break;
+      const actualH = Math.min(bH, (y + h) - curY);
+      if (actualH <= 0.4) continue;
+      const isOdd = r % 2 === 1;
+      const xStart = isOdd ? -(bW / 2) : 0;
+      const numCols = Math.ceil((w - xStart) / (bW + mortar)) + 1;
+      for (let c = 0; c < numCols; c++) {
+        const curX = x + xStart + c * (bW + mortar);
+        const bx1 = Math.max(x, curX);
+        const bx2 = Math.min(x + w, curX + bW);
+        if (bx2 > bx1 + 0.4) {
+          const cIdx = Math.abs((r * 4 + c * 7 + (isOdd ? 2 : 0)) % brickColors.length);
+          bricks.push(
+            <rect
+              key={`${r}-${c}`}
+              x={bx1}
+              y={curY}
+              width={bx2 - bx1}
+              height={actualH}
+              fill={brickColors[cIdx]}
+              rx="0.4"
+            />
+          );
+        }
+      }
+    }
     return (
-      <div style={{ width: 28, height: 18, background: '#b91c1c', borderRadius: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', padding: 1, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', gap: 1, height: 3.5 }}><div style={{ flex: 1, background: '#c2410c' }} /><div style={{ flex: 1, background: '#9a3412' }} /></div>
-        <div style={{ display: 'flex', gap: 1, height: 3.5 }}><div style={{ width: 5, background: '#a1441a' }} /><div style={{ flex: 1, background: '#c2410c' }} /><div style={{ width: 5, background: '#b43a0e' }} /></div>
-        <div style={{ display: 'flex', gap: 1, height: 3.5 }}><div style={{ flex: 1, background: '#b91c1c' }} /><div style={{ flex: 1, background: '#ea580c' }} /></div>
-      </div>
-    );
-  }
-  if (type === 'wall_perimeter_v') {
-    return (
-      <div style={{ width: 18, height: 24, background: '#b91c1c', borderRadius: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', padding: 1, overflow: 'hidden', margin: '0 auto' }}>
-        <div style={{ display: 'flex', gap: 1, height: 3 }}><div style={{ flex: 1, background: '#c2410c' }} /><div style={{ flex: 1, background: '#9a3412' }} /></div>
-        <div style={{ display: 'flex', gap: 1, height: 3 }}><div style={{ width: 4, background: '#a1441a' }} /><div style={{ flex: 1, background: '#c2410c' }} /><div style={{ width: 4, background: '#b43a0e' }} /></div>
-        <div style={{ display: 'flex', gap: 1, height: 3 }}><div style={{ flex: 1, background: '#b91c1c' }} /><div style={{ flex: 1, background: '#ea580c' }} /></div>
-        <div style={{ display: 'flex', gap: 1, height: 3 }}><div style={{ width: 4, background: '#9a3412' }} /><div style={{ flex: 1, background: '#b91c1c' }} /><div style={{ width: 4, background: '#a1441a' }} /></div>
-      </div>
+      <svg width="28" height="28" viewBox="0 0 28 28" className={`ps-wall-palette-svg ${isVert ? 'is-vert' : 'is-horiz'}`}>
+        <rect x={x} y={y} width={w} height={h} fill="#cbd5e1" rx="0.5" />
+        {bricks}
+      </svg>
     );
   }
 

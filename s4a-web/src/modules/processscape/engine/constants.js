@@ -223,7 +223,7 @@ export const ASSET_DEFS = {
     type: 'wall_perimeter_h',
     name: 'Horizontal Brick Wall',
     category: 'others',
-    w: 220, h: 36,
+    w: 200, h: 24,
     defaultTag: 'Brick Wall',
     defaultDesc: 'Horizontal red brick wall with running bond masonry'
   },
@@ -231,7 +231,7 @@ export const ASSET_DEFS = {
     type: 'wall_perimeter_v',
     name: 'Vertical Brick Wall',
     category: 'others',
-    w: 36, h: 220,
+    w: 24, h: 200,
     defaultTag: 'Brick Wall',
     defaultDesc: 'Vertical red brick wall with running bond masonry'
   }
@@ -319,6 +319,36 @@ export const NOTE_OUTLINE_STYLES = [
   { id: 'pill',   name: 'Rounded Pill', desc: 'Soft pill-shaped border' }
 ];
 
+export const LINE_STYLE_OPTIONS = [
+  { id: 'single', name: 'Thin Single', desc: 'Solid single architectural line' },
+  { id: 'double', name: 'Thin Double', desc: 'Parallel double architectural line' },
+  { id: 'dotted', name: 'Dotted',      desc: 'Dotted reference line' },
+  { id: 'dashed', name: 'Dashed',      desc: 'Dashed reference line' }
+];
+
+export const GUIDE_LINE_PRESETS = [
+  {
+    id: 'line_h',
+    name: 'Horizontal Line',
+    orientation: 'h',
+    length: 220,
+    strokeWidth: 1,
+    lineStyle: 'single',
+    color: '#475569',
+    desc: 'Horizontal divider line with style options'
+  },
+  {
+    id: 'line_v',
+    name: 'Vertical Line',
+    orientation: 'v',
+    length: 220,
+    strokeWidth: 1,
+    lineStyle: 'single',
+    color: '#475569',
+    desc: 'Vertical divider line with style options'
+  }
+];
+
 export const NOTE_COLOR_PALETTE = [
   { id: 'slate',   name: 'Slate',     hex: '#475569' },
   { id: 'dark',    name: 'Charcoal',  hex: '#0f172a' },
@@ -328,6 +358,17 @@ export const NOTE_COLOR_PALETTE = [
   { id: 'red',     name: 'Alert Red', hex: '#dc2626' },
   { id: 'violet',  name: 'Violet',    hex: '#7c3aed' },
   { id: 'emerald', name: 'Green',     hex: '#16a34a' }
+];
+
+export const SHAPE_FILL_PALETTE = [
+  { id: 'none',   name: 'Transparent', hex: 'transparent' },
+  { id: 'white',  name: 'White',       hex: '#ffffff' },
+  { id: 'slate',  name: 'Light Slate', hex: '#f1f5f9' },
+  { id: 'teal',   name: 'Soft Teal',   hex: '#ccfbf1' },
+  { id: 'blue',   name: 'Soft Blue',   hex: '#dbeafe' },
+  { id: 'amber',  name: 'Soft Amber',  hex: '#fef3c7' },
+  { id: 'red',    name: 'Soft Red',    hex: '#fee2e2' },
+  { id: 'violet', name: 'Soft Violet', hex: '#ede9fe' }
 ];
 
 export function isSensorOrGateway(e) {

@@ -326,6 +326,15 @@
   color: #dc2626;
 }
 
+.ps-mgr-action-icon-btn.btn-delete:disabled,
+.ps-mgr-action-icon-btn.btn-delete:disabled:hover {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
 /* Empty State */
 .ps-mgr-empty-state {
   display: flex;

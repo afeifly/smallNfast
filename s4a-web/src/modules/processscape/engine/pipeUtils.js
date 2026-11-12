@@ -179,11 +179,14 @@ export function rectsIntersect(r1x, r1y, r1w, r1h, r2x, r2y, r2w, r2h) {
 }
 
 /**
- * Measure layout box dimensions for a `text_note` annotation node.
- * Shared between SVG rendering and bounding-box / fit calculations.
+ * Measure layout box dimensions for a `text_note` (Label) node.
+ * Returns both local pre-rotation box fields (`x`, `y`, `width`, `height`) and
+ * world-space axis-aligned offsets (`worldOffsetX`, `worldOffsetY`, `worldWidth`, `worldHeight`)
+ * so horizontal ('h') and vertical ('v', rotated -90°) labels share one layout helper.
  */
 export function measureTextNoteBox(node) {
   const fontSize = Math.max(8, Number(node?.fontSize) || 12);
+  const orientation = node?.orientation === 'v' ? 'v' : 'h';
   const rawText = (node?.text !== undefined && node?.text !== null) ? String(node.text) : 'Note:';
   const lines = (rawText || ' ').split('\n');
   const lineHeight = Math.round(fontSize * 1.32);
@@ -207,8 +210,98 @@ export function measureTextNoteBox(node) {
   const height = Math.ceil((lines.length - 1) * lineHeight + Math.round(fontSize * 1.15) + padY * 2);
   const x = -padX;
   const y = -Math.round(fontSize * 0.85) - padY;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
 
-  return { x, y, width, height, padX, padY, lineHeight, fontSize, lines, outlineStyle, hasBorder };
+  const isVert = orientation === 'v';
+  const worldWidth = isVert ? height : width;
+  const worldHeight = isVert ? width : height;
+  const worldOffsetX = isVert ? -height / 2 : x;
+  const worldOffsetY = isVert ? -width / 2 : y;
+
+  return {
+    x,
+    y,
+    width,
+    height,
+    padX,
+    padY,
+    lineHeight,
+    fontSize,
+    lines,
+    outlineStyle,
+    hasBorder,
+    orientation,
+    cx,
+    cy,
+    worldOffsetX,
+    worldOffsetY,
+    worldWidth,
+    worldHeight
+  };
+}
+
+/**
+ * Resolve `sensor_card` device attachment after a card drag ends.
+ * Preserves an existing `attachedAssetId` (updating its offset instead of cutting attachment
+ * on small DND adjustments), and auto-attaches unattached cards dropped within `snapRadius` px.
+ */
+export function resolveSensorCardAttachmentAfterDrag(
+  card,
+  allElements = [],
+  { markUserPositioned = false, snapRadius = 90 } = {}
+) {
+  const existingTarget = card.attachedAssetId
+    ? allElements.find(other => other && other.id === card.attachedAssetId && other.id !== card.id && other.type !== 'sensor_card')
+    : null;
+
+  if (existingTarget) {
+    return {
+      ...card,
+      ...(markUserPositioned ? { userPositioned: true } : {}),
+      attachedAssetId: existingTarget.id,
+      targetOffsetX: card.x - existingTarget.x,
+      targetOffsetY: card.y - existingTarget.y
+    };
+  }
+
+  let closestTarget = null;
+  let minD = snapRadius;
+  allElements.forEach(other => {
+    if (other && other.id !== card.id && other.type !== 'sensor_card') {
+      const d = Math.hypot(other.x - card.x, other.y - card.y);
+      if (d < minD) {
+        minD = d;
+        closestTarget = other;
+      }
+    }
+  });
+
+  if (closestTarget) {
+    return {
+      ...card,
+      ...(markUserPositioned ? { userPositioned: true } : {}),
+      attachedAssetId: closestTarget.id,
+      targetOffsetX: card.x - closestTarget.x,
+      targetOffsetY: card.y - closestTarget.y
+    };
+  }
+
+  if (markUserPositioned) {
+    return {
+      ...card,
+      userPositioned: true,
+      attachedAssetId: null,
+      targetOffsetX: null,
+      targetOffsetY: null
+    };
+  }
+
+  const detached = { ...card };
+  delete detached.attachedAssetId;
+  delete detached.targetOffsetX;
+  delete detached.targetOffsetY;
+  return detached;
 }
 
 export function getElementBBox(el) {
@@ -255,18 +348,84 @@ export function getElementBBox(el) {
 
   if (el.type === 'text_note') {
     const box = measureTextNoteBox(el);
-    return { x: el.x + box.x, y: el.y + box.y, w: box.width, h: box.height };
+    return {
+      x: Math.round(el.x + box.worldOffsetX),
+      y: Math.round(el.y + box.worldOffsetY),
+      w: box.worldWidth,
+      h: box.worldHeight
+    };
+  }
+
+  if (el.type === 'guide_line') {
+    const len = Math.max(20, Number(el.length) || 220);
+    const thick = Math.max(8, (Number(el.strokeWidth) || 1) + (el.lineStyle === 'double' ? 8 : 6));
+    if (el.orientation === 'v') {
+      return { x: Math.round(el.x - thick / 2), y: Math.round(el.y - len / 2), w: thick, h: len };
+    }
+    return { x: Math.round(el.x - len / 2), y: Math.round(el.y - thick / 2), w: len, h: thick };
+  }
+
+  if (el.type === 'shape_rect' || el.type === 'shape_circle') {
+    const defW = el.type === 'shape_circle' ? 120 : 160;
+    const defH = el.type === 'shape_circle' ? 120 : 100;
+    const w = Math.max(20, Math.round(Number(el.w) || defW));
+    const h = Math.max(20, Math.round(Number(el.h) || defH));
+    return {
+      x: Math.round(el.x - w / 2),
+      y: Math.round(el.y - h / 2),
+      w,
+      h
+    };
   }
 
   const def = ASSET_DEFS[el.type];
   const baseW = def ? def.w : (el.w || 100);
   const baseH = def ? def.h : (el.h || 100);
+  const isWallDefault = el.type === 'wall_perimeter_h' || el.type === 'wall_perimeter_v';
   const scale = (typeof el.scale === 'number' && el.scale > 0)
     ? el.scale
     : (el.w && def ? el.w / def.w : 1);
-  const w = Math.round(baseW * scale);
-  const h = Math.round(baseH * scale);
-  return { x: el.x - w / 2, y: el.y - h / 2, w, h };
+  const w = isWallDefault ? Math.max(10, Math.round(el.w || baseW * scale)) : Math.round(baseW * scale);
+  const h = isWallDefault ? Math.max(10, Math.round(el.h || baseH * scale)) : Math.round(baseH * scale);
+
+  let minX = el.x - w / 2;
+  let maxX = el.x + w / 2;
+  let minY = el.y - h / 2;
+  let maxY = el.y + h / 2;
+
+  // Include rendered EQUIPMENT TAG NAME bounds (walls render without tags)
+  const tagText = isWallDefault
+    ? ''
+    : ((el.tag === '' || el.tag === null)
+      ? ''
+      : (el.tag !== undefined ? String(el.tag) : (def ? (def.defaultTag || '') : '')));
+
+  if (tagText && tagText.trim().length > 0) {
+    const fontSize = (el.type === 'tank_buffer' || el.type === 'cylinder_bank')
+      ? 13
+      : ((el.type === 'tank_horizontal' || el.type === 'tank_cryogenic' || el.type === 'tank_spherical' || el.type === 'machine_compressor') ? 12 : (isWallDefault ? 9 : 11));
+    const letterSpacing = el.type === 'tank_buffer' ? 1 : 0;
+    let textW = 0;
+    for (const ch of tagText) {
+      textW += (/[^\u0000-\u00ff]/.test(ch) ? fontSize * 1.08 : fontSize * 0.72) + letterSpacing;
+    }
+    const halfTagW = Math.ceil((textW + 10) / 2);
+    minX = Math.min(minX, el.x - halfTagW);
+    maxX = Math.max(maxX, el.x + halfTagW);
+
+    if (el.type === 'dewpoint_meter' || el.type === 'flow_meter') {
+      minY = Math.min(minY, el.y - h / 2 - 16 - Math.ceil(fontSize));
+    } else if (el.type !== 'tank_buffer') {
+      maxY = Math.max(maxY, el.y + h / 2 + 21);
+    }
+  }
+
+  return {
+    x: Math.round(minX),
+    y: Math.round(minY),
+    w: Math.round(maxX - minX),
+    h: Math.round(maxY - minY)
+  };
 }
 
 export function getContentBounds(elements = [], pipes = [], margin = 16) {

@@ -45,7 +45,7 @@ export function renderEquipmentTag(g, node, x, y, theme, defaultTag, extraAttrs 
     return null;
   }
   const tagText = (node.tag !== undefined) ? node.tag : defaultTag;
-  if (!tagText) return null;
+  if (!tagText || !String(tagText).trim()) return null;
 
   const scale = (typeof node.scale === 'number' && node.scale > 0) ? node.scale : 1;
   const baseFontSize = extraAttrs['font-size'] || 11;
@@ -2099,25 +2099,21 @@ export function renderBrickMasonry(x, y, w, h, opts = {}) {
 
 export function drawBrickWallH(node) {
   const g = svgEl('g', { class: 'asset-graphic wall-perimeter-h' });
-  const def = ASSET_DEFS.wall_perimeter_h || { w: 220, h: 36 };
+  const def = ASSET_DEFS.wall_perimeter_h || { w: 200, h: 24 };
   const w = node.w || def.w;
   const h = node.h || def.h;
 
   g.appendChild(renderBrickMasonry(-w / 2, -h / 2, w, h, { brickW: 14, brickH: 7, mortar: 1 }));
-
-  renderEquipmentTag(g, node, 0, h / 2 + 13, null, '', { 'font-size': 9, fill: '#64748b' });
   return g;
 }
 
 export function drawBrickWallV(node) {
   const g = svgEl('g', { class: 'asset-graphic wall-perimeter-v' });
-  const def = ASSET_DEFS.wall_perimeter_v || { w: 36, h: 220 };
+  const def = ASSET_DEFS.wall_perimeter_v || { w: 24, h: 200 };
   const w = node.w || def.w;
   const h = node.h || def.h;
 
   g.appendChild(renderBrickMasonry(-w / 2, -h / 2, w, h, { brickW: 14, brickH: 7, mortar: 1 }));
-
-  renderEquipmentTag(g, node, 0, h / 2 + 13, null, '', { 'font-size': 9, fill: '#64748b' });
   return g;
 }
 
@@ -2126,9 +2122,177 @@ export const drawCryogenicVessel = drawCryogenicTank;
 export const drawMoistureSeparator = drawSeparatorTank;
 export const drawCncMachine = drawCNCMachine;
 
+/**
+ * Render a horizontal or vertical divider/reference `guide_line` node in Label style.
+ */
+function renderGuideLineNode(node, isSel = false) {
+  const isVert = node?.orientation === 'v';
+  const len = Math.max(20, Number(node?.length) || 220);
+  const sw = Math.max(1, Number(node?.strokeWidth) || 1);
+  const lineStyle = node?.lineStyle || 'single';
+  const color = node?.color || '#475569';
+  const half = len / 2;
+
+  const g = svgEl('g', {
+    class: `plant-node plant-line-group ${isSel ? 'selected' : ''}`,
+    'data-node-id': node.id,
+    transform: `translate(${node.x}, ${node.y})`,
+    cursor: 'move'
+  });
+
+  // Wide transparent hit area so thin 1-2px lines remain effortless to select and drag
+  const hitPad = 18;
+  g.appendChild(svgEl('rect', {
+    x: isVert ? -hitPad / 2 : -(half + 4),
+    y: isVert ? -(half + 4) : -hitPad / 2,
+    width: isVert ? hitPad : len + 8,
+    height: isVert ? len + 8 : hitPad,
+    fill: 'transparent'
+  }));
+
+  const buildLineAttrs = (offset = 0, strokeW = sw) => {
+    const attrs = {
+      x1: isVert ? offset : -half,
+      y1: isVert ? -half : offset,
+      x2: isVert ? offset : half,
+      y2: isVert ? half : offset,
+      stroke: color,
+      'stroke-width': strokeW,
+      'stroke-linecap': lineStyle === 'dotted' ? 'round' : 'butt'
+    };
+    if (lineStyle === 'dotted') {
+      attrs['stroke-dasharray'] = `${Math.max(1, strokeW * 0.8)} ${Math.max(4, strokeW * 2.4)}`;
+    } else if (lineStyle === 'dashed') {
+      attrs['stroke-dasharray'] = `${Math.max(7, strokeW * 3.5)} ${Math.max(4, strokeW * 2)}`;
+    }
+    return attrs;
+  };
+
+  if (lineStyle === 'double') {
+    const sep = Math.max(2, sw * 0.9 + 1.2);
+    const subW = Math.max(1, Number((sw * 0.65).toFixed(2)));
+    g.appendChild(svgEl('line', buildLineAttrs(-sep, subW)));
+    g.appendChild(svgEl('line', buildLineAttrs(sep, subW)));
+  } else {
+    g.appendChild(svgEl('line', buildLineAttrs(0, sw)));
+  }
+
+  if (isSel) {
+    const boxThick = Math.max(12, sw + (lineStyle === 'double' ? 10 : 8));
+    g.appendChild(svgEl('rect', {
+      x: isVert ? -boxThick / 2 : -(half + 4),
+      y: isVert ? -(half + 4) : -boxThick / 2,
+      width: isVert ? boxThick : len + 8,
+      height: isVert ? len + 8 : boxThick,
+      rx: 3,
+      fill: 'rgba(0, 168, 118, 0.08)',
+      stroke: '#00a876',
+      'stroke-width': 1.4,
+      'stroke-dasharray': '4 2',
+      'pointer-events': 'none'
+    }));
+  }
+
+  return g;
+}
+
+/**
+ * Render an architectural Rectangle (`shape_rect`) or Circle/Oval (`shape_circle`) node
+ * supporting independent W x H sizing, interior fill color + opacity, and Line frame styles.
+ */
+function renderShapeNode(node, isSel = false) {
+  const isCircle = node?.type === 'shape_circle';
+  const w = Math.max(20, Number(node?.w) || (isCircle ? 120 : 160));
+  const h = Math.max(20, Number(node?.h) || (isCircle ? 120 : 100));
+  const sw = Math.max(1, Number(node?.strokeWidth) || 1);
+  const lineStyle = node?.lineStyle || 'single';
+  const strokeColor = node?.color || '#475569';
+  const fillColor = (node?.fillColor && node.fillColor !== 'none') ? node.fillColor : 'transparent';
+  const fillOpacity = fillColor === 'transparent'
+    ? 1
+    : (node?.fillOpacity != null ? Math.max(0.05, Math.min(1, Number(node.fillOpacity))) : 1);
+
+  const g = svgEl('g', {
+    class: `plant-node plant-shape-group plant-shape-${isCircle ? 'circle' : 'rect'} ${isSel ? 'selected' : ''}`,
+    'data-node-id': node.id,
+    transform: `translate(${node.x}, ${node.y})`,
+    cursor: 'move'
+  });
+
+  const buildStrokeAttrs = (strokeW = sw) => {
+    const attrs = {
+      stroke: strokeColor,
+      'stroke-width': strokeW,
+      'stroke-linecap': lineStyle === 'dotted' ? 'round' : 'butt'
+    };
+    if (lineStyle === 'dotted') {
+      attrs['stroke-dasharray'] = `${Math.max(1, strokeW * 0.8)} ${Math.max(4, strokeW * 2.4)}`;
+    } else if (lineStyle === 'dashed') {
+      attrs['stroke-dasharray'] = `${Math.max(7, strokeW * 3.5)} ${Math.max(4, strokeW * 2)}`;
+    }
+    return attrs;
+  };
+
+  const makePrimitive = (inset, strokeW, isFillLayer) => {
+    const geomAttrs = isCircle
+      ? {
+          cx: 0,
+          cy: 0,
+          rx: Math.max(2, w / 2 - inset),
+          ry: Math.max(2, h / 2 - inset)
+        }
+      : {
+          x: -w / 2 + inset,
+          y: -h / 2 + inset,
+          width: Math.max(4, w - inset * 2),
+          height: Math.max(4, h - inset * 2)
+        };
+    return svgEl(isCircle ? 'ellipse' : 'rect', {
+      ...geomAttrs,
+      fill: isFillLayer ? fillColor : 'none',
+      ...(isFillLayer && fillColor !== 'transparent' ? { 'fill-opacity': fillOpacity } : {}),
+      ...buildStrokeAttrs(strokeW)
+    });
+  };
+
+  if (lineStyle === 'double') {
+    const subW = Math.max(1, Number((sw * 0.65).toFixed(2)));
+    const inset = Math.min(Math.min(w, h) / 3, Math.max(3, sw * 1.4 + 2));
+    g.appendChild(makePrimitive(0, subW, true));
+    g.appendChild(makePrimitive(inset, subW, false));
+  } else {
+    g.appendChild(makePrimitive(0, sw, true));
+  }
+
+  if (isSel) {
+    const pad = 4;
+    const selAttrs = isCircle
+      ? { cx: 0, cy: 0, rx: w / 2 + pad, ry: h / 2 + pad }
+      : { x: -(w / 2 + pad), y: -(h / 2 + pad), width: w + pad * 2, height: h + pad * 2, rx: 3 };
+    g.appendChild(svgEl(isCircle ? 'ellipse' : 'rect', {
+      ...selAttrs,
+      fill: 'rgba(0, 168, 118, 0.06)',
+      stroke: '#00a876',
+      'stroke-width': 1.5,
+      'stroke-dasharray': '4 2',
+      'pointer-events': 'none'
+    }));
+  }
+
+  return g;
+}
+
 // --- Node Renderer ---
-export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showAnchorLine = true) {
+export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showAnchorLine = true, allElements = []) {
   const isSel = selectedIds.has(node.id);
+
+  if (node.type === 'guide_line') {
+    return renderGuideLineNode(node, isSel);
+  }
+
+  if (node.type === 'shape_rect' || node.type === 'shape_circle') {
+    return renderShapeNode(node, isSel);
+  }
 
   if (node.type === 'text_note') {
     const tG = svgEl('g', {
@@ -2140,6 +2304,12 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
 
     const noteColor = node.color || '#64748b';
     const box = measureTextNoteBox(node);
+    const isVert = box.orientation === 'v';
+
+    const contentG = svgEl('g', {
+      class: 'plant-text-content',
+      ...(isVert ? { transform: `rotate(-90) translate(${-box.cx}, ${-box.cy})` } : {})
+    });
 
     // Hit-test background / outline border
     const borderAttrs = {
@@ -2158,10 +2328,10 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
     } else if (box.outlineStyle === 'dashed') {
       borderAttrs['stroke-dasharray'] = '5 3';
     }
-    tG.appendChild(svgEl('rect', borderAttrs));
+    contentG.appendChild(svgEl('rect', borderAttrs));
 
     if (box.outlineStyle === 'double') {
-      tG.appendChild(svgEl('rect', {
+      contentG.appendChild(svgEl('rect', {
         x: box.x + 2.5,
         y: box.y + 2.5,
         width: Math.max(4, box.width - 5),
@@ -2190,33 +2360,10 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
       tspan.textContent = lineStr === '' ? '\u00A0' : lineStr;
       txtEl.appendChild(tspan);
     });
-    tG.appendChild(txtEl);
-
-    // Dotted line connecting anchor point to the pipe branch (shown in modify/editor mode only)
-    if (showAnchorLine && node.attachedPipeId && node.pipeT != null) {
-      const pipe = pipes.find(p => p.id === node.attachedPipeId);
-      if (pipe) {
-        const contactPt = getPointAlongPipe(pipe, node.pipeT);
-        if (contactPt) {
-          const relX = contactPt.x - node.x;
-          const relY = contactPt.y - node.y;
-          if (Math.hypot(relX, relY) > 4) {
-            tG.appendChild(svgEl('line', {
-              class: 'element-anchor-line',
-              'data-element-id': node.id,
-              x1: 0, y1: 0, x2: relX, y2: relY,
-              stroke: isSel ? '#00ac86' : '#94a3b8',
-              'stroke-width': isSel ? 2 : 1.5,
-              'stroke-dasharray': '4 3',
-              'pointer-events': 'none'
-            }));
-          }
-        }
-      }
-    }
+    contentG.appendChild(txtEl);
 
     if (isSel) {
-      tG.appendChild(svgEl('rect', {
+      contentG.appendChild(svgEl('rect', {
         x: box.x - 3,
         y: box.y - 3,
         width: box.width + 6,
@@ -2228,7 +2375,10 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
         'stroke-dasharray': '3 2',
         'pointer-events': 'none'
       }));
+    }
+    tG.appendChild(contentG);
 
+    if (isSel) {
       const anchorG = svgEl('g', {
         class: 'element-anchor-handle',
         'data-element-id': node.id,
@@ -2277,16 +2427,18 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
   const def = ASSET_DEFS[node.type] || { w: 100, h: 100 };
   const baseW = def.w || 100;
   const baseH = def.h || 100;
-  const scale = (typeof node.scale === 'number' && node.scale > 0)
+  const isWall = node.type === 'wall_perimeter_h' || node.type === 'wall_perimeter_v';
+  const rawScale = (typeof node.scale === 'number' && node.scale > 0)
     ? node.scale
     : (node.w ? node.w / baseW : 1);
-  const w = Math.round(baseW * scale);
-  const h = Math.round(baseH * scale);
+  const w = isWall ? Math.max(10, Math.round(node.w || baseW * rawScale)) : Math.round(baseW * rawScale);
+  const h = isWall ? Math.max(10, Math.round(node.h || baseH * rawScale)) : Math.round(baseH * rawScale);
+  const scale = isWall ? 1 : rawScale;
 
-  const baseNode = { ...node, w: baseW, h: baseH, scale };
+  const baseNode = isWall ? { ...node, w, h, scale: 1 } : { ...node, w: baseW, h: baseH, scale };
   const graphicGroup = svgEl('g', {
     class: 'asset-scale-wrapper',
-    transform: scale !== 1 ? `scale(${scale})` : null
+    transform: (!isWall && scale !== 1) ? `scale(${scale})` : null
   });
 
   if (node.type === 'tank_buffer') graphicGroup.appendChild(drawBufferTank(baseNode));
@@ -2371,14 +2523,17 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
       const relY = target.y - card.y;
       g.appendChild(svgEl('line', {
         x1: relX, y1: relY, x2: 0, y2: 0,
-        stroke: isSel ? '#00a876' : '#94a3b8', 'stroke-width': 2, 'stroke-dasharray': '4 3'
+        stroke: isSel ? '#00a876' : '#94a3b8', 'stroke-width': 2, 'stroke-dasharray': '4 3',
+        'pointer-events': 'none'
       }));
       g.appendChild(svgEl('circle', {
         cx: relX, cy: relY, r: 5.5,
-        fill: '#00a876', stroke: '#ffffff', 'stroke-width': 1.8
+        fill: '#00a876', stroke: '#ffffff', 'stroke-width': 1.8,
+        'pointer-events': 'none'
       }));
       g.appendChild(svgEl('circle', {
-        cx: relX, cy: relY, r: 2.2, fill: '#ffffff'
+        cx: relX, cy: relY, r: 2.2, fill: '#ffffff',
+        'pointer-events': 'none'
       }));
     }
   }

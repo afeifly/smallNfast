@@ -9,6 +9,7 @@ import {
   deleteScape,
   importScapeFromJson
 } from './engine/scapeStorage';
+import { getLocations } from './engine/sensorManagerStorage';
 
 export default function ScapeManagerModal({
   isOpen,
@@ -19,6 +20,7 @@ export default function ScapeManagerModal({
 }) {
   const [scapes, setScapes] = useState([]);
   const [activeId, setActiveId] = useState('');
+  const [usedScapeIds, setUsedScapeIds] = useState(() => new Set());
   const [newTitle, setNewTitle] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [pendingDeleteScape, setPendingDeleteScape] = useState(null);
@@ -27,8 +29,10 @@ export default function ScapeManagerModal({
   const refreshList = () => {
     const list = getAllScapes();
     const curId = currentScapeId !== undefined ? currentScapeId : getActiveScapeId();
+    const locs = getLocations();
     setScapes(list);
     setActiveId(curId || '');
+    setUsedScapeIds(new Set(locs.map(l => l?.scapeId).filter(Boolean)));
   };
 
   useEffect(() => {
@@ -79,6 +83,8 @@ export default function ScapeManagerModal({
 
   const handleDeleteClick = (scape, e) => {
     e.stopPropagation();
+    const isActive = Boolean(activeId && scape.id === activeId);
+    if (isActive || usedScapeIds.has(scape.id)) return;
     setPendingDeleteScape(scape);
   };
 
@@ -224,6 +230,7 @@ export default function ScapeManagerModal({
           ) : (
             scapes.map((scape) => {
               const isActive = Boolean(activeId && scape.id === activeId);
+              const isInUse = isActive || usedScapeIds.has(scape.id);
               const elemCount = scape.elements?.length || 0;
               const pipeCount = scape.pipes?.length || 0;
               const dateStr = scape.updatedAt
@@ -293,8 +300,9 @@ export default function ScapeManagerModal({
                       type="button"
                       className="ps-mgr-action-icon-btn btn-delete"
                       onClick={(e) => handleDeleteClick(scape, e)}
-                      title="Delete Scape"
-                      aria-label="Delete"
+                      disabled={isInUse}
+                      title={isInUse ? 'In-use scape cannot be deleted' : 'Delete Scape'}
+                      aria-label={isInUse ? 'In-use scape cannot be deleted' : 'Delete'}
                     >
                       🗑️
                     </button>

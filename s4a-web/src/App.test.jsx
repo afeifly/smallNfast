@@ -358,12 +358,16 @@ describe('App', () => {
       expect(screen.getByLabelText('Live Runtime View')).toBeDefined();
     });
 
-    // Editor mode buttons are now visible
-    expect(screen.getByLabelText('Undo')).toBeDefined();
-    expect(screen.getByLabelText('Redo')).toBeDefined();
-    expect(screen.getByLabelText('Import JSON')).toBeDefined();
-    expect(screen.getByLabelText('Export JSON')).toBeDefined();
-    expect(screen.getByLabelText('Export PNG')).toBeDefined();
+    // Undo & Redo moved from top header into canvas top-hud; Import/Export omitted from top bar
+    const headerActions = container.querySelector('.ps-header-actions');
+    expect(headerActions.querySelector('[aria-label="Undo"]')).toBeNull();
+    expect(headerActions.querySelector('[aria-label="Redo"]')).toBeNull();
+    const topHudBar = container.querySelector('.canvas-floating-hud.top-hud.ps-hud-bar');
+    expect(topHudBar.querySelector('#toolUndo')).not.toBeNull();
+    expect(topHudBar.querySelector('#toolRedo')).not.toBeNull();
+    expect(screen.queryByLabelText('Import JSON')).toBeNull();
+    expect(screen.queryByLabelText('Export JSON')).toBeNull();
+    expect(screen.queryByLabelText('Export PNG')).toBeNull();
 
     // Click Live Runtime View button to return to runtime
     const liveViewBtn = screen.getByLabelText('Live Runtime View');
@@ -379,7 +383,7 @@ describe('App', () => {
     expect(screen.getByLabelText('Scape Manager')).toBeDefined();
   });
 
-  it('hides ps-header-location-picker in editor mode and renders it in runtime mode when locations exist', async () => {
+  it('renders location picker in psRuntimePageTools during runtime mode (not top header) and hides it in editor mode', async () => {
     localStorage.setItem('s4a_sensor_locations_v1', JSON.stringify([
       { id: 'loc_test_1', name: 'Compressor Room', scapeId: 'scape_example_demo', measurementPoints: [] }
     ]));
@@ -392,10 +396,11 @@ describe('App', () => {
 
     fireEvent.click(screen.getByText('Open ProcessScape'));
 
-    // In runtime mode: location picker is present!
+    // In runtime mode: location picker is present in runtime HUD and absent from top header bar
     await waitFor(() => {
-      expect(container.querySelector('.ps-header-location-picker')).not.toBeNull();
+      expect(container.querySelector('#psRuntimePageTools #toolRuntimeLocationSelect')).not.toBeNull();
     });
+    expect(container.querySelector('.ps-header-location-picker')).toBeNull();
     expect(screen.getByText('Compressor Room')).toBeDefined();
 
     // Switch to editor mode via Scape Manager
@@ -403,16 +408,16 @@ describe('App', () => {
     const editBtn = container.querySelector('.ps-mgr-action-btn.btn-edit');
     fireEvent.click(editBtn);
 
-    // In editor mode: location picker MUST BE HIDDEN
+    // In editor mode: runtime HUD location picker MUST BE HIDDEN
     await waitFor(() => {
       expect(screen.getByLabelText('Live Runtime View')).toBeDefined();
     });
-    expect(container.querySelector('.ps-header-location-picker')).toBeNull();
+    expect(container.querySelector('#psRuntimePageTools #toolRuntimeLocationSelect')).toBeNull();
 
-    // Return to runtime mode: location picker is visible again
+    // Return to runtime mode: location picker is visible again in #psRuntimePageTools
     fireEvent.click(screen.getByLabelText('Live Runtime View'));
     await waitFor(() => {
-      expect(container.querySelector('.ps-header-location-picker')).not.toBeNull();
+      expect(container.querySelector('#psRuntimePageTools #toolRuntimeLocationSelect')).not.toBeNull();
     });
   });
 });

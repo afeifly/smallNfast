@@ -176,8 +176,8 @@ function App() {
       try {
         autoReconnectSavedDevices((conn) => {
           if (conn) setDeviceInfo(conn);
-        }).catch(() => {});
-      } catch (_) {}
+        }).catch(() => { });
+      } catch (_) { }
       try {
         const locs = getLocations();
         const prevCount = locationsList.length;
@@ -188,10 +188,10 @@ function App() {
           setSelectedLocationId(activeLocId);
           const activeLoc = locs.find(l => l.id === activeLocId);
           if (activeLoc?.scapeId) {
-            try { setActiveScapeId(activeLoc.scapeId); } catch (_) {}
+            try { setActiveScapeId(activeLoc.scapeId); } catch (_) { }
             psActionsRef.current?.switchScape?.(activeLoc.scapeId);
           } else {
-            try { setActiveScapeId(''); } catch (_) {}
+            try { setActiveScapeId(''); } catch (_) { }
             psActionsRef.current?.switchScape?.('');
           }
           psActionsRef.current?.setActiveLocationId?.(activeLocId);
@@ -202,7 +202,7 @@ function App() {
             psActionsRef.current?.reloadActiveScape?.();
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }, [appMode, showSensorManagerModal]);
 
@@ -240,10 +240,10 @@ function App() {
     }
     const found = locationOptions.find(o => o.id === locId);
     if (found?.scapeId) {
-      try { setActiveScapeId(found.scapeId); } catch (_) {}
+      try { setActiveScapeId(found.scapeId); } catch (_) { }
       psActionsRef.current?.switchScape?.(found.scapeId);
     } else {
-      try { setActiveScapeId(''); } catch (_) {}
+      try { setActiveScapeId(''); } catch (_) { }
       psActionsRef.current?.switchScape?.('');
     }
     psActionsRef.current?.setActiveLocationId?.(locId);
@@ -422,7 +422,7 @@ function App() {
         if (Array.isArray(list) && list.length > 0) {
           setRecentFiles(list);
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     try {
@@ -430,9 +430,9 @@ function App() {
       if (savedDevs && savedDevs.length > 0) {
         autoReconnectSavedDevices((conn) => {
           if (conn) setDeviceInfo(conn);
-        }).catch(() => {});
+        }).catch(() => { });
       }
-    } catch (_) {}
+    } catch (_) { }
   }, [initDone]);
 
   const handleCsdExportConfirmed = async () => {
@@ -1049,177 +1049,158 @@ function App() {
           onMouseLeave={handleHeaderMouseUp}
         >
           {/* View Switcher Tabs */}
-        {appMode === 'processscape' && psMode !== 'editor' ? (
-          <div className="header-tabs" style={{ display: 'flex', alignItems: 'center' }}>
-            {recState.recording && (
-              <>
+          {appMode === 'processscape' && psMode !== 'editor' ? (
+            <div className="header-tabs" style={{ display: 'flex', alignItems: 'center' }}>
+              {recState.recording && (
+                <>
+                  <button
+                    className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
+                    onClick={() => switchTab('livegraphic')}
+                  >
+                    Graphic View
+                  </button>
+                  <button
+                    className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
+                    onClick={() => switchTab('livetable')}
+                  >
+                    Table View
+                  </button>
+                </>
+              )}
+              {!recState.recording && (
+                <button
+                  className="tab-btn"
+                  onClick={() => setShowSensorManagerModal(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+                  title="Location & sensors (Detect Devices, Locations, Measurement Points, Channels)"
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+                  </svg>
+                  Location & sensors
+                </button>
+              )}
+            </div>
+          ) : appMode === 'monitor' ? (
+            <div className="header-tabs">
+              <button
+                className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
+                onClick={() => switchTab('online')}
+              >
+                Online View
+              </button>
+              {recState.hasSession && (
                 <button
                   className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
                   onClick={() => switchTab('livegraphic')}
                 >
                   Graphic View
                 </button>
+              )}
+              {recState.hasSession && (
                 <button
                   className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
                   onClick={() => switchTab('livetable')}
                 >
                   Table View
                 </button>
-              </>
-            )}
-            {!recState.recording && (
+              )}
+              {/* Readout hammers the device — never offered while recording, or when a Modbus device is connected */}
+              {!recState.recording && !isModbusConnected && (
+                <button
+                  className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
+                  onClick={() => {
+                    clearReadoutCache();
+                    setActiveTab('readout');
+                  }}
+                >
+                  Readout
+                </button>
+              )}
+            </div>
+          ) : (appMode === 'analyze' && fileLoaded) ? (
+            <div className="header-tabs">
               <button
-                className="tab-btn"
-                onClick={() => setShowSensorManagerModal(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-                title="Location & sensors (Detect Devices, Locations, Measurement Points, Channels)"
+                className={`tab-btn ${activeTab === 'fileinfo' ? 'active' : ''}`}
+                onClick={() => switchTab('fileinfo')}
               >
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                </svg>
-                Location & sensors
+                File Info
               </button>
-            )}
-          </div>
-        ) : appMode === 'monitor' ? (
-          <div className="header-tabs">
-            <button
-              className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
-              onClick={() => switchTab('online')}
-            >
-              Online View
-            </button>
-            {recState.hasSession && (
               <button
-                className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
-                onClick={() => switchTab('livegraphic')}
+                className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
+                onClick={() => switchTab('graphic')}
               >
                 Graphic View
               </button>
-            )}
-            {recState.hasSession && (
               <button
-                className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
-                onClick={() => switchTab('livetable')}
+                className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
+                onClick={() => switchTab('table')}
               >
                 Table View
               </button>
-            )}
-            {/* Readout hammers the device — never offered while recording, or when a Modbus device is connected */}
-            {!recState.recording && !isModbusConnected && (
+              {featureReport && (
+                <button
+                  className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
+                  onClick={() => switchTab('report')}
+                >
+                  Consumption Report
+                </button>
+              )}
+              {featureCompressor && (
+                <button
+                  className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
+                  onClick={() => switchTab('analyze')}
+                >
+                  Compressor Analyze
+                </button>
+              )}
               <button
-                className={`tab-btn ${activeTab === 'readout' ? 'active' : ''}`}
-                onClick={() => {
-                  clearReadoutCache();
-                  setActiveTab('readout');
-                }}
+                className="tab-btn"
+                onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Data modifier opened'); setModifierOpen(true); }}
               >
-                Readout
+                Data Studio
               </button>
-            )}
-          </div>
-        ) : (appMode === 'analyze' && fileLoaded) ? (
-          <div className="header-tabs">
-            <button
-              className={`tab-btn ${activeTab === 'fileinfo' ? 'active' : ''}`}
-              onClick={() => switchTab('fileinfo')}
-            >
-              File Info
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
-              onClick={() => switchTab('graphic')}
-            >
-              Graphic View
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
-              onClick={() => switchTab('table')}
-            >
-              Table View
-            </button>
-            {featureReport && (
-              <button
-                className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
-                onClick={() => switchTab('report')}
-              >
-                Consumption Report
-              </button>
-            )}
-            {featureCompressor && (
-              <button
-                className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
-                onClick={() => switchTab('analyze')}
-              >
-                Compressor Analyze
-              </button>
-            )}
-            <button
-              className="tab-btn"
-              onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Data modifier opened'); setModifierOpen(true); }}
-            >
-              Data Studio
-            </button>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
 
           <div className="header-right">
 
-          {appMode === 'processscape' && (
-            <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {/* Record button shown directly to the left of Location only when assigned channels exist or currently recording */}
-              {psMode !== 'editor' && (recState.recording || hasAssignedChannels) && (
-                <Tooltip
-                  title={recState.recording
-                    ? `Stop recording & save CSV (${recState.samples} samples, ${recState.channels} channels)`
-                    : 'Record ProcessScape live values to CSV'}
-                >
-                  <button
-                    className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
-                    onClick={handleToggleRecording}
+            {appMode === 'processscape' && (
+              <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {/* Record button shown directly to the left of Location only when assigned channels exist or currently recording */}
+                {psMode !== 'editor' && (recState.recording || hasAssignedChannels) && (
+                  <Tooltip
+                    title={recState.recording
+                      ? `Stop recording & save CSV (${recState.samples} samples, ${recState.channels} channels)`
+                      : 'Record ProcessScape live values to CSV'}
                   >
-                    {recState.recording ? (
-                      <>
-                        <span className="rec-pulse-dot" />
-                        <span className="rec-btn-time">
-                          REC&nbsp;
-                          {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 60000)).padStart(2, '0')}
-                          :
-                          {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
-                        </span>
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
-                          <rect x="5" y="5" width="14" height="14" rx="2" />
-                        </svg>
-                      </>
-                    ) : (
-                      <>
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                        Record
-                      </>
-                    )}
-                  </button>
-                </Tooltip>
-              )}
-
-              {/* Location Switcher Dropdown (Only shown in runtime mode when locations exist) */}
-              {locationsList.length > 0 && psMode !== 'editor' && (
-                <div className="ps-header-location-picker" title="Toggle Plant Location">
-                  <span className="ps-header-location-icon">📍</span>
-                  <select
-                    className="ps-header-location-select"
-                    value={selectedLocationId}
-                    onChange={handleLocationSelectChange}
-                    aria-label="Select Location"
-                  >
-                    {locationOptions.map(opt => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <button
+                      className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
+                      onClick={handleToggleRecording}
+                    >
+                      {recState.recording ? (
+                        <>
+                          <span className="rec-pulse-dot" />
+                          <span className="rec-btn-time">
+                            REC&nbsp;
+                            {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 60000)).padStart(2, '0')}
+                            :
+                            {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
+                          </span>
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                            <rect x="5" y="5" width="14" height="14" rx="2" />
+                          </svg>
+                        </>
+                      ) : (
+                        <>
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                          Record
+                        </>
+                      )}
+                    </button>
+                  </Tooltip>
               )}
 
               {/* Only show Live Runtime View button when actively in Editor mode to return to runtime */}
@@ -1238,210 +1219,128 @@ function App() {
                     style={{ color: '#00ac86' }}
                     aria-label="Live Runtime View"
                   >
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
                     </svg>
                   </IconButton>
                 </Tooltip>
               )}
+              </div>
+            )}
 
-              {/* Undo & Redo (Editor mode only) */}
-              {psMode === 'editor' && (
-                <>
-                  <Tooltip title="Undo (Cmd+Z / Ctrl+Z)">
-                    <IconButton
-                      className="header-icon-btn"
-                      onClick={() => psActionsRef.current?.handleUndo?.()}
-                      style={{ color: '#0f172a' }}
-                      aria-label="Undo"
-                    >
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 7v6h6" />
-                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-                      </svg>
-                    </IconButton>
-                  </Tooltip>
-
-                  <Tooltip title="Redo (Cmd+Y / Ctrl+Y)">
-                    <IconButton
-                      className="header-icon-btn"
-                      onClick={() => psActionsRef.current?.handleRedo?.()}
-                      style={{ color: '#0f172a' }}
-                      aria-label="Redo"
-                    >
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 7v6h-6" />
-                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
-                      </svg>
-                    </IconButton>
-                  </Tooltip>
-                </>
-              )}
-
-              {/* Import JSON, Export JSON, Export PNG (Only when Editor mode needs this) */}
-              {psMode === 'editor' && (
-                <>
-                  <Tooltip title="Import ProcessScape JSON">
-                    <IconButton
-                      className="header-icon-btn"
-                      onClick={() => psActionsRef.current?.handleImportJson?.()}
-                      style={{ color: '#0f172a' }}
-                      aria-label="Import JSON"
-                    >
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
-                      </svg>
-                    </IconButton>
-                  </Tooltip>
-
-                  <Tooltip title="Export JSON Topology">
-                    <IconButton
-                      className="header-icon-btn"
-                      onClick={() => psActionsRef.current?.handleExportJson?.()}
-                      style={{ color: '#0f172a' }}
-                      aria-label="Export JSON"
-                    >
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                    </IconButton>
-                  </Tooltip>
-
-                  <Tooltip title="Export High-Resolution PNG Picture">
-                    <IconButton
-                      className="header-icon-btn"
-                      onClick={() => psActionsRef.current?.handleExportPng?.()}
-                      style={{ color: '#0f172a' }}
-                      aria-label="Export PNG"
-                    >
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <polyline points="21 15 16 10 5 21" />
-                      </svg>
-                    </IconButton>
-                  </Tooltip>
-                </>
-              )}
-            </div>
-          )}
-
-          {appMode === 'monitor' && (
-            <Tooltip
-              title={recState.recording
-                ? `Stop recording & save CSV (${recState.samples} samples)`
-                : 'Record live values to CSV'}
-            >
-              <button
-                className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
-                onClick={handleToggleRecording}
+            {appMode === 'monitor' && (
+              <Tooltip
+                title={recState.recording
+                  ? `Stop recording & save CSV (${recState.samples} samples)`
+                  : 'Record live values to CSV'}
               >
-                {recState.recording ? (
-                  <>
-                    <span className="rec-pulse-dot" />
-                    <span className="rec-btn-time">
-                      REC&nbsp;
-                      {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 60000)).padStart(2, '0')}
-                      :
-                      {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
-                    </span>
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
-                      <rect x="5" y="5" width="14" height="14" rx="2" />
-                    </svg>
-                  </>
-                ) : (
-                  <>
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                    Record
-                  </>
-                )}
-              </button>
-            </Tooltip>
-          )}
-
-          {appMode === 'analyze' && fileLoaded && (
-            <>
-              <Tooltip title="Open File">
-                <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
-                  <FolderOpenIcon />
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Append File">
-                <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
-                  <AddIcon />
-                </IconButton>
-              </Tooltip>
-
-              <Tooltip title="Export Data">
-                <IconButton className="header-icon-btn" onClick={handleShareClick} style={{ color: '#0f172a' }}>
-                  <ShareIcon />
-                </IconButton>
-              </Tooltip>
-              <Menu
-                anchorEl={shareMenuAnchorEl}
-                open={Boolean(shareMenuAnchorEl)}
-                onClose={handleShareClose}
-              >
-                {TestAPI.isCsvMode && TestAPI.isCsvMode() && (
-                  <MenuItem onClick={handleExportCsdOption}>
-                    Export CSV to CSD
-                  </MenuItem>
-                )}
-                <MenuItem
-                  onClick={handleExportCsvOption}
-                  disabled={Boolean(TestAPI.isCsvMode && TestAPI.isCsvMode())}
-                >
-                  Export all to CSV
-                </MenuItem>
-                <MenuItem onClick={handleExportExcelOption}>
-                  Export all to Excel
-                </MenuItem>
-              </Menu>
-            </>
-          )}
-
-          {!appMode ? (
-            <>
-              {checkIsWeb() && (
                 <button
-                  type="button"
-                  className="try-desktop-link"
-                  onClick={() => setShowDownloadModal(true)}
-                  title="Download S4A for Windows, macOS, or Android"
+                  className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
+                  onClick={handleToggleRecording}
                 >
-                  <svg className="try-desktop-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span className="try-desktop-text">Try App</span>
-                  <span className="try-desktop-badge">New</span>
+                  {recState.recording ? (
+                    <>
+                      <span className="rec-pulse-dot" />
+                      <span className="rec-btn-time">
+                        REC&nbsp;
+                        {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 60000)).padStart(2, '0')}
+                        :
+                        {String(Math.floor(Math.max(0, recNow - recState.startedAt) / 1000) % 60).padStart(2, '0')}
+                      </span>
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                        <rect x="5" y="5" width="14" height="14" rx="2" />
+                      </svg>
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                      Record
+                    </>
+                  )}
                 </button>
-              )}
-              <span className="homepage-version-badge" title={`S4A Version ${APP_VERSION}`}>
-                v{APP_VERSION}
-              </span>
-            </>
-          ) : (
-            <Tooltip title="System Diagnostic Logs">
-              <IconButton
-                className="header-icon-btn"
-                onClick={() => setShowDebugLogs(true)}
-                style={{ color: '#334155', padding: '6px' }}
-                aria-label="System Diagnostic Logs"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
-              </IconButton>
-            </Tooltip>
-          )}
+              </Tooltip>
+            )}
+
+            {appMode === 'analyze' && fileLoaded && (
+              <>
+                <Tooltip title="Open File">
+                  <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
+                    <FolderOpenIcon />
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip title="Append File">
+                  <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
+                    <AddIcon />
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip title="Export Data">
+                  <IconButton className="header-icon-btn" onClick={handleShareClick} style={{ color: '#0f172a' }}>
+                    <ShareIcon />
+                  </IconButton>
+                </Tooltip>
+                <Menu
+                  anchorEl={shareMenuAnchorEl}
+                  open={Boolean(shareMenuAnchorEl)}
+                  onClose={handleShareClose}
+                >
+                  {TestAPI.isCsvMode && TestAPI.isCsvMode() && (
+                    <MenuItem onClick={handleExportCsdOption}>
+                      Export CSV to CSD
+                    </MenuItem>
+                  )}
+                  <MenuItem
+                    onClick={handleExportCsvOption}
+                    disabled={Boolean(TestAPI.isCsvMode && TestAPI.isCsvMode())}
+                  >
+                    Export all to CSV
+                  </MenuItem>
+                  <MenuItem onClick={handleExportExcelOption}>
+                    Export all to Excel
+                  </MenuItem>
+                </Menu>
+              </>
+            )}
+
+            {!appMode ? (
+              <>
+                {checkIsWeb() && (
+                  <button
+                    type="button"
+                    className="try-desktop-link"
+                    onClick={() => setShowDownloadModal(true)}
+                    title="Download S4A for Windows, macOS, or Android"
+                  >
+                    <svg className="try-desktop-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span className="try-desktop-text">Try App</span>
+                    <span className="try-desktop-badge">New</span>
+                  </button>
+                )}
+                <span className="homepage-version-badge" title={`S4A Version ${APP_VERSION}`}>
+                  v{APP_VERSION}
+                </span>
+              </>
+            ) : (
+              <Tooltip title="System Diagnostic Logs">
+                <IconButton
+                  className="header-icon-btn"
+                  onClick={() => setShowDebugLogs(true)}
+                  style={{ color: '#334155', padding: '6px' }}
+                  aria-label="System Diagnostic Logs"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </IconButton>
+              </Tooltip>
+            )}
           </div>
         </div>
       </header>
@@ -1456,6 +1355,7 @@ function App() {
               <ProcessScapeView
                 initialMode="runtime"
                 activeLocationId={selectedLocationId}
+                onLocationChange={(locId) => handleLocationSelectChange({ target: { value: locId } })}
                 onBackToLanding={() => {
                   TestAPI.setMode('analyze');
                   setAppMode(null);
@@ -1612,7 +1512,7 @@ function App() {
                       TauriSutoAPI.logClientEvent('INFO', 'APP', 'ProcessScape mode activated');
                       autoReconnectSavedDevices((conn) => {
                         if (conn) setDeviceInfo(conn);
-                      }).catch(() => {});
+                      }).catch(() => { });
                       TestAPI.setMode('processscape');
                       setActiveTab('processscape');
                       setAppMode('processscape');
@@ -1719,10 +1619,10 @@ function App() {
       </main>
 
       {/* Global Recent Files Dialog */}
-      <Dialog 
-        maxWidth='xs' 
+      <Dialog
+        maxWidth='xs'
         fullWidth
-        onClose={() => setRecentDialogOpen(false)} 
+        onClose={() => setRecentDialogOpen(false)}
         open={recentDialogOpen}
         PaperProps={{
           style: {
@@ -1740,12 +1640,12 @@ function App() {
         <DialogContent style={{ padding: '8px 16px' }}>
           <List style={{ width: '100%', maxHeight: '50vh', overflow: 'auto', boxSizing: 'border-box' }}>
             {recentFiles.map((file, idx) => (
-              <ListItem 
-                disablePadding 
+              <ListItem
+                disablePadding
                 key={idx}
                 secondaryAction={
-                  <IconButton 
-                    edge="end" 
+                  <IconButton
+                    edge="end"
                     aria-label="delete"
                     onClick={(e) => handleRemoveRecentFile(file, e)}
                     style={{ color: '#94a3b8' }}
@@ -1783,9 +1683,9 @@ function App() {
       </Dialog>
 
       {/* Global Notification Dialog */}
-      <Dialog 
-        maxWidth='sm' 
-        onClose={() => setNotiOpen(false)} 
+      <Dialog
+        maxWidth='sm'
+        onClose={() => setNotiOpen(false)}
         open={notiOpen}
         disableRestoreFocus
         PaperProps={{
@@ -1980,28 +1880,28 @@ function App() {
         <DialogContent style={{ padding: '0', background: '#f8fafc' }}>
           {csdGapSummary && (() => {
             const fmt = (ms) => {
-              const d = new Date(ms), p = n => String(n).padStart(2,'0');
-              return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+              const d = new Date(ms), p = n => String(n).padStart(2, '0');
+              return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
             };
             const fmtDur = (ms) => {
               const s = Math.round(ms / 1000);
               if (s < 60) return `${s}s`;
-              if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
-              return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+              if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+              return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
             };
-            const naPercent  = csdGapSummary.naPercent ?? 0;
-            const gapCount   = csdGapSummary.gapCount ?? 0;
-            const segCount   = (csdGapSummary.segments ?? []).length;
+            const naPercent = csdGapSummary.naPercent ?? 0;
+            const gapCount = csdGapSummary.gapCount ?? 0;
+            const segCount = (csdGapSummary.segments ?? []).length;
 
             return (
               <div>
                 {/* ── Stats strip ── */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: '#e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
                   {[
-                    { label: 'Gaps Found',     value: gapCount,                                              color: gapCount > 0 ? '#f59e0b' : '#10b981' },
-                    { label: 'Real Samples',   value: (csdGapSummary.totalRealSamples ?? 0).toLocaleString(), color: '#00ac86' },
-                    { label: 'N/A Slots',      value: (csdGapSummary.totalMissingSamples ?? 0).toLocaleString(), color: gapCount > 0 ? '#ef4444' : '#10b981' },
-                    { label: 'N/A Ratio',      value: `${naPercent.toFixed(1)}%`,                            color: naPercent > 20 ? '#ef4444' : naPercent > 5 ? '#f59e0b' : '#10b981' },
+                    { label: 'Gaps Found', value: gapCount, color: gapCount > 0 ? '#f59e0b' : '#10b981' },
+                    { label: 'Real Samples', value: (csdGapSummary.totalRealSamples ?? 0).toLocaleString(), color: '#00ac86' },
+                    { label: 'N/A Slots', value: (csdGapSummary.totalMissingSamples ?? 0).toLocaleString(), color: gapCount > 0 ? '#ef4444' : '#10b981' },
+                    { label: 'N/A Ratio', value: `${naPercent.toFixed(1)}%`, color: naPercent > 20 ? '#ef4444' : naPercent > 5 ? '#f59e0b' : '#10b981' },
                   ].map((s, i) => (
                     <div key={i} style={{ background: '#fff', padding: '14px 16px', textAlign: 'center' }}>
                       <div style={{ fontSize: '20px', fontWeight: '800', color: s.color }}>{s.value}</div>
@@ -2012,10 +1912,10 @@ function App() {
 
                 {/* ── Meta row ── */}
                 <div style={{ padding: '9px 20px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '11.5px', color: '#475569', fontWeight: '600' }}>
-                  <span>⏱ Interval: <strong style={{color:'#0f172a'}}>{csdGapSummary.detectedIntervalSec}s</strong></span>
-                  <span>🕐 Start: <strong style={{color:'#0f172a'}}>{csdGapSummary.startTimeMs ? fmt(csdGapSummary.startTimeMs) : '—'}</strong></span>
-                  <span>🔚 End: <strong style={{color:'#0f172a'}}>{csdGapSummary.stopTimeMs ? fmt(csdGapSummary.stopTimeMs) : '—'}</strong></span>
-                  <span>📂 Continuous segments: <strong style={{color:'#0f172a'}}>{segCount}</strong></span>
+                  <span>⏱ Interval: <strong style={{ color: '#0f172a' }}>{csdGapSummary.detectedIntervalSec}s</strong></span>
+                  <span>🕐 Start: <strong style={{ color: '#0f172a' }}>{csdGapSummary.startTimeMs ? fmt(csdGapSummary.startTimeMs) : '—'}</strong></span>
+                  <span>🔚 End: <strong style={{ color: '#0f172a' }}>{csdGapSummary.stopTimeMs ? fmt(csdGapSummary.stopTimeMs) : '—'}</strong></span>
+                  <span>📂 Continuous segments: <strong style={{ color: '#0f172a' }}>{segCount}</strong></span>
                 </div>
 
                 {/* ── Two-choice cards ── */}
@@ -2034,15 +1934,15 @@ function App() {
                         </div>
                       </div>
                       <div style={{ fontSize: '12px', color: '#78350f', lineHeight: '1.6', background: '#fef3c7', borderRadius: '6px', padding: '10px 12px' }}>
-                        The CSV has <strong>{gapCount} timestamp gap{gapCount > 1 ? 's' : ''}</strong>. CSD requires a uniform grid, so <strong>{(csdGapSummary.totalMissingSamples ?? 0).toLocaleString()} missing slots</strong> will be filled with <code style={{background:'#fed7aa',padding:'1px 4px',borderRadius:'3px'}}>−9999 (N/A)</code>.
+                        The CSV has <strong>{gapCount} timestamp gap{gapCount > 1 ? 's' : ''}</strong>. CSD requires a uniform grid, so <strong>{(csdGapSummary.totalMissingSamples ?? 0).toLocaleString()} missing slots</strong> will be filled with <code style={{ background: '#fed7aa', padding: '1px 4px', borderRadius: '3px' }}>−9999 (N/A)</code>.
                         <br /><br />
-                        The resulting file will contain <strong style={{color: naPercent > 20 ? '#dc2626' : '#b45309'}}>{naPercent.toFixed(1)}% N/A data</strong> out of {(csdGapSummary.totalCsdSamples ?? 0).toLocaleString()} total slots.
+                        The resulting file will contain <strong style={{ color: naPercent > 20 ? '#dc2626' : '#b45309' }}>{naPercent.toFixed(1)}% N/A data</strong> out of {(csdGapSummary.totalCsdSamples ?? 0).toLocaleString()} total slots.
                       </div>
                       <Button
                         onClick={handleCsdExportConfirmed}
                         variant="contained"
                         fullWidth
-                        style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color:'#fff', borderRadius:'8px', fontWeight:'800', fontSize:'13px', textTransform:'none', padding:'10px' }}
+                        style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#fff', borderRadius: '8px', fontWeight: '800', fontSize: '13px', textTransform: 'none', padding: '10px' }}
                       >
                         Save as 1 CSD File ({naPercent.toFixed(1)}% N/A)
                       </Button>
@@ -2061,15 +1961,15 @@ function App() {
                         </div>
                       </div>
                       <div style={{ fontSize: '12px', color: '#064e3b', lineHeight: '1.6', background: '#d1fae5', borderRadius: '6px', padding: '10px 12px' }}>
-                        Each continuous period becomes its own independent CSD file — <strong>no N/A padding</strong>. Files are named <code style={{background:'#a7f3d0',padding:'1px 4px',borderRadius:'3px'}}>name_part01.csd</code>, <code style={{background:'#a7f3d0',padding:'1px 4px',borderRadius:'3px'}}>name_part02.csd</code> …
+                        Each continuous period becomes its own independent CSD file — <strong>no N/A padding</strong>. Files are named <code style={{ background: '#a7f3d0', padding: '1px 4px', borderRadius: '3px' }}>name_part01.csd</code>, <code style={{ background: '#a7f3d0', padding: '1px 4px', borderRadius: '3px' }}>name_part02.csd</code> …
                         <br /><br />
-                        You will receive <strong style={{color:'#065f46'}}>{segCount} file{segCount > 1 ? 's' : ''}</strong>, each containing 100% real data.
+                        You will receive <strong style={{ color: '#065f46' }}>{segCount} file{segCount > 1 ? 's' : ''}</strong>, each containing 100% real data.
                       </div>
                       <Button
                         onClick={handleCsdExportSplit}
                         variant="contained"
                         fullWidth
-                        style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color:'#fff', borderRadius:'8px', fontWeight:'800', fontSize:'13px', textTransform:'none', padding:'10px' }}
+                        style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color: '#fff', borderRadius: '8px', fontWeight: '800', fontSize: '13px', textTransform: 'none', padding: '10px' }}
                       >
                         Split into {segCount} CSD File{segCount > 1 ? 's' : ''} (0% N/A)
                       </Button>
@@ -2082,7 +1982,7 @@ function App() {
                       ✅ No timestamp gaps detected. This CSV is fully continuous — the CSD output will be an exact 1-to-1 conversion with <strong>0% N/A data</strong>.
                     </div>
                     <Button onClick={handleCsdExportConfirmed} variant="contained" fullWidth
-                      style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color:'#fff', borderRadius:'8px', fontWeight:'800', fontSize:'14px', textTransform:'none', padding:'12px' }}>
+                      style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color: '#fff', borderRadius: '8px', fontWeight: '800', fontSize: '14px', textTransform: 'none', padding: '12px' }}>
                       Export to CSD
                     </Button>
                   </div>
@@ -2159,7 +2059,7 @@ function App() {
                   The data has been read using a repaired header, but your local file is still broken.
                 </div>
                 <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.6', background: '#f1f5f9', borderRadius: '8px', padding: '10px 12px' }}>
-                  A repaired copy will be saved as <code style={{background:'#e2e8f0',padding:'1px 4px',borderRadius:'3px'}}>name_repaired.csd</code>.
+                  A repaired copy will be saved as <code style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px' }}>name_repaired.csd</code>.
                   The original file is <strong>never modified</strong>.
                 </div>
               </div>
@@ -2239,8 +2139,8 @@ function App() {
               {appMode === 'monitor'
                 ? `Monitor: ${deviceInfo?.device || 'Live SUTO Sensor'}`
                 : fileLoaded
-                ? 'Data Loaded'
-                : 'Ready'}
+                  ? 'Data Loaded'
+                  : 'Ready'}
             </span>
           </div>
           {appMode === 'analyze' && fileLoaded && loadedFilename && (
@@ -2294,9 +2194,9 @@ function App() {
             <p className="file-loading-subtitle">
               Reading binary slices for <strong className="file-loading-filename">{loadingFilename}</strong>
             </p>
-            
+
             <div className="file-loading-bar-track">
-              <div 
+              <div
                 className="file-loading-bar-fill"
                 style={{ width: `${Math.round(fileLoadingProgress * 100)}%` }}
               />
@@ -2350,12 +2250,12 @@ function App() {
             setSelectedLocationId(null);
           }
           if (!targetScapeId) {
-            try { setActiveScapeId(''); } catch (_) {}
+            try { setActiveScapeId(''); } catch (_) { }
             psActionsRef.current?.switchScape?.('');
             psActionsRef.current?.reloadActiveScape?.('');
             return;
           }
-          try { setActiveScapeId(targetScapeId); } catch (_) {}
+          try { setActiveScapeId(targetScapeId); } catch (_) { }
           psActionsRef.current?.switchScape?.(targetScapeId);
           psActionsRef.current?.reloadActiveScape?.(targetScapeId);
         }}

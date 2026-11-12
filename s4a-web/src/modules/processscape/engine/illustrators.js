@@ -2559,14 +2559,14 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
     if (uLen > maxUnitLen) maxUnitLen = uLen;
   });
 
-  const nameColW = Math.max(50, maxNameLen * 8.2 + 8);
-  const valColW = Math.max(46, maxValLen * 9.6 + 6);
-  const unitColW = maxUnitLen > 0 ? Math.max(28, maxUnitLen * 8.2 + 4) : 0;
+  const nameColW = Math.max(50, maxNameLen * 8.5 + 12);
+  const valColW = Math.max(34, maxValLen * 8.6 + 4);
+  const unitColW = maxUnitLen > 0 ? Math.max(20, maxUnitLen * 7.5 + 2) : 0;
   const isTop = card.titlePosition !== 'left';
   const rowH = 26;
   const channelsH = Math.max(34, numChannels * rowH + 10);
 
-  const minChannelsW = 24 + nameColW + valColW + (unitColW > 0 ? 6 + unitColW : 0) + 14;
+  const minChannelsW = 24 + nameColW + valColW + (unitColW > 0 ? 4 + unitColW : 0) + 10;
 
   let totalW, totalH, badgeX, badgeY, badgeW, badgeH, panelX, panelY, panelW, panelH;
 
@@ -2708,29 +2708,41 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
 
   channels.forEach((ch, idx) => {
     const rowY = panelY + 18 + idx * rowH;
-    const chStatus = ch.status || 'normal';
+    const isAlarm = Boolean(ch.isAlarm || ch.status === 'alarm');
+    const isAcked = Boolean(ch.isAlarmAcked);
+    const valStr = (ch.val !== undefined && ch.val !== null) ? String(ch.val).trim() : '--';
+    const isSpecialValue = ch.val === -9999 || ch.val === -8888 || ch.val === -8886 ||
+      valStr === '--.-' || valStr === '--' || valStr === '-.-' || valStr === '---' ||
+      valStr === '-9999' || valStr === '-8888' || valStr === '-8886';
+    const isWarn = Boolean(ch.status === 'warn' || isSpecialValue);
+    const chStatus = isAlarm ? 'alarm' : (isWarn ? 'warn' : (ch.status || 'normal'));
     const chStatusColor = chStatus === 'alarm' ? '#dc2626' : (chStatus === 'warn' ? '#eab308' : '#16a34a');
     
-    // Status dot
-    g.appendChild(svgEl('circle', {
-      cx: panelX + 14, cy: rowY - 4.5, r: 4.2, fill: chStatusColor
-    }));
+    // Status dot: pulses when unacknowledged alarm; solid red when acknowledged; yellow warning for special/invalid value
+    const dot = svgEl('circle', {
+      cx: panelX + 14, cy: rowY - 4.5, r: 4.2, fill: chStatusColor,
+      class: isAlarm ? (isAcked ? 'ps-alarm-dot-solid' : 'ps-alarm-dot-pulse') : (isWarn ? 'ps-warn-dot' : '')
+    });
+    g.appendChild(dot);
 
-    // 1. Channel Name (align left)
+    // 1. Channel Name (align left): blinks when unacknowledged; solid red when acknowledged
     const nameTxt = svgEl('text', {
       x: panelX + 24, y: rowY, 'font-size': 11, 'font-weight': 700,
       'text-anchor': 'start',
-      fill: '#475569', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
+      fill: isAlarm ? '#dc2626' : '#475569',
+      class: isAlarm ? (isAcked ? 'ps-channel-alarm-solid' : 'ps-channel-alarm-blink') : '',
+      'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
     nameTxt.textContent = `${ch.name}:`;
     g.appendChild(nameTxt);
 
     // 2. Channel Value (align right)
-    const valStr = (ch.val !== undefined && ch.val !== null) ? String(ch.val) : '--';
     const valTxt = svgEl('text', {
       x: valRightX, y: rowY, 'font-size': 13.5, 'font-weight': 800,
       'text-anchor': 'end',
-      fill: '#0f172a', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
+      fill: isAlarm ? '#dc2626' : (isWarn ? '#94a3b8' : '#0f172a'),
+      class: isAlarm ? (isAcked ? 'ps-channel-alarm-solid' : 'ps-channel-alarm-blink') : '',
+      'font-family': 'JetBrains Mono, ui-monospace, monospace'
     });
     valTxt.textContent = valStr;
     g.appendChild(valTxt);
@@ -2740,7 +2752,9 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
       const unitTxt = svgEl('text', {
         x: unitLeftX, y: rowY, 'font-size': 11, 'font-weight': 600,
         'text-anchor': 'start',
-        fill: '#64748b', 'font-family': 'JetBrains Mono, ui-monospace, monospace'
+        fill: isAlarm ? '#dc2626' : '#64748b',
+        class: isAlarm ? (isAcked ? 'ps-channel-alarm-solid' : 'ps-channel-alarm-blink') : '',
+        'font-family': 'JetBrains Mono, ui-monospace, monospace'
       });
       unitTxt.textContent = ch.unit;
       g.appendChild(unitTxt);

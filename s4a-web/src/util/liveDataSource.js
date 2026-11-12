@@ -23,6 +23,7 @@ let timer = null;
 let inFlight = false;
 let activeLocationChannels = null; // null: unrestricted (all channels); Array: channels in active location
 let recordingChannels = null; // null or Array of channels being recorded
+let alarmChannels = null; // null or Array of channels demanded by alarms across all locations
 const subscribers = new Set();
 
 function dispatch(result) {
@@ -39,34 +40,32 @@ function dispatch(result) {
  * Returns the consolidated list of demanded channels based on:
  * 1. Active location in ProcessScape (when not recording, ONLY active location's channels)
  * 2. When recording is running: (active location channels) ∪ (recording channels)
- * 3. When outside ProcessScape (unrestricted): null (all connected channels)
+ * 3. When alarm monitoring is running: all assigned channels across locations
+ * 4. When outside ProcessScape (unrestricted): null (all connected channels)
  */
 export function getDemandedChannels() {
   const isRec = recordingDemand && Array.isArray(recordingChannels);
   const isLoc = Array.isArray(activeLocationChannels);
+  const isAlarm = Array.isArray(alarmChannels) && alarmChannels.length > 0;
 
-  // If recording is running AND active location channels are defined: combine both!
-  if (isRec && isLoc) {
-    const combined = [...activeLocationChannels];
-    const seen = new Set(combined.map(c => c.key || c.id || c.channel_id));
-    recordingChannels.forEach(rc => {
-      const k = rc.key || rc.id || rc.channel_id;
-      if (!seen.has(k)) {
-        combined.push(rc);
-        seen.add(k);
-      }
-    });
+  if (isRec || isLoc || isAlarm) {
+    const combined = [];
+    const seen = new Set();
+    const addList = (list) => {
+      if (!Array.isArray(list)) return;
+      list.forEach(c => {
+        if (!c) return;
+        const k = c.key || c.id || c.channel_id;
+        if (k && !seen.has(k)) {
+          combined.push(c);
+          seen.add(k);
+        }
+      });
+    };
+    if (isLoc) addList(activeLocationChannels);
+    if (isRec) addList(recordingChannels);
+    if (isAlarm) addList(alarmChannels);
     return combined;
-  }
-
-  // If only recording is running (e.g. background recording without location scope)
-  if (isRec) {
-    return recordingChannels;
-  }
-
-  // If viewing a ProcessScape location (when not recording, strictly active location)
-  if (isLoc) {
-    return activeLocationChannels;
   }
 
   // Unrestricted demand (e.g. standard S4A Online View / Monitor tab)
@@ -85,6 +84,15 @@ export function setActiveLocationChannels(channels) {
 /** Set channels demanded by active live recording */
 export function setRecordingChannels(channels) {
   recordingChannels = Array.isArray(channels) ? channels : null;
+  if (timer !== null) {
+    poll();
+  }
+}
+
+/** Set channels demanded by background alarm monitoring across all locations */
+export function setAlarmChannels(channels) {
+  alarmChannels = Array.isArray(channels) ? channels : null;
+  sync();
   if (timer !== null) {
     poll();
   }
@@ -117,7 +125,7 @@ async function poll() {
 }
 
 function sync() {
-  const needed = viewDemand || recordingDemand;
+  const needed = viewDemand || recordingDemand || (Array.isArray(alarmChannels) && alarmChannels.length > 0);
   if (needed && timer === null) {
     poll(); // immediate first sample whenever the link (re)starts
     timer = setInterval(poll, POLL_INTERVAL_MS);

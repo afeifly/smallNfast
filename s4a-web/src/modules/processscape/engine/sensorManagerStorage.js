@@ -1091,7 +1091,8 @@ export function syncMeasurementPointToScape(locationId, mpId, customLocations = 
       deviceId: devId,
       deviceSerial: devSerial,
       devicePort: devPort,
-      device: devName
+      device: devName,
+      alarmConfig: ch.alarmConfig ? { ...ch.alarmConfig } : undefined
     };
   });
 
@@ -1287,7 +1288,8 @@ export function syncAllLocationsToScapes(customLocations = null) {
           deviceId: devId,
           deviceSerial: devSerial,
           devicePort: devPort,
-          device: devName
+          device: devName,
+          alarmConfig: ch.alarmConfig ? { ...ch.alarmConfig } : undefined
         };
       });
 

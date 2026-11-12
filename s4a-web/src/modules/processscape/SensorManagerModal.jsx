@@ -15,6 +15,7 @@ import {
   isSameDevice
 } from './engine/sensorManagerStorage';
 import { getAllScapes, createNewScape, getActiveScapeId, setActiveScapeId } from './engine/scapeStorage';
+import { setChannelAlarmConfig, ALARM_RULE_TYPES } from './engine/alarmEngine';
 
 export default function SensorManagerModal({
   isOpen,
@@ -22,6 +23,7 @@ export default function SensorManagerModal({
   onSyncToScape,
   activeDeviceInfo,
   onDeviceConnected,
+  readOnly = false,
   activeLocationId: initialLocationId = null
 }) {
   const [locations, setLocations] = useState(() => getLocations());
@@ -35,9 +37,11 @@ export default function SensorManagerModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [dragOverMpId, setDragOverMpId] = useState(null);
   const [dragOverLocId, setDragOverLocId] = useState(null);
+  const [dragOverTagInfo, setDragOverTagInfo] = useState(null); // { locId, mpId, chId, position: 'above' | 'below' }
   const [collapsedDevices, setCollapsedDevices] = useState(new Set());
   const [syncFeedback, setSyncFeedback] = useState(null);
   const [pendingDeleteDevice, setPendingDeleteDevice] = useState(null);
+  const [editingAlarm, setEditingAlarm] = useState(null);
 
   // Set of channel keys assigned anywhere across all locations (guarantees channel exclusivity per device & channel)
   const assignedChannelIdSet = useMemo(() => {
@@ -598,7 +602,7 @@ export default function SensorManagerModal({
   };
 
   const handleRequestRemoveDevice = (dev, e) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     if (e) e.stopPropagation();
     const assigned = getDeviceChannelAssignments(dev, locations);
     setPendingDeleteDevice({
@@ -608,7 +612,7 @@ export default function SensorManagerModal({
   };
 
   const handleConfirmDeleteDevice = async () => {
-    if (!pendingDeleteDevice) return;
+    if (!pendingDeleteDevice || readOnly) return;
     const { device, assignedChannels } = pendingDeleteDevice;
 
     // 1. Close hardware connection for this specific device
@@ -694,7 +698,7 @@ export default function SensorManagerModal({
   }, [locations, createUniqueDefaultScape]);
 
   const handleAddLocation = () => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     const targetScapeId = getTargetScapeId();
     if (targetScapeId) {
       setActiveScapeId(targetScapeId);
@@ -710,7 +714,7 @@ export default function SensorManagerModal({
   };
 
   const handleDeleteLocation = (locId) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     const remaining = locations.filter(l => l.id !== locId);
     handleUpdateLocations(remaining);
     if (remaining.length === 0) {
@@ -725,17 +729,17 @@ export default function SensorManagerModal({
   };
 
   const handleLocationNameChange = (locId, name) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => l.id === locId ? { ...l, name } : l));
   };
 
   const handleLocationScapeChange = (locId, scapeId) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => l.id === locId ? { ...l, scapeId } : l));
   };
 
   const handleAddMeasurementPoint = (locId) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => {
       if (l.id !== locId) return l;
       const count = (l.measurementPoints || []).length + 1;
@@ -752,7 +756,7 @@ export default function SensorManagerModal({
   };
 
   const handleDeleteMeasurementPoint = (locId, mpId) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => {
       if (l.id !== locId) return l;
       return {
@@ -763,7 +767,7 @@ export default function SensorManagerModal({
   };
 
   const handleMpNameChange = (locId, mpId, name) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => {
       if (l.id !== locId) return l;
       return {
@@ -789,7 +793,7 @@ export default function SensorManagerModal({
   };
 
   const handleStartDrag = (e, payload) => {
-    if (loadingDevices) {
+    if (loadingDevices || readOnly) {
       if (e?.preventDefault) e.preventDefault();
       return;
     }
@@ -814,7 +818,7 @@ export default function SensorManagerModal({
   };
 
   const handleQuickAssignChannel = (ch, sensorName, devInfo, sensInfo) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     const devName = typeof devInfo === 'object' ? devInfo?.name : devInfo;
     const devId = typeof devInfo === 'object' ? devInfo?.id : (ch.deviceId || null);
     const devSerial = typeof devInfo === 'object' ? devInfo?.serial : (ch.deviceSerial || null);
@@ -896,7 +900,7 @@ export default function SensorManagerModal({
   };
 
   const handleQuickAssignSensor = (sens, devInfo) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     const devName = typeof devInfo === 'object' ? devInfo?.name : devInfo;
     const devId = typeof devInfo === 'object' ? devInfo?.id : null;
     const devSerial = typeof devInfo === 'object' ? devInfo?.serial : null;
@@ -970,7 +974,7 @@ export default function SensorManagerModal({
   };
 
   const handleDropOnLocation = (locId, e) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     e.preventDefault();
     setDragOverLocId(null);
     try {
@@ -1155,21 +1159,24 @@ export default function SensorManagerModal({
     }
   };
 
-  const handleDropChannel = (locId, mpId, e) => {
-    if (loadingDevices) return;
+  const handleDropChannel = (locId, mpId, e, targetChannelId = null, targetPosition = 'below') => {
+    if (loadingDevices || readOnly) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOverMpId(null);
+    setDragOverTagInfo(null);
     try {
       const payload = getDragPayload(e);
       if (!payload) return;
 
       if (payload.type === 'move_channel') {
-        if (payload.fromLocId === locId && payload.fromMpId === mpId) return;
+        const isSameMp = payload.fromLocId === locId && payload.fromMpId === mpId;
 
         handleUpdateLocations(locations.map(l => {
           let mps = [...(l.measurementPoints || [])];
-          if (l.id === payload.fromLocId) {
+
+          // 1. If moving across locations, remove from source location
+          if (l.id === payload.fromLocId && !isSameMp) {
             mps = mps.map(m => {
               if (m.id !== payload.fromMpId) return m;
               return {
@@ -1178,28 +1185,46 @@ export default function SensorManagerModal({
               };
             });
           }
+
+          // 2. Target location operations
           if (l.id === locId) {
             mps = mps.map(m => {
               if (m.id !== mpId) return m;
-              const exists = (m.channels || []).some(c => c.id === payload.id);
-              if (exists) return m;
+
+              const existingCh = (m.channels || []).find(c => c.id === payload.id);
+              const remainingChs = (m.channels || []).filter(c => c.id !== payload.id);
+              const movingCh = existingCh || {
+                id: payload.id,
+                channel_id: payload.channel_id,
+                name: payload.name,
+                displayName: payload.displayName,
+                unit: payload.unit,
+                device: payload.device,
+                alarmConfig: payload.alarmConfig
+              };
+
+              // Reorder or insert into specific position if targetChannelId is provided
+              if (targetChannelId) {
+                const targetIdx = remainingChs.findIndex(c => c.id === targetChannelId);
+                if (targetIdx !== -1) {
+                  const insertIdx = targetPosition === 'above' ? targetIdx : targetIdx + 1;
+                  const newChList = [...remainingChs];
+                  newChList.splice(insertIdx, 0, movingCh);
+                  return { ...m, channels: newChList };
+                }
+              }
+
+              // Default append to end
               return {
                 ...m,
-                channels: [...(m.channels || []), {
-                  id: payload.id,
-                  channel_id: payload.channel_id,
-                  name: payload.name,
-                  displayName: payload.displayName,
-                  unit: payload.unit,
-                  device: payload.device
-                }]
+                channels: [...remainingChs, movingCh]
               };
             });
           }
           return { ...l, measurementPoints: mps };
         }));
 
-        setSyncFeedback(`✓ Moved "${payload.name}" to measurement point`);
+        setSyncFeedback(isSameMp ? `✓ Reordered "${payload.name}"` : `✓ Moved "${payload.name}" to measurement point`);
         setTimeout(() => setSyncFeedback(null), 2500);
         return;
       }
@@ -1330,7 +1355,7 @@ export default function SensorManagerModal({
   };
 
   const handleRemoveChannelFromMp = (locId, mpId, chId) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => {
       if (l.id !== locId) return l;
       return {
@@ -1347,7 +1372,7 @@ export default function SensorManagerModal({
   };
 
   const handleChannelDisplayNameChange = (locId, mpId, chId, displayName) => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     handleUpdateLocations(locations.map(l => {
       if (l.id !== locId) return l;
       return {
@@ -1369,8 +1394,100 @@ export default function SensorManagerModal({
     }));
   };
 
+  const handleOpenAlarmConfig = (locId, mpId, ch) => {
+    const existing = ch.alarmConfig || {};
+    setEditingAlarm({
+      locationId: locId,
+      mpId,
+      channel: ch,
+      enabled: existing.enabled ?? true,
+      type: existing.type || 'high',
+      threshold: existing.threshold !== undefined ? existing.threshold : (ch.unit === '°C' ? 50 : (ch.unit === 'bar' ? 8.0 : 10.0)),
+      min: existing.min !== undefined ? existing.min : 1.0,
+      max: existing.max !== undefined ? existing.max : 10.0,
+      hysteresis: existing.hysteresis !== undefined ? existing.hysteresis : 0.2,
+      delaySeconds: existing.delaySeconds !== undefined ? existing.delaySeconds : 0,
+      severity: existing.severity || 'critical',
+      message: existing.message || ''
+    });
+  };
+
+  const handleSaveAlarmConfig = () => {
+    if (!editingAlarm) return;
+    const { locationId, mpId, channel, enabled, type, threshold, min, max, hysteresis, delaySeconds, severity, message } = editingAlarm;
+    const alarmConfig = {
+      enabled,
+      type,
+      threshold: Number(threshold) || 0,
+      min: Number(min) || 0,
+      max: Number(max) || 0,
+      hysteresis: Number(hysteresis) || 0,
+      delaySeconds: Number(delaySeconds) || 0,
+      severity,
+      message: message || ''
+    };
+
+    setChannelAlarmConfig(locationId, mpId, channel.id, alarmConfig);
+    const updatedLocs = locations.map(loc => {
+      if (loc.id !== locationId) return loc;
+      return {
+        ...loc,
+        measurementPoints: (loc.measurementPoints || []).map(mp => {
+          if (mp.id !== mpId) return mp;
+          return {
+            ...mp,
+            channels: (mp.channels || []).map(c => {
+              if (c.id === channel.id || c.channel_id === channel.id) {
+                return { ...c, alarmConfig };
+              }
+              return c;
+            })
+          };
+        })
+      };
+    });
+    handleUpdateLocations(updatedLocs);
+    setEditingAlarm(null);
+    if (onSyncToScape) {
+      onSyncToScape();
+    }
+  };
+
+  const handleDisableAlarmConfig = () => {
+    if (!editingAlarm) return;
+    const { locationId, mpId, channel } = editingAlarm;
+    const alarmConfig = {
+      ...(channel.alarmConfig || {}),
+      enabled: false
+    };
+    setChannelAlarmConfig(locationId, mpId, channel.id, alarmConfig);
+    const updatedLocs = locations.map(loc => {
+      if (loc.id !== locationId) return loc;
+      return {
+        ...loc,
+        measurementPoints: (loc.measurementPoints || []).map(mp => {
+          if (mp.id !== mpId) return mp;
+          return {
+            ...mp,
+            channels: (mp.channels || []).map(c => {
+              if (c.id === channel.id || c.channel_id === channel.id) {
+                return { ...c, alarmConfig };
+              }
+              return c;
+            })
+          };
+        })
+      };
+    });
+    handleUpdateLocations(updatedLocs);
+    setEditingAlarm(null);
+    if (onSyncToScape) {
+      onSyncToScape();
+    }
+  };
+
   const handleConfirmAndSyncAll = () => {
-    if (loadingDevices) return;
+    if (loadingDevices || readOnly) return;
     saveLocations(locations);
     if (locations.length === 0) {
       setActiveScapeId('');
@@ -1438,19 +1555,21 @@ export default function SensorManagerModal({
             </div>
 
             <div className="ps-sm-header-actions">
-              <button
-                type="button"
-                className="ps-sm-btn primary ps-sm-detect-btn ps-sm-connect-btn"
-                onClick={() => { setConnectInitialTab(null); setConnectInitialMode('manual'); setShowConnectModal(true); }}
-                disabled={loadingDevices}
-                title="Detect sensors across USB, Ethernet TCP, and Bluetooth BLE"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                {loadingDevices ? 'Detecting...' : 'Detect'}
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="ps-sm-btn primary ps-sm-detect-btn ps-sm-connect-btn"
+                  onClick={() => { setConnectInitialTab(null); setConnectInitialMode('manual'); setShowConnectModal(true); }}
+                  disabled={loadingDevices}
+                  title="Detect sensors across USB, Ethernet TCP, and Bluetooth BLE"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  {loadingDevices ? 'Detecting...' : 'Detect'}
+                </button>
+              )}
 
               <button
                 type="button"
@@ -1463,6 +1582,15 @@ export default function SensorManagerModal({
               </button>
             </div>
           </div>
+
+          {readOnly && (
+            <div className="ps-sm-recording-banner">
+              <span className="ps-sm-recording-banner-badge">● Recording</span>
+              <span>
+                Live Recording in progress: Sensor topology, devices, and measurement points are read-only. Channel alarms (🔔) remain fully configurable.
+              </span>
+            </div>
+          )}
 
           {/* Modal Body: Two Columns */}
           <div className="ps-sensor-mgr-body">
@@ -1551,24 +1679,28 @@ export default function SensorManagerModal({
                               </span>
                               <div className="ps-sm-device-badges">
                                 <span className={`ps-sm-device-pill ${dev.transportType || ''}`}>{cleanTransport || dev.transport}</span>
-                            <button
-                              type="button"
-                              className="ps-sm-device-reconnect-btn"
-                              onClick={(e) => handleReconnectDevice(dev, e)}
-                              title={`Reconnect to ${dev.name}`}
-                              disabled={loadingDevices}
-                            >
-                              ↻
-                            </button>
-                            <button
-                              type="button"
-                              className="ps-sm-device-del-btn"
-                              onClick={(e) => handleRequestRemoveDevice(dev, e)}
-                              title="Remove device"
-                              disabled={loadingDevices}
-                            >
-                              ✕
-                            </button>
+                            {!readOnly && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="ps-sm-device-reconnect-btn"
+                                  onClick={(e) => handleReconnectDevice(dev, e)}
+                                  title={`Reconnect to ${dev.name}`}
+                                  disabled={loadingDevices}
+                                >
+                                  ↻
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ps-sm-device-del-btn"
+                                  onClick={(e) => handleRequestRemoveDevice(dev, e)}
+                                  title="Remove device"
+                                  disabled={loadingDevices}
+                                >
+                                  ✕
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
 
@@ -1583,9 +1715,9 @@ export default function SensorManagerModal({
                                 <div key={sens.id || `${dev.id}_s_${sIdx}`} className="ps-sm-sensor-group">
                                   <div
                                     className={`ps-sm-sensor-name ${allAssigned ? 'is-all-assigned' : ''}`}
-                                    draggable={!loadingDevices && !allAssigned}
+                                    draggable={!loadingDevices && !readOnly && !allAssigned}
                                     onDragStart={(e) => {
-                                      if (loadingDevices || allAssigned) {
+                                      if (loadingDevices || readOnly || allAssigned) {
                                         e.preventDefault();
                                         return;
                                       }
@@ -1601,10 +1733,10 @@ export default function SensorManagerModal({
                                       });
                                     }}
                                     onDragEnd={handleEndDrag}
-                                    title={allAssigned ? 'All channels of this sensor are already assigned' : 'Drag unassigned channels to a Location on the right, or click "+ Assign All"'}
+                                    title={allAssigned ? 'All channels of this sensor are already assigned' : (readOnly ? 'Topology is read-only during recording' : 'Drag unassigned channels to a Location on the right, or click "+ Assign All"')}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <span className="ps-sm-ch-drag-handle">{allAssigned ? '🔒' : '⋮⋮'}</span>
+                                      <span className="ps-sm-ch-drag-handle">{allAssigned && !readOnly ? '🔒' : '⋮⋮'}</span>
                                       <span>🏷️</span>
                                       <span style={{ fontWeight: 700, color: allAssigned ? '#64748b' : '#0f172a' }}>{sens.name}</span>
                                     </div>
@@ -1613,18 +1745,20 @@ export default function SensorManagerModal({
                                         <span className="ps-sm-channel-assigned-badge">✓ All Assigned</span>
                                       ) : (
                                         <>
-                                          <button
-                                            type="button"
-                                            className="ps-sm-quick-assign-btn sensor-btn"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleQuickAssignSensor(sens, dev);
-                                            }}
-                                            disabled={loadingDevices}
-                                            title="Quick-assign all unassigned channels to a measurement point"
-                                          >
-                                            + Assign All
-                                          </button>
+                                          {!readOnly && (
+                                            <button
+                                              type="button"
+                                              className="ps-sm-quick-assign-btn sensor-btn"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleQuickAssignSensor(sens, dev);
+                                              }}
+                                              disabled={loadingDevices}
+                                              title="Quick-assign all unassigned channels to a measurement point"
+                                            >
+                                              + Assign All
+                                            </button>
+                                          )}
                                           <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600 }}>
                                             {unassignedChannels.length} chs
                                           </span>
@@ -1641,9 +1775,9 @@ export default function SensorManagerModal({
                                         <div
                                           key={ch.id || `${sens.id || sIdx}_ch_${chIdx}`}
                                           className={`ps-sm-channel-item ${assigned ? 'is-assigned' : ''}`}
-                                          draggable={!loadingDevices && !assigned}
+                                          draggable={!loadingDevices && !readOnly && !assigned}
                                           onDragStart={(e) => {
-                                            if (loadingDevices || assigned) {
+                                            if (loadingDevices || readOnly || assigned) {
                                               e.preventDefault();
                                               return;
                                             }
@@ -1665,10 +1799,10 @@ export default function SensorManagerModal({
                                             });
                                           }}
                                           onDragEnd={handleEndDrag}
-                                          title={assigned ? 'Assigned to a Measurement Point (cannot be reused)' : 'Drag and drop onto a Measurement Point on the right, or click "+ Assign"'}
+                                          title={assigned ? 'Assigned to a Measurement Point (cannot be reused)' : (readOnly ? 'Topology is read-only during recording' : 'Drag and drop onto a Measurement Point on the right, or click "+ Assign"')}
                                         >
                                           <div className="ps-sm-ch-info">
-                                            <span className="ps-sm-ch-drag-handle">{assigned ? '🔒' : '⋮⋮'}</span>
+                                            <span className="ps-sm-ch-drag-handle">{assigned && !readOnly ? '🔒' : '⋮⋮'}</span>
                                             <span className="ps-sm-ch-name">{ch.name}</span>
                                             {ch.unit && <span className="ps-sm-ch-unit">{ch.unit}</span>}
                                             {ch.mBValueAddr !== undefined && (
@@ -1678,7 +1812,7 @@ export default function SensorManagerModal({
                                             )}
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            {!assigned && (
+                                            {!assigned && !readOnly && (
                                               <button
                                                 type="button"
                                                 className="ps-sm-quick-assign-btn"
@@ -1723,15 +1857,17 @@ export default function SensorManagerModal({
                   Locations
                 </span>
 
-                <button
-                  type="button"
-                  className="ps-sm-btn primary"
-                  onClick={handleAddLocation}
-                  disabled={loadingDevices}
-                  title="Create a new logical plant location"
-                >
-                  + Add Location
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className="ps-sm-btn primary"
+                    onClick={handleAddLocation}
+                    disabled={loadingDevices}
+                    title="Create a new logical plant location"
+                  >
+                    + Add Location
+                  </button>
+                )}
               </div>
 
               <div className="ps-sm-locations-container">
@@ -1766,7 +1902,7 @@ export default function SensorManagerModal({
                           }
                         }}
                         onDrop={(e) => {
-                          if (loadingDevices) return;
+                          if (loadingDevices || readOnly) return;
                           if (!e.target.closest('.ps-sm-dropzone')) {
                             handleDropOnLocation(loc.id, e);
                           }
@@ -1782,10 +1918,11 @@ export default function SensorManagerModal({
                               value={loc.name}
                               onChange={(e) => handleLocationNameChange(loc.id, e.target.value)}
                               placeholder="Location Name..."
-                              disabled={loadingDevices}
+                              disabled={loadingDevices || readOnly}
+                              title={readOnly ? "Location name is read-only during recording" : "Click to edit location name"}
                             />
                             {isActiveTarget && (
-                              <span className="ps-sm-loc-active-pill" title="New sensors and quick assignments will be added to this active location">
+                              <span className="ps-sm-loc-active-pill" title="Active location">
                                 ● Active
                               </span>
                             )}
@@ -1797,7 +1934,8 @@ export default function SensorManagerModal({
                               className="ps-sm-scape-select"
                               value={loc.scapeId || ''}
                               onChange={(e) => handleLocationScapeChange(loc.id, e.target.value)}
-                              disabled={loadingDevices}
+                              disabled={loadingDevices || readOnly}
+                              title={readOnly ? "ProcessScape mapping is read-only during recording" : "Change ProcessScape mapping"}
                             >
                               <option value="">-- No ProcessScape (Empty) --</option>
                               {scapes.map(s => (
@@ -1807,15 +1945,17 @@ export default function SensorManagerModal({
                               ))}
                             </select>
 
-                            <button
-                              type="button"
-                              className="ps-sm-close-btn"
-                              onClick={() => handleDeleteLocation(loc.id)}
-                              disabled={loadingDevices}
-                              title="Delete Location"
-                            >
-                              🗑
-                            </button>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                className="ps-sm-close-btn"
+                                onClick={() => handleDeleteLocation(loc.id)}
+                                disabled={loadingDevices}
+                                title="Delete Location"
+                              >
+                                🗑
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1857,32 +1997,35 @@ export default function SensorManagerModal({
                                       value={mp.name}
                                       onChange={(e) => handleMpNameChange(loc.id, mp.id, e.target.value)}
                                       placeholder="Measurement Point Name..."
-                                      disabled={loadingDevices}
+                                      disabled={loadingDevices || readOnly}
+                                      title={readOnly ? "Measurement point name is read-only during recording" : "Click to edit measurement point name"}
                                     />
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    className="ps-sm-close-btn ps-sm-mp-del-btn"
-                                    onClick={() => handleDeleteMeasurementPoint(loc.id, mp.id)}
-                                    disabled={loadingDevices}
-                                    title="Delete Measurement Point"
-                                  >
-                                    ✕
-                                  </button>
+                                  {!readOnly && (
+                                    <button
+                                      type="button"
+                                      className="ps-sm-close-btn ps-sm-mp-del-btn"
+                                      onClick={() => handleDeleteMeasurementPoint(loc.id, mp.id)}
+                                      disabled={loadingDevices}
+                                      title="Delete Measurement Point"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
                                 </div>
 
                                 {/* HTML5 Dropzone for Channels (Sensor Card Body Panel) */}
                                 <div
                                   onDragOver={(e) => {
-                                    if (loadingDevices) return;
+                                    if (loadingDevices || readOnly) return;
                                     e.preventDefault();
                                     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
                                     setDragOverMpId(mp.id);
                                   }}
                                   onDragLeave={() => setDragOverMpId(null)}
                                   onDrop={(e) => {
-                                    if (loadingDevices) return;
+                                    if (loadingDevices || readOnly) return;
                                     handleDropChannel(loc.id, mp.id, e);
                                   }}
                                   className={`ps-sm-dropzone ${dragOverMpId === mp.id ? 'drag-over' : ''}`}
@@ -1893,81 +2036,135 @@ export default function SensorManagerModal({
                                       <span>Drag channels from left tree or other points here</span>
                                     </div>
                                   ) : (
-                                    (mp.channels || []).map((ch, idx) => (
-                                      <div
-                                        key={ch.id || ch.channelId || `ch_${idx}`}
-                                        className="ps-sm-assigned-tag draggable-tag"
-                                        draggable={!loadingDevices}
-                                        onDragStart={(e) => {
-                                          if (loadingDevices) {
+                                    (mp.channels || []).map((ch, idx) => {
+                                      const isTagDragOverAbove = dragOverTagInfo?.locId === loc.id &&
+                                        dragOverTagInfo?.mpId === mp.id &&
+                                        dragOverTagInfo?.chId === ch.id &&
+                                        dragOverTagInfo?.position === 'above';
+                                      const isTagDragOverBelow = dragOverTagInfo?.locId === loc.id &&
+                                        dragOverTagInfo?.mpId === mp.id &&
+                                        dragOverTagInfo?.chId === ch.id &&
+                                        dragOverTagInfo?.position === 'below';
+
+                                      return (
+                                        <div
+                                          key={ch.id || ch.channelId || `ch_${idx}`}
+                                          className={`ps-sm-assigned-tag draggable-tag ${isTagDragOverAbove ? 'drag-over-tag-above' : ''} ${isTagDragOverBelow ? 'drag-over-tag-below' : ''}`}
+                                          draggable={!loadingDevices && !readOnly}
+                                          onDragStart={(e) => {
+                                            if (loadingDevices || readOnly) {
+                                              e.preventDefault();
+                                              return;
+                                            }
+                                            e.stopPropagation();
+                                            handleStartDrag(e, {
+                                              type: 'move_channel',
+                                              id: ch.id,
+                                              channel_id: ch.channel_id,
+                                              name: ch.name,
+                                              displayName: ch.displayName,
+                                              unit: ch.unit,
+                                              device: ch.device,
+                                              sensorName: mp.name,
+                                              fromLocId: loc.id,
+                                              fromMpId: mp.id,
+                                              alarmConfig: ch.alarmConfig
+                                            });
+                                          }}
+                                          onDragOver={(e) => {
+                                            if (loadingDevices || readOnly) return;
                                             e.preventDefault();
-                                            return;
-                                          }
-                                          e.stopPropagation();
-                                          handleStartDrag(e, {
-                                            type: 'move_channel',
-                                            id: ch.id,
-                                            channel_id: ch.channel_id,
-                                            name: ch.name,
-                                            displayName: ch.displayName,
-                                            unit: ch.unit,
-                                            device: ch.device,
-                                            sensorName: mp.name,
-                                            fromLocId: loc.id,
-                                            fromMpId: mp.id
-                                          });
-                                        }}
-                                        onDragEnd={handleEndDrag}
-                                        title="Drag to move this channel to another Measurement Point"
-                                      >
-                                        <div className="ps-sm-tag-left">
-                                          <span className="ps-sm-tag-drag-handle">⋮⋮</span>
-                                          <span className="ps-sm-tag-dot" />
-                                          <input
-                                            type="text"
-                                            className="ps-sm-tag-name-input"
-                                            value={ch.displayName !== undefined ? ch.displayName : ch.name}
-                                            placeholder={ch.name}
-                                            onChange={(e) => handleChannelDisplayNameChange(loc.id, mp.id, ch.id, e.target.value)}
-                                            onClick={(e) => e.stopPropagation()}
-                                            onKeyDown={(e) => e.stopPropagation()}
-                                            draggable={false}
-                                            disabled={loadingDevices}
-                                            title="Click to rename display name"
-                                          />
-                                          <span className="ps-sm-tag-name" style={{ display: 'none' }}>
-                                            {ch.displayName || ch.name}
-                                          </span>
+                                            e.stopPropagation();
+                                            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const midY = rect.top + rect.height / 2;
+                                            const pos = e.clientY < midY ? 'above' : 'below';
+                                            setDragOverTagInfo({ locId: loc.id, mpId: mp.id, chId: ch.id, position: pos });
+                                          }}
+                                          onDragLeave={(e) => {
+                                            if (e.currentTarget === e.target) {
+                                              setDragOverTagInfo(null);
+                                            }
+                                          }}
+                                          onDrop={(e) => {
+                                            if (loadingDevices || readOnly) return;
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const midY = rect.top + rect.height / 2;
+                                            const pos = e.clientY < midY ? 'above' : 'below';
+                                            handleDropChannel(loc.id, mp.id, e, ch.id, pos);
+                                          }}
+                                          onDragEnd={() => {
+                                            setDragOverTagInfo(null);
+                                            handleEndDrag();
+                                          }}
+                                          title={readOnly ? "Channel topology is read-only during recording" : "Drag to move or reorder this channel"}
+                                        >
+                                          <div className="ps-sm-tag-left">
+                                            <span className="ps-sm-tag-drag-handle" title="Drag to reorder or move channel">
+                                              <svg width="8" height="13" viewBox="0 0 8 14" fill="currentColor">
+                                                <circle cx="4" cy="3" r="1.5" />
+                                                <circle cx="4" cy="9.5" r="1.5" />
+                                              </svg>
+                                            </span>
+                                            <input
+                                              type="text"
+                                              className="ps-sm-tag-name-input"
+                                              value={ch.displayName !== undefined ? ch.displayName : ch.name}
+                                              placeholder={ch.name}
+                                              onChange={(e) => handleChannelDisplayNameChange(loc.id, mp.id, ch.id, e.target.value)}
+                                              onClick={(e) => e.stopPropagation()}
+                                              onKeyDown={(e) => e.stopPropagation()}
+                                              draggable={false}
+                                              disabled={loadingDevices || readOnly}
+                                              title={readOnly ? "Display name is read-only during recording" : "Click to rename display name"}
+                                            />
+                                            <span className="ps-sm-tag-name" style={{ display: 'none' }}>
+                                              {ch.displayName || ch.name}
+                                            </span>
+                                          </div>
+                                          <div className="ps-sm-tag-right">
+                                            <span className="ps-sm-tag-val">--.-</span>
+                                            {ch.unit && <span className="ps-sm-ch-unit">{ch.unit}</span>}
+                                            <button
+                                              type="button"
+                                              className={`ps-sm-tag-alarm-btn ${ch.alarmConfig?.enabled ? 'is-active' : ''}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenAlarmConfig(loc.id, mp.id, ch);
+                                              }}
+                                              disabled={loadingDevices}
+                                              title={
+                                                ch.alarmConfig?.enabled
+                                                  ? `Alarm Active (${ch.alarmConfig.type}: ${ch.alarmConfig.type === 'out_of_range' ? `${ch.alarmConfig.min} ~ ${ch.alarmConfig.max}` : ch.alarmConfig.threshold} ${ch.unit || ''})`
+                                                  : 'Set Alarm (Threshold, Hysteresis, Rules)'
+                                              }
+                                              aria-label="Set Alarm"
+                                            >
+                                              🔔
+                                            </button>
+                                          </div>
                                         </div>
-                                        <div className="ps-sm-tag-right">
-                                          <span className="ps-sm-tag-val">--.-</span>
-                                          {ch.unit && <span className="ps-sm-ch-unit">{ch.unit}</span>}
-                                          <button
-                                            type="button"
-                                            className="ps-sm-tag-del"
-                                            onClick={() => handleRemoveChannelFromMp(loc.id, mp.id, ch.id)}
-                                            disabled={loadingDevices}
-                                            title="Remove channel"
-                                          >
-                                            ✕
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))
+                                      );
+                                    })
                                   )}
                                 </div>
                               </div>
                             ))
                           )}
 
-                          <button
-                            type="button"
-                            className="ps-sm-btn ps-sm-add-mp-btn"
-                            onClick={() => handleAddMeasurementPoint(loc.id)}
-                            disabled={loadingDevices}
-                          >
-                            + Add Measurement Point
-                          </button>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="ps-sm-btn ps-sm-add-mp-btn"
+                              onClick={() => handleAddMeasurementPoint(loc.id)}
+                              disabled={loadingDevices}
+                              title="+ Add Measurement Point"
+                            >
+                              + Add Measurement Point
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1994,23 +2191,36 @@ export default function SensorManagerModal({
             </div>
 
             <div className="ps-sm-footer-actions">
-              <button
-                type="button"
-                className="ps-sm-btn ps-sm-footer-cancel-btn"
-                onClick={onClose}
-                disabled={loadingDevices}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="ps-sm-btn primary ps-sm-footer-confirm-btn"
-                onClick={handleConfirmAndSyncAll}
-                disabled={loadingDevices}
-                title="Save all changes and synchronize all measurement points to matched ProcessScapes"
-              >
-                ✓ Confirm & Sync All
-              </button>
+              {readOnly ? (
+                <button
+                  type="button"
+                  className="ps-sm-btn primary ps-sm-footer-confirm-btn"
+                  onClick={onClose}
+                  disabled={loadingDevices}
+                >
+                  Close
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="ps-sm-btn ps-sm-footer-cancel-btn"
+                    onClick={onClose}
+                    disabled={loadingDevices}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="ps-sm-btn primary ps-sm-footer-confirm-btn"
+                    onClick={handleConfirmAndSyncAll}
+                    disabled={loadingDevices}
+                    title="Save all changes and synchronize all measurement points to matched ProcessScapes"
+                  >
+                    ✓ Confirm & Sync All
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -2121,6 +2331,200 @@ export default function SensorManagerModal({
                 {pendingDeleteDevice.assignedChannels?.length > 0
                   ? 'Unassign & Delete Device'
                   : 'Delete Device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Channel Alarm Configuration Dialog */}
+      {editingAlarm && (
+        <div
+          className="ps-sm-confirm-backdrop"
+          onClick={() => setEditingAlarm(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="ps-sm-confirm-dialog ps-sm-alarm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="ps-sm-confirm-header">
+              <div className="ps-sm-alarm-header-icon">
+                🔔
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 className="ps-sm-confirm-title">Configure Channel Alarm</h3>
+                <div className="ps-sm-confirm-device-meta">
+                  <span style={{ fontWeight: 700, color: '#0f172a' }}>{editingAlarm.channel?.displayName || editingAlarm.channel?.name}</span>
+                  {editingAlarm.channel?.unit && (
+                    <span className="ps-sm-ch-unit">({editingAlarm.channel.unit})</span>
+                  )}
+                  {editingAlarm.channel?.device && (
+                    <span style={{ color: '#64748b', fontSize: 11.5 }}>· {editingAlarm.channel.device}</span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`ps-sm-alarm-toggle-btn ${editingAlarm.enabled ? 'is-enabled' : 'is-disabled'}`}
+                onClick={() => setEditingAlarm({ ...editingAlarm, enabled: !editingAlarm.enabled })}
+                title="Toggle alarm monitoring for this channel"
+              >
+                {editingAlarm.enabled ? 'Alarm: ON' : 'Alarm: OFF'}
+              </button>
+            </div>
+
+            <div className="ps-sm-confirm-body ps-sm-alarm-body">
+              {/* Rule Type Selector */}
+              <div className="ps-sm-alarm-field">
+                <label className="ps-sm-alarm-label">Alarm Condition / Rule</label>
+                <select
+                  className="ps-sm-alarm-select"
+                  value={editingAlarm.type}
+                  onChange={(e) => {
+                    const nextType = e.target.value;
+                    const ruleDef = ALARM_RULE_TYPES.find(r => r.type === nextType);
+                    setEditingAlarm({
+                      ...editingAlarm,
+                      type: nextType,
+                      threshold: ruleDef?.defaultThreshold !== undefined ? ruleDef.defaultThreshold : editingAlarm.threshold,
+                      min: ruleDef?.defaultMin !== undefined ? ruleDef.defaultMin : editingAlarm.min,
+                      max: ruleDef?.defaultMax !== undefined ? ruleDef.defaultMax : editingAlarm.max
+                    });
+                  }}
+                >
+                  {ALARM_RULE_TYPES.map(rule => (
+                    <option key={rule.type} value={rule.type}>
+                      {rule.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Threshold inputs based on type */}
+              {editingAlarm.type === 'out_of_range' ? (
+                <div className="ps-sm-alarm-row-2">
+                  <div className="ps-sm-alarm-field">
+                    <label className="ps-sm-alarm-label">Min Threshold ({editingAlarm.channel?.unit || 'val'})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="ps-sm-alarm-input"
+                      value={editingAlarm.min}
+                      onChange={(e) => setEditingAlarm({ ...editingAlarm, min: e.target.value })}
+                      placeholder="e.g. 1.0"
+                    />
+                  </div>
+                  <div className="ps-sm-alarm-field">
+                    <label className="ps-sm-alarm-label">Max Threshold ({editingAlarm.channel?.unit || 'val'})</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="ps-sm-alarm-input"
+                      value={editingAlarm.max}
+                      onChange={(e) => setEditingAlarm({ ...editingAlarm, max: e.target.value })}
+                      placeholder="e.g. 10.0"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="ps-sm-alarm-field">
+                  <label className="ps-sm-alarm-label">
+                    {editingAlarm.type === 'rate_of_change' ? 'Max Rate of Change (|Δ| / min)' :
+                     editingAlarm.type === 'flatline' ? 'Frozen Duration Threshold (seconds)' :
+                     editingAlarm.type === 'offline' ? 'Offline Timeout Threshold (seconds)' :
+                     `Threshold Value (${editingAlarm.channel?.unit || 'val'})`}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    className="ps-sm-alarm-input"
+                    value={editingAlarm.threshold}
+                    onChange={(e) => setEditingAlarm({ ...editingAlarm, threshold: e.target.value })}
+                    placeholder="e.g. 8.5"
+                  />
+                </div>
+              )}
+
+              {/* Hysteresis & Delay */}
+              <div className="ps-sm-alarm-row-2">
+                <div className="ps-sm-alarm-field">
+                  <label className="ps-sm-alarm-label">
+                    Hysteresis (Deadband {editingAlarm.channel?.unit ? `in ${editingAlarm.channel.unit}` : ''})
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    className="ps-sm-alarm-input"
+                    value={editingAlarm.hysteresis}
+                    onChange={(e) => setEditingAlarm({ ...editingAlarm, hysteresis: e.target.value })}
+                    placeholder="e.g. 0.2"
+                  />
+                  <span className="ps-sm-alarm-hint">Prevents alarm flickering around the threshold</span>
+                </div>
+                <div className="ps-sm-alarm-field">
+                  <label className="ps-sm-alarm-label">Delay / Persist (seconds)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="ps-sm-alarm-input"
+                    value={editingAlarm.delaySeconds}
+                    onChange={(e) => setEditingAlarm({ ...editingAlarm, delaySeconds: e.target.value })}
+                    placeholder="0 = instant"
+                  />
+                  <span className="ps-sm-alarm-hint">Must persist for N seconds before triggering</span>
+                </div>
+              </div>
+
+              {/* Severity & Note */}
+              <div className="ps-sm-alarm-row-2">
+                <div className="ps-sm-alarm-field">
+                  <label className="ps-sm-alarm-label">Severity Level</label>
+                  <select
+                    className="ps-sm-alarm-select"
+                    value={editingAlarm.severity}
+                    onChange={(e) => setEditingAlarm({ ...editingAlarm, severity: e.target.value })}
+                  >
+                    <option value="critical">Critical (Red, High Priority)</option>
+                    <option value="warning">Warning (Amber, Medium Priority)</option>
+                  </select>
+                </div>
+                <div className="ps-sm-alarm-field">
+                  <label className="ps-sm-alarm-label">Custom Alert Note (Optional)</label>
+                  <input
+                    type="text"
+                    className="ps-sm-alarm-input"
+                    value={editingAlarm.message}
+                    onChange={(e) => setEditingAlarm({ ...editingAlarm, message: e.target.value })}
+                    placeholder="e.g. Compressor line overpressure"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="ps-sm-confirm-actions">
+              {editingAlarm.channel?.alarmConfig?.enabled && (
+                <button
+                  type="button"
+                  className="ps-sm-btn danger"
+                  style={{ marginRight: 'auto' }}
+                  onClick={handleDisableAlarmConfig}
+                >
+                  Disable Alarm
+                </button>
+              )}
+              <button
+                type="button"
+                className="ps-sm-btn secondary"
+                onClick={() => setEditingAlarm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ps-sm-btn primary"
+                onClick={handleSaveAlarmConfig}
+              >
+                Save Alarm Settings
               </button>
             </div>
           </div>

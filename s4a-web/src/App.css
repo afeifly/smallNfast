@@ -849,6 +849,50 @@ button.header-mode-indicator.processscape.active::after {
   transform: scale(1.05);
 }
 
+/* Header Alarm Bell Button */
+.header-alarm-btn {
+  position: relative;
+}
+
+/* Only swings when there are unacknowledged alarms */
+.header-alarm-btn.has-unacked-alarms {
+  color: #dc2626 !important;
+  animation: alarmBellSwing 2s infinite ease-in-out;
+}
+
+/* When all active alarms are acknowledged: stable / steady (no swinging animation) */
+.header-alarm-btn.has-acked-alarms {
+  color: #b91c1c !important;
+  animation: none !important;
+  transform: none !important;
+}
+
+@keyframes alarmBellSwing {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(14deg); }
+  20%, 40% { transform: rotate(-14deg); }
+  50% { transform: rotate(0deg); }
+}
+
+.header-alarm-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  line-height: 1;
+}
+
 /* Status Bar Styling */
 .app-status-bar {
   display: flex;

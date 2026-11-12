@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { subscribeLive, setViewDemand, setActiveLocationChannels } from '../../../util/liveDataSource';
 import { formatChannelValue, resolveChannelResolution } from '../../../util/resolution';
 import { autoReconnectSavedDevices, getSavedDevices, getLocations } from './sensorManagerStorage';
+import { isChannelInAlarm, getChannelActiveAlarm } from './alarmEngine';
 import TauriSutoAPI from '../../../api/TauriSutoAPI';
 
 function formatVal(val, resolution = 2) {
-  if (val === -8888 || val === -9999 || val === null || val === undefined || isNaN(val)) {
+  if (val === -8888 || val === -9999 || val === -8886 || val === null || val === undefined || isNaN(val)) {
     return '--.-';
   }
   return formatChannelValue(val, resolution);
@@ -112,7 +113,7 @@ export function useProcessScapeTelemetry({
           });
         });
       });
-    } catch (_) {}
+    } catch (_) { }
 
     // Update sensor cards matching bound channels or metric names
     setElements(prevElems => {
@@ -185,10 +186,10 @@ export function useProcessScapeTelemetry({
           for (const ik of targetInstanceKeys) {
             const k = String(ik).toLowerCase();
             liveItem = byDevId.get(`${k}_${chKey}`) ||
-                       byDevId.get(`${k}_${ch.channel_id}`) ||
-                       byName.get(`${k}_${chRawNameKey}`) ||
-                       byName.get(`${k}_${chNameKey}`) ||
-                       byName.get(`${k}_${chDisplayKey}`);
+              byDevId.get(`${k}_${ch.channel_id}`) ||
+              byName.get(`${k}_${chRawNameKey}`) ||
+              byName.get(`${k}_${chNameKey}`) ||
+              byName.get(`${k}_${chDisplayKey}`);
             if (liveItem) break;
           }
 
@@ -197,9 +198,9 @@ export function useProcessScapeTelemetry({
             for (const mn of targetModelNames) {
               const k = String(mn).toLowerCase();
               liveItem = byDevId.get(`${k}_${chKey}`) ||
-                         byDevId.get(`${k}_${ch.channel_id}`) ||
-                         byName.get(`${k}_${chRawNameKey}`) ||
-                         byName.get(`${k}_${chNameKey}`);
+                byDevId.get(`${k}_${ch.channel_id}`) ||
+                byName.get(`${k}_${chRawNameKey}`) ||
+                byName.get(`${k}_${chNameKey}`);
               if (liveItem) break;
             }
           }
@@ -243,13 +244,13 @@ export function useProcessScapeTelemetry({
 
               const isGenericId = (id) => !id || id.startsWith('dev_single_') || id.startsWith('dev_ble_') || id.startsWith('dev_usb_');
               const hasConflict = (candPort && chPort && candPort !== chPort) ||
-                                  (candSerial && chSerial && candSerial !== chSerial) ||
-                                  (candId && chId && !isGenericId(candId) && !isGenericId(chId) && candId !== chId);
+                (candSerial && chSerial && candSerial !== chSerial) ||
+                (candId && chId && !isGenericId(candId) && !isGenericId(chId) && candId !== chId);
 
               if (!hasConflict) {
                 const hasInstanceMatch = (candPort && chPort && candPort === chPort) ||
-                                         (candSerial && chSerial && candSerial === chSerial) ||
-                                         (candId && chId && candId === chId);
+                  (candSerial && chSerial && candSerial === chSerial) ||
+                  (candId && chId && candId === chId);
 
                 if (hasInstanceMatch) {
                   liveItem = candidate;
@@ -267,16 +268,27 @@ export function useProcessScapeTelemetry({
               ? liveItem.resolution
               : resolveChannelResolution(liveItem);
             const formatted = formatVal(rawVal, res);
-            const status = liveItem.status || 'normal';
+            const activeAlarm = getChannelActiveAlarm(ch.id, el.locationId);
+            const inAlarm = Boolean(activeAlarm) || (ch.alarmConfig?.enabled && (
+              ch.alarmConfig.type === 'high' ? (Number(rawVal) > Number(ch.alarmConfig.threshold)) :
+                ch.alarmConfig.type === 'low' ? (Number(rawVal) < Number(ch.alarmConfig.threshold)) :
+                  ch.alarmConfig.type === 'out_of_range' ? (Number(rawVal) < Number(ch.alarmConfig.min) || Number(rawVal) > Number(ch.alarmConfig.max)) : false
+            ));
+            const isAlarmAcked = Boolean(activeAlarm?.acknowledged);
+            const status = inAlarm ? 'alarm' : (liveItem.status || 'normal');
             const unit = liveItem.unit || ch.unit;
+            const isAlarmChanged = Boolean(ch.isAlarm) !== Boolean(inAlarm);
+            const isAckChanged = Boolean(ch.isAlarmAcked) !== isAlarmAcked;
 
-            if (ch.val !== formatted || ch.status !== status || ch.unit !== unit) {
+            if (ch.val !== formatted || ch.status !== status || ch.unit !== unit || isAlarmChanged || isAckChanged) {
               cardChanged = true;
               return {
                 ...ch,
                 val: formatted,
                 unit,
-                status
+                status,
+                isAlarm: inAlarm,
+                isAlarmAcked: isAlarmAcked
               };
             }
           }

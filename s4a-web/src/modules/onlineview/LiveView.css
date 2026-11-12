@@ -176,6 +176,23 @@
   color: #334155;
 }
 
+.live-table th.live-table-th-alarm {
+  color: #dc2626;
+}
+
+.live-table-th-alarm-badge {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  animation: ps-alarm-blink 1s infinite ease-in-out;
+}
+
+.live-table td.live-table-cell-alarm {
+  background-color: #fee2e2 !important;
+  color: #dc2626 !important;
+  font-weight: 700;
+}
+
 .live-table tr.live-row-new td {
   animation: liveRowFlash 1.6s ease-out;
 }

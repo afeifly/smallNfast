@@ -4457,19 +4457,45 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     fireEvent.click(startRecBtn);
 
     // Recording is now active!
-    // Top bar contains Graphic View and Table View tabs (no redundant ProcessScape tab in header-tabs),
-    // Location & sensors is HIDDEN, and ProcessScape mode indicator is a button that returns to canvas!
+    // Top bar contains Graphic View and Table View tabs, Location & sensors remains accessible in read-only mode,
+    // and ProcessScape mode indicator is a button that returns to canvas!
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Graphic View' })).toBeDefined();
       expect(screen.getByRole('button', { name: 'Table View' })).toBeDefined();
       expect(document.querySelector('.header-mode-indicator.processscape')).not.toBeNull();
-      expect(screen.queryByRole('button', { name: /Location & sensors/i })).toBeNull();
+      expect(screen.getByRole('button', { name: /Location & sensors/i })).toBeDefined();
     });
 
     // Verify channel list format for ProcessScape recording uses Location / Measurement Point format without 'L/M:'
     const channels = await TestAPI.getChannels();
     expect(channels.length).toBe(1);
     expect(channels[0].sensor_description).toBe('Main Plant / Flow Meter Point');
+
+    // Click Location & sensors while recording: dialog opens with read-only topology but editable alarm buttons
+    const locSensorsBtn = screen.getByRole('button', { name: /Location & sensors/i });
+    fireEvent.click(locSensorsBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Live Recording in progress/i)).toBeDefined();
+    });
+
+    // Detect button and Add Location button must be hidden when readOnly (recording)
+    expect(screen.queryByRole('button', { name: /Detect/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /\+ Add Location/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /\+ Add Measurement Point/i })).toBeNull();
+
+    // Alarm button 🔔 remains enabled and clickable!
+    const alarmButtons = document.querySelectorAll('.ps-sm-tag-alarm-btn');
+    expect(alarmButtons.length).toBeGreaterThan(0);
+    expect(alarmButtons[0].disabled).toBe(false);
+
+    // Channel delete '✕' and location delete '🗑' buttons are hidden
+    expect(document.querySelector('.ps-sm-tag-del')).toBeNull();
+    expect(document.querySelector('.ps-sm-close-btn:not([aria-label="Close Sensor Manager"])')).toBeNull();
+
+    // Close the Sensor Manager modal
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    fireEvent.click(closeBtn);
 
     // Click Table View tab
     const tableViewTab = screen.getByRole('button', { name: 'Table View' });

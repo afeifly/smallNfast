@@ -3,6 +3,8 @@ import * as liveRecorder from '../../util/liveRecorder';
 import { getLiveSelection, subscribeLiveSelection } from '../../util/liveSelection';
 import { getOnlineCache } from './OnlineView';
 import { formatChannelValue } from '../../util/resolution';
+import { isChannelInAlarm, isChannelValueInAlarm } from '../processscape/engine/alarmEngine';
+import { getLocations } from '../processscape/engine/sensorManagerStorage';
 import './LiveView.css';
 
 // useMemo retained for visibleRows below.
@@ -138,6 +140,30 @@ export default function LiveTableView() {
 
   const olderNotRendered = Math.max(0, displayRows.length - visibleRows.length);
 
+  // Map of channel configs for threshold checking
+  const channelConfigMap = useMemo(() => {
+    const map = new Map();
+    try {
+      const locs = getLocations();
+      locs.forEach(loc => {
+        (loc.measurementPoints || []).forEach(mp => {
+          (mp.channels || []).forEach(ch => {
+            if (ch && ch.alarmConfig?.enabled) {
+              const keys = [
+                String(ch.id),
+                String(ch.channel_id),
+                String(ch.displayName || '').trim().toLowerCase(),
+                String(ch.name || '').trim().toLowerCase()
+              ].filter(Boolean);
+              keys.forEach(k => map.set(k, ch.alarmConfig));
+            }
+          });
+        });
+      });
+    } catch (_) {}
+    return map;
+  }, []);
+
   return (
     <div className="live-view-root">
       <div className="live-view-toolbar">
@@ -173,11 +199,18 @@ export default function LiveTableView() {
             <thead>
               <tr>
                 <th className="live-table-time">Date Time</th>
-                {columns.map((c) => (
-                  <th key={c.id} title={c.fullTitle || c.name}>
-                    {c.unit ? `${c.name} (${c.unit})` : c.name}
-                  </th>
-                ))}
+                {columns.map((c) => {
+                  const cfg = channelConfigMap.get(String(c.id)) || channelConfigMap.get(String(c.name || '').trim().toLowerCase());
+                  const inAlarm = isChannelInAlarm(c.id);
+                  return (
+                    <th key={c.id} title={c.fullTitle || c.name} className={inAlarm ? 'live-table-th-alarm' : ''}>
+                      {c.unit ? `${c.name} (${c.unit})` : c.name}
+                      {inAlarm && (
+                        <span className="live-table-th-alarm-badge" title="Channel currently in alarm">🔔</span>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -186,8 +219,16 @@ export default function LiveTableView() {
                   <td className="live-table-time">{formatTs(row.t)}</td>
                   {columns.map((c) => {
                     const v = row.values[c.id];
+                    const cfg = channelConfigMap.get(String(c.id)) || channelConfigMap.get(String(c.name || '').trim().toLowerCase());
+                    const isCellViolating = (v !== null && v !== undefined && !isInvalidValue(v) && cfg)
+                      ? isChannelValueInAlarm({ alarmConfig: cfg }, v)
+                      : false;
                     return (
-                      <td key={c.id}>
+                      <td
+                        key={c.id}
+                        className={isCellViolating ? 'live-table-cell-alarm' : ''}
+                        title={isCellViolating ? `Alarm: ${cfg.type} (${cfg.type === 'out_of_range' ? `${cfg.min}~${cfg.max}` : cfg.threshold} ${c.unit || ''})` : undefined}
+                      >
                         {v === null || v === undefined || isInvalidValue(v)
                           ? '--.-'
                           : formatChannelValue(v, c.resolution)}

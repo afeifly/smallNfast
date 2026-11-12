@@ -19,8 +19,11 @@ import { clearReadoutCache } from './modules/readout/readoutSession';
 import ProcessScapeView from './modules/processscape/ProcessScapeView';
 import SensorManagerModal from './modules/processscape/SensorManagerModal';
 import ProcessScapeRecordModal from './modules/processscape/ProcessScapeRecordModal';
+import AlarmCenterModal from './components/AlarmCenterModal';
 import { getLocations, autoReconnectSavedDevices, getSavedDevices, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
 import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/processscape/engine/scapeStorage';
+import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels } from './modules/processscape/engine/alarmEngine';
+import { subscribeLive } from './util/liveDataSource';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
@@ -214,9 +217,32 @@ function App() {
       if (Array.isArray(locs) && locs.length === 0) {
         setSelectedLocationId(null);
       }
+      try { refreshAssignedChannels(); } catch (_) {}
     };
     window.addEventListener('sensor-locations-changed', handleLocChanged);
     return () => window.removeEventListener('sensor-locations-changed', handleLocChanged);
+  }, []);
+
+  // System-wide alarm monitoring and active alarms badge
+  const [showAlarmCenterModal, setShowAlarmCenterModal] = React.useState(false);
+  const [activeAlarmsCount, setActiveAlarmsCount] = React.useState(() => getActiveAlarms().length);
+  const [unackedAlarmsCount, setUnackedAlarmsCount] = React.useState(
+    () => getActiveAlarms().filter(a => !a.acknowledged).length
+  );
+
+  React.useEffect(() => {
+    const unsubLive = subscribeLive((data) => {
+      evaluateLiveTelemetry(data);
+    });
+    const unsubAlarms = subscribeAlarms(({ activeAlarms }) => {
+      setActiveAlarmsCount(activeAlarms.length);
+      setUnackedAlarmsCount(activeAlarms.filter(a => !a.acknowledged).length);
+    });
+    try { refreshAssignedChannels(); } catch (_) {}
+    return () => {
+      unsubLive();
+      unsubAlarms();
+    };
   }, []);
 
   const hasAssignedChannels = React.useMemo(() => {
@@ -247,6 +273,18 @@ function App() {
       psActionsRef.current?.switchScape?.('');
     }
     psActionsRef.current?.setActiveLocationId?.(locId);
+  };
+
+  const handleGoToAlarmLocation = (alarm) => {
+    setShowAlarmCenterModal(false);
+    if (alarm?.locationId) {
+      if (appMode !== 'processscape') {
+        setAppMode('processscape');
+        setActiveTab('processscape');
+      }
+      setPsMode('runtime');
+      handleLocationSelectChange({ target: { value: alarm.locationId } });
+    }
   };
 
   // Live value recording (header REC button)
@@ -1051,6 +1089,17 @@ function App() {
           {/* View Switcher Tabs */}
           {appMode === 'processscape' && psMode !== 'editor' ? (
             <div className="header-tabs" style={{ display: 'flex', alignItems: 'center' }}>
+              <button
+                className="tab-btn"
+                onClick={() => setShowSensorManagerModal(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+                title={recState.recording ? "Location & sensors (Read-only during recording, alarms configurable)" : "Location & sensors (Detect Devices, Locations, Measurement Points, Channels)"}
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+                </svg>
+                Location & sensors
+              </button>
               {recState.recording && (
                 <>
                   <button
@@ -1066,19 +1115,6 @@ function App() {
                     Table View
                   </button>
                 </>
-              )}
-              {!recState.recording && (
-                <button
-                  className="tab-btn"
-                  onClick={() => setShowSensorManagerModal(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-                  title="Location & sensors (Detect Devices, Locations, Measurement Points, Channels)"
-                >
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                  </svg>
-                  Location & sensors
-                </button>
               )}
             </div>
           ) : appMode === 'monitor' ? (
@@ -1307,6 +1343,36 @@ function App() {
               </>
             )}
 
+            {/* Alarm Center Bell Button */}
+            <Tooltip
+              title={
+                unackedAlarmsCount > 0
+                  ? `Alarm Center (${unackedAlarmsCount} unacknowledged alarm${unackedAlarmsCount > 1 ? 's' : ''})`
+                  : activeAlarmsCount > 0
+                  ? `Alarm Center (${activeAlarmsCount} acknowledged alarm${activeAlarmsCount > 1 ? 's' : ''} active)`
+                  : 'Alarm Center'
+              }
+            >
+              <IconButton
+                className={`header-icon-btn header-alarm-btn ${unackedAlarmsCount > 0 ? 'has-unacked-alarms' : (activeAlarmsCount > 0 ? 'has-acked-alarms' : '')}`}
+                onClick={() => setShowAlarmCenterModal(true)}
+                style={{
+                  color: unackedAlarmsCount > 0 ? '#dc2626' : (activeAlarmsCount > 0 ? '#b91c1c' : '#334155'),
+                  padding: '6px',
+                  position: 'relative'
+                }}
+                aria-label="Alarm Center"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {unackedAlarmsCount > 0 && (
+                  <span className="header-alarm-badge">{unackedAlarmsCount}</span>
+                )}
+              </IconButton>
+            </Tooltip>
+
             {!appMode ? (
               <>
                 {checkIsWeb() && (
@@ -1365,9 +1431,7 @@ function App() {
                 }}
                 onRegisterActions={(actions) => { psActionsRef.current = actions; }}
                 onOpenSensorManager={() => {
-                  if (!recState.recording) {
-                    setShowSensorManagerModal(true);
-                  }
+                  setShowSensorManagerModal(true);
                 }}
                 onDeviceConnected={(conn) => {
                   if (conn) setDeviceInfo(conn);
@@ -2241,6 +2305,7 @@ function App() {
       <SensorManagerModal
         isOpen={showSensorManagerModal}
         onClose={() => setShowSensorManagerModal(false)}
+        readOnly={Boolean(recState.recording)}
         activeLocationId={selectedLocationId}
         onSyncToScape={(targetScapeId, targetLocId) => {
           if (targetLocId) {
@@ -2265,6 +2330,13 @@ function App() {
           setDeviceInfo(conn);
           TauriSutoAPI.logClientEvent('INFO', 'APP', `Hardware sensor collected in Sensor Manager via ${conn?.transport || 'SUTO'}`);
         }}
+      />
+
+      {/* System-wide Telemetry Alarm Center Modal */}
+      <AlarmCenterModal
+        isOpen={showAlarmCenterModal}
+        onClose={() => setShowAlarmCenterModal(false)}
+        onGoToLocation={handleGoToAlarmLocation}
       />
     </div>
   );

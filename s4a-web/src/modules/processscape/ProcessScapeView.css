@@ -2277,5 +2277,53 @@
   color: #f8fafc;
 }
 
+/* Sensor Card Alarm Animations */
+@keyframes ps-alarm-blink {
+  0%, 100% {
+    fill: #dc2626;
+    opacity: 1;
+  }
+  50% {
+    fill: #ef4444;
+    opacity: 0.28;
+  }
+}
+
+.ps-channel-alarm-blink {
+  animation: ps-alarm-blink 0.85s infinite ease-in-out;
+  fill: #dc2626 !important;
+  font-weight: 800 !important;
+}
+
+/* Acknowledged alarm: keeps solid red font without blinking */
+.ps-channel-alarm-solid {
+  animation: none !important;
+  fill: #dc2626 !important;
+  font-weight: 800 !important;
+}
+
+@keyframes ps-alarm-dot-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.45;
+  }
+}
+
+.ps-alarm-dot-pulse {
+  animation: ps-alarm-dot-pulse 0.85s infinite ease-in-out;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.ps-alarm-dot-solid {
+  animation: none !important;
+  fill: #dc2626 !important;
+}
+
+
 
 

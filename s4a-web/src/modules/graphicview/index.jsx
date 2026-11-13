@@ -768,17 +768,18 @@ class GraphicView extends Component {
   handleExportCsvOption = async () => {
     this.handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
+      window.showAppNotification(intl.get('APP_EXPORT_ABORTED') || "Export Aborted", intl.get('GV_NO_CSD_LOADED') || "No CSD file is currently loaded.", "warning");
       return;
     }
-    this.loadingRef.current.showWithMessage("Exporting to CSV... 0%");
+    this.loadingRef.current.showWithMessage(intl.get('APP_EXPORTING_CSV_PROGRESS', { pct: 0 }) || "Exporting to CSV... 0%");
     try {
       await TestAPI.exportAllChannelsToCsv((progress) => {
-        this.loadingRef.current.showWithMessage(`Exporting to CSV... ${Math.round(progress * 100)}%`);
+        const pct = Math.round(progress * 100);
+        this.loadingRef.current.showWithMessage(intl.get('APP_EXPORTING_CSV_PROGRESS', { pct }) || `Exporting to CSV... ${pct}%`);
       });
     } catch (e) {
       console.error(e);
-      window.showAppNotification("Export Failed", "Failed to export CSD to CSV: " + e.message, "error");
+      window.showAppNotification(intl.get('APP_EXPORT_FAILED') || "Export Failed", (intl.get('GV_EXPORT_CSD_TO_CSV_FAILED') || "Failed to export CSD to CSV: ") + e.message, "error");
     } finally {
       this.loadingRef.current.hide();
     }
@@ -787,17 +788,18 @@ class GraphicView extends Component {
   handleExportExcelOption = async () => {
     this.handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No CSD file is currently loaded.", "warning");
+      window.showAppNotification(intl.get('APP_EXPORT_ABORTED') || "Export Aborted", intl.get('GV_NO_CSD_LOADED') || "No CSD file is currently loaded.", "warning");
       return;
     }
-    this.loadingRef.current.showWithMessage("Exporting to Excel... 0%");
+    this.loadingRef.current.showWithMessage(intl.get('APP_EXPORTING_EXCEL_PROGRESS', { pct: 0 }) || "Exporting to Excel... 0%");
     try {
       await TestAPI.exportAllChannelsToExcel((progress) => {
-        this.loadingRef.current.showWithMessage(`Exporting to Excel... ${Math.round(progress * 100)}%`);
+        const pct = Math.round(progress * 100);
+        this.loadingRef.current.showWithMessage(intl.get('APP_EXPORTING_EXCEL_PROGRESS', { pct }) || `Exporting to Excel... ${pct}%`);
       });
     } catch (e) {
       console.error(e);
-      window.showAppNotification("Export Failed", "Failed to export CSD to Excel: " + e.message, "error");
+      window.showAppNotification(intl.get('APP_EXPORT_FAILED') || "Export Failed", (intl.get('GV_EXPORT_CSD_TO_EXCEL_FAILED') || "Failed to export CSD to Excel: ") + e.message, "error");
     } finally {
       this.loadingRef.current.hide();
     }

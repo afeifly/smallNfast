@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import intl from 'react-intl-universal';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 import DebugLogModal from '../../components/DebugLogModal';
 import './OnlineView.css';
@@ -174,7 +175,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
       };
     } catch (err) {
       if (isMountedRef.current) {
-        setError(err?.message || 'Failed to load device information');
+        setError(err?.message || (intl.get('ONLINE_LOAD_DEVICE_ERROR') || 'Failed to load device information'));
       }
     }
   }, [deviceKey]);
@@ -225,7 +226,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
         if (matchedChannels.length > 0) {
           const loc = pt.location?.trim() || '';
           const mea = pt.meapoint?.trim() || '';
-          const cardTitle = loc && mea ? `${loc} / ${mea}` : (loc || mea || `Point ${pt.index + 1}`);
+          const cardTitle = loc && mea ? `${loc} / ${mea}` : (loc || mea || (intl.get('ONLINE_POINT_NUM', { num: pt.index + 1 }) || `Point ${pt.index + 1}`));
 
           cards.push({
             key: `point_${pt.index}_${cardTitle}`,
@@ -264,7 +265,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     const cards = Array.from(cardMap.values());
     let idx = 1;
     for (const c of cards) {
-      if (!c.sensorName) c.sensorName = `Sensor ${idx}`;
+      if (!c.sensorName) c.sensorName = intl.get('ONLINE_SENSOR_NUM', { num: idx }) || `Sensor ${idx}`;
       idx += 1;
     }
     return cards;
@@ -285,7 +286,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
               {deviceDisplayName}
               <span className={`online-status-badge ${isLive ? 'status-badge-live' : 'status-badge-paused'}`}>
                 <span className="status-pulse-dot" />
-                {isLive ? 'LIVE' : 'PAUSED'}
+                {isLive ? (intl.get('ONLINE_LIVE') || 'LIVE') : (intl.get('ONLINE_PAUSED') || 'PAUSED')}
               </span>
             </h2>
             <div className="device-meta-row">
@@ -306,7 +307,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
               )}
               {lastUpdate && (
                 <span className="device-meta-item">
-                  Last Updated: <strong>{lastUpdate.toLocaleTimeString()}</strong>
+                  {intl.get('ONLINE_LAST_UPDATED') || 'Last Updated:'} <strong>{lastUpdate.toLocaleTimeString()}</strong>
                 </span>
               )}
             </div>
@@ -316,11 +317,11 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
         {/* Action Controls */}
         <div className="online-controls">
           <button className="online-btn" onClick={toggleLive}>
-            {isLive ? 'Pause Polling' : 'Resume Polling'}
+            {isLive ? (intl.get('ONLINE_PAUSE_POLLING') || 'Pause Polling') : (intl.get('ONLINE_RESUME_POLLING') || 'Resume Polling')}
           </button>
           {onDisconnect && (
             <button className="online-btn" onClick={onDisconnect} style={{ color: '#ef4444' }}>
-              Disconnect
+              {intl.get('ONLINE_DISCONNECT') || 'Disconnect'}
             </button>
           )}
         </div>
@@ -344,16 +345,16 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
                   {sensor.sensorName}
                 </span>
                 {sensor.isMeasurementPoint ? (
-                  <span className="suto-sensor-chip">Point</span>
+                  <span className="suto-sensor-chip">{intl.get('ONLINE_POINT') || 'Point'}</span>
                 ) : (
                   sensor.sensorId !== undefined && sensor.sensorId !== null && (
-                    <span className="suto-sensor-chip">sensor #{sensor.sensorId}</span>
+                    <span className="suto-sensor-chip">{intl.get('ONLINE_SENSOR_HASH', { id: sensor.sensorId }) || `sensor #${sensor.sensorId}`}</span>
                   )
                 )}
               </div>
               <div className="suto-device-header-meta">
                 <span className="suto-ch-count-badge">
-                  {sensor.channels.length} {sensor.channels.length === 1 ? 'Channel' : 'Channels'}
+                  {sensor.channels.length} {sensor.channels.length === 1 ? (intl.get('CHANNEL') || 'Channel') : (intl.get('ONLINE_CHANNELS') || 'Channels')}
                 </span>
                 <span className="suto-live-dot" />
               </div>
@@ -363,12 +364,13 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
             <div className="suto-channel-list">
               {sensor.channels.map((ch) => {
                 const isBlank = ch.current_value === null || ch.current_value === undefined;
+                const defaultChLabel = intl.get('ONLINE_CHANNEL_NUM', { id: ch.channel_id }) || `Channel ${ch.channel_id}`;
                 return (
                   <div key={ch.channel_id} className="suto-channel-row">
                     {/* Left: Channel Name */}
                     <div className="suto-channel-left">
-                      <span className="suto-channel-name" title={ch.channel_name || `Channel ${ch.channel_id}`}>
-                        {ch.channel_name || ch.sensor_description || `Channel ${ch.channel_id}`}
+                      <span className="suto-channel-name" title={ch.channel_name || defaultChLabel}>
+                        {ch.channel_name || ch.sensor_description || defaultChLabel}
                       </span>
                     </div>
 

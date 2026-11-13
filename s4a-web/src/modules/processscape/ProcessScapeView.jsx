@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import intl from 'react-intl-universal';
 import './ProcessScapeView.css';
 import {
   ASSET_DEFS,
@@ -59,12 +60,12 @@ import ScapeManagerModal from './ScapeManagerModal.jsx';
 import { useProcessScapeTelemetry } from './engine/useProcessScapeTelemetry.js';
 
 const PALETTE_CATEGORIES = [
-  { id: 'all', label: 'All' },
-  { id: 'piping', label: '➰ Pipes' },
-  { id: 'sensors', label: 'Sensor & gateway' },
-  { id: 'vessels', label: 'Tanks & Air' },
-  { id: 'machines', label: 'Machines' },
-  { id: 'others', label: 'Others' }
+  { id: 'all', labelKey: 'PS_VIEW_PALETTE_ALL', label: 'All' },
+  { id: 'piping', labelKey: 'PS_VIEW_PALETTE_PIPES', label: '➰ Pipes' },
+  { id: 'sensors', labelKey: 'PS_VIEW_PALETTE_SENSORS_GATEWAY', label: 'Sensor & gateway' },
+  { id: 'vessels', labelKey: 'PS_VIEW_PALETTE_VESSELS', label: 'Tanks & Air' },
+  { id: 'machines', labelKey: 'PS_VIEW_PALETTE_MACHINES', label: 'Machines' },
+  { id: 'others', labelKey: 'PS_VIEW_PALETTE_OTHERS', label: 'Others' }
 ];
 
 // Consistent SVG Vector Icons for HUD Controls
@@ -654,7 +655,12 @@ export default function ProcessScapeView({
       applyScapeToCanvas(locScape || null, false);
       setScapeMode('runtime');
       if (typeof window !== 'undefined' && window.showAppNotification) {
-        window.showAppNotification('Scape Saved', `"${projectTitle}" saved. Returned to ${curLoc.name || 'current location'}.`, 'success');
+        const locName = curLoc.name || (intl.get('PS_VIEW_CURRENT_LOCATION') || 'current location');
+        window.showAppNotification(
+          intl.get('PS_VIEW_NOTIF_SCAPE_SAVED_TITLE') || 'Scape Saved',
+          intl.get('PS_VIEW_NOTIF_SCAPE_SAVED_RETURNED', { title: projectTitle, location: locName }) || `"${projectTitle}" saved. Returned to ${locName}.`,
+          'success'
+        );
       }
       return;
     }
@@ -666,7 +672,11 @@ export default function ProcessScapeView({
     resetTransientModeState();
     setScapeMode('runtime');
     if (typeof window !== 'undefined' && window.showAppNotification) {
-      window.showAppNotification('Scape Saved', `"${projectTitle}" updated and running live.`, 'success');
+      window.showAppNotification(
+        intl.get('PS_VIEW_NOTIF_SCAPE_SAVED_TITLE') || 'Scape Saved',
+        intl.get('PS_VIEW_NOTIF_SCAPE_UPDATED_LIVE', { title: projectTitle }) || `"${projectTitle}" updated and running live.`,
+        'success'
+      );
     }
   }, [activeScapeId, activeLocationId, projectTitle, screenSize, zones, elements, pipes, applyScapeToCanvas, resetTransientModeState]);
 
@@ -2695,20 +2705,22 @@ export default function ProcessScapeView({
   const getInspectorHeaderTitle = () => {
     if (singleSelectedElement) {
       if (singleSelectedElement.type === 'guide_line') {
-        return singleSelectedElement.orientation === 'v' ? 'Vertical Line' : 'Horizontal Line';
+        return singleSelectedElement.orientation === 'v'
+          ? (intl.get('PS_VIEW_INSP_TITLE_VERT_LINE') || 'Vertical Line')
+          : (intl.get('PS_VIEW_INSP_TITLE_HORIZ_LINE') || 'Horizontal Line');
       }
-      if (singleSelectedElement.type === 'shape_rect') return 'Rectangle';
-      if (singleSelectedElement.type === 'shape_circle') return 'Circle / Oval';
-      if (singleSelectedElement.type === 'wall_perimeter_v') return 'Vertical Wall';
-      if (singleSelectedElement.type === 'wall_perimeter_h') return 'Horizontal Wall';
-      return singleSelectedElement.tag || singleSelectedElement.text || 'Item Config';
+      if (singleSelectedElement.type === 'shape_rect') return intl.get('PS_VIEW_INSP_TITLE_RECTANGLE') || 'Rectangle';
+      if (singleSelectedElement.type === 'shape_circle') return intl.get('PS_VIEW_INSP_TITLE_CIRCLE_OVAL') || 'Circle / Oval';
+      if (singleSelectedElement.type === 'wall_perimeter_v') return intl.get('PS_VIEW_INSP_TITLE_VERT_WALL') || 'Vertical Wall';
+      if (singleSelectedElement.type === 'wall_perimeter_h') return intl.get('PS_VIEW_INSP_TITLE_HORIZ_WALL') || 'Horizontal Wall';
+      return singleSelectedElement.tag || singleSelectedElement.text || (intl.get('PS_VIEW_INSP_TITLE_ITEM_CONFIG') || 'Item Config');
     }
     if (isPipeSelection) {
       return selectedPipes.length > 1
-        ? `Pipeline (${selectedPipes.length} segments)`
-        : 'Pipe Config';
+        ? (intl.get('PS_VIEW_INSP_TITLE_PIPELINE_SEGMENTS', { count: selectedPipes.length }) || `Pipeline (${selectedPipes.length} segments)`)
+        : (intl.get('PS_VIEW_INSP_TITLE_PIPE_CONFIG') || 'Pipe Config');
     }
-    return 'Inspector';
+    return intl.get('PS_VIEW_INSP_TITLE_DEFAULT') || 'Inspector';
   };
 
   const triggerDockFlyGhost = (fromRect, toRect, title) => {
@@ -2993,38 +3005,46 @@ export default function ProcessScapeView({
   };
 
   /** Compact single-row preview selector for LINE_STYLE_OPTIONS (used by Line Style & Frame Style). */
-  const renderLineStyleField = ({ label, activeStyle = 'single', ariaPrefix = 'Line Style', onSelect }) => (
-    <div className="ps-form-group">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <label className="ps-form-label" style={{ margin: 0 }}>{label}</label>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-          {(LINE_STYLE_OPTIONS.find(s => s.id === activeStyle) || LINE_STYLE_OPTIONS[0]).name}
-        </span>
+  const renderLineStyleField = ({ label, activeStyle = 'single', ariaPrefix = 'Line Style', onSelect }) => {
+    const activeOpt = LINE_STYLE_OPTIONS.find(s => s.id === activeStyle) || LINE_STYLE_OPTIONS[0];
+    return (
+      <div className="ps-form-group">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <label className="ps-form-label" style={{ margin: 0 }}>{label}</label>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
+            {intl.get(`PS_VIEW_LINE_STYLE_${activeOpt.id.toUpperCase()}`) || activeOpt.name}
+          </span>
+        </div>
+        <div className="ps-line-style-row">
+          {LINE_STYLE_OPTIONS.map(opt => {
+            const active = activeStyle === opt.id;
+            const optName = intl.get(`PS_VIEW_LINE_STYLE_${opt.id.toUpperCase()}`) || opt.name;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                className={`ps-note-outline-btn ps-line-style-btn ${active ? 'active' : ''}`}
+                title={optName}
+                aria-label={`${ariaPrefix}: ${opt.name}`}
+                onClick={() => onSelect(opt.id)}
+              >
+                <span className={`ps-line-preview style-${opt.id}`} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="ps-line-style-row">
-        {LINE_STYLE_OPTIONS.map(opt => {
-          const active = activeStyle === opt.id;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              className={`ps-note-outline-btn ps-line-style-btn ${active ? 'active' : ''}`}
-              title={opt.name}
-              aria-label={`${ariaPrefix}: ${opt.name}`}
-              onClick={() => onSelect(opt.id)}
-            >
-              <span className={`ps-line-preview style-${opt.id}`} aria-hidden="true" />
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   /** Shared Inspector circular color swatch row with optional extra control (e.g. custom picker). */
   const renderColorSwatchField = ({ label, palette, activeColor, ariaPrefix = '', onSelect, extraControl = null }) => {
     const normalized = (activeColor || '').toLowerCase();
-    const matchedName = palette.find(c => c.hex.toLowerCase() === normalized)?.name || (activeColor || 'Custom');
+    const palettePrefix = palette === SHAPE_FILL_PALETTE ? 'PS_VIEW_FILL_COLOR_' : 'PS_VIEW_NOTE_COLOR_';
+    const matchedObj = palette.find(c => c.hex.toLowerCase() === normalized);
+    const matchedName = matchedObj
+      ? (intl.get(`${palettePrefix}${matchedObj.id.toUpperCase()}`) || matchedObj.name)
+      : (activeColor || (intl.get('PS_VIEW_COLOR_CUSTOM') || 'Custom'));
     return (
       <div className="ps-form-group">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -3035,12 +3055,13 @@ export default function ProcessScapeView({
           {palette.map(c => {
             const isActive = normalized === c.hex.toLowerCase();
             const isTransparent = c.hex === 'transparent';
+            const colorName = intl.get(`${palettePrefix}${c.id.toUpperCase()}`) || c.name;
             return (
               <button
                 type="button"
                 key={c.id}
                 className={`ps-swatch-circle-btn ${isTransparent ? 'is-transparent' : ''} ${isActive ? 'active' : ''}`}
-                title={c.name}
+                title={colorName}
                 aria-label={ariaPrefix ? `${ariaPrefix}: ${c.name}` : c.name}
                 onClick={() => onSelect(c.hex)}
                 style={isTransparent ? undefined : { backgroundColor: c.hex }}
@@ -3086,7 +3107,7 @@ export default function ProcessScapeView({
         className="hud-btn-sm btn-danger-outline"
         onClick={onDelete}
       >
-        Delete
+        {intl.get('PS_VIEW_DELETE') || 'Delete'}
       </button>
     </div>
   );
@@ -3450,8 +3471,8 @@ export default function ProcessScapeView({
 
     if (showNotification && typeof window !== 'undefined' && window.showAppNotification) {
       window.showAppNotification(
-        'Import Successful',
-        `Imported ${parsedElements.length} elements and ${parsedPipes.length} pipes.`,
+        intl.get('PS_VIEW_NOTIF_IMPORT_SUCCESS_TITLE') || 'Import Successful',
+        intl.get('PS_VIEW_NOTIF_IMPORT_SUCCESS_DESC', { elements: parsedElements.length, pipes: parsedPipes.length }) || `Imported ${parsedElements.length} elements and ${parsedPipes.length} pipes.`,
         'success'
       );
     }
@@ -3483,8 +3504,8 @@ export default function ProcessScapeView({
         console.error('Failed to import ProcessScape config:', err);
         if (typeof window !== 'undefined' && window.showAppNotification) {
           window.showAppNotification(
-            'Import Failed',
-            'Could not parse the selected JSON file. Please check file format.',
+            intl.get('PS_VIEW_NOTIF_IMPORT_FAILED_TITLE') || 'Import Failed',
+            intl.get('PS_VIEW_NOTIF_IMPORT_FAILED_DESC') || 'Could not parse the selected JSON file. Please check file format.',
             'error'
           );
         }
@@ -3594,9 +3615,9 @@ export default function ProcessScapeView({
           <div className="ps-empty-stage-page">
             <div className="ps-empty-stage-card">
               <div className="ps-empty-stage-icon">📍</div>
-              <h2 className="ps-empty-stage-title">No Locations Configured</h2>
+              <h2 className="ps-empty-stage-title">{intl.get('PS_VIEW_EMPTY_NO_LOCATIONS_TITLE') || 'No Locations Configured'}</h2>
               <p className="ps-empty-stage-desc">
-                Configure a location in Location & sensors to map sensor measurement points and activate your plant ProcessScape.
+                {intl.get('PS_VIEW_EMPTY_NO_LOCATIONS_DESC') || 'Configure a location in Location & sensors to map sensor measurement points and activate your plant ProcessScape.'}
               </p>
               <div className="ps-empty-stage-actions">
                 <button
@@ -3607,7 +3628,7 @@ export default function ProcessScapeView({
                   }}
                 >
                   <span style={{ fontSize: 16 }}>+</span>
-                  <span>Configure Locations</span>
+                  <span>{intl.get('PS_VIEW_CONFIGURE_LOCATIONS') || 'Configure Locations'}</span>
                 </button>
               </div>
             </div>
@@ -3624,7 +3645,7 @@ export default function ProcessScapeView({
                       className={`ps-palette-tab ${activePaletteTab === cat.id ? 'active' : ''}`}
                       onClick={() => setActivePaletteTab(cat.id)}
                     >
-                      {cat.label}
+                      {intl.get(cat.labelKey) || cat.label}
                     </button>
                   ))}
                 </div>
@@ -3659,8 +3680,8 @@ export default function ProcessScapeView({
                           {renderAssetPaletteIcon(type, def)}
                         </div>
                         <div className="ps-card-info">
-                          <div className="ps-card-title">{def.name}</div>
-                          <div className="ps-card-desc">{def.defaultDesc}</div>
+                          <div className="ps-card-title">{intl.get(`PS_VIEW_ASSET_${type.toUpperCase()}_NAME`) || def.name}</div>
+                          <div className="ps-card-desc">{intl.get(`PS_VIEW_ASSET_${type.toUpperCase()}_DESC`) || def.defaultDesc}</div>
                         </div>
                       </div>
                     );
@@ -3702,7 +3723,7 @@ export default function ProcessScapeView({
                           {tpl.tag}
                         </div>
                         <div className="ps-card-info">
-                          <div className="ps-card-title">{tpl.title || (tpl.tag + ' Sensor Card')}</div>
+                          <div className="ps-card-title">{tpl.title || (intl.get('PS_VIEW_SENSOR_CARD_SUFFIX', { tag: tpl.tag }) || (tpl.tag + ' Sensor Card'))}</div>
                           <div className="ps-card-desc">{tpl.desc}</div>
                         </div>
                       </div>
@@ -3774,15 +3795,16 @@ export default function ProcessScapeView({
                             </div>
                           </div>
                           <div className="ps-card-info">
-                            <div className="ps-card-title">{p.name}</div>
-                            <div className="ps-card-desc">{p.desc}</div>
+                            <div className="ps-card-title">{intl.get(`PS_VIEW_PIPE_${p.id.toUpperCase()}_NAME`) || p.name}</div>
+                            <div className="ps-card-desc">{intl.get(`PS_VIEW_PIPE_${p.id.toUpperCase()}_DESC`) || p.desc}</div>
                           </div>
                         </div>
                       );
                     };
 
-                    const renderOrientableCard = ({ reactKey, keyName, kind, title, desc, orientation, setOrientation, icon }) => {
+                    const renderOrientableCard = ({ reactKey, keyName, kind, title, ariaName, desc, orientation, setOrientation, icon }) => {
                       const isVert = orientation === 'v';
+                      const baseAria = ariaName || title;
                       return (
                         <div
                           key={reactKey || keyName}
@@ -3818,8 +3840,8 @@ export default function ProcessScapeView({
                                 <button
                                   type="button"
                                   className={`ps-orient-btn ${!isVert ? 'active' : ''}`}
-                                  title={`Drag Horizontal ${title} (H)`}
-                                  aria-label={`Palette ${title} Horizontal`}
+                                  title={intl.get('PS_VIEW_DRAG_HORIZ_TITLE', { title }) || `Drag Horizontal ${title} (H)`}
+                                  aria-label={`Palette ${baseAria} Horizontal`}
                                   onClick={(e) => { e.stopPropagation(); setOrientation('h'); }}
                                 >
                                   H
@@ -3827,8 +3849,8 @@ export default function ProcessScapeView({
                                 <button
                                   type="button"
                                   className={`ps-orient-btn ${isVert ? 'active' : ''}`}
-                                  title={`Drag Vertical ${title} (V)`}
-                                  aria-label={`Palette ${title} Vertical`}
+                                  title={intl.get('PS_VIEW_DRAG_VERT_TITLE', { title }) || `Drag Vertical ${title} (V)`}
+                                  aria-label={`Palette ${baseAria} Vertical`}
                                   onClick={(e) => { e.stopPropagation(); setOrientation('v'); }}
                                 >
                                   V
@@ -3847,8 +3869,9 @@ export default function ProcessScapeView({
                         reactKey: 'wall_perimeter',
                         keyName: wallType,
                         kind: 'asset',
-                        title: 'Brick Wall',
-                        desc: 'H/V red brick wall with running bond masonry',
+                        title: intl.get('PS_VIEW_PALETTE_BRICK_WALL_TITLE') || 'Brick Wall',
+                        ariaName: 'Brick Wall',
+                        desc: intl.get('PS_VIEW_PALETTE_BRICK_WALL_DESC') || 'H/V red brick wall with running bond masonry',
                         orientation: wallPaletteOrientation,
                         setOrientation: setWallPaletteOrientation,
                         icon: (
@@ -3864,8 +3887,9 @@ export default function ProcessScapeView({
                       return renderOrientableCard({
                         keyName: 'guide_line',
                         kind: 'guide_line',
-                        title: 'Line',
-                        desc: 'H/V divider line with Label styles & line snap',
+                        title: intl.get('PS_VIEW_PALETTE_LINE_TITLE') || 'Line',
+                        ariaName: 'Line',
+                        desc: intl.get('PS_VIEW_PALETTE_LINE_DESC') || 'H/V divider line with Label styles & line snap',
                         orientation: linePaletteOrientation,
                         setOrientation: setLinePaletteOrientation,
                         icon: (
@@ -3896,8 +3920,9 @@ export default function ProcessScapeView({
                       return renderOrientableCard({
                         keyName: 'text_note',
                         kind: 'text_note',
-                        title: 'Label',
-                        desc: 'H/V editable label with outline styles & line snap',
+                        title: intl.get('PS_VIEW_PALETTE_LABEL_TITLE') || 'Label',
+                        ariaName: 'Label',
+                        desc: intl.get('PS_VIEW_PALETTE_LABEL_DESC') || 'H/V editable label with outline styles & line snap',
                         orientation: labelPaletteOrientation,
                         setOrientation: setLabelPaletteOrientation,
                         icon: (
@@ -3963,8 +3988,8 @@ export default function ProcessScapeView({
 
                     const renderRectShapeCard = () => renderShapeCard({
                       kind: 'shape_rect',
-                      title: 'Rectangle',
-                      desc: 'W×H box with fill color & line frame styles',
+                      title: intl.get('PS_VIEW_PALETTE_RECT_TITLE') || 'Rectangle',
+                      desc: intl.get('PS_VIEW_PALETTE_RECT_DESC') || 'W×H box with fill color & line frame styles',
                       icon: (
                         <svg width="26" height="26" viewBox="0 0 26 26">
                           <rect x="4" y="6" width="18" height="14" rx="1" fill="#e2e8f0" stroke="#475569" strokeWidth="2" />
@@ -3974,8 +3999,8 @@ export default function ProcessScapeView({
 
                     const renderCircleShapeCard = () => renderShapeCard({
                       kind: 'shape_circle',
-                      title: 'Circle',
-                      desc: 'W×H circle or oval with fill & line frame styles',
+                      title: intl.get('PS_VIEW_PALETTE_CIRCLE_TITLE') || 'Circle',
+                      desc: intl.get('PS_VIEW_PALETTE_CIRCLE_DESC') || 'W×H circle or oval with fill & line frame styles',
                       icon: (
                         <svg width="26" height="26" viewBox="0 0 26 26">
                           <ellipse cx="13" cy="13" rx="9" ry="9" fill="#e2e8f0" stroke="#475569" strokeWidth="2" />
@@ -4056,15 +4081,15 @@ export default function ProcessScapeView({
                 <div className={`ps-example-demo-banner ${isBannerMinimized ? 'minimized' : ''}`} role="alert">
                   <div className="ps-example-demo-badge">
                     <span className="ps-demo-pulse-dot" />
-                    DEMO PREVIEW
+                    {intl.get('PS_VIEW_DEMO_PREVIEW_BADGE') || 'DEMO PREVIEW'}
                   </div>
                   {!isBannerMinimized && (
                     <div className="ps-example-demo-content">
                       <div className="ps-example-demo-title">
-                        Example Plant Layout (Demonstration)
+                        {intl.get('PS_VIEW_DEMO_BANNER_TITLE') || 'Example Plant Layout (Demonstration)'}
                       </div>
                       <div className="ps-example-demo-desc">
-                        No real locations are configured in the system yet. Create your own location and ProcessScape stage to design custom piping, bind measurement points, and monitor live sensor telemetry.
+                        {intl.get('PS_VIEW_DEMO_BANNER_DESC') || 'No real locations are configured in the system yet. Create your own location and ProcessScape stage to design custom piping, bind measurement points, and monitor live sensor telemetry.'}
                       </div>
                     </div>
                   )}
@@ -4074,7 +4099,7 @@ export default function ProcessScapeView({
                       style={{ cursor: 'pointer', color: '#f8fafc', fontWeight: 500 }}
                       onClick={() => setIsBannerMinimized(false)}
                     >
-                      Example layout preview &middot; Click to expand notice
+                      {intl.get('PS_VIEW_DEMO_BANNER_MINIMIZED') || 'Example layout preview · Click to expand notice'}
                     </div>
                   )}
                   <div className="ps-example-demo-actions">
@@ -4085,20 +4110,20 @@ export default function ProcessScapeView({
                         setIsBannerDismissed(true);
                         if (onOpenSensorManager) onOpenSensorManager();
                       }}
-                      title="Open Sensor Manager to create your own location and scape stage"
+                      title={intl.get('PS_VIEW_DEMO_CREATE_BTN_TITLE') || "Open Sensor Manager to create your own location and scape stage"}
                     >
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
                       </svg>
-                      <span>Create Location &amp; Stage</span>
+                      <span>{intl.get('PS_VIEW_DEMO_CREATE_BTN') || 'Create Location & Stage'}</span>
                     </button>
                     <button
                       type="button"
                       className="ps-example-demo-dismiss-btn"
                       onClick={() => setIsBannerDismissed(true)}
-                      title="Dismiss example notice"
-                      aria-label="Dismiss example notice"
+                      title={intl.get('PS_VIEW_DEMO_DISMISS_TITLE') || "Dismiss example notice"}
+                      aria-label={intl.get('PS_VIEW_DEMO_DISMISS_TITLE') || "Dismiss example notice"}
                     >
                       ✕
                     </button>
@@ -4120,8 +4145,8 @@ export default function ProcessScapeView({
                         if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
                         setCurrentTool('select');
                       }}
-                      title="Select Tool (V) — Select or drag items"
-                      aria-label="Select Tool"
+                      title={intl.get('PS_VIEW_TOOL_SELECT_TITLE') || "Select Tool (V) — Select or drag items"}
+                      aria-label={intl.get('PS_VIEW_TOOL_SELECT_ARIA') || "Select Tool"}
                     >
                       <HudIcons.Select />
                     </button>
@@ -4130,8 +4155,8 @@ export default function ProcessScapeView({
                       type="button"
                       className={`hud-icon-btn ${currentTool === 'pan' ? 'active' : ''}`}
                       onClick={activatePanTool}
-                      title="Pan Tool (H) — Clear selection & drag canvas"
-                      aria-label="Pan Tool"
+                      title={intl.get('PS_VIEW_TOOL_PAN_TITLE') || "Pan Tool (H) — Clear selection & drag canvas"}
+                      aria-label={intl.get('PS_VIEW_TOOL_PAN_ARIA') || "Pan Tool"}
                     >
                       <HudIcons.Pan />
                     </button>
@@ -4147,8 +4172,8 @@ export default function ProcessScapeView({
                       className="hud-icon-btn"
                       disabled={!canUndo}
                       onClick={undo}
-                      title="Undo (Cmd+Z / Ctrl+Z)"
-                      aria-label="Undo"
+                      title={intl.get('PS_VIEW_TOOL_UNDO_TITLE') || "Undo (Cmd+Z / Ctrl+Z)"}
+                      aria-label={intl.get('PS_VIEW_TOOL_UNDO_ARIA') || "Undo"}
                     >
                       <HudIcons.Undo />
                     </button>
@@ -4158,8 +4183,8 @@ export default function ProcessScapeView({
                       className="hud-icon-btn"
                       disabled={!canRedo}
                       onClick={redo}
-                      title="Redo (Cmd+Y / Ctrl+Y)"
-                      aria-label="Redo"
+                      title={intl.get('PS_VIEW_TOOL_REDO_TITLE') || "Redo (Cmd+Y / Ctrl+Y)"}
+                      aria-label={intl.get('PS_VIEW_TOOL_REDO_ARIA') || "Redo"}
                     >
                       <HudIcons.Redo />
                     </button>
@@ -4172,7 +4197,7 @@ export default function ProcessScapeView({
                       <div className="hud-dimension-group" id="hudDimensionSelector">
                         {isPipeSelection ? (
                           <>
-                            <label className="hud-dim-item" title="Pipeline Length (px)">
+                            <label className="hud-dim-item" title={intl.get('PS_VIEW_DIM_PIPE_LENGTH_TITLE') || "Pipeline Length (px)"}>
                               <span className="hud-dim-label">L:</span>
                               <input
                                 id="hudInputLength"
@@ -4190,7 +4215,7 @@ export default function ProcessScapeView({
                                 }}
                               />
                             </label>
-                            <label className="hud-dim-item" title="Pipeline Diameter (px)">
+                            <label className="hud-dim-item" title={intl.get('PS_VIEW_DIM_PIPE_DIAMETER_TITLE') || "Pipeline Diameter (px)"}>
                               <span className="hud-dim-label">D:</span>
                               <input
                                 id="hudInputDiameter"
@@ -4211,7 +4236,7 @@ export default function ProcessScapeView({
                           </>
                         ) : (
                           <>
-                            <label className="hud-dim-item" title="Item Width (px)">
+                            <label className="hud-dim-item" title={intl.get('PS_VIEW_DIM_ITEM_WIDTH_TITLE') || "Item Width (px)"}>
                               <span className="hud-dim-label">W:</span>
                               <input
                                 id="hudInputWidth"
@@ -4229,7 +4254,7 @@ export default function ProcessScapeView({
                                 }}
                               />
                             </label>
-                            <label className="hud-dim-item" title="Item Height (px)">
+                            <label className="hud-dim-item" title={intl.get('PS_VIEW_DIM_ITEM_HEIGHT_TITLE') || "Item Height (px)"}>
                               <span className="hud-dim-label">H:</span>
                               <input
                                 id="hudInputHeight"
@@ -4266,8 +4291,8 @@ export default function ProcessScapeView({
                           if (interactionLayerRef.current) interactionLayerRef.current.innerHTML = '';
                           setCurrentTool('select');
                         }}
-                        title="Finish current pipe"
-                        aria-label="Finish Pipe"
+                        title={intl.get('PS_VIEW_FINISH_PIPE_TITLE') || "Finish current pipe"}
+                        aria-label={intl.get('PS_VIEW_FINISH_PIPE_ARIA') || "Finish Pipe"}
                       >
                         <HudIcons.Check />
                       </button>
@@ -4284,8 +4309,8 @@ export default function ProcessScapeView({
                           className="hud-icon-btn"
                           disabled={selectedIds.size === 0}
                           onClick={bringToFront}
-                          title="Bring to Front (])"
-                          aria-label="Bring to Front"
+                          title={intl.get('PS_VIEW_BRING_FRONT_TITLE') || "Bring to Front (])"}
+                          aria-label={intl.get('PS_VIEW_BRING_FRONT_ARIA') || "Bring to Front"}
                         >
                           <HudIcons.BringToFront />
                         </button>
@@ -4295,8 +4320,8 @@ export default function ProcessScapeView({
                           className="hud-icon-btn"
                           disabled={selectedIds.size === 0}
                           onClick={sendToBack}
-                          title="Send to Back ([)"
-                          aria-label="Send to Back"
+                          title={intl.get('PS_VIEW_SEND_BACK_TITLE') || "Send to Back ([)"}
+                          aria-label={intl.get('PS_VIEW_SEND_BACK_ARIA') || "Send to Back"}
                         >
                           <HudIcons.SendToBack />
                         </button>
@@ -4321,8 +4346,8 @@ export default function ProcessScapeView({
                               pipes: updatedPipes
                             });
                           }}
-                          title="Delete selected items (Delete key)"
-                          aria-label="Delete Selected"
+                          title={intl.get('PS_VIEW_DELETE_SELECTED_TITLE') || "Delete selected items (Delete key)"}
+                          aria-label={intl.get('PS_VIEW_DELETE_SELECTED_ARIA') || "Delete Selected"}
                         >
                           <HudIcons.Delete />
                         </button>
@@ -4356,8 +4381,8 @@ export default function ProcessScapeView({
                         const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
                         zoomAtPoint(cx, cy, 1 / 1.15);
                       }}
-                      title="Zoom Out (-)"
-                      aria-label="Zoom Out"
+                      title={intl.get('PS_VIEW_ZOOM_OUT_TITLE') || "Zoom Out (-)"}
+                      aria-label={intl.get('PS_VIEW_ZOOM_OUT_ARIA') || "Zoom Out"}
                     >
                       <HudIcons.ZoomOut />
                     </button>
@@ -4367,8 +4392,8 @@ export default function ProcessScapeView({
                       type="button"
                       className="zoom-text hud-btn-zoom-reset"
                       onClick={resetView}
-                      title="Reset Zoom to 100% (Click to reset)"
-                      aria-label="Zoom Percentage"
+                      title={intl.get('PS_VIEW_ZOOM_RESET_TITLE') || "Reset Zoom to 100% (Click to reset)"}
+                      aria-label={intl.get('PS_VIEW_ZOOM_PERCENT_ARIA') || "Zoom Percentage"}
                     >
                       {Math.round((view?.zoom || 1) * 100)}%
                     </button>
@@ -4383,8 +4408,8 @@ export default function ProcessScapeView({
                         const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
                         zoomAtPoint(cx, cy, 1.15);
                       }}
-                      title="Zoom In (+)"
-                      aria-label="Zoom In"
+                      title={intl.get('PS_VIEW_ZOOM_IN_TITLE') || "Zoom In (+)"}
+                      aria-label={intl.get('PS_VIEW_ZOOM_IN_ARIA') || "Zoom In"}
                     >
                       <HudIcons.ZoomIn />
                     </button>
@@ -4397,8 +4422,8 @@ export default function ProcessScapeView({
                     type="button"
                     className="hud-icon-btn"
                     onClick={focusSelectedOrCenter}
-                    title="Focus / Fit Whole Canvas (F)"
-                    aria-label="Focus / Fit Whole Canvas"
+                    title={intl.get('PS_VIEW_ZOOM_FIT_TITLE') || "Focus / Fit Whole Canvas (F)"}
+                    aria-label={intl.get('PS_VIEW_ZOOM_FIT_ARIA') || "Focus / Fit Whole Canvas"}
                   >
                     <HudIcons.ZoomFit />
                   </button>
@@ -4414,8 +4439,10 @@ export default function ProcessScapeView({
                       e.currentTarget.blur();
                       handleToggleBoundsResizer();
                     }}
-                    title={boundsResizerMode === 'editor' ? "Confirm & Apply New Diagram Size" : "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)"}
-                    aria-label="Diagram Bounds Resizer"
+                    title={boundsResizerMode === 'editor'
+                      ? (intl.get('PS_VIEW_BOUNDS_CONFIRM_EDITOR_TITLE') || "Confirm & Apply New Diagram Size")
+                      : (intl.get('PS_VIEW_BOUNDS_RESIZER_EDITOR_TITLE') || "Optimal Diagram Bounds Resizer (Auto-scale pipes to screen)")}
+                    aria-label={intl.get('PS_VIEW_BOUNDS_RESIZER_EDITOR_ARIA') || "Diagram Bounds Resizer"}
                   >
                     <HudIcons.BoundsScale />
                   </button>
@@ -4450,21 +4477,23 @@ export default function ProcessScapeView({
                     type="button"
                     className={`hud-icon-btn ps-runtime-drag-handle ${isRuntimeToolsConcise ? 'is-concise-active' : ''}`}
                     onClick={handleDragHandleClick}
-                    title={isRuntimeToolsConcise ? "Concise Style — Click to toggle style, drag to corner" : "Click to toggle concise style, drag to corner"}
-                    aria-label="Click to toggle style, drag to corner"
+                    title={isRuntimeToolsConcise
+                      ? (intl.get('PS_VIEW_RUNTIME_HANDLE_CONCISE_TITLE') || "Concise Style — Click to toggle style, drag to corner")
+                      : (intl.get('PS_VIEW_RUNTIME_HANDLE_NORMAL_TITLE') || "Click to toggle concise style, drag to corner")}
+                    aria-label={intl.get('PS_VIEW_RUNTIME_HANDLE_ARIA') || "Click to toggle style, drag to corner"}
                   >
                     <HudIcons.DragHandle />
                   </button>
 
                   {runtimeLocationsList.length > 0 ? (
                     <>
-                      <div className="ps-runtime-location-picker" title="Toggle Plant Location">
+                      <div className="ps-runtime-location-picker" title={intl.get('PS_VIEW_TOGGLE_PLANT_LOC_TITLE') || "Toggle Plant Location"}>
                         <select
                           id="toolRuntimeLocationSelect"
                           className="ps-runtime-location-select"
                           value={(runtimeLocationsList.some(l => l.id === activeLocationId) ? activeLocationId : runtimeLocationsList[0]?.id) || ''}
                           onChange={handleRuntimeLocationSelect}
-                          aria-label="Select Plant Location"
+                          aria-label={intl.get('PS_VIEW_SELECT_PLANT_LOC_ARIA') || "Select Plant Location"}
                         >
                           {runtimeLocationsList.map(loc => (
                             <option key={loc.id} value={loc.id}>
@@ -4476,7 +4505,7 @@ export default function ProcessScapeView({
                       {!isRuntimeToolsConcise && <div className="hud-divider" />}
                     </>
                   ) : isRuntimeToolsConcise ? (
-                    <span className="ps-runtime-concise-empty">No Locations</span>
+                    <span className="ps-runtime-concise-empty">{intl.get('PS_VIEW_NO_LOCATIONS_SHORT') || 'No Locations'}</span>
                   ) : null}
 
                   {!isRuntimeToolsConcise && (
@@ -4492,8 +4521,8 @@ export default function ProcessScapeView({
                             const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
                             zoomAtPoint(cx, cy, 1 / 1.15);
                           }}
-                          title="Zoom Out (-)"
-                          aria-label="Zoom Out"
+                          title={intl.get('PS_VIEW_ZOOM_OUT_TITLE') || "Zoom Out (-)"}
+                          aria-label={intl.get('PS_VIEW_ZOOM_OUT_ARIA') || "Zoom Out"}
                         >
                           <HudIcons.ZoomOut />
                         </button>
@@ -4503,8 +4532,8 @@ export default function ProcessScapeView({
                           type="button"
                           className="zoom-text hud-btn-zoom-reset"
                           onClick={resetView}
-                          title="Reset Zoom to 100% (Click to reset)"
-                          aria-label="Zoom Percentage"
+                          title={intl.get('PS_VIEW_ZOOM_RESET_TITLE') || "Reset Zoom to 100% (Click to reset)"}
+                          aria-label={intl.get('PS_VIEW_ZOOM_PERCENT_ARIA') || "Zoom Percentage"}
                         >
                           {Math.round((view?.zoom || 1) * 100)}%
                         </button>
@@ -4519,8 +4548,8 @@ export default function ProcessScapeView({
                             const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
                             zoomAtPoint(cx, cy, 1.15);
                           }}
-                          title="Zoom In (+)"
-                          aria-label="Zoom In"
+                          title={intl.get('PS_VIEW_ZOOM_IN_TITLE') || "Zoom In (+)"}
+                          aria-label={intl.get('PS_VIEW_ZOOM_IN_ARIA') || "Zoom In"}
                         >
                           <HudIcons.ZoomIn />
                         </button>
@@ -4539,8 +4568,10 @@ export default function ProcessScapeView({
                             e.currentTarget.blur();
                             handleToggleBoundsResizer();
                           }}
-                          title={boundsResizerMode === 'runtime' ? "Confirm & Apply Layout Changes (Save Size & Positions)" : "Resize Diagram & Move Attached Sensor Cards"}
-                          aria-label="Resize Diagram & Move Attached Sensor Cards"
+                          title={boundsResizerMode === 'runtime'
+                            ? (intl.get('PS_VIEW_BOUNDS_CONFIRM_RUNTIME_TITLE') || "Confirm & Apply Layout Changes (Save Size & Positions)")
+                            : (intl.get('PS_VIEW_BOUNDS_RESIZER_RUNTIME_TITLE') || "Resize Diagram & Move Attached Sensor Cards")}
+                          aria-label={intl.get('PS_VIEW_BOUNDS_RESIZER_RUNTIME_ARIA') || "Resize Diagram & Move Attached Sensor Cards"}
                         >
                           <HudIcons.BoundsScale />
                         </button>
@@ -4555,8 +4586,8 @@ export default function ProcessScapeView({
                               setIsScapeManagerOpen(true);
                               setIsBubbleDismissed(true);
                             }}
-                            title="Scape Manager (Switch / Create Scapes)"
-                            aria-label="Scape Manager"
+                            title={intl.get('PS_VIEW_SCAPE_MANAGER_TITLE') || "Scape Manager (Switch / Create Scapes)"}
+                            aria-label={intl.get('PS_VIEW_SCAPE_MANAGER_ARIA') || "Scape Manager"}
                           >
                             <HudIcons.ScapeManager />
                           </button>
@@ -4570,17 +4601,17 @@ export default function ProcessScapeView({
                               }}
                               role="button"
                               tabIndex={0}
-                              title="Start scape layout edit"
-                              aria-label="Start scape layout edit"
+                              title={intl.get('PS_VIEW_START_SCAPE_EDIT') || "Start scape layout edit"}
+                              aria-label={intl.get('PS_VIEW_START_SCAPE_EDIT') || "Start scape layout edit"}
                             >
                               <span className="ps-bubble-tail" aria-hidden="true" />
                               <span className="ps-bubble-icon" aria-hidden="true">✏️</span>
-                              <span className="ps-bubble-text">Start scape layout edit</span>
+                              <span className="ps-bubble-text">{intl.get('PS_VIEW_START_SCAPE_EDIT') || 'Start scape layout edit'}</span>
                               <button
                                 type="button"
                                 className="ps-bubble-close-btn"
-                                title="Dismiss hint"
-                                aria-label="Dismiss hint"
+                                title={intl.get('PS_VIEW_DISMISS_HINT') || "Dismiss hint"}
+                                aria-label={intl.get('PS_VIEW_DISMISS_HINT') || "Dismiss hint"}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setIsBubbleDismissed(true);
@@ -4681,7 +4712,7 @@ export default function ProcessScapeView({
                       <g transform={`translate(${resizingBox.x + 8}, ${resizingBox.y - 10})`} pointerEvents="none">
                         <rect x={-4} y={-14} width={164} height={20} rx={4} fill="#0f172a" opacity={0.92} />
                         <text x={6} y={1} fontSize={11} fontWeight={700} fill="#ffffff" fontFamily="ui-monospace, monospace">
-                          📐 Diagram: {Math.round(resizingBox.w)}×{Math.round(resizingBox.h)}px
+                          📐 {intl.get('PS_VIEW_DIAGRAM_DIMENSIONS', { w: Math.round(resizingBox.w), h: Math.round(resizingBox.h) }) || `Diagram: ${Math.round(resizingBox.w)}×${Math.round(resizingBox.h)}px`}
                         </text>
                       </g>
                       {[
@@ -4751,16 +4782,20 @@ export default function ProcessScapeView({
                     onDoubleClick={() => {
                       if (!isInspectorPinned) setInspectorPos(null);
                     }}
-                    title={isInspectorPinned ? 'Item Properties (Pinned to Sidebar)' : 'Drag header to move • Double-click to reset position'}
+                    title={isInspectorPinned
+                      ? (intl.get('PS_VIEW_INSP_HEADER_PINNED_TITLE') || 'Item Properties (Pinned to Sidebar)')
+                      : (intl.get('PS_VIEW_INSP_HEADER_FLOAT_TITLE') || 'Drag header to move • Double-click to reset position')}
                   >
                     <div className="ps-inspector-title-wrap">
                       <span
                         className="ps-inspector-drag-grip"
                         role="button"
                         tabIndex={0}
-                        aria-label="Toggle Inspector Min/Normal Style"
+                        aria-label={intl.get('PS_VIEW_INSP_TOGGLE_STYLE_ARIA') || "Toggle Inspector Min/Normal Style"}
                         aria-pressed={isInspectorMin}
-                        title={isInspectorMin ? 'Min style — Click grip for Normal style' : 'Normal style — Click grip for Min style'}
+                        title={isInspectorMin
+                          ? (intl.get('PS_VIEW_INSP_GRIP_MIN_TITLE') || 'Min style — Click grip for Normal style')
+                          : (intl.get('PS_VIEW_INSP_GRIP_NORMAL_TITLE') || 'Normal style — Click grip for Min style')}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (inspectorDragRef.current.didMove) {
@@ -4787,8 +4822,12 @@ export default function ProcessScapeView({
                       type="button"
                       className="ps-inspector-close-btn"
                       onClick={handleToggleInspectorPin}
-                      title={isInspectorPinned ? 'Unpin to Floating Window' : 'Pin Properties to Sidebar'}
-                      aria-label={isInspectorPinned ? 'Unpin to Floating Window' : 'Pin Properties to Sidebar'}
+                      title={isInspectorPinned
+                        ? (intl.get('PS_VIEW_INSP_UNPIN_TITLE') || 'Unpin to Floating Window')
+                        : (intl.get('PS_VIEW_INSP_PIN_TITLE') || 'Pin Properties to Sidebar')}
+                      aria-label={isInspectorPinned
+                        ? (intl.get('PS_VIEW_INSP_UNPIN_TITLE') || 'Unpin to Floating Window')
+                        : (intl.get('PS_VIEW_INSP_PIN_TITLE') || 'Pin Properties to Sidebar')}
                     >
                       {isInspectorPinned ? (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -4809,16 +4848,16 @@ export default function ProcessScapeView({
                   {!singleSelectedElement && !isPipeSelection ? (
                     <div className="ps-empty-inspector">
                       <div style={{ fontSize: 32 }}>🎯</div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>No Item Selected</div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{intl.get('PS_VIEW_INSP_NO_ITEM_TITLE') || 'No Item Selected'}</div>
                       <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-                        Click an equipment asset, pipe, or sensor card on the canvas to configure parameters and live data channels.
+                        {intl.get('PS_VIEW_INSP_NO_ITEM_DESC') || 'Click an equipment asset, pipe, or sensor card on the canvas to configure parameters and live data channels.'}
                       </div>
                     </div>
                   ) : singleSelectedElement?.type === 'sensor_card' ? (
                     /* Sensor Mode Card Inspector */
                     <>
                       <div className="ps-form-group">
-                        <label className="ps-form-label">Sensor Tag Name</label>
+                        <label className="ps-form-label">{intl.get('PS_VIEW_INSP_SENSOR_TAG_NAME') || 'Sensor Tag Name'}</label>
                         <input
                           className="ps-input"
                           value={selectedElement.tag || ''}
@@ -4829,7 +4868,7 @@ export default function ProcessScapeView({
                       {!isInspectorMin && (
                         <>
                           <div className="ps-form-group">
-                            <label className="ps-form-label">Title Position</label>
+                            <label className="ps-form-label">{intl.get('PS_VIEW_INSP_TITLE_POSITION') || 'Title Position'}</label>
                             <div style={{ display: 'flex', gap: 8 }}>
                               <button
                                 type="button"
@@ -4837,7 +4876,7 @@ export default function ProcessScapeView({
                                 style={{ flex: 1, justifyContent: 'center' }}
                                 onClick={() => updateSelectedElement({ titlePosition: 'left' })}
                               >
-                                Left Tag
+                                {intl.get('PS_VIEW_INSP_LEFT_TAG') || 'Left Tag'}
                               </button>
                               <button
                                 type="button"
@@ -4845,13 +4884,13 @@ export default function ProcessScapeView({
                                 style={{ flex: 1, justifyContent: 'center' }}
                                 onClick={() => updateSelectedElement({ titlePosition: 'top' })}
                               >
-                                Top Banner
+                                {intl.get('PS_VIEW_INSP_TOP_BANNER') || 'Top Banner'}
                               </button>
                             </div>
                           </div>
 
                           <div className="ps-form-group">
-                            <label className="ps-form-label">Linked Device (Sensor / Gateway)</label>
+                            <label className="ps-form-label">{intl.get('PS_VIEW_INSP_LINKED_DEVICE') || 'Linked Device (Sensor / Gateway)'}</label>
                             <select
                               className="ps-select"
                               value={selectedElement.attachedAssetId || ''}
@@ -4860,7 +4899,7 @@ export default function ProcessScapeView({
                                 updateSelectedElement({ attachedAssetId: val });
                               }}
                             >
-                              <option value="">(None - Free Floating)</option>
+                              <option value="">{intl.get('PS_VIEW_INSP_NONE_FREE_FLOATING') || '(None - Free Floating)'}</option>
                               {elements.filter(e => isSensorOrGateway(e)).map(dev => (
                                 <option key={dev.id} value={dev.id}>
                                   {dev.tag || ASSET_DEFS[dev.type]?.name || dev.id}
@@ -4872,12 +4911,12 @@ export default function ProcessScapeView({
                           {/* Relative placement shortcuts */}
                           {selectedElement.attachedAssetId && (
                             <div className="ps-form-group">
-                              <label className="ps-form-label">Quick Position vs Linked Device</label>
+                              <label className="ps-form-label">{intl.get('PS_VIEW_INSP_QUICK_POSITION') || 'Quick Position vs Linked Device'}</label>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) - 80 })}>Above</button>
-                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) + 80 })}>Below</button>
-                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) - 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Left</button>
-                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) + 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>Right</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) - 80 })}>{intl.get('PS_VIEW_POS_ABOVE') || 'Above'}</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0), y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) + 80 })}>{intl.get('PS_VIEW_POS_BELOW') || 'Below'}</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) - 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>{intl.get('PS_VIEW_POS_LEFT') || 'Left'}</button>
+                                <button type="button" className="hud-btn-sm" style={{ justifyContent: 'center' }} onClick={() => updateSelectedElement({ x: (elements.find(e => e.id === selectedElement.attachedAssetId)?.x || 0) + 120, y: (elements.find(e => e.id === selectedElement.attachedAssetId)?.y || 0) })}>{intl.get('PS_VIEW_POS_RIGHT') || 'Right'}</button>
                               </div>
                             </div>
                           )}
@@ -4885,11 +4924,11 @@ export default function ProcessScapeView({
                           {/* Assigned Telemetry Channels */}
                           <div className="ps-form-group">
                             <label className="ps-form-label">
-                              Assigned Telemetry Channels ({(selectedElement.channels || []).length})
+                              {intl.get('PS_VIEW_INSP_ASSIGNED_CHANNELS', { count: (selectedElement.channels || []).length }) || `Assigned Telemetry Channels (${(selectedElement.channels || []).length})`}
                             </label>
                             {(selectedElement.channels || []).length === 0 ? (
                               <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', padding: '6px 0' }}>
-                                No channels assigned. Use <strong>Sensor & Measurement Point Manager</strong> to detect and bind channels.
+                                {intl.get('PS_VIEW_INSP_NO_CHANNELS_ASSIGNED_PREFIX') || 'No channels assigned. Use '}<strong>{intl.get('PS_VIEW_SENSOR_MP_MANAGER_NAME') || 'Sensor & Measurement Point Manager'}</strong>{intl.get('PS_VIEW_INSP_NO_CHANNELS_ASSIGNED_SUFFIX') || ' to detect and bind channels.'}
                               </div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
@@ -4924,7 +4963,7 @@ export default function ProcessScapeView({
                       {!isInspectorMin && (
                         <>
                           <div className="ps-form-group">
-                            <label className="ps-form-label">Orientation</label>
+                            <label className="ps-form-label">{intl.get('PS_VIEW_INSP_ORIENTATION') || 'Orientation'}</label>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button
                                 type="button"
@@ -4933,7 +4972,7 @@ export default function ProcessScapeView({
                                 aria-label="Line Orientation: Horizontal (H)"
                                 onClick={() => updateSelectedElement({ orientation: 'h' })}
                               >
-                                Horizontal (H)
+                                {intl.get('PS_VIEW_ORIENT_HORIZONTAL_H') || 'Horizontal (H)'}
                               </button>
                               <button
                                 type="button"
@@ -4942,20 +4981,20 @@ export default function ProcessScapeView({
                                 aria-label="Line Orientation: Vertical (V)"
                                 onClick={() => updateSelectedElement({ orientation: 'v' })}
                               >
-                                Vertical (V)
+                                {intl.get('PS_VIEW_ORIENT_VERTICAL_V') || 'Vertical (V)'}
                               </button>
                             </div>
                           </div>
 
                           {renderLineStyleField({
-                            label: 'Line Style',
+                            label: intl.get('PS_VIEW_INSP_LINE_STYLE') || 'Line Style',
                             activeStyle: singleSelectedElement.lineStyle || 'single',
                             ariaPrefix: 'Line Style',
                             onSelect: (id) => updateSelectedElement({ lineStyle: id })
                           })}
 
                           {renderColorSwatchField({
-                            label: 'Line Color',
+                            label: intl.get('PS_VIEW_INSP_LINE_COLOR') || 'Line Color',
                             palette: NOTE_COLOR_PALETTE,
                             activeColor: singleSelectedElement.color || '#475569',
                             onSelect: (hex) => updateSelectedElement({ color: hex })
@@ -4965,7 +5004,7 @@ export default function ProcessScapeView({
 
                       {renderRangeField({
                         id: 'guideLineLengthSlider',
-                        label: 'Line Length',
+                        label: intl.get('PS_VIEW_INSP_LINE_LENGTH') || 'Line Length',
                         valueText: `${Math.round(singleSelectedElement.length || 220)} px`,
                         min: 40,
                         max: 1000,
@@ -4981,7 +5020,7 @@ export default function ProcessScapeView({
                         <>
                           {renderRangeField({
                             id: 'guideLineWidthSlider',
-                            label: 'Line Thickness',
+                            label: intl.get('PS_VIEW_INSP_LINE_THICKNESS') || 'Line Thickness',
                             valueText: `${singleSelectedElement.strokeWidth || 1} px`,
                             min: 1,
                             max: 10,
@@ -5016,7 +5055,7 @@ export default function ProcessScapeView({
                         <>
                           {renderRangeField({
                             id: 'shapeWidthSlider',
-                            label: 'Width (W)',
+                            label: intl.get('PS_VIEW_INSP_WIDTH_W') || 'Width (W)',
                             valueText: `${shapeW} px`,
                             min: 20,
                             max: 1200,
@@ -5030,7 +5069,7 @@ export default function ProcessScapeView({
 
                           {renderRangeField({
                             id: 'shapeHeightSlider',
-                            label: 'Height (H)',
+                            label: intl.get('PS_VIEW_INSP_HEIGHT_H') || 'Height (H)',
                             valueText: `${shapeH} px`,
                             min: 20,
                             max: 1200,
@@ -5050,9 +5089,9 @@ export default function ProcessScapeView({
                                     saveHistory('Match Circle W = H');
                                     updateSelectedElement({ h: shapeW });
                                   }}
-                                  title="Set Height equal to Width to restore a perfect circle"
+                                  title={intl.get('PS_VIEW_MAKE_CIRCLE_TITLE') || "Set Height equal to Width to restore a perfect circle"}
                                 >
-                                  Make Circle (W=H)
+                                  {intl.get('PS_VIEW_MAKE_CIRCLE_BTN') || 'Make Circle (W=H)'}
                                 </button>
                               </div>
                             ) : null
@@ -5061,7 +5100,7 @@ export default function ProcessScapeView({
                           {!isInspectorMin && (
                             <>
                               {renderColorSwatchField({
-                                label: 'Fill Color',
+                                label: intl.get('PS_VIEW_INSP_FILL_COLOR') || 'Fill Color',
                                 palette: SHAPE_FILL_PALETTE,
                                 activeColor: fillColor,
                                 ariaPrefix: 'Fill Color',
@@ -5074,8 +5113,8 @@ export default function ProcessScapeView({
                                     id="shapeFillColorPicker"
                                     type="color"
                                     className="ps-color-picker-btn"
-                                    title="Custom Fill Color"
-                                    aria-label="Custom Fill Color"
+                                    title={intl.get('PS_VIEW_CUSTOM_FILL_COLOR') || "Custom Fill Color"}
+                                    aria-label={intl.get('PS_VIEW_CUSTOM_FILL_COLOR') || "Custom Fill Color"}
                                     value={customPickerValue}
                                     onChange={(e) => updateSelectedElement({ fillColor: e.target.value })}
                                   />
@@ -5084,7 +5123,7 @@ export default function ProcessScapeView({
 
                               {fillColor !== 'transparent' && renderRangeField({
                                 id: 'shapeFillOpacitySlider',
-                                label: 'Fill Opacity',
+                                label: intl.get('PS_VIEW_INSP_FILL_OPACITY') || 'Fill Opacity',
                                 valueText: `${fillOpacityPct}%`,
                                 min: 10,
                                 max: 100,
@@ -5099,7 +5138,7 @@ export default function ProcessScapeView({
                               })}
 
                               {renderLineStyleField({
-                                label: 'Frame Style',
+                                label: intl.get('PS_VIEW_INSP_FRAME_STYLE') || 'Frame Style',
                                 activeStyle: lineStyle,
                                 ariaPrefix: 'Frame Style',
                                 onSelect: (id) => {
@@ -5109,7 +5148,7 @@ export default function ProcessScapeView({
                               })}
 
                               {renderColorSwatchField({
-                                label: 'Frame Color',
+                                label: intl.get('PS_VIEW_INSP_FRAME_COLOR') || 'Frame Color',
                                 palette: NOTE_COLOR_PALETTE,
                                 activeColor: strokeColor,
                                 ariaPrefix: 'Frame Color',
@@ -5121,7 +5160,7 @@ export default function ProcessScapeView({
 
                               {renderRangeField({
                                 id: 'shapeStrokeWidthSlider',
-                                label: 'Frame Thickness',
+                                label: intl.get('PS_VIEW_INSP_FRAME_THICKNESS') || 'Frame Thickness',
                                 valueText: `${strokeWidth} px`,
                                 min: 1,
                                 max: 10,
@@ -5143,13 +5182,13 @@ export default function ProcessScapeView({
                     /* Dedicated Label Inspector */
                     <>
                       <div className="ps-form-group">
-                        <label className="ps-form-label" htmlFor="psTextNoteInput">Note Text</label>
+                        <label className="ps-form-label" htmlFor="psTextNoteInput">{intl.get('PS_VIEW_INSP_NOTE_TEXT') || 'Note Text'}</label>
                         <textarea
                           id="psTextNoteInput"
                           className="ps-input ps-textarea"
                           rows={2}
                           value={singleSelectedElement.text ?? ''}
-                          placeholder="Enter label text..."
+                          placeholder={intl.get('PS_VIEW_INSP_NOTE_PLACEHOLDER') || "Enter label text..."}
                           onChange={(e) => updateSelectedElement({ text: e.target.value })}
                         />
                       </div>
@@ -5159,7 +5198,7 @@ export default function ProcessScapeView({
                         <>
                           {/* Orientation H / V Style Selector */}
                           <div className="ps-form-group">
-                            <label className="ps-form-label">Orientation Style</label>
+                            <label className="ps-form-label">{intl.get('PS_VIEW_INSP_ORIENTATION_STYLE') || 'Orientation Style'}</label>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button
                                 type="button"
@@ -5168,7 +5207,7 @@ export default function ProcessScapeView({
                                 aria-label="Label Orientation: Horizontal (H)"
                                 onClick={() => updateSelectedElement({ orientation: 'h' })}
                               >
-                                Horizontal (H)
+                                {intl.get('PS_VIEW_ORIENT_HORIZONTAL_H') || 'Horizontal (H)'}
                               </button>
                               <button
                                 type="button"
@@ -5177,7 +5216,7 @@ export default function ProcessScapeView({
                                 aria-label="Label Orientation: Vertical (V)"
                                 onClick={() => updateSelectedElement({ orientation: 'v' })}
                               >
-                                Vertical (V)
+                                {intl.get('PS_VIEW_ORIENT_VERTICAL_V') || 'Vertical (V)'}
                               </button>
                             </div>
                           </div>
@@ -5185,9 +5224,12 @@ export default function ProcessScapeView({
                           {/* Outline Border Style Selector */}
                           <div className="ps-form-group">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <label className="ps-form-label" style={{ margin: 0 }}>Outline Style</label>
+                              <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_OUTLINE_STYLE') || 'Outline Style'}</label>
                               <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                                {(NOTE_OUTLINE_STYLES.find(s => s.id === (singleSelectedElement.outlineStyle || 'none')) || NOTE_OUTLINE_STYLES[0]).name}
+                                {(() => {
+                                  const activeOut = NOTE_OUTLINE_STYLES.find(s => s.id === (singleSelectedElement.outlineStyle || 'none')) || NOTE_OUTLINE_STYLES[0];
+                                  return intl.get(`PS_VIEW_OUTLINE_${activeOut.id.toUpperCase()}_NAME`) || activeOut.name;
+                                })()}
                               </span>
                             </div>
                             <div className="ps-note-outline-grid">
@@ -5198,7 +5240,7 @@ export default function ProcessScapeView({
                                     key={opt.id}
                                     type="button"
                                     className={`ps-note-outline-btn ${active ? 'active' : ''}`}
-                                    title={opt.desc}
+                                    title={intl.get(`PS_VIEW_OUTLINE_${opt.id.toUpperCase()}_DESC`) || opt.desc}
                                     aria-label={`Outline: ${opt.name}`}
                                     onClick={() => {
                                       saveHistory('Change Note Outline');
@@ -5206,7 +5248,7 @@ export default function ProcessScapeView({
                                     }}
                                   >
                                     <span className={`ps-outline-preview style-${opt.id}`} aria-hidden="true">Abc</span>
-                                    <span className="ps-outline-label">{opt.name}</span>
+                                    <span className="ps-outline-label">{intl.get(`PS_VIEW_OUTLINE_${opt.id.toUpperCase()}_NAME`) || opt.name}</span>
                                   </button>
                                 );
                               })}
@@ -5216,9 +5258,12 @@ export default function ProcessScapeView({
                           {/* Text & Border Color Swatches */}
                           <div className="ps-form-group">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <label className="ps-form-label" style={{ margin: 0 }}>Text &amp; Border Color</label>
+                              <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_TEXT_BORDER_COLOR') || 'Text & Border Color'}</label>
                               <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                                {(NOTE_COLOR_PALETTE.find(c => c.hex.toLowerCase() === (singleSelectedElement.color || '#64748b').toLowerCase())?.name) || 'Custom'}
+                                {(() => {
+                                  const matchedC = NOTE_COLOR_PALETTE.find(c => c.hex.toLowerCase() === (singleSelectedElement.color || '#64748b').toLowerCase());
+                                  return matchedC ? (intl.get(`PS_VIEW_NOTE_COLOR_${matchedC.id.toUpperCase()}`) || matchedC.name) : (intl.get('PS_VIEW_COLOR_CUSTOM') || 'Custom');
+                                })()}
                               </span>
                             </div>
                             <div className="ps-swatches-row">
@@ -5229,7 +5274,7 @@ export default function ProcessScapeView({
                                     type="button"
                                     key={c.id}
                                     className={`ps-swatch-circle-btn ${isActive ? 'active' : ''}`}
-                                    title={c.name}
+                                    title={intl.get(`PS_VIEW_NOTE_COLOR_${c.id.toUpperCase()}`) || c.name}
                                     aria-label={c.name}
                                     onClick={() => {
                                       saveHistory('Change Note Color');
@@ -5247,7 +5292,7 @@ export default function ProcessScapeView({
                       {/* Font Size Slider (Tailored for Text Note, not Device Size) */}
                       <div className="ps-form-group">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <label className="ps-form-label" style={{ margin: 0 }}>Text Size</label>
+                          <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_TEXT_SIZE') || 'Text Size'}</label>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
                             {singleSelectedElement.fontSize || 12} px
                           </span>
@@ -5279,9 +5324,9 @@ export default function ProcessScapeView({
                               saveHistory('Reset Note Size');
                               updateSelectedElement({ fontSize: 12 });
                             }}
-                            title="Reset font size to 12px"
+                            title={intl.get('PS_VIEW_RESET_FONT_SIZE_TITLE') || "Reset font size to 12px"}
                           >
-                            Reset (12px)
+                            {intl.get('PS_VIEW_RESET_FONT_SIZE_BTN') || 'Reset (12px)'}
                           </button>
                         </div>
                       </div>
@@ -5308,7 +5353,7 @@ export default function ProcessScapeView({
                         <>
                           {!isInspectorMin && (
                             <div className="ps-form-group">
-                              <label className="ps-form-label">Orientation</label>
+                              <label className="ps-form-label">{intl.get('PS_VIEW_INSP_ORIENTATION') || 'Orientation'}</label>
                               <div style={{ display: 'flex', gap: 6 }}>
                                 {['h', 'v'].map(orient => {
                                   const isActive = (isVertWall ? 'v' : 'h') === orient;
@@ -5326,7 +5371,9 @@ export default function ProcessScapeView({
                                         applyWallSize(wallLen, wallThick, nextType);
                                       }}
                                     >
-                                      {orient === 'v' ? 'Vertical (V)' : 'Horizontal (H)'}
+                                      {orient === 'v'
+                                        ? (intl.get('PS_VIEW_ORIENT_VERTICAL_V') || 'Vertical (V)')
+                                        : (intl.get('PS_VIEW_ORIENT_HORIZONTAL_H') || 'Horizontal (H)')}
                                     </button>
                                   );
                                 })}
@@ -5337,7 +5384,7 @@ export default function ProcessScapeView({
                           {/* Wall Length Slider (Always visible in Normal & Min style) */}
                           <div className="ps-form-group">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <label className="ps-form-label" style={{ margin: 0 }}>Wall Length</label>
+                              <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_WALL_LENGTH') || 'Wall Length'}</label>
                               <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
                                 {wallLen} px
                               </span>
@@ -5370,9 +5417,9 @@ export default function ProcessScapeView({
                                     saveHistory('Reset Wall Length');
                                     applyWallSize(200, wallThick);
                                   }}
-                                  title="Reset wall length to 200px"
+                                  title={intl.get('PS_VIEW_RESET_WALL_LEN_TITLE') || "Reset wall length to 200px"}
                                 >
-                                  Reset (200px)
+                                  {intl.get('PS_VIEW_RESET_WALL_LEN_BTN') || 'Reset (200px)'}
                                 </button>
                               </div>
                             )}
@@ -5383,7 +5430,7 @@ export default function ProcessScapeView({
                               {/* Wall Thickness Slider */}
                               <div className="ps-form-group">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                  <label className="ps-form-label" style={{ margin: 0 }}>Wall Thickness</label>
+                                  <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_WALL_THICKNESS') || 'Wall Thickness'}</label>
                                   <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
                                     {wallThick} px
                                   </span>
@@ -5420,11 +5467,11 @@ export default function ProcessScapeView({
                       {!isInspectorMin && (
                         <>
                           <div className="ps-form-group">
-                            <label className="ps-form-label">Equipment Tag Name</label>
+                            <label className="ps-form-label">{intl.get('PS_VIEW_INSP_EQUIP_TAG_NAME') || 'Equipment Tag Name'}</label>
                             <input
                               className="ps-input"
                               value={singleSelectedElement.tag ?? ''}
-                              placeholder="(Optional tag / empty)"
+                              placeholder={intl.get('PS_VIEW_INSP_EQUIP_TAG_PLACEHOLDER') || "(Optional tag / empty)"}
                               onChange={(e) => updateSelectedElement({ tag: e.target.value })}
                             />
                           </div>
@@ -5432,9 +5479,12 @@ export default function ProcessScapeView({
                           {/* Solid Flat Color Theme Swatches (Single-line compact options) */}
                           <div className="ps-form-group">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <label className="ps-form-label" style={{ margin: 0 }}>Color Theme</label>
+                              <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_COLOR_THEME') || 'Color Theme'}</label>
                               <span style={{ fontSize: 11, fontWeight: 600, color: '#00ac86' }}>
-                                {(EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue).name}
+                                {(() => {
+                                  const activeTh = EQUIPMENT_COLOR_THEMES[singleSelectedElement.colorTheme || 'blue'] || EQUIPMENT_COLOR_THEMES.blue;
+                                  return intl.get(`PS_VIEW_THEME_${activeTh.id.toUpperCase()}`) || activeTh.name;
+                                })()}
                               </span>
                             </div>
                             <div className="ps-swatches-row">
@@ -5443,7 +5493,7 @@ export default function ProcessScapeView({
                                   type="button"
                                   key={theme.id}
                                   className={`ps-swatch-circle-btn ${(singleSelectedElement.colorTheme || 'blue') === theme.id ? 'active' : ''}`}
-                                  title={theme.name}
+                                  title={intl.get(`PS_VIEW_THEME_${theme.id.toUpperCase()}`) || theme.name}
                                   aria-label={theme.name}
                                   onClick={() => {
                                     saveHistory('Change Theme');
@@ -5460,7 +5510,7 @@ export default function ProcessScapeView({
                       {/* Proportional Size Control Slider */}
                       <div className="ps-form-group">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <label className="ps-form-label" style={{ margin: 0 }}>Device Size</label>
+                          <label className="ps-form-label" style={{ margin: 0 }}>{intl.get('PS_VIEW_INSP_DEVICE_SIZE') || 'Device Size'}</label>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#00ac86' }}>
                             {Math.round(((singleSelectedElement.scale ?? ((singleSelectedElement.w && ASSET_DEFS[singleSelectedElement.type]) ? singleSelectedElement.w / ASSET_DEFS[singleSelectedElement.type].w : 1))) * 100)}%
                           </span>
@@ -5500,9 +5550,9 @@ export default function ProcessScapeView({
                               saveHistory('Reset Device Size');
                               updateSelectedElement({ scale: 1, w: def.w, h: def.h });
                             }}
-                            title="Reset to 100% standard size"
+                            title={intl.get('PS_VIEW_RESET_DEVICE_SIZE_TITLE') || "Reset to 100% standard size"}
                           >
-                            Reset (100%)
+                            {intl.get('PS_VIEW_RESET_DEVICE_SIZE_BTN') || 'Reset (100%)'}
                           </button>
                         </div>
                       </div>
@@ -5526,12 +5576,12 @@ export default function ProcessScapeView({
                           alignItems: 'center',
                           gap: 6
                         }}>
-                          <span>🔗</span> Grouped Pipeline ({selectedPipes.length} segments)
+                          <span>🔗</span> {intl.get('PS_VIEW_INSP_GROUPED_PIPELINE', { count: selectedPipes.length }) || `Grouped Pipeline (${selectedPipes.length} segments)`}
                         </div>
                       )}
 
                       <div className="ps-form-group">
-                        <label className="ps-form-label">Pipe Thickness ({representativePipe.w || 20}px)</label>
+                        <label className="ps-form-label">{intl.get('PS_VIEW_INSP_PIPE_THICKNESS', { w: representativePipe.w || 20 }) || `Pipe Thickness (${representativePipe.w || 20}px)`}</label>
                         <input
                           id="pipeThicknessSlider"
                           type="range"
@@ -5546,34 +5596,34 @@ export default function ProcessScapeView({
                       {!isInspectorMin && (
                         <>
                           <div className="ps-form-group">
-                            <label className="ps-form-label">Flow Direction</label>
+                            <label className="ps-form-label">{intl.get('PS_VIEW_INSP_FLOW_DIRECTION') || 'Flow Direction'}</label>
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button
                                 type="button"
                                 className={`hud-btn-sm ${(!representativePipe.flow || representativePipe.flow === 'forward') ? 'btn-primary' : ''}`}
                                 style={{ flex: 1, justifyContent: 'center' }}
                                 onClick={() => updateSelectedPipe({ flow: 'forward' })}
-                                title="Animate fluid flow from start to end"
+                                title={intl.get('PS_VIEW_FLOW_FORWARD_TITLE') || "Animate fluid flow from start to end"}
                               >
-                                ▶ Forward
+                                {intl.get('PS_VIEW_FLOW_FORWARD_BTN') || '▶ Forward'}
                               </button>
                               <button
                                 type="button"
                                 className={`hud-btn-sm ${representativePipe.flow === 'reverse' ? 'btn-primary' : ''}`}
                                 style={{ flex: 1, justifyContent: 'center' }}
                                 onClick={() => updateSelectedPipe({ flow: 'reverse' })}
-                                title="Animate fluid flow from end to start"
+                                title={intl.get('PS_VIEW_FLOW_REVERSE_TITLE') || "Animate fluid flow from end to start"}
                               >
-                                ◀ Reverse
+                                {intl.get('PS_VIEW_FLOW_REVERSE_BTN') || '◀ Reverse'}
                               </button>
                               <button
                                 type="button"
                                 className={`hud-btn-sm ${representativePipe.flow === 'none' ? 'btn-primary' : ''}`}
                                 style={{ flex: 0.8, justifyContent: 'center' }}
                                 onClick={() => updateSelectedPipe({ flow: 'none' })}
-                                title="Turn off flow animation"
+                                title={intl.get('PS_VIEW_FLOW_OFF_TITLE') || "Turn off flow animation"}
                               >
-                                ⏹ Off
+                                {intl.get('PS_VIEW_FLOW_OFF_BTN') || '⏹ Off'}
                               </button>
                             </div>
                           </div>

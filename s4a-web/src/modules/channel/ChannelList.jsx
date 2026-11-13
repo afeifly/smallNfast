@@ -83,7 +83,7 @@ class ChannelList extends Component {
       noData = (
         <div className="empty-placeholder">
           <div className="empty-icon"></div>
-          <div className="empty-label">No Data</div>
+          <div className="empty-label">{intl.get('CH_NO_DATA') || 'No Data'}</div>
         </div>
       );
     }
@@ -460,8 +460,8 @@ class ChannelList extends Component {
     if (selectedChannels.length >= 10) {
       this.setState({
         openAlert: true,
-        alertTitle: "Max Selected Channels",
-        alertText: "Maximum 10 selected channels reached."
+        alertTitle: intl.get('MAX_SELECTED_CHANNELS_TITLE') || "Max Selected Channels",
+        alertText: intl.get('CH_MAX_10_CHANNELS_NOTE') || "Maximum 10 selected channels reached."
       });
       channel.selected = false;
       return;
@@ -471,8 +471,8 @@ class ChannelList extends Component {
     if (isNewUnit && uniqueUnits.size >= 4) {
       this.setState({
         openAlert: true,
-        alertTitle: "Max Different Units",
-        alertText: "Maximum 4 different units (Y-axes) reached."
+        alertTitle: intl.get('CH_MAX_DIFF_UNITS_TITLE') || "Max Different Units",
+        alertText: intl.get('CH_MAX_4_UNITS_NOTE') || "Maximum 4 different units (Y-axes) reached."
       });
       channel.selected = false;
       return;

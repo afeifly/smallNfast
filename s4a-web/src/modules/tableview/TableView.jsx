@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import intl from 'react-intl-universal';
 import TestAPI from '../../api/TestAPI';
 import Checkbox from '@mui/material/Checkbox';
 import './TableView.css';
@@ -168,7 +169,7 @@ const TableView = () => {
   // Group filtered channels by sensor_description
   const groups = {};
   filteredChannels.forEach(ch => {
-    const groupName = ch.sensor_description || 'Other Sensors';
+    const groupName = ch.sensor_description || (intl.get('TBL_OTHER_SENSORS') || 'Other Sensors');
     if (!groups[groupName]) {
       groups[groupName] = [];
     }
@@ -194,13 +195,13 @@ const TableView = () => {
       <aside className={`table-sidebar ${columnsVisible ? 'expanded' : 'collapsed'}`}>
         <div className="table-sidebar-inner">
           <div className="table-sidebar-header">
-            <span className="table-sidebar-title">Columns ({selectedChannelIds.length}/{channels.length})</span>
+            <span className="table-sidebar-title">{intl.get('TBL_COLUMNS_COUNT', { selected: selectedChannelIds.length, total: channels.length }) || `Columns (${selectedChannelIds.length}/${channels.length})`}</span>
             <button
               type="button"
               className="sidebar-close-btn"
               onClick={() => setColumnsVisible(false)}
-              title="Hide Columns panel"
-              aria-label="Close columns panel"
+              title={intl.get('TBL_HIDE_COLUMNS_PANEL') || 'Hide Columns panel'}
+              aria-label={intl.get('TBL_CLOSE_COLUMNS_PANEL') || 'Close columns panel'}
             >
               ✕
             </button>
@@ -209,14 +210,14 @@ const TableView = () => {
           <input
             type="text"
             className="sidebar-search-box"
-            placeholder="Search channels..."
+            placeholder={intl.get('TBL_SEARCH_CHANNELS') || 'Search channels...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           
           <div className="sidebar-actions">
-            <button className="sidebar-btn" onClick={handleSelectAll}>Select All</button>
-            <button className="sidebar-btn" onClick={handleClearAll}>Clear All</button>
+            <button className="sidebar-btn" onClick={handleSelectAll}>{intl.get('TBL_SELECT_ALL') || 'Select All'}</button>
+            <button className="sidebar-btn" onClick={handleClearAll}>{intl.get('TBL_CLEAR_ALL') || 'Clear All'}</button>
           </div>
 
           <div className="channels-list-scroll">
@@ -277,7 +278,7 @@ const TableView = () => {
             })}
             {Object.keys(groups).length === 0 && (
               <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
-                No channels found
+                {intl.get('TBL_NO_CHANNELS_FOUND') || 'No channels found'}
               </div>
             )}
           </div>
@@ -288,7 +289,7 @@ const TableView = () => {
               className="sidebar-done-btn"
               onClick={() => setColumnsVisible(false)}
             >
-              Apply &amp; Close
+              {intl.get('TBL_APPLY_CLOSE') || 'Apply & Close'}
             </button>
           </div>
         </div>
@@ -302,9 +303,9 @@ const TableView = () => {
             type="button"
             className={`toggle-columns-btn ${columnsVisible ? 'active' : ''}`}
             onClick={() => setColumnsVisible(prev => !prev)}
-            title={columnsVisible ? 'Hide Columns' : 'Show Columns'}
+            title={columnsVisible ? (intl.get('TBL_HIDE_COLUMNS') || 'Hide Columns') : (intl.get('TBL_SHOW_COLUMNS') || 'Show Columns')}
             aria-expanded={columnsVisible}
-            aria-label={columnsVisible ? 'Hide Columns' : 'Show Columns'}
+            aria-label={columnsVisible ? (intl.get('TBL_HIDE_COLUMNS') || 'Hide Columns') : (intl.get('TBL_SHOW_COLUMNS') || 'Show Columns')}
           >
             <svg className="toggle-columns-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -330,7 +331,7 @@ const TableView = () => {
                 onTouchEnd={handleSliderRelease}
               />
               <div className="time-slider-preview">
-                Preview: {formatTimestamp(previewTimestampMs)}
+                {intl.get('TBL_PREVIEW') || 'Preview:'} {formatTimestamp(previewTimestampMs)}
               </div>
             </div>
           </div>
@@ -342,7 +343,7 @@ const TableView = () => {
                 className="page-btn"
                 onClick={handleFirstPage}
                 disabled={pageIndex === 0 || loading}
-                title="First Page"
+                title={intl.get('TBL_FIRST_PAGE') || 'First Page'}
               >
                 &lt;&lt;
               </button>
@@ -350,7 +351,7 @@ const TableView = () => {
                 className="page-btn"
                 onClick={handlePrevPage}
                 disabled={pageIndex === 0 || loading}
-                title="Previous Page"
+                title={intl.get('PREVIOUS_PAGE') || 'Previous Page'}
               >
                 &lt;
               </button>
@@ -371,7 +372,7 @@ const TableView = () => {
                 className="page-btn"
                 onClick={handleNextPage}
                 disabled={pageIndex >= totalPages - 1 || loading}
-                title="Next Page"
+                title={intl.get('NEXT_PAGE') || 'Next Page'}
               >
                 &gt;
               </button>
@@ -379,7 +380,7 @@ const TableView = () => {
                 className="page-btn"
                 onClick={handleLastPage}
                 disabled={pageIndex >= totalPages - 1 || loading}
-                title="Last Page"
+                title={intl.get('TBL_LAST_PAGE') || 'Last Page'}
               >
                 &gt;&gt;
               </button>
@@ -412,7 +413,7 @@ const TableView = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Timestamp</th>
+                  <th>{intl.get('TBL_TH_TIMESTAMP') || 'Timestamp'}</th>
                   {channels
                     .filter(c => selectedChannelIds.includes(c.channel_id))
                     .map(c => (
@@ -450,8 +451,8 @@ const TableView = () => {
               <svg className="empty-table-icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <h3>No Columns or Data Selected</h3>
-              <p>Please select at least one channel from the columns panel on the left to display its measurements.</p>
+              <h3>{intl.get('TBL_EMPTY_TITLE') || 'No Columns or Data Selected'}</h3>
+              <p>{intl.get('TBL_EMPTY_DESC') || 'Please select at least one channel from the columns panel on the left to display its measurements.'}</p>
             </div>
           )}
         </div>

@@ -187,20 +187,29 @@ pub fn suto_pick_file() -> Result<Option<String>, String> {
     }
 }
 
-#[tauri::command]
-pub fn suto_read_file(path: String) -> Result<tauri::ipc::Response, String> {
-    let data = std::fs::read(&path).map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
-    Ok(tauri::ipc::Response::new(data))
+pub fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| format!("Failed to read file '{}': {}", path, e))
 }
 
 #[tauri::command]
-pub fn suto_read_file_slice(path: String, offset: u64, length: u64) -> Result<tauri::ipc::Response, String> {
+pub fn suto_read_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let data = read_file_bytes(path)?;
+    Ok(tauri::ipc::Response::new(data))
+}
+
+pub fn read_file_slice_bytes(path: String, offset: u64, length: u64) -> Result<Vec<u8>, String> {
     let mut f = File::open(&path).map_err(|e| format!("Failed to open file '{}': {}", path, e))?;
     f.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("Seek failed: {}", e))?;
     let mut buf = vec![0u8; length as usize];
     let n = f.read(&mut buf).map_err(|e| format!("Read failed: {}", e))?;
     buf.truncate(n);
+    Ok(buf)
+}
+
+#[tauri::command]
+pub fn suto_read_file_slice(path: String, offset: u64, length: u64) -> Result<tauri::ipc::Response, String> {
+    let buf = read_file_slice_bytes(path, offset, length)?;
     Ok(tauri::ipc::Response::new(buf))
 }
 

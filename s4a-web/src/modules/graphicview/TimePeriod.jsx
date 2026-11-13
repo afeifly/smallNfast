@@ -47,10 +47,10 @@ class TimePeriod extends Component {
         </svg>
 
         <div className="time-pickup-group" >
-          <div className="field-name">From</div>
+          <div className="field-name">{intl.get('FROM') || 'From'}</div>
           <DatePicker
             selected={this.state.startDate}
-            timeInputLabel="Start Time:"
+            timeInputLabel={intl.get('GV_START_TIME_COLON') || "Start Time:"}
             onChange={this.changeStart}
             dateFormat="MM/dd/yyyy h:mm aa"
             maxDate={this.state.endDate}
@@ -58,10 +58,10 @@ class TimePeriod extends Component {
             useShortMonthInDropdown
             showTimeInput
           />
-          <div className="field-name">To</div>
+          <div className="field-name">{intl.get('TO') || 'To'}</div>
           <DatePicker
             selected={this.state.endDate}
-            timeInputLabel="End Time:"
+            timeInputLabel={intl.get('GV_END_TIME_COLON') || "End Time:"}
             onChange={this.changeEnd}
             dateFormat="MM/dd/yyyy h:mm aa"
             maxDate={now}

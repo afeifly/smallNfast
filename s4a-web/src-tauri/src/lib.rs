@@ -53,6 +53,10 @@ pub fn run() {
             suto::files::suto_save_binary_file,
             suto::files::suto_pick_folder,
             suto::files::suto_save_file_to_path,
+            suto::suto_get_webserver_status,
+            suto::suto_set_webserver_enabled,
+            suto::suto_sync_shared_state,
+            suto::suto_get_shared_state,
         ])
         .setup(|app| {
             #[cfg(desktop)]

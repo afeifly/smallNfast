@@ -12,12 +12,17 @@ pub mod driver_tcp;
 pub mod driver_ble;
 pub mod files;
 pub mod modbus;
+pub mod webserver;
 
 pub use modbus::suto_read_modbus_registers;
 pub use files::{
     suto_add_recent_file, suto_get_file_stats, suto_get_recent_files, suto_pick_file,
     suto_read_file, suto_read_file_slice, suto_remove_recent_file, suto_save_binary_file,
     suto_pick_folder, suto_save_file_to_path, RecentFileEntry,
+};
+pub use webserver::{
+    suto_get_webserver_status, suto_set_webserver_enabled,
+    suto_get_shared_state, suto_sync_shared_state,
 };
 
 #[cfg(target_os = "windows")]
@@ -70,6 +75,7 @@ pub struct SutoState {
     pub device_info: Mutex<Option<DeviceInfo>>,
     pub system_info: Mutex<Option<SystemInfo>>,
     pub tcp_devices: Mutex<std::collections::HashMap<String, TcpDeviceSession>>,
+    pub last_values_cache: Mutex<Option<(std::time::Instant, Vec<MeasurementValue>)>>,
 }
 
 impl SutoState {
@@ -81,6 +87,7 @@ impl SutoState {
             device_info: Mutex::new(None),
             system_info: Mutex::new(None),
             tcp_devices: Mutex::new(std::collections::HashMap::new()),
+            last_values_cache: Mutex::new(None),
         }
     }
 }
@@ -616,6 +623,16 @@ fn poll_device_channels_values(
 pub async fn suto_get_values(
     state: State<'_, SutoState>,
 ) -> Result<Vec<MeasurementValue>, String> {
+    // 0. Check 400ms shared cache so concurrent desktop + LAN web clients don't overload USB/RS485 bus
+    {
+        let cache = state.last_values_cache.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((ts, ref cached_vals)) = *cache {
+            if ts.elapsed() < std::time::Duration::from_millis(400) && !cached_vals.is_empty() {
+                return Ok(cached_vals.clone());
+            }
+        }
+    }
+
     // 1. If we have multiple TCP devices connected (e.g. 502, 503, 504), poll each connected device
     let has_tcp_devices = {
         let tcp_map = state.tcp_devices.lock().unwrap_or_else(|p| p.into_inner());
@@ -637,6 +654,10 @@ pub async fn suto_get_values(
                 v.port = Some(dev.port);
             }
             all_values.append(&mut dev_vals);
+        }
+        if !all_values.is_empty() {
+            let mut cache = state.last_values_cache.lock().unwrap_or_else(|p| p.into_inner());
+            *cache = Some((std::time::Instant::now(), all_values.clone()));
         }
         return Ok(all_values);
     }
@@ -680,6 +701,10 @@ pub async fn suto_get_values(
         ),
         None,
     );
+    if !all_values.is_empty() {
+        let mut cache = state.last_values_cache.lock().unwrap_or_else(|p| p.into_inner());
+        *cache = Some((std::time::Instant::now(), all_values.clone()));
+    }
     Ok(all_values)
 }
 
@@ -2036,12 +2061,11 @@ pub async fn suto_get_screenshots(
     Ok(list)
 }
 
-#[tauri::command]
-pub async fn suto_read_screenshot(
+pub fn read_screenshot_bytes(
     name: String,
     size: u32,
-    state: State<'_, SutoState>,
-) -> Result<tauri::ipc::Response, String> {
+    state: &SutoState,
+) -> Result<Vec<u8>, String> {
     let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
 
     log_event("INFO", "SUTO_SCREENSHOT", &format!("Reading screenshot '{}' (size: {} bytes)...", name, size), None);
@@ -2076,6 +2100,16 @@ pub async fn suto_read_screenshot(
         }
     }
 
+    Ok(data_res)
+}
+
+#[tauri::command]
+pub async fn suto_read_screenshot(
+    name: String,
+    size: u32,
+    state: State<'_, SutoState>,
+) -> Result<tauri::ipc::Response, String> {
+    let data_res = read_screenshot_bytes(name, size, &state)?;
     Ok(tauri::ipc::Response::new(data_res))
 }
 

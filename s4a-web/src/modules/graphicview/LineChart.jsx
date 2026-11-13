@@ -38,7 +38,9 @@ class LineChart extends Component {
   render() {
     const { chartController } = this.props;
     const isLoaded = this.state.fileLoaded || (TestAPI.isFileLoaded && TestAPI.isFileLoaded());
-    const placeholderText = isLoaded ? 'No channel selected' : 'Open a file to show data';
+    const placeholderText = isLoaded
+      ? (intl.get('GV_NO_CHANNEL_SELECTED') || 'No channel selected')
+      : (intl.get('GV_OPEN_FILE_TO_SHOW_DATA') || 'Open a file to show data');
 
     return(
       <div id="line-chart" ref={this.rootRef}>

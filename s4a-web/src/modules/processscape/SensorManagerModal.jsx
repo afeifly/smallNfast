@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import intl from 'react-intl-universal';
 import './SensorManagerModal.css';
 import DeviceConnectModal from '../../components/DeviceConnectModal';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
@@ -1670,7 +1671,7 @@ export default function SensorManagerModal({
           <div className="ps-sensor-mgr-header">
             <div className="ps-sm-title-group">
               <div className="ps-sm-title-row">
-                <h2 className="ps-sm-title">Location and Sensors</h2>
+                <h2 className="ps-sm-title">{intl.get('PS_SENSOR_TITLE') || 'Location and Sensors'}</h2>
                 {syncFeedback && (
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#00ac86', marginLeft: 8 }}>
                     {syncFeedback}
@@ -1686,13 +1687,13 @@ export default function SensorManagerModal({
                   className="ps-sm-btn primary ps-sm-detect-btn ps-sm-connect-btn"
                   onClick={() => { setConnectInitialTab(null); setConnectInitialMode('manual'); setShowConnectModal(true); }}
                   disabled={loadingDevices}
-                  title="Detect sensors across USB, Ethernet TCP, and Bluetooth BLE"
+                  title={intl.get('PS_SENSOR_DETECT_TOOLTIP') || 'Detect sensors across USB, Ethernet TCP, and Bluetooth BLE'}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
-                  {loadingDevices ? 'Detecting...' : 'Detect'}
+                  {loadingDevices ? (intl.get('PS_SENSOR_DETECTING') || 'Detecting...') : (intl.get('PS_SENSOR_DETECT_BTN') || 'Detect')}
                 </button>
               )}
 
@@ -1701,7 +1702,7 @@ export default function SensorManagerModal({
                 className="ps-sm-close-btn"
                 onClick={onClose}
                 disabled={loadingDevices}
-                aria-label="Close Sensor Manager"
+                aria-label={intl.get('PS_SENSOR_CLOSE_ARIA') || 'Close Sensor Manager'}
               >
                 ✕
               </button>
@@ -1710,9 +1711,9 @@ export default function SensorManagerModal({
 
           {readOnly && (
             <div className="ps-sm-recording-banner">
-              <span className="ps-sm-recording-banner-badge">● Recording</span>
+              <span className="ps-sm-recording-banner-badge">● {intl.get('PS_SENSOR_RECORDING_BADGE') || 'Recording'}</span>
               <span>
-                Live Recording in progress: Sensor topology, devices, and measurement points are read-only. Channel alarms (🔔) remain fully configurable.
+                {intl.get('PS_SENSOR_RECORDING_BANNER_DESC') || 'Live Recording in progress: Sensor topology, devices, and measurement points are read-only. Channel alarms (🔔) remain fully configurable.'}
               </span>
             </div>
           )}
@@ -1730,10 +1731,10 @@ export default function SensorManagerModal({
                     <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
                     <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1" />
                   </svg>
-                  Detected Sensors & Channels ({devices.length})
+                  {intl.get('PS_SENSOR_DETECTED_TITLE', { count: devices.length }) || `Detected Sensors & Channels (${devices.length})`}
                 </span>
                 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>
-                  Drag to right
+                  {intl.get('PS_SENSOR_DRAG_TO_RIGHT') || 'Drag to right'}
                 </span>
               </div>
 
@@ -1741,7 +1742,7 @@ export default function SensorManagerModal({
                 <input
                   type="text"
                   className="ps-sm-search-input"
-                  placeholder="Search sensor channels..."
+                  placeholder={intl.get('PS_SENSOR_SEARCH_PLACEHOLDER') || 'Search sensor channels...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   disabled={loadingDevices}
@@ -1752,8 +1753,8 @@ export default function SensorManagerModal({
                     className="ps-sm-search-clear-btn"
                     onClick={() => setSearchQuery('')}
                     disabled={loadingDevices}
-                    title="Clear search"
-                    aria-label="Clear search"
+                    title={intl.get('PS_SENSOR_CLEAR_SEARCH') || 'Clear search'}
+                    aria-label={intl.get('PS_SENSOR_CLEAR_SEARCH') || 'Clear search'}
                   >
                     ✕
                   </button>
@@ -1764,16 +1765,16 @@ export default function SensorManagerModal({
                 {loadingDevices && (
                   <div className="ps-sm-tree-loading-overlay">
                     <div className="ps-sm-spinner-circle" />
-                    <div className="ps-sm-loading-text">Connecting & reading sensor channels...</div>
-                    <div className="ps-sm-loading-subtext">Please wait while device information is retrieved</div>
+                    <div className="ps-sm-loading-text">{intl.get('PS_SENSOR_CONNECTING_READING') || 'Connecting & reading sensor channels...'}</div>
+                    <div className="ps-sm-loading-subtext">{intl.get('PS_SENSOR_PLEASE_WAIT') || 'Please wait while device information is retrieved'}</div>
                   </div>
                 )}
                 {!loadingDevices && filteredDevices.length === 0 ? (
                   <div className="ps-sm-empty-tree">
                     <div className="ps-sm-empty-icon">📡</div>
-                    <div className="ps-sm-empty-title">No Sensors Collected Yet</div>
+                    <div className="ps-sm-empty-title">{intl.get('PS_SENSOR_EMPTY_TREE_TITLE') || 'No Sensors Collected Yet'}</div>
                     <div className="ps-sm-empty-desc">
-                      Click <strong>"Detect"</strong> above to discover sensors via USB, Ethernet TCP, or Bluetooth BLE. You can detect one sensor at a time to collect all your plant sensors here.
+                      {intl.get('PS_SENSOR_EMPTY_TREE_DESC') || <>Click <strong>"Detect"</strong> above to discover sensors via USB, Ethernet TCP, or Bluetooth BLE. You can detect one sensor at a time to collect all your plant sensors here.</>}
                     </div>
                   </div>
                 ) : (
@@ -1810,7 +1811,7 @@ export default function SensorManagerModal({
                                   type="button"
                                   className="ps-sm-device-reconnect-btn"
                                   onClick={(e) => handleReconnectDevice(dev, e)}
-                                  title={`Reconnect to ${dev.name}`}
+                                  title={intl.get('PS_SENSOR_RECONNECT_TO', { name: dev.name }) || `Reconnect to ${dev.name}`}
                                   disabled={loadingDevices}
                                 >
                                   ↻
@@ -1819,7 +1820,7 @@ export default function SensorManagerModal({
                                   type="button"
                                   className="ps-sm-device-del-btn"
                                   onClick={(e) => handleRequestRemoveDevice(dev, e)}
-                                  title="Remove device"
+                                  title={intl.get('PS_SENSOR_REMOVE_DEVICE') || 'Remove device'}
                                   disabled={loadingDevices}
                                 >
                                   ✕
@@ -1858,7 +1859,7 @@ export default function SensorManagerModal({
                                       });
                                     }}
                                     onDragEnd={handleEndDrag}
-                                    title={allAssigned ? 'All channels of this sensor are already assigned' : (readOnly ? 'Topology is read-only during recording' : 'Drag unassigned channels to a Location on the right, or click "+ Assign All"')}
+                                    title={allAssigned ? (intl.get('PS_SENSOR_ALL_ASSIGNED_TOOLTIP') || 'All channels of this sensor are already assigned') : (readOnly ? (intl.get('PS_SENSOR_READONLY_TOOLTIP') || 'Topology is read-only during recording') : (intl.get('PS_SENSOR_DRAG_SENSOR_TOOLTIP') || 'Drag unassigned channels to a Location on the right, or click "+ Assign All"'))}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                       <span className="ps-sm-ch-drag-handle">{allAssigned && !readOnly ? '🔒' : '⋮⋮'}</span>
@@ -1867,7 +1868,7 @@ export default function SensorManagerModal({
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                       {allAssigned ? (
-                                        <span className="ps-sm-channel-assigned-badge">✓ All Assigned</span>
+                                        <span className="ps-sm-channel-assigned-badge">{intl.get('PS_SENSOR_ALL_ASSIGNED_BADGE') || '✓ All Assigned'}</span>
                                       ) : (
                                         <>
                                           {!readOnly && (
@@ -1879,13 +1880,13 @@ export default function SensorManagerModal({
                                                 handleQuickAssignSensor(sens, dev);
                                               }}
                                               disabled={loadingDevices}
-                                              title="Quick-assign all unassigned channels to a measurement point"
+                                              title={intl.get('PS_SENSOR_QUICK_ASSIGN_ALL_TOOLTIP') || 'Quick-assign all unassigned channels to a measurement point'}
                                             >
-                                              + Assign All
+                                              {intl.get('PS_SENSOR_ASSIGN_ALL_BTN') || '+ Assign All'}
                                             </button>
                                           )}
                                           <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600 }}>
-                                            {unassignedChannels.length} chs
+                                            {intl.get('PS_SENSOR_CHS_COUNT', { count: unassignedChannels.length }) || `${unassignedChannels.length} chs`}
                                           </span>
                                         </>
                                       )}
@@ -1938,7 +1939,7 @@ export default function SensorManagerModal({
                                             });
                                           }}
                                           onDragEnd={handleEndDrag}
-                                          title={assigned ? 'Assigned to a Measurement Point (cannot be reused)' : (readOnly ? 'Topology is read-only during recording' : 'Drag and drop onto a Measurement Point on the right, or click "+ Assign"')}
+                                          title={assigned ? (intl.get('PS_SENSOR_CH_ASSIGNED_TOOLTIP') || 'Assigned to a Measurement Point (cannot be reused)') : (readOnly ? (intl.get('PS_SENSOR_READONLY_TOOLTIP') || 'Topology is read-only during recording') : (intl.get('PS_SENSOR_DRAG_CH_TOOLTIP') || 'Drag and drop onto a Measurement Point on the right, or click "+ Assign"'))}
                                         >
                                           <div className="ps-sm-ch-info">
                                             <span className="ps-sm-ch-drag-handle">{assigned && !readOnly ? '🔒' : '⋮⋮'}</span>
@@ -1960,13 +1961,13 @@ export default function SensorManagerModal({
                                                   handleQuickAssignChannel(ch, sens.name, dev, sens);
                                                 }}
                                                 disabled={loadingDevices}
-                                                title="Quick-assign this channel to a Measurement Point"
+                                                title={intl.get('PS_SENSOR_QUICK_ASSIGN_CH_TOOLTIP') || 'Quick-assign this channel to a Measurement Point'}
                                               >
-                                                + Assign
+                                                {intl.get('PS_SENSOR_ASSIGN_BTN') || '+ Assign'}
                                               </button>
                                             )}
                                             {assigned && (
-                                              <span className="ps-sm-channel-assigned-badge">✓ Assigned</span>
+                                              <span className="ps-sm-channel-assigned-badge">{intl.get('PS_SENSOR_ASSIGNED_BADGE') || '✓ Assigned'}</span>
                                             )}
                                           </div>
                                         </div>
@@ -1993,7 +1994,7 @@ export default function SensorManagerModal({
                     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                     <circle cx="12" cy="10" r="3" />
                   </svg>
-                  Locations
+                  {intl.get('PS_SENSOR_LOCATIONS_HEADER') || 'Locations'}
                 </span>
 
                 {!readOnly && (
@@ -2002,9 +2003,9 @@ export default function SensorManagerModal({
                     className="ps-sm-btn primary"
                     onClick={handleAddLocation}
                     disabled={loadingDevices}
-                    title="Create a new logical plant location"
+                    title={intl.get('PS_SENSOR_ADD_LOC_TOOLTIP') || 'Create a new logical plant location'}
                   >
-                    + Add Location
+                    {intl.get('PS_SENSOR_ADD_LOC_BTN') || '+ Add Location'}
                   </button>
                 )}
               </div>
@@ -2013,9 +2014,9 @@ export default function SensorManagerModal({
                 {locations.length === 0 ? (
                   <div className="ps-sm-empty-locations">
                     <div className="ps-sm-empty-icon">📍</div>
-                    <div className="ps-sm-empty-title">No Locations Created Yet</div>
+                    <div className="ps-sm-empty-title">{intl.get('PS_SENSOR_NO_LOCS_TITLE') || 'No Locations Created Yet'}</div>
                     <div className="ps-sm-empty-desc">
-                      Click <strong>"+ Add Location"</strong> above to create a physical or logical area, bind it to a ProcessScape, and drag sensor channels into measurement points.
+                      {intl.get('PS_SENSOR_NO_LOCS_DESC') || <>Click <strong>"+ Add Location"</strong> above to create a physical or logical area, bind it to a ProcessScape, and drag sensor channels into measurement points.</>}
                     </div>
                   </div>
                 ) : (
@@ -2056,27 +2057,27 @@ export default function SensorManagerModal({
                               className="ps-sm-loc-title-input"
                               value={loc.name}
                               onChange={(e) => handleLocationNameChange(loc.id, e.target.value)}
-                              placeholder="Location Name..."
+                              placeholder={intl.get('PS_SENSOR_LOC_NAME_PLACEHOLDER') || 'Location Name...'}
                               disabled={loadingDevices || readOnly}
-                              title={readOnly ? "Location name is read-only during recording" : "Click to edit location name"}
+                              title={readOnly ? (intl.get('PS_SENSOR_LOC_NAME_READONLY') || "Location name is read-only during recording") : (intl.get('PS_SENSOR_LOC_NAME_EDIT_TOOLTIP') || "Click to edit location name")}
                             />
                             {isActiveTarget && (
-                              <span className="ps-sm-loc-active-pill" title="Active location">
-                                ● Active
+                              <span className="ps-sm-loc-active-pill" title={intl.get('PS_SENSOR_ACTIVE_LOC_TOOLTIP') || "Active location"}>
+                                ● {intl.get('PS_SENSOR_ACTIVE_BADGE') || 'Active'}
                               </span>
                             )}
                           </div>
 
                           <div className="ps-sm-loc-match-row">
-                            <label className="ps-sm-scape-label">Scape:</label>
+                            <label className="ps-sm-scape-label">{intl.get('PS_SENSOR_SCAPE_LABEL') || 'Scape:'}</label>
                             <select
                               className="ps-sm-scape-select"
                               value={loc.scapeId || ''}
                               onChange={(e) => handleLocationScapeChange(loc.id, e.target.value)}
                               disabled={loadingDevices || readOnly}
-                              title={readOnly ? "ProcessScape mapping is read-only during recording" : "Change ProcessScape mapping"}
+                              title={readOnly ? (intl.get('PS_SENSOR_SCAPE_READONLY') || "ProcessScape mapping is read-only during recording") : (intl.get('PS_SENSOR_SCAPE_CHANGE_TOOLTIP') || "Change ProcessScape mapping")}
                             >
-                              <option value="">-- No ProcessScape (Empty) --</option>
+                              <option value="">{intl.get('PS_SENSOR_NO_SCAPE_OPT') || '-- No ProcessScape (Empty) --'}</option>
                               {scapes.map(s => (
                                 <option key={s.id} value={s.id}>
                                   {s.title}
@@ -2090,7 +2091,7 @@ export default function SensorManagerModal({
                                 className="ps-sm-close-btn"
                                 onClick={() => handleDeleteLocation(loc.id)}
                                 disabled={loadingDevices}
-                                title="Delete Location"
+                                title={intl.get('PS_SENSOR_DELETE_LOC_TOOLTIP') || "Delete Location"}
                               >
                                 🗑
                               </button>
@@ -2117,10 +2118,10 @@ export default function SensorManagerModal({
                             >
                               <span style={{ fontSize: 16 }}>🎯</span>
                               <span style={{ fontSize: 11.5, fontWeight: 600, color: '#334155' }}>
-                                Drag sensor or channel here
+                                {intl.get('PS_SENSOR_DRAG_HERE_TITLE') || 'Drag sensor or channel here'}
                               </span>
                               <span style={{ fontSize: 10.5, color: '#94a3b8' }}>
-                                (Auto-creates Measurement Point named after sensor)
+                                {intl.get('PS_SENSOR_DRAG_HERE_SUB') || '(Auto-creates Measurement Point named after sensor)'}
                               </span>
                             </div>
                           ) : (
@@ -2135,9 +2136,9 @@ export default function SensorManagerModal({
                                       className="ps-sm-mp-name-input"
                                       value={mp.name}
                                       onChange={(e) => handleMpNameChange(loc.id, mp.id, e.target.value)}
-                                      placeholder="Measurement Point Name..."
+                                      placeholder={intl.get('PS_SENSOR_MP_NAME_PLACEHOLDER') || "Measurement Point Name..."}
                                       disabled={loadingDevices || readOnly}
-                                      title={readOnly ? "Measurement point name is read-only during recording" : "Click to edit measurement point name"}
+                                      title={readOnly ? (intl.get('PS_SENSOR_MP_NAME_READONLY') || "Measurement point name is read-only during recording") : (intl.get('PS_SENSOR_MP_NAME_EDIT_TOOLTIP') || "Click to edit measurement point name")}
                                     />
                                   </div>
 
@@ -2147,7 +2148,7 @@ export default function SensorManagerModal({
                                       className="ps-sm-close-btn ps-sm-mp-del-btn"
                                       onClick={() => handleDeleteMeasurementPoint(loc.id, mp.id)}
                                       disabled={loadingDevices}
-                                      title="Delete Measurement Point"
+                                      title={intl.get('PS_SENSOR_DELETE_MP_TOOLTIP') || "Delete Measurement Point"}
                                     >
                                       ✕
                                     </button>
@@ -2172,7 +2173,7 @@ export default function SensorManagerModal({
                                   {(mp.channels || []).length === 0 ? (
                                     <div className="ps-sm-dropzone-empty">
                                       <span style={{ fontSize: 13, opacity: 0.8 }}>⚡</span>
-                                      <span>Drag channels from left tree or other points here</span>
+                                      <span>{intl.get('PS_SENSOR_DROPZONE_EMPTY') || 'Drag channels from left tree or other points here'}</span>
                                     </div>
                                   ) : (
                                     (mp.channels || []).map((ch, idx) => {
@@ -2238,10 +2239,10 @@ export default function SensorManagerModal({
                                             setDragOverTagInfo(null);
                                             handleEndDrag();
                                           }}
-                                          title={readOnly ? "Channel topology is read-only during recording" : "Drag to move or reorder this channel"}
+                                          title={readOnly ? (intl.get('PS_SENSOR_CH_READONLY_TOOLTIP') || "Channel topology is read-only during recording") : (intl.get('PS_SENSOR_CH_REORDER_TOOLTIP') || "Drag to move or reorder this channel")}
                                         >
                                           <div className="ps-sm-tag-left">
-                                            <span className="ps-sm-tag-drag-handle" title="Drag to reorder or move channel">
+                                            <span className="ps-sm-tag-drag-handle" title={intl.get('PS_SENSOR_DRAG_HANDLE_TOOLTIP') || "Drag to reorder or move channel"}>
                                               <svg width="8" height="13" viewBox="0 0 8 14" fill="currentColor">
                                                 <circle cx="4" cy="3" r="1.5" />
                                                 <circle cx="4" cy="9.5" r="1.5" />
@@ -2257,7 +2258,7 @@ export default function SensorManagerModal({
                                               onKeyDown={(e) => e.stopPropagation()}
                                               draggable={false}
                                               disabled={loadingDevices || readOnly}
-                                              title={readOnly ? "Display name is read-only during recording" : "Click to rename display name"}
+                                              title={readOnly ? (intl.get('PS_SENSOR_DISPLAY_NAME_READONLY') || "Display name is read-only during recording") : (intl.get('PS_SENSOR_DISPLAY_NAME_EDIT_TOOLTIP') || "Click to rename display name")}
                                             />
                                             <span className="ps-sm-tag-name" style={{ display: 'none' }}>
                                               {ch.displayName || ch.name}
@@ -2277,9 +2278,9 @@ export default function SensorManagerModal({
                                               title={
                                                 ch.alarmConfig?.enabled
                                                   ? `Alarm Active (${ch.alarmConfig.type}: ${ch.alarmConfig.type === 'out_of_range' ? `${ch.alarmConfig.min} ~ ${ch.alarmConfig.max}` : ch.alarmConfig.threshold} ${ch.unit || ''})`
-                                                  : 'Set Alarm (Threshold, Hysteresis, Rules)'
+                                                  : (intl.get('PS_SENSOR_SET_ALARM_TOOLTIP') || 'Set Alarm (Threshold, Hysteresis, Rules)')
                                               }
-                                              aria-label="Set Alarm"
+                                              aria-label={intl.get('PS_SENSOR_SET_ALARM_ARIA') || "Set Alarm"}
                                             >
                                               🔔
                                             </button>
@@ -2299,9 +2300,9 @@ export default function SensorManagerModal({
                               className="ps-sm-btn ps-sm-add-mp-btn"
                               onClick={() => handleAddMeasurementPoint(loc.id)}
                               disabled={loadingDevices}
-                              title="+ Add Measurement Point"
+                              title={intl.get('PS_SENSOR_ADD_MP_BTN') || "+ Add Measurement Point"}
                             >
-                              + Add Measurement Point
+                              {intl.get('PS_SENSOR_ADD_MP_BTN') || '+ Add Measurement Point'}
                             </button>
                           )}
                         </div>
@@ -2317,15 +2318,15 @@ export default function SensorManagerModal({
           <div className="ps-sensor-mgr-footer">
             <div className="ps-sm-footer-info">
               <span className="ps-sm-footer-stat">
-                <strong>{locations.length}</strong> Location{locations.length === 1 ? '' : 's'}
+                <strong>{locations.length}</strong> {locations.length === 1 ? (intl.get('LOCATION') || 'Location') : (intl.get('PS_SENSOR_LOCATIONS_HEADER') || 'Locations')}
               </span>
               <span className="ps-sm-footer-dot">•</span>
               <span className="ps-sm-footer-stat">
-                <strong>{totalMps}</strong> Measurement Point{totalMps === 1 ? '' : 's'}
+                <strong>{totalMps}</strong> {totalMps === 1 ? (intl.get('MEASUREMENT_POINT') || 'Measurement Point') : (intl.get('PS_SENSOR_MEASUREMENT_POINTS_PLURAL') || 'Measurement Points')}
               </span>
               <span className="ps-sm-footer-dot">•</span>
               <span className="ps-sm-footer-stat">
-                <strong>{totalAssignedChannelsCount}</strong> Channel{totalAssignedChannelsCount === 1 ? '' : 's'} Assigned
+                <strong>{totalAssignedChannelsCount}</strong> {totalAssignedChannelsCount === 1 ? (intl.get('PS_SENSOR_CHANNEL_ASSIGNED_SINGULAR') || 'Channel Assigned') : (intl.get('PS_SENSOR_CHANNELS_ASSIGNED_PLURAL') || 'Channels Assigned')}
               </span>
             </div>
 
@@ -2337,7 +2338,7 @@ export default function SensorManagerModal({
                   onClick={onClose}
                   disabled={loadingDevices}
                 >
-                  Close
+                  {intl.get('CLOSE') || 'Close'}
                 </button>
               ) : (
                 <>
@@ -2347,16 +2348,16 @@ export default function SensorManagerModal({
                     onClick={onClose}
                     disabled={loadingDevices}
                   >
-                    Cancel
+                    {intl.get('CANCEL') || 'Cancel'}
                   </button>
                   <button
                     type="button"
                     className="ps-sm-btn primary ps-sm-footer-confirm-btn"
                     onClick={handleConfirmAndSyncAll}
                     disabled={loadingDevices}
-                    title="Save all changes and synchronize all measurement points to matched ProcessScapes"
+                    title={intl.get('PS_SENSOR_CONFIRM_SYNC_TOOLTIP') || "Save all changes and synchronize all measurement points to matched ProcessScapes"}
                   >
-                    ✓ Confirm & Sync All
+                    {intl.get('PS_SENSOR_CONFIRM_SYNC_BTN') || '✓ Confirm & Sync All'}
                   </button>
                 </>
               )}
@@ -2395,7 +2396,7 @@ export default function SensorManagerModal({
                 </svg>
               </div>
               <div>
-                <h3 className="ps-sm-confirm-title">Remove Sensor Device</h3>
+                <h3 className="ps-sm-confirm-title">{intl.get('PS_SENSOR_REMOVE_DEVICE_TITLE') || 'Remove Sensor Device'}</h3>
                 <div className="ps-sm-confirm-device-meta">
                   <span>📡 {pendingDeleteDevice.device?.name}</span>
                   <span className={`ps-sm-device-pill ${pendingDeleteDevice.device?.transportType || ''}`}>
@@ -2411,11 +2412,10 @@ export default function SensorManagerModal({
                   <div className="ps-sm-confirm-warning-banner">
                     <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span>⚠️</span>
-                      <span>Active Channels in Use ({pendingDeleteDevice.assignedChannels.length})</span>
+                      <span>{intl.get('PS_SENSOR_ACTIVE_CHANNELS_IN_USE', { count: pendingDeleteDevice.assignedChannels.length }) || `Active Channels in Use (${pendingDeleteDevice.assignedChannels.length})`}</span>
                     </div>
                     <div style={{ fontSize: 12.5, color: '#7f1d1d', lineHeight: 1.5 }}>
-                      This device currently has channels assigned to Measurement Points in your ProcessScape.
-                      If you delete this device, its connection will be closed, the device will be removed, and the following channels will be <strong>unassigned and removed from ProcessScape</strong>:
+                      {intl.get('PS_SENSOR_REMOVE_DEVICE_WARNING') || <>This device currently has channels assigned to Measurement Points in your ProcessScape. If you delete this device, its connection will be closed, the device will be removed, and the following channels will be <strong>unassigned and removed from ProcessScape</strong>:</>}
                     </div>
                   </div>
 
@@ -2441,10 +2441,10 @@ export default function SensorManagerModal({
               ) : (
                 <div className="ps-sm-confirm-clean-notice">
                   <p style={{ margin: 0, fontSize: 13, color: '#334155', lineHeight: 1.5 }}>
-                    Are you sure you want to remove <strong>{pendingDeleteDevice.device?.name}</strong>?
+                    {intl.get('PS_SENSOR_REMOVE_DEVICE_CONFIRM_PREFIX') || 'Are you sure you want to remove'} <strong>{pendingDeleteDevice.device?.name}</strong>?
                   </p>
                   <p style={{ margin: '8px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
-                    Its live hardware communication link will be closed and it will be removed from your detected sensors list.
+                    {intl.get('PS_SENSOR_REMOVE_DEVICE_CONFIRM_SUB') || 'Its live hardware communication link will be closed and it will be removed from your detected sensors list.'}
                   </p>
                 </div>
               )}
@@ -2456,7 +2456,7 @@ export default function SensorManagerModal({
                 className="ps-sm-btn secondary"
                 onClick={() => setPendingDeleteDevice(null)}
               >
-                Cancel
+                {intl.get('CANCEL') || 'Cancel'}
               </button>
               <button
                 type="button"
@@ -2468,8 +2468,8 @@ export default function SensorManagerModal({
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
                 {pendingDeleteDevice.assignedChannels?.length > 0
-                  ? 'Unassign & Delete Device'
-                  : 'Delete Device'}
+                  ? (intl.get('PS_SENSOR_UNASSIGN_DELETE_BTN') || 'Unassign & Delete Device')
+                  : (intl.get('PS_SENSOR_DELETE_DEVICE_BTN') || 'Delete Device')}
               </button>
             </div>
           </div>
@@ -2489,7 +2489,7 @@ export default function SensorManagerModal({
                 🔔
               </div>
               <div style={{ flex: 1 }}>
-                <h3 className="ps-sm-confirm-title">Configure Channel Alarm</h3>
+                <h3 className="ps-sm-confirm-title">{intl.get('PS_SENSOR_CONFIG_ALARM_TITLE') || 'Configure Channel Alarm'}</h3>
                 <div className="ps-sm-confirm-device-meta">
                   <span style={{ fontWeight: 700, color: '#0f172a' }}>{editingAlarm.channel?.displayName || editingAlarm.channel?.name}</span>
                   {editingAlarm.channel?.unit && (
@@ -2505,7 +2505,7 @@ export default function SensorManagerModal({
             <div className="ps-sm-confirm-body ps-sm-alarm-body">
               {/* Rule Type Selector */}
               <div className="ps-sm-alarm-field">
-                <label className="ps-sm-alarm-label">Alarm Condition / Rule</label>
+                <label className="ps-sm-alarm-label">{intl.get('PS_SENSOR_ALARM_CONDITION_LABEL') || 'Alarm Condition / Rule'}</label>
                 <select
                   className="ps-sm-alarm-select"
                   value={editingAlarm.type}
@@ -2533,7 +2533,7 @@ export default function SensorManagerModal({
               {editingAlarm.type === 'out_of_range' ? (
                 <div className="ps-sm-alarm-row-2">
                   <div className="ps-sm-alarm-field">
-                    <label className="ps-sm-alarm-label">Min Threshold ({editingAlarm.channel?.unit || 'val'})</label>
+                    <label className="ps-sm-alarm-label">{intl.get('PS_SENSOR_MIN_THRESHOLD', { unit: editingAlarm.channel?.unit || 'val' }) || `Min Threshold (${editingAlarm.channel?.unit || 'val'})`}</label>
                     <input
                       type="number"
                       step="any"
@@ -2544,7 +2544,7 @@ export default function SensorManagerModal({
                     />
                   </div>
                   <div className="ps-sm-alarm-field">
-                    <label className="ps-sm-alarm-label">Max Threshold ({editingAlarm.channel?.unit || 'val'})</label>
+                    <label className="ps-sm-alarm-label">{intl.get('PS_SENSOR_MAX_THRESHOLD', { unit: editingAlarm.channel?.unit || 'val' }) || `Max Threshold (${editingAlarm.channel?.unit || 'val'})`}</label>
                     <input
                       type="number"
                       step="any"
@@ -2558,10 +2558,10 @@ export default function SensorManagerModal({
               ) : (
                 <div className="ps-sm-alarm-field">
                   <label className="ps-sm-alarm-label">
-                    {editingAlarm.type === 'rate_of_change' ? 'Max Rate of Change (|Δ| / min)' :
-                     editingAlarm.type === 'flatline' ? 'Frozen Duration Threshold (seconds)' :
-                     editingAlarm.type === 'offline' ? 'Offline Timeout Threshold (seconds)' :
-                     `Threshold Value (${editingAlarm.channel?.unit || 'val'})`}
+                    {editingAlarm.type === 'rate_of_change' ? (intl.get('PS_SENSOR_MAX_RATE_OF_CHANGE') || 'Max Rate of Change (|Δ| / min)') :
+                     editingAlarm.type === 'flatline' ? (intl.get('PS_SENSOR_FROZEN_DURATION') || 'Frozen Duration Threshold (seconds)') :
+                     editingAlarm.type === 'offline' ? (intl.get('PS_SENSOR_OFFLINE_TIMEOUT') || 'Offline Timeout Threshold (seconds)') :
+                     (intl.get('PS_SENSOR_THRESHOLD_VALUE', { unit: editingAlarm.channel?.unit || 'val' }) || `Threshold Value (${editingAlarm.channel?.unit || 'val'})`)}
                   </label>
                   <input
                     type="number"
@@ -2578,7 +2578,7 @@ export default function SensorManagerModal({
               <div className="ps-sm-alarm-row-2">
                 <div className="ps-sm-alarm-field">
                   <label className="ps-sm-alarm-label">
-                    Hysteresis (Deadband {editingAlarm.channel?.unit ? `in ${editingAlarm.channel.unit}` : ''})
+                    {intl.get('PS_SENSOR_HYSTERESIS_LABEL', { unit: editingAlarm.channel?.unit ? `in ${editingAlarm.channel.unit}` : '' }) || `Hysteresis (Deadband ${editingAlarm.channel?.unit ? `in ${editingAlarm.channel.unit}` : ''})`}
                   </label>
                   <input
                     type="number"
@@ -2589,43 +2589,43 @@ export default function SensorManagerModal({
                     onChange={(e) => setEditingAlarm({ ...editingAlarm, hysteresis: e.target.value })}
                     placeholder="e.g. 0.2"
                   />
-                  <span className="ps-sm-alarm-hint">Prevents alarm flickering around the threshold</span>
+                  <span className="ps-sm-alarm-hint">{intl.get('PS_SENSOR_HYSTERESIS_HINT') || 'Prevents alarm flickering around the threshold'}</span>
                 </div>
                 <div className="ps-sm-alarm-field">
-                  <label className="ps-sm-alarm-label">Delay / Persist (seconds)</label>
+                  <label className="ps-sm-alarm-label">{intl.get('PS_SENSOR_DELAY_LABEL') || 'Delay / Persist (seconds)'}</label>
                   <input
                     type="number"
                     min="0"
                     className="ps-sm-alarm-input"
                     value={editingAlarm.delaySeconds}
                     onChange={(e) => setEditingAlarm({ ...editingAlarm, delaySeconds: e.target.value })}
-                    placeholder="0 = instant"
+                    placeholder={intl.get('PS_SENSOR_DELAY_PLACEHOLDER') || "0 = instant"}
                   />
-                  <span className="ps-sm-alarm-hint">Must persist for N seconds before triggering</span>
+                  <span className="ps-sm-alarm-hint">{intl.get('PS_SENSOR_DELAY_HINT') || 'Must persist for N seconds before triggering'}</span>
                 </div>
               </div>
 
               {/* Severity & Note */}
               <div className="ps-sm-alarm-row-2">
                 <div className="ps-sm-alarm-field">
-                  <label className="ps-sm-alarm-label">Severity Level</label>
+                  <label className="ps-sm-alarm-label">{intl.get('PS_SENSOR_SEVERITY_LABEL') || 'Severity Level'}</label>
                   <select
                     className="ps-sm-alarm-select"
                     value={editingAlarm.severity}
                     onChange={(e) => setEditingAlarm({ ...editingAlarm, severity: e.target.value })}
                   >
-                    <option value="critical">Critical (Red, High Priority)</option>
-                    <option value="warning">Warning (Amber, Medium Priority)</option>
+                    <option value="critical">{intl.get('PS_SENSOR_SEVERITY_CRITICAL') || 'Critical (Red, High Priority)'}</option>
+                    <option value="warning">{intl.get('PS_SENSOR_SEVERITY_WARNING') || 'Warning (Amber, Medium Priority)'}</option>
                   </select>
                 </div>
                 <div className="ps-sm-alarm-field">
-                  <label className="ps-sm-alarm-label">Custom Alert Note (Optional)</label>
+                  <label className="ps-sm-alarm-label">{intl.get('PS_SENSOR_CUSTOM_NOTE_LABEL') || 'Custom Alert Note (Optional)'}</label>
                   <input
                     type="text"
                     className="ps-sm-alarm-input"
                     value={editingAlarm.message}
                     onChange={(e) => setEditingAlarm({ ...editingAlarm, message: e.target.value })}
-                    placeholder="e.g. Compressor line overpressure"
+                    placeholder={intl.get('PS_SENSOR_CUSTOM_NOTE_PLACEHOLDER') || "e.g. Compressor line overpressure"}
                   />
                 </div>
               </div>
@@ -2639,7 +2639,7 @@ export default function SensorManagerModal({
                   style={{ marginRight: 'auto' }}
                   onClick={handleDisableAlarmConfig}
                 >
-                  Disable Alarm
+                  {intl.get('PS_SENSOR_DISABLE_ALARM_BTN') || 'Disable Alarm'}
                 </button>
               )}
               <button
@@ -2647,14 +2647,14 @@ export default function SensorManagerModal({
                 className="ps-sm-btn secondary"
                 onClick={() => setEditingAlarm(null)}
               >
-                Cancel
+                {intl.get('CANCEL') || 'Cancel'}
               </button>
               <button
                 type="button"
                 className="ps-sm-btn primary"
                 onClick={handleSaveAlarmConfig}
               >
-                Save Alarm Settings
+                {intl.get('PS_SENSOR_SAVE_ALARM_BTN') || 'Save Alarm Settings'}
               </button>
             </div>
           </div>

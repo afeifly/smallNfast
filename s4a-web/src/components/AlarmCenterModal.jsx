@@ -364,7 +364,7 @@ export default function AlarmCenterModal({
                                 {formatDisplayVal(item.currentValue, item.unit, item.resolution)}
                                 {item.unit && !['Offline', 'Restored'].includes(item.currentValue) ? ` ${item.unit}` : ''}
                               </span>
-                              <span style={{ color: '#64748b', fontSize: 11 }}> (Rule: {item.ruleType} {item.threshold})</span>
+                              <span style={{ color: '#64748b', fontSize: 11 }}> ({intl.get('ALARM_RULE_LABEL') || 'Rule:'} {item.ruleType} {item.threshold})</span>
                             </td>
                             <td>
                               {item.durationMs ? formatDuration(item.durationMs) : '--'}

@@ -1,5 +1,6 @@
 import React from 'react';
 import * as d3 from 'd3';
+import intl from 'react-intl-universal';
 import TestAPI from '../../api/TestAPI';
 import { runReport } from './ConsumptionEngine';
 import './ConsumptionReport.css';
@@ -242,9 +243,9 @@ function ConsumptionChart({
           .style('opacity', 1)
           .html(`
             <div class="tooltip-title">${d.data.label}</div>
-            <div class="tooltip-row"><span>Channel:</span> <span>${name}</span></div>
-            <div class="tooltip-row"><span>Cons.:</span> <span>${val.toFixed(2)} ${reportUnit}</span></div>
-            <div class="tooltip-row"><span>Cost:</span> <span>${currency} ${cost.toFixed(2)}</span></div>
+            <div class="tooltip-row"><span>${intl.get('CONS_TOOLTIP_CHANNEL') || 'Channel:'}</span> <span>${name}</span></div>
+            <div class="tooltip-row"><span>${intl.get('CONS_TOOLTIP_CONS') || 'Cons.:'}</span> <span>${val.toFixed(2)} ${reportUnit}</span></div>
+            <div class="tooltip-row"><span>${intl.get('CONS_TOOLTIP_COST') || 'Cost:'}</span> <span>${currency} ${cost.toFixed(2)}</span></div>
           `);
         d3.select(this).attr('opacity', 0.85);
       })
@@ -273,7 +274,7 @@ function ConsumptionChart({
         .attr('rx', 2)
         .on('mouseover', function (event, d) {
           const col = reportData.columns.find(c => c.key === mainKey);
-          const name = col ? col.label : 'Main Channel';
+          const name = col ? col.label : (intl.get('CONS_MAIN_CHANNEL') || 'Main Channel');
           const val = d[mainKey];
           const cost = val * costPerUnit;
 
@@ -281,9 +282,9 @@ function ConsumptionChart({
             .style('opacity', 1)
             .html(`
               <div class="tooltip-title">${d.label}</div>
-              <div class="tooltip-row"><span>Main Ch:</span> <span>${name}</span></div>
-              <div class="tooltip-row"><span>Cons.:</span> <span>${val.toFixed(2)} ${reportUnit}</span></div>
-              <div class="tooltip-row"><span>Cost:</span> <span>${currency} ${cost.toFixed(2)}</span></div>
+              <div class="tooltip-row"><span>${intl.get('CONS_TOOLTIP_MAIN_CH') || 'Main Ch:'}</span> <span>${name}</span></div>
+              <div class="tooltip-row"><span>${intl.get('CONS_TOOLTIP_CONS') || 'Cons.:'}</span> <span>${val.toFixed(2)} ${reportUnit}</span></div>
+              <div class="tooltip-row"><span>${intl.get('CONS_TOOLTIP_COST') || 'Cost:'}</span> <span>${currency} ${cost.toFixed(2)}</span></div>
             `);
           d3.select(this).attr('opacity', 0.85);
         })
@@ -314,7 +315,7 @@ function ConsumptionChart({
     if (activeGroup.mainChannelId != null) {
       const col = reportData.columns.find(c => c.key === `main_${activeGroup.mainChannelId}`);
       items.push({
-        label: col ? `${col.label} (Main)` : 'Main Channel',
+        label: col ? `${col.label} (${intl.get('CONS_MAIN') || 'Main'})` : (intl.get('CONS_MAIN_CHANNEL') || 'Main Channel'),
         color: '#475569'
       });
     }
@@ -648,12 +649,14 @@ export default function ConsumptionReport() {
   if (loading) {
     return (
       <div className="empty-state-container" style={{ height: '80vh' }}>
-        <div className="empty-state-title">Analyzing & Compiling Consumption Data...</div>
+        <div className="empty-state-title">{intl.get('CONS_ANALYZING_DATA') || 'Analyzing & Compiling Consumption Data...'}</div>
         <div className="empty-state-desc" style={{ width: '300px' }}>
           <div style={{ width: '100%', height: '8px', background: '#cbd5e1', borderRadius: '4px', overflow: 'hidden', marginTop: '12px' }}>
             <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: '#00ac86', transition: 'width 0.1s ease' }}></div>
           </div>
-          <div style={{ fontSize: '11px', marginTop: '6px', color: '#64748b' }}>{(progress * 100).toFixed(0)}% loaded</div>
+          <div style={{ fontSize: '11px', marginTop: '6px', color: '#64748b' }}>
+            {intl.get('CONS_PERCENT_LOADED', { percent: (progress * 100).toFixed(0) }) || `${(progress * 100).toFixed(0)}% loaded`}
+          </div>
         </div>
       </div>
     );
@@ -670,7 +673,7 @@ export default function ConsumptionReport() {
           onClick={() => setMobileTab('config')}
         >
           <Icons.Settings />
-          <span>Settings & Groups</span>
+          <span>{intl.get('CONS_SETTINGS_AND_GROUPS') || 'Settings & Groups'}</span>
         </button>
         <button
           type="button"
@@ -678,7 +681,7 @@ export default function ConsumptionReport() {
           onClick={() => setMobileTab('report')}
         >
           <Icons.BarChart />
-          <span>Report View</span>
+          <span>{intl.get('CONS_REPORT_VIEW') || 'Report View'}</span>
         </button>
       </div>
 
@@ -687,10 +690,10 @@ export default function ConsumptionReport() {
 
         {/* Report Settings */}
         <div className="sidebar-section">
-          <div className="sidebar-section-title">Report Settings</div>
+          <div className="sidebar-section-title">{intl.get('CONS_REPORT_SETTINGS') || 'Report Settings'}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div className="sidebar-input-group">
-              <span className="sidebar-label">Start Date</span>
+              <span className="sidebar-label">{intl.get('CONS_START_DATE') || 'Start Date'}</span>
               <input
                 type="date"
                 className="sidebar-input"
@@ -700,7 +703,7 @@ export default function ConsumptionReport() {
             </div>
 
             <div className="sidebar-input-group">
-              <span className="sidebar-label">End Date</span>
+              <span className="sidebar-label">{intl.get('CONS_END_DATE') || 'End Date'}</span>
               <input
                 type="date"
                 className="sidebar-input"
@@ -711,21 +714,21 @@ export default function ConsumptionReport() {
 
             {/* Presets */}
             <div className="sidebar-actions" style={{ marginBottom: 0 }}>
-              <button className="sidebar-btn" onClick={() => handlePresetSelect('month')}>MTD</button>
-              <button className="sidebar-btn" onClick={() => handlePresetSelect('year')}>YTD</button>
-              <button className="sidebar-btn" onClick={() => handlePresetSelect('all')}>All Time</button>
+              <button className="sidebar-btn" onClick={() => handlePresetSelect('month')}>{intl.get('CONS_MTD') || 'MTD'}</button>
+              <button className="sidebar-btn" onClick={() => handlePresetSelect('year')}>{intl.get('CONS_YTD') || 'YTD'}</button>
+              <button className="sidebar-btn" onClick={() => handlePresetSelect('all')}>{intl.get('CONS_ALL_TIME') || 'All Time'}</button>
             </div>
 
             <div className="sidebar-input-group">
-              <span className="sidebar-label">Report Period Type</span>
+              <span className="sidebar-label">{intl.get('CONS_REPORT_PERIOD_TYPE') || 'Report Period Type'}</span>
               <select
                 className="sidebar-select"
                 value={period}
                 onChange={e => setPeriod(e.target.value)}
               >
-                <option value="daily">Daily Report </option>
-                <option value="weekly">Weekly Report </option>
-                <option value="monthly">Monthly Report </option>
+                <option value="daily">{intl.get('CONS_DAILY_REPORT') || 'Daily Report'} </option>
+                <option value="weekly">{intl.get('CONS_WEEKLY_REPORT') || 'Weekly Report'} </option>
+                <option value="monthly">{intl.get('CONS_MONTHLY_REPORT') || 'Monthly Report'} </option>
               </select>
             </div>
           </div>
@@ -733,10 +736,10 @@ export default function ConsumptionReport() {
 
         {/* Pricing / Cost Card */}
         <div className="sidebar-section">
-          <div className="sidebar-section-title">Cost Calculator</div>
+          <div className="sidebar-section-title">{intl.get('CONS_COST_CALCULATOR') || 'Cost Calculator'}</div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <div className="sidebar-input-group" style={{ flex: 1.2 }}>
-              <span className="sidebar-label">Price / Unit</span>
+              <span className="sidebar-label">{intl.get('CONS_PRICE_PER_UNIT') || 'Price / Unit'}</span>
               <input
                 type="number"
                 step="0.01"
@@ -746,7 +749,7 @@ export default function ConsumptionReport() {
               />
             </div>
             <div className="sidebar-input-group" style={{ flex: 0.8 }}>
-              <span className="sidebar-label">Currency</span>
+              <span className="sidebar-label">{intl.get('CONS_CURRENCY') || 'Currency'}</span>
               <input
                 type="text"
                 className="sidebar-input"
@@ -760,11 +763,11 @@ export default function ConsumptionReport() {
 
         {/* Channel Groups Configurator */}
         <div className="sidebar-section" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <div className="sidebar-section-title">Channel Groups</div>
+          <div className="sidebar-section-title">{intl.get('CONS_CHANNEL_GROUPS') || 'Channel Groups'}</div>
           <div className="channels-list-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto' }}>
             {groups.length === 0 ? (
               <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>
-                No active groups. Add one below.
+                {intl.get('CONS_NO_ACTIVE_GROUPS') || 'No active groups. Add one below.'}
               </div>
             ) : (
               <div className="groups-list">
@@ -799,13 +802,13 @@ export default function ConsumptionReport() {
                           className={`group-tab-btn ${currentTab === 'sub' ? 'active' : ''}`}
                           onClick={() => setGroupSidebarTab({ ...groupSidebarTab, [g.id]: 'sub' })}
                         >
-                          Sub-branches (${g.subChannelIds.length})
+                          {intl.get('CONS_SUB_BRANCHES') || 'Sub-branches'} (${g.subChannelIds.length})
                         </button>
                         <button
                           className={`group-tab-btn ${currentTab === 'main' ? 'active' : ''}`}
                           onClick={() => setGroupSidebarTab({ ...groupSidebarTab, [g.id]: 'main' })}
                         >
-                          Main Channel
+                          {intl.get('CONS_MAIN_CHANNEL') || 'Main Channel'}
                         </button>
                       </div>
 
@@ -837,7 +840,7 @@ export default function ConsumptionReport() {
                                 onChange={() => handleGroupFieldChange(g.id, 'mainChannelId', null)}
                                 style={{ margin: 0 }}
                               />
-                              <span style={{ fontStyle: 'italic', color: '#64748b' }}>None</span>
+                              <span style={{ fontStyle: 'italic', color: '#64748b' }}>{intl.get('CONS_NONE') || 'None'}</span>
                             </label>
                             {channels.map(ch => (
                               <label key={ch.channel_id} className="channel-selector-row">
@@ -866,7 +869,7 @@ export default function ConsumptionReport() {
                           style={{ margin: 0 }}
                         />
                         <label htmlFor={`sum_toggle_${g.id}`} style={{ cursor: 'pointer', fontWeight: 600 }}>
-                          Include Group Sub-total Sum
+                          {intl.get('CONS_INCLUDE_SUBTOTAL_SUM') || 'Include Group Sub-total Sum'}
                         </label>
                       </div>
                     </div>
@@ -876,7 +879,7 @@ export default function ConsumptionReport() {
             )}
 
             <button className="sidebar-add-group-btn" onClick={handleAddGroup}>
-              <Icons.Plus /> Add Channel Group
+              <Icons.Plus /> {intl.get('CONS_ADD_CHANNEL_GROUP') || 'Add Channel Group'}
             </button>
           </div>
         </div>
@@ -888,7 +891,7 @@ export default function ConsumptionReport() {
             className="mobile-apply-btn"
             onClick={() => setMobileTab('report')}
           >
-            Apply & View Report
+            {intl.get('CONS_APPLY_VIEW_REPORT') || 'Apply & View Report'}
           </button>
         </div>
 
@@ -902,19 +905,25 @@ export default function ConsumptionReport() {
 
           <div className="report-header">
             <div className="report-title-section">
-              <h1 className="report-main-title">Energy & Consumption Report</h1>
+              <h1 className="report-main-title">{intl.get('CONS_REPORT_TITLE') || 'Energy & Consumption Report'}</h1>
               {activeGroup ? (
                 <p className="report-subtitle">
-                  Analyzing Group <strong>{activeGroup.name}</strong> over {period === 'daily' ? 'Daily (Hourly points)' : period === 'weekly' ? 'Weekly (7 day points)' : 'Monthly (31 day points)'} intervals.
+                  {intl.get('CONS_ANALYZING_GROUP_PREFIX') || 'Analyzing Group'} <strong>{activeGroup.name}</strong> {intl.get('CONS_OVER_INTERVALS', {
+                    period: period === 'daily'
+                      ? (intl.get('CONS_PERIOD_DAILY_DESC') || 'Daily (Hourly points)')
+                      : period === 'weekly'
+                        ? (intl.get('CONS_PERIOD_WEEKLY_DESC') || 'Weekly (7 day points)')
+                        : (intl.get('CONS_PERIOD_MONTHLY_DESC') || 'Monthly (31 day points)')
+                  }) || `over ${period === 'daily' ? 'Daily (Hourly points)' : period === 'weekly' ? 'Weekly (7 day points)' : 'Monthly (31 day points)'} intervals.`}
                 </p>
               ) : (
-                <p className="report-subtitle">Please select or configure a channel group on the left side.</p>
+                <p className="report-subtitle">{intl.get('CONS_SELECT_GROUP_PROMPT') || 'Please select or configure a channel group on the left side.'}</p>
               )}
             </div>
 
             {activeGroup && pages.length > 0 && (
               <button className="export-pdf-btn" onClick={() => window.print()}>
-                <Icons.Pdf /> Print / Export PDF
+                <Icons.Pdf /> {intl.get('CONS_PRINT_EXPORT_PDF') || 'Print / Export PDF'}
               </button>
             )}
           </div>
@@ -922,17 +931,17 @@ export default function ConsumptionReport() {
           {!activeGroup ? (
             <div className="empty-state-container">
               <Icons.Chart />
-              <div className="empty-state-title">No Group Configured</div>
+              <div className="empty-state-title">{intl.get('CONS_NO_GROUP_CONFIGURED') || 'No Group Configured'}</div>
               <div className="empty-state-desc">
-                Please click <strong>"Add Channel Group"</strong> in the sidebar configurator and select some sub-channels to visualize your consumption stats.
+                {intl.get('CONS_NO_GROUP_DESC') || 'Please click "Add Channel Group" in the sidebar configurator and select some sub-channels to visualize your consumption stats.'}
               </div>
             </div>
           ) : pages.length === 0 ? (
             <div className="empty-state-container">
               <Icons.Chart />
-              <div className="empty-state-title">No Data in Selected Scope</div>
+              <div className="empty-state-title">{intl.get('CONS_NO_DATA_IN_SCOPE') || 'No Data in Selected Scope'}</div>
               <div className="empty-state-desc">
-                Please expand your date filters or choose a date range containing valid logging time points.
+                {intl.get('CONS_NO_DATA_DESC') || 'Please expand your date filters or choose a date range containing valid logging time points.'}
               </div>
             </div>
           ) : (
@@ -940,7 +949,7 @@ export default function ConsumptionReport() {
               {/* Active Chart Header & Pagination */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
-                  Active Chart: {activePage.label} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({formatDateRange(activePage.startMs, activePage.endMs)})</span>
+                  {intl.get('CONS_ACTIVE_CHART') || 'Active Chart:'} {activePage.label} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({formatDateRange(activePage.startMs, activePage.endMs)})</span>
                 </span>
 
                 {/* Page Navigation only for the chart */}
@@ -950,24 +959,24 @@ export default function ConsumptionReport() {
                     disabled={activePageIndex === 0}
                     onClick={() => setActivePageIndex(activePageIndex - 1)}
                   >
-                    <Icons.ChevronLeft /> Prev
+                    <Icons.ChevronLeft /> {intl.get('CONS_PREV') || 'Prev'}
                   </button>
                   <span className="pagination-text" style={{ fontSize: '11px' }}>
-                    Page {activePageIndex + 1} of {pages.length}
+                    {intl.get('CONS_PAGE_OF', { current: activePageIndex + 1, total: pages.length }) || `Page ${activePageIndex + 1} of ${pages.length}`}
                   </span>
                   <button
                     className="pagination-btn"
                     disabled={activePageIndex === pages.length - 1}
                     onClick={() => setActivePageIndex(activePageIndex + 1)}
                   >
-                    Next <Icons.ChevronRight />
+                    {intl.get('NEXT') || 'Next'} <Icons.ChevronRight />
                   </button>
                 </div>
               </div>
 
               {/* Profile Chart Card */}
               <div className="chart-card">
-                <h2 className="card-title">Consumption Profile Chart</h2>
+                <h2 className="card-title">{intl.get('CONS_PROFILE_CHART') || 'Consumption Profile Chart'}</h2>
                 <ConsumptionChart
                   page={activePage}
                   activeGroup={activeGroup}
@@ -984,8 +993,8 @@ export default function ConsumptionReport() {
               {fullReportData && (
                 <div className="table-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 className="card-title">Full Period Consumption Data Table</h2>
-                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Continuous list of all intervals in report range</span>
+                    <h2 className="card-title">{intl.get('CONS_FULL_PERIOD_TABLE') || 'Full Period Consumption Data Table'}</h2>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>{intl.get('CONS_CONTINUOUS_LIST_SUBTITLE') || 'Continuous list of all intervals in report range'}</span>
                   </div>
 
                   <div className="report-table-wrapper">
@@ -993,7 +1002,7 @@ export default function ConsumptionReport() {
                       <thead>
                         <tr>
                           <th rowSpan={2} className="split-col" style={{ verticalAlign: 'middle' }}>
-                            Interval
+                            {intl.get('INTERVAL') || 'Interval'}
                           </th>
                           {(() => {
                             const subCols = fullReportData.columns.filter(c => !c.isMain);
@@ -1006,7 +1015,7 @@ export default function ConsumptionReport() {
                                     className="group-header-cell split-col"
                                     style={{ textAlign: 'center' }}
                                   >
-                                    Sub-branches ({activeGroup ? activeGroup.name : ''})
+                                    {intl.get('CONS_SUB_BRANCHES') || 'Sub-branches'} ({activeGroup ? activeGroup.name : ''})
                                   </th>
                                 )}
                                 {mainCols.length > 0 && (
@@ -1015,7 +1024,7 @@ export default function ConsumptionReport() {
                                     className="group-header-cell"
                                     style={{ textAlign: 'center' }}
                                   >
-                                    Main Channel
+                                    {intl.get('CONS_MAIN_CHANNEL') || 'Main Channel'}
                                   </th>
                                 )}
                               </>
@@ -1065,7 +1074,7 @@ export default function ConsumptionReport() {
 
                         {/* Footer Total */}
                         <tr className="footer-total-row">
-                          <td className="split-col">Total Sum</td>
+                          <td className="split-col">{intl.get('CONS_TOTAL_SUM') || 'Total Sum'}</td>
                           {(() => {
                             const subCols = fullReportData.columns.filter(c => !c.isMain);
                             const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
@@ -1084,7 +1093,7 @@ export default function ConsumptionReport() {
                         </tr>
 
                         <tr className="footer-avg-row">
-                          <td className="split-col">Avg. Rate / Hour</td>
+                          <td className="split-col">{intl.get('CONS_AVG_RATE_PER_HOUR') || 'Avg. Rate / Hour'}</td>
                           {(() => {
                             const subCols = fullReportData.columns.filter(c => !c.isMain);
                             const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
@@ -1103,7 +1112,7 @@ export default function ConsumptionReport() {
                         </tr>
 
                         <tr className="footer-cost-row">
-                          <td className="split-col">Est. Cost ({currency})</td>
+                          <td className="split-col">{intl.get('CONS_EST_COST') || 'Est. Cost'} ({currency})</td>
                           {(() => {
                             const subCols = fullReportData.columns.filter(c => !c.isMain);
                             const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
@@ -1135,9 +1144,9 @@ export default function ConsumptionReport() {
 
              {/* Title Header Card */}
             <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '6px', marginBottom: '8px', textAlign: 'center' }}>
-              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>Energy & Consumption Report</h1>
+              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>{intl.get('CONS_REPORT_TITLE') || 'Energy & Consumption Report'}</h1>
               <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569', fontWeight: 600 }}>
-                Group: {activeGroup.name} | Period: {period.toUpperCase()} | Range: {new Date(startMs).toLocaleDateString()} to {new Date(endMs - 1).toLocaleDateString()}
+                {intl.get('CONS_PRINT_GROUP') || 'Group'}: {activeGroup.name} | {intl.get('CONS_PRINT_PERIOD') || 'Period'}: {period.toUpperCase()} | {intl.get('CONS_PRINT_RANGE') || 'Range'}: {new Date(startMs).toLocaleDateString()} {intl.get('CONS_PRINT_TO') || 'to'} {new Date(endMs - 1).toLocaleDateString()}
               </p>
             </div>
 
@@ -1146,7 +1155,7 @@ export default function ConsumptionReport() {
               {pages.map((p, idx) => (
                 <div key={p.label} className="chart-card" style={{ pageBreakInside: 'avoid', padding: '16px' }}>
                   <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#0f172a', fontWeight: '800' }}>
-                    Consumption Profile Chart - {p.label} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({formatDateRange(p.startMs, p.endMs)})</span>
+                    {intl.get('CONS_PROFILE_CHART') || 'Consumption Profile Chart'} - {p.label} <span style={{ fontWeight: 'normal', color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({formatDateRange(p.startMs, p.endMs)})</span>
                   </h3>
                   <ConsumptionChart
                     page={p}
@@ -1165,13 +1174,13 @@ export default function ConsumptionReport() {
 
             {/* The single continuous data table */}
             <div className="table-card" style={{ pageBreakInside: 'avoid', marginTop: '10px' }}>
-              <h2 className="card-title">Full Period Periodic Consumption Table Data</h2>
+              <h2 className="card-title">{intl.get('CONS_PRINT_TABLE_TITLE') || 'Full Period Periodic Consumption Table Data'}</h2>
               <div className="report-table-wrapper" style={{ overflowX: 'visible' }}>
                 <table className="report-table" style={{ width: '100%', tableLayout: 'auto' }}>
                   <thead>
                     <tr>
                       <th rowSpan={2} className="split-col" style={{ verticalAlign: 'middle' }}>
-                        Interval
+                        {intl.get('INTERVAL') || 'Interval'}
                       </th>
                       {(() => {
                         const subCols = fullReportData.columns.filter(c => !c.isMain);
@@ -1184,7 +1193,7 @@ export default function ConsumptionReport() {
                                 className="group-header-cell split-col"
                                 style={{ textAlign: 'center' }}
                               >
-                                Sub-branches ({activeGroup ? activeGroup.name : ''})
+                                {intl.get('CONS_SUB_BRANCHES') || 'Sub-branches'} ({activeGroup ? activeGroup.name : ''})
                               </th>
                             )}
                             {mainCols.length > 0 && (
@@ -1193,7 +1202,7 @@ export default function ConsumptionReport() {
                                 className="group-header-cell"
                                 style={{ textAlign: 'center' }}
                               >
-                                Main Channel
+                                {intl.get('CONS_MAIN_CHANNEL') || 'Main Channel'}
                               </th>
                             )}
                           </>
@@ -1243,7 +1252,7 @@ export default function ConsumptionReport() {
 
                     {/* Footer Total */}
                     <tr className="footer-total-row">
-                      <td className="split-col">Total Sum</td>
+                      <td className="split-col">{intl.get('CONS_TOTAL_SUM') || 'Total Sum'}</td>
                       {(() => {
                         const subCols = fullReportData.columns.filter(c => !c.isMain);
                         const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
@@ -1262,7 +1271,7 @@ export default function ConsumptionReport() {
                     </tr>
 
                     <tr className="footer-avg-row">
-                      <td className="split-col">Avg. Rate / Hour</td>
+                      <td className="split-col">{intl.get('CONS_AVG_RATE_PER_HOUR') || 'Avg. Rate / Hour'}</td>
                       {(() => {
                         const subCols = fullReportData.columns.filter(c => !c.isMain);
                         const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;
@@ -1281,7 +1290,7 @@ export default function ConsumptionReport() {
                     </tr>
 
                     <tr className="footer-cost-row">
-                      <td className="split-col">Est. Cost ({currency})</td>
+                      <td className="split-col">{intl.get('CONS_EST_COST') || 'Est. Cost'} ({currency})</td>
                       {(() => {
                         const subCols = fullReportData.columns.filter(c => !c.isMain);
                         const lastSubKey = subCols.length > 0 ? subCols[subCols.length - 1].key : null;

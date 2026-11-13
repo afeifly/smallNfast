@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import * as d3 from 'd3';
+import intl from 'react-intl-universal';
 
 import './css/style.css';
 
@@ -26,7 +27,7 @@ class Loading extends Component {
           </svg>
           
           <div className="loading-text-container">
-            <span className="loading-main-message">Loading...</span>
+            <span className="loading-main-message">{intl.get('APP_LOADING') || 'Loading...'}</span>
             <span className="loading-percentage-text"></span>
           </div>
 
@@ -82,7 +83,7 @@ class Loading extends Component {
       .classed('indeterminate', true)
       .style('width', null);
     container.select('.loading-percentage-text').text('');
-    container.select('.loading-main-message').text('Loading...');
+    container.select('.loading-main-message').text(intl.get('APP_LOADING') || 'Loading...');
   } 
 
   showWithMessage(message) {
@@ -120,7 +121,7 @@ class Loading extends Component {
       if (this.rootRef.current) {
         const container = d3.select(this.rootRef.current);
         if (container.attr('data-status') !== 'active') {
-          container.select('.loading-main-message').text('Loading...');
+          container.select('.loading-main-message').text(intl.get('APP_LOADING') || 'Loading...');
           container.select('.loading-percentage-text').text('');
           container.select('.loading-progress-bar-filler')
             .classed('determinate', false)

@@ -16,10 +16,10 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
     {
       id: 'windows',
       name: 'Windows',
-      tag: 'x64 Desktop',
+      tag: intl.get('DL_WIN_TAG') || 'x64 Desktop',
       file: 's4a_window.zip',
       href: '/s4a_window.zip',
-      desc: 'Native Direct USB driver, Ethernet TCP monitoring, full offline CSD & CSV analysis.',
+      desc: intl.get('DL_WIN_DESC') || 'Native Direct USB driver, Ethernet TCP monitoring, full offline CSD & CSV analysis.',
       meta: `Windows 10 / 11 • v${version}`,
       isCurrent: isCurrentWin,
       icon: (
@@ -32,10 +32,10 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
     {
       id: 'macos',
       name: 'macOS',
-      tag: 'Apple Silicon & Intel',
+      tag: intl.get('DL_MAC_TAG') || 'Apple Silicon & Intel',
       file: 's4a_mac.zip',
       href: '/s4a_mac.zip',
-      desc: 'Native IOKit direct USB, Bluetooth Low Energy, standalone DMG installer.',
+      desc: intl.get('DL_MAC_DESC') || 'Native IOKit direct USB, Bluetooth Low Energy, standalone DMG installer.',
       meta: `macOS 12+ • v${version}`,
       isCurrent: isCurrentMac,
       icon: (
@@ -48,10 +48,10 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
     {
       id: 'android',
       name: 'Android',
-      tag: 'ARM64 Mobile APK',
+      tag: intl.get('DL_ANDROID_TAG') || 'ARM64 Mobile APK',
       file: 's4a_android.zip',
       href: '/s4a_android.zip',
-      desc: 'USB-C OTG cable hardware host, Bluetooth LE sensor scanning, field monitoring.',
+      desc: intl.get('DL_ANDROID_DESC') || 'USB-C OTG cable hardware host, Bluetooth LE sensor scanning, field monitoring.',
       meta: `Android 8.0+ • v${version}`,
       isCurrent: isCurrentAndroid,
       icon: (
@@ -63,51 +63,57 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
     }
   ];
 
+  const lblSupported = intl.get('DL_STATUS_SUPPORTED') || 'Supported';
+  const lblUnsupported = intl.get('DL_STATUS_UNSUPPORTED') || 'Unsupported';
+  const lblDirectUsb = intl.get('DIRECT_USB') || 'Direct USB';
+  const lblWebBle = intl.get('DL_STATUS_WEB_BLE') || 'Web BLE';
+  const lblUsbOtg = intl.get('DL_STATUS_USB_OTG') || 'USB OTG';
+
   const commMatrix = [
     {
       platform: 'Web',
       badge: '🌐',
-      usb: { supported: false, label: 'Unsupported' },
-      ble: { supported: true, label: 'Web BLE' },
-      tcp: { supported: false, label: 'Unsupported' },
-      file: { supported: true, label: 'Supported' },
-      api: { supported: false, label: 'Unsupported' },
+      usb: { supported: false, label: lblUnsupported },
+      ble: { supported: true, label: lblWebBle },
+      tcp: { supported: false, label: lblUnsupported },
+      file: { supported: true, label: lblSupported },
+      api: { supported: false, label: lblUnsupported },
     },
     {
       platform: 'Android',
       badge: '🤖',
-      usb: { supported: true, label: 'USB OTG' },
-      ble: { supported: true, label: 'Supported' },
-      tcp: { supported: true, label: 'Supported' },
-      file: { supported: true, label: 'Supported' },
-      api: { supported: true, label: 'Supported' },
+      usb: { supported: true, label: lblUsbOtg },
+      ble: { supported: true, label: lblSupported },
+      tcp: { supported: true, label: lblSupported },
+      file: { supported: true, label: lblSupported },
+      api: { supported: true, label: lblSupported },
     },
     {
       platform: 'Win (Windows)',
       badge: '🪟',
-      usb: { supported: true, label: 'Direct USB' },
-      ble: { supported: true, label: 'Supported' },
-      tcp: { supported: true, label: 'Supported' },
-      file: { supported: true, label: 'Supported' },
-      api: { supported: true, label: 'Supported' },
+      usb: { supported: true, label: lblDirectUsb },
+      ble: { supported: true, label: lblSupported },
+      tcp: { supported: true, label: lblSupported },
+      file: { supported: true, label: lblSupported },
+      api: { supported: true, label: lblSupported },
     },
     {
       platform: 'macOS',
       badge: '🍎',
-      usb: { supported: true, label: 'Direct USB' },
-      ble: { supported: true, label: 'Supported' },
-      tcp: { supported: true, label: 'Supported' },
-      file: { supported: true, label: 'Supported' },
-      api: { supported: true, label: 'Supported' },
+      usb: { supported: true, label: lblDirectUsb },
+      ble: { supported: true, label: lblSupported },
+      tcp: { supported: true, label: lblSupported },
+      file: { supported: true, label: lblSupported },
+      api: { supported: true, label: lblSupported },
     },
     {
       platform: 'iOS',
       badge: '📱',
-      usb: { supported: false, label: 'Unsupported' },
-      ble: { supported: true, label: 'Supported' },
-      tcp: { supported: true, label: 'Supported' },
-      file: { supported: true, label: 'Supported' },
-      api: { supported: true, label: 'Supported' },
+      usb: { supported: false, label: lblUnsupported },
+      ble: { supported: true, label: lblSupported },
+      tcp: { supported: true, label: lblSupported },
+      file: { supported: true, label: lblSupported },
+      api: { supported: true, label: lblSupported },
     },
   ];
 
@@ -144,8 +150,8 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
             <h3>{modalTitle}</h3>
             <p>
               {isWebMode
-                ? 'Select your operating system package or check communication compatibility below.'
-                : `S4A - Smart Software for Automation (v${version}) • SUTO iTEC`}
+                ? (intl.get('DL_WEB_SUBTITLE') || 'Select your operating system package or check communication compatibility below.')
+                : (intl.get('DL_NATIVE_SUBTITLE', { version }) || `S4A - Smart Software for Automation (v${version}) • SUTO iTEC`)}
             </p>
           </div>
           <button className="download-modal-close" onClick={onClose} aria-label={intl.get('CLOSE') || 'Close dialog'}>
@@ -178,7 +184,7 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
                     href={p.href}
                     download={p.file}
                     className="platform-download-btn"
-                    title={`Download ${p.file}`}
+                    title={intl.get('DL_DOWNLOAD_FILE', { file: p.file }) || `Download ${p.file}`}
                   >
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -187,13 +193,13 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
                   </a>
                 ) : (
                   p.isCurrent ? (
-                    <div className="platform-installed-badge" title="Current active running application">
+                    <div className="platform-installed-badge" title={intl.get('DL_CURRENT_RUNNING_APP') || 'Current active running application'}>
                       <span className="platform-check-icon">✓</span>
                       <span>{intl.get('CURRENT_PLATFORM') || 'Active Platform (Installed)'}</span>
                     </div>
                   ) : (
                     <div className="platform-spec-badge">
-                      <span>{p.name} Desktop Client</span>
+                      <span>{intl.get('DL_DESKTOP_CLIENT', { name: p.name }) || `${p.name} Desktop Client`}</span>
                     </div>
                   )
                 )}
@@ -214,12 +220,12 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
               <table className="download-matrix-table">
                 <thead>
                   <tr>
-                    <th className="th-platform">Platform</th>
-                    <th>USB</th>
-                    <th>BLE</th>
-                    <th>Ethernet</th>
-                    <th>Local File</th>
-                    <th>S332 API</th>
+                    <th className="th-platform">{intl.get('DL_TH_PLATFORM') || 'Platform'}</th>
+                    <th>{intl.get('DL_TH_USB') || 'USB'}</th>
+                    <th>{intl.get('DL_TH_BLE') || 'BLE'}</th>
+                    <th>{intl.get('DL_TH_ETHERNET') || 'Ethernet'}</th>
+                    <th>{intl.get('DL_TH_LOCAL_FILE') || 'Local File'}</th>
+                    <th>{intl.get('DL_TH_S332_API') || 'S332 API'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -245,7 +251,7 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
         {/* Modal Footer */}
         <div className="download-modal-footer">
           <div className="download-footer-note">
-            💡 S4A <strong>v{version}</strong> • {isWebMode ? 'Standalone desktop & mobile packages provide native hardware access.' : 'Native Direct hardware I/O & ProcessScape engine active.'}
+            💡 S4A <strong>v{version}</strong> • {isWebMode ? (intl.get('DL_FOOTER_WEB') || 'Standalone desktop & mobile packages provide native hardware access.') : (intl.get('DL_FOOTER_NATIVE') || 'Native Direct hardware I/O & ProcessScape engine active.')}
           </div>
           <button className="download-footer-close-btn" onClick={onClose}>
             {intl.get('CLOSE') || 'Close'}

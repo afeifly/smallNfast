@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import intl from 'react-intl-universal';
 import './ScapeManagerModal.css';
 import {
   getAllScapes,
@@ -66,7 +67,7 @@ export default function ScapeManagerModal({
 
   const handleCreateNew = (e) => {
     e.preventDefault();
-    const title = newTitle.trim() || 'New Plant Scape';
+    const title = newTitle.trim() || (intl.get('PS_SCAPE_DEFAULT_NEW_TITLE') || 'New Plant Scape');
     createNewScape(title, '', { setActive: false });
     refreshList();
     setNewTitle('');
@@ -100,7 +101,11 @@ export default function ScapeManagerModal({
     }
     setPendingDeleteScape(null);
     if (typeof window !== 'undefined' && window.showAppNotification) {
-      window.showAppNotification('Scape Deleted', `"${title || 'Plant Scape'}" was removed.`, 'info');
+      window.showAppNotification(
+        intl.get('PS_SCAPE_DELETED_TITLE') || 'Scape Deleted',
+        intl.get('PS_SCAPE_DELETED_DESC', { title: title || 'Plant Scape' }) || `"${title || 'Plant Scape'}" was removed.`,
+        'info'
+      );
     }
   };
 
@@ -125,7 +130,11 @@ export default function ScapeManagerModal({
         const imported = importScapeFromJson(json);
         refreshList();
         if (typeof window !== 'undefined' && window.showAppNotification) {
-          window.showAppNotification('Scape Imported', `"${imported.title}" loaded successfully.`, 'success');
+          window.showAppNotification(
+            intl.get('PS_SCAPE_IMPORTED_TITLE') || 'Scape Imported',
+            intl.get('PS_SCAPE_IMPORTED_DESC', { title: imported.title }) || `"${imported.title}" loaded successfully.`,
+            'success'
+          );
         }
         if (onSelectActiveScape) {
           onSelectActiveScape(imported);
@@ -134,7 +143,11 @@ export default function ScapeManagerModal({
       } catch (err) {
         console.error('Import error:', err);
         if (typeof window !== 'undefined' && window.showAppNotification) {
-          window.showAppNotification('Import Failed', 'Selected file is not a valid ProcessScape JSON topology.', 'error');
+          window.showAppNotification(
+            intl.get('PS_SCAPE_IMPORT_FAILED_TITLE') || 'Import Failed',
+            intl.get('PS_SCAPE_IMPORT_FAILED_DESC') || 'Selected file is not a valid ProcessScape JSON topology.',
+            'error'
+          );
         }
       }
     };
@@ -147,24 +160,24 @@ export default function ScapeManagerModal({
         {/* Modal Header */}
         <div className="ps-mgr-header">
           <div className="ps-mgr-title-group">
-            <span className="ps-mgr-badge">Plant SCADA</span>
-            <h2 id="mgrModalTitle" className="ps-mgr-title">Scape Manager</h2>
-            <p className="ps-mgr-subtitle">Manage, switch, or modify plant topology environments</p>
+            <span className="ps-mgr-badge">{intl.get('PS_SCAPE_PLANT_SCADA_BADGE') || 'Plant SCADA'}</span>
+            <h2 id="mgrModalTitle" className="ps-mgr-title">{intl.get('PS_SCAPE_MANAGER_TITLE') || 'Scape Manager'}</h2>
+            <p className="ps-mgr-subtitle">{intl.get('PS_SCAPE_MANAGER_SUBTITLE') || 'Manage, switch, or modify plant topology environments'}</p>
           </div>
           <div className="ps-mgr-header-actions">
             <button
               type="button"
               className="ps-mgr-icon-btn ps-mgr-btn-outline"
               onClick={() => fileInputRef.current?.click()}
-              title="Import Scape"
-              aria-label="Import Scape"
+              title={intl.get('PS_SCAPE_IMPORT_BTN') || 'Import Scape'}
+              aria-label={intl.get('PS_SCAPE_IMPORT_BTN') || 'Import Scape'}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              <span>Import Scape</span>
+              <span>{intl.get('PS_SCAPE_IMPORT_BTN') || 'Import Scape'}</span>
             </button>
             <input
               ref={fileInputRef}
@@ -178,13 +191,13 @@ export default function ScapeManagerModal({
               className="ps-mgr-btn-primary"
               onClick={() => setShowCreateForm(v => !v)}
             >
-              {showCreateForm ? 'Cancel' : '+ New Scape'}
+              {showCreateForm ? (intl.get('CANCEL') || 'Cancel') : (intl.get('PS_SCAPE_NEW_BTN') || '+ New Scape')}
             </button>
             <button
               type="button"
               className="ps-mgr-close-btn"
               onClick={onClose}
-              aria-label="Close Scape Manager"
+              aria-label={intl.get('PS_SCAPE_CLOSE_ARIA') || 'Close Scape Manager'}
             >
               ✕
             </button>
@@ -197,13 +210,13 @@ export default function ScapeManagerModal({
             <input
               type="text"
               className="ps-mgr-input"
-              placeholder="e.g. Workshop 2 Compressor Station..."
+              placeholder={intl.get('PS_SCAPE_NAME_PLACEHOLDER') || 'e.g. Workshop 2 Compressor Station...'}
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               autoFocus
             />
             <button type="submit" className="ps-mgr-btn-primary">
-              Create
+              {intl.get('PS_SCAPE_CREATE_BTN') || 'Create'}
             </button>
           </form>
         )}
@@ -213,16 +226,16 @@ export default function ScapeManagerModal({
           {scapes.length === 0 ? (
             <div className="ps-mgr-empty-state">
               <div className="ps-mgr-empty-icon">🏭</div>
-              <h3 className="ps-mgr-empty-title">No Plant Scapes</h3>
+              <h3 className="ps-mgr-empty-title">{intl.get('PS_SCAPE_EMPTY_TITLE') || 'No Plant Scapes'}</h3>
               <p className="ps-mgr-empty-desc">
-                All plant scapes have been deleted. Click "+ New Scape" above to design a new plant layout.
+                {intl.get('PS_SCAPE_EMPTY_DESC') || 'All plant scapes have been deleted. Click "+ New Scape" above to design a new plant layout.'}
               </p>
               <button
                 type="button"
                 className="ps-mgr-btn-primary"
                 onClick={() => setShowCreateForm(true)}
               >
-                + Create New Scape
+                {intl.get('PS_SCAPE_CREATE_NEW_BTN') || '+ Create New Scape'}
               </button>
             </div>
           ) : (
@@ -233,7 +246,7 @@ export default function ScapeManagerModal({
               const pipeCount = scape.pipes?.length || 0;
               const dateStr = scape.updatedAt
                 ? new Date(scape.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                : 'Built-in';
+                : (intl.get('PS_SCAPE_BUILTIN') || 'Built-in');
 
               return (
                 <div
@@ -242,16 +255,16 @@ export default function ScapeManagerModal({
                 >
                   <div className="ps-mgr-card-top">
                     <div className="ps-mgr-card-title-row">
-                      <h3 className="ps-mgr-card-title">{scape.title || 'Untitled Scape'}</h3>
+                      <h3 className="ps-mgr-card-title">{scape.title || (intl.get('PS_SCAPE_UNTITLED') || 'Untitled Scape')}</h3>
                       {isActive ? (
-                        <span className="ps-mgr-active-badge" title="Used by current location">Current</span>
+                        <span className="ps-mgr-active-badge" title={intl.get('PS_SCAPE_CURRENT_TOOLTIP') || 'Used by current location'}>{intl.get('PS_SCAPE_CURRENT_BADGE') || 'Current'}</span>
                       ) : (
                         <button
                           type="button"
                           className="ps-mgr-card-switch-btn"
                           onClick={(e) => { e.stopPropagation(); handleSetActive(scape.id); }}
                         >
-                          Select
+                          {intl.get('PS_SCAPE_SELECT_BTN') || 'Select'}
                         </button>
                       )}
                     </div>
@@ -259,9 +272,9 @@ export default function ScapeManagerModal({
                       <p className="ps-mgr-card-desc">{scape.description}</p>
                     )}
                     <div className="ps-mgr-card-meta">
-                      <span>{elemCount} equipment/sensors</span>
+                      <span>{intl.get('PS_SCAPE_EQUIP_COUNT', { count: elemCount }) || `${elemCount} equipment/sensors`}</span>
                       <span>·</span>
-                      <span>{pipeCount} pipe segments</span>
+                      <span>{intl.get('PS_SCAPE_PIPE_COUNT', { count: pipeCount }) || `${pipeCount} pipe segments`}</span>
                       <span>·</span>
                       <span>{dateStr}</span>
                     </div>
@@ -272,16 +285,16 @@ export default function ScapeManagerModal({
                       type="button"
                       className={`ps-mgr-action-btn btn-edit ${isActive ? 'is-current-active' : ''}`}
                       onClick={(e) => { e.stopPropagation(); handleEdit(scape.id); }}
-                      title="Modify & edit this scape layout"
+                      title={intl.get('PS_SCAPE_MODIFY_TOOLTIP') || 'Modify & edit this scape layout'}
                     >
-                      ✏️ Modify Scape
+                      ✏️ {intl.get('PS_SCAPE_MODIFY_BTN') || 'Modify Scape'}
                     </button>
                     <button
                       type="button"
                       className="ps-mgr-action-icon-btn"
                       onClick={(e) => handleDuplicate(scape.id, e)}
-                      title="Duplicate Scape"
-                      aria-label="Duplicate"
+                      title={intl.get('PS_SCAPE_DUPLICATE_TOOLTIP') || 'Duplicate Scape'}
+                      aria-label={intl.get('PS_SCAPE_DUPLICATE_ARIA') || 'Duplicate'}
                     >
                       📋
                     </button>
@@ -289,8 +302,8 @@ export default function ScapeManagerModal({
                       type="button"
                       className="ps-mgr-action-icon-btn"
                       onClick={(e) => handleExportJson(scape, e)}
-                      title="Export Scape"
-                      aria-label="Export Scape"
+                      title={intl.get('PS_SCAPE_EXPORT_TOOLTIP') || 'Export Scape'}
+                      aria-label={intl.get('PS_SCAPE_EXPORT_TOOLTIP') || 'Export Scape'}
                     >
                       ⬇️
                     </button>
@@ -299,8 +312,8 @@ export default function ScapeManagerModal({
                       className="ps-mgr-action-icon-btn btn-delete"
                       onClick={(e) => handleDeleteClick(scape, e)}
                       disabled={isInUse}
-                      title={isInUse ? 'In-use scape cannot be deleted' : 'Delete Scape'}
-                      aria-label={isInUse ? 'In-use scape cannot be deleted' : 'Delete'}
+                      title={isInUse ? (intl.get('PS_SCAPE_IN_USE_CANNOT_DELETE') || 'In-use scape cannot be deleted') : (intl.get('PS_SCAPE_DELETE_TOOLTIP') || 'Delete Scape')}
+                      aria-label={isInUse ? (intl.get('PS_SCAPE_IN_USE_CANNOT_DELETE') || 'In-use scape cannot be deleted') : (intl.get('PS_SCAPE_DELETE_ARIA') || 'Delete')}
                     >
                       🗑️
                     </button>
@@ -331,10 +344,10 @@ export default function ScapeManagerModal({
                 </svg>
               </div>
               <div>
-                <h3 className="ps-mgr-confirm-title">Delete Plant Scape</h3>
+                <h3 className="ps-mgr-confirm-title">{intl.get('PS_SCAPE_DELETE_CONFIRM_TITLE') || 'Delete Plant Scape'}</h3>
                 <p className="ps-mgr-confirm-subtitle">
-                  Are you sure you want to delete <strong>"{pendingDeleteScape.title || 'this scape'}"</strong>?
-                  {scapes.length <= 1 ? ' This is the only remaining scape.' : ''}
+                  {intl.get('PS_SCAPE_DELETE_CONFIRM_PREFIX') || 'Are you sure you want to delete'} <strong>"{pendingDeleteScape.title || (intl.get('PS_SCAPE_THIS_SCAPE') || 'this scape')}"</strong>?
+                  {scapes.length <= 1 ? ` ${intl.get('PS_SCAPE_ONLY_REMAINING') || 'This is the only remaining scape.'}` : ''}
                 </p>
               </div>
             </div>
@@ -344,14 +357,14 @@ export default function ScapeManagerModal({
                 className="ps-mgr-action-btn"
                 onClick={() => setPendingDeleteScape(null)}
               >
-                Cancel
+                {intl.get('CANCEL') || 'Cancel'}
               </button>
               <button
                 type="button"
                 className="ps-mgr-btn-danger"
                 onClick={handleConfirmDelete}
               >
-                Delete Scape
+                {intl.get('PS_SCAPE_DELETE_TOOLTIP') || 'Delete Scape'}
               </button>
             </div>
           </div>

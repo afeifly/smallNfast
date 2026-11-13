@@ -6,7 +6,11 @@
 export const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
-export const checkIsTauri = () =>
+export const checkIsLanBridge = () =>
+  typeof window !== 'undefined' &&
+  Boolean(window.__S4A_LAN_BRIDGE__ || window.location?.port === '9080');
+
+export const checkIsNativeTauri = () =>
   typeof window !== 'undefined' &&
   Boolean(
     window.__TAURI_INTERNALS__ ||
@@ -15,26 +19,25 @@ export const checkIsTauri = () =>
     window.location?.protocol === 'tauri:'
   );
 
+export const checkIsTauri = () => checkIsNativeTauri() || checkIsLanBridge();
+
 export const checkIsElectron = () =>
   typeof window !== 'undefined' &&
   Boolean(window.desktopApi?.isDesktop || window.electron || window.process?.type === 'renderer');
 
+export const checkIsDesktopHost = () => !isMobile && (checkIsNativeTauri() || checkIsElectron());
+
 export const checkIsNative = () => checkIsTauri() || checkIsElectron();
 export const isNative = typeof window !== 'undefined' && checkIsNative();
 
-export const checkIsDesktop = () => !isMobile && checkIsNative();
+export const checkIsDesktop = () => !isMobile && checkIsDesktopHost();
 
-export const isTauri = typeof window !== 'undefined' && Boolean(
-  window.__TAURI_INTERNALS__ ||
-  window.__TAURI__ ||
-  window.location?.hostname === 'tauri.localhost' ||
-  window.location?.protocol === 'tauri:'
-);
+export const isTauri = typeof window !== 'undefined' && checkIsTauri();
 export const isElectron =
   typeof window !== 'undefined' &&
   Boolean(window.desktopApi?.isDesktop || window.electron || window.process?.type === 'renderer');
 
-export const isDesktop = typeof window !== 'undefined' && !isMobile && checkIsNative();
+export const isDesktop = typeof window !== 'undefined' && checkIsDesktop();
 export const isWeb = typeof window !== 'undefined' && !checkIsNative();
 export const checkIsWeb = () => !checkIsNative();
 export const isDesktopApp = checkIsDesktop;

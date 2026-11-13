@@ -11,7 +11,7 @@
  */
 
 import { isTauri, checkIsTauri } from '../util/platform';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import BleSutoAPI from './BleSutoAPI';
 import ApiDevice from './device/ApiDevice';
@@ -39,7 +39,31 @@ import {
   createMockS331MeasurementValues
 } from './modbusProtocol';
 
-const hasTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke);
+const hasNativeTauri = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke);
+const hasLanBridge = () => typeof window !== 'undefined' && Boolean(window.__S4A_LAN_BRIDGE__ || window.location?.port === '9080');
+const hasTauri = () => hasNativeTauri() || hasLanBridge();
+
+async function invoke(cmd, args = {}) {
+  if (hasNativeTauri()) {
+    return await tauriInvoke(cmd, args);
+  }
+  if (hasLanBridge()) {
+    const resp = await fetch('/api/invoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd, args: args || {} }),
+    });
+    if (!resp.ok) {
+      throw new Error(`LAN Server HTTP error (${resp.status}) for ${cmd}`);
+    }
+    const json = await resp.json();
+    if (!json || json.ok === false) {
+      throw new Error(json?.error || `LAN RPC failed for ${cmd}`);
+    }
+    return json.data;
+  }
+  throw new Error('Desktop runtime or LAN Server bridge not available');
+}
 
 // Rolling measurement buffer for chart display (keeps last 3600 points)
 const historyBuffer = new Map();
@@ -2067,7 +2091,7 @@ export const TauriSutoAPI = {
   },
   /** Open native OS file picker to select a CSD or CSV file */
   async pickFile() {
-    if (!hasTauri()) {
+    if (!hasNativeTauri()) {
       return null;
     }
     return await invoke('suto_pick_file');
@@ -2125,7 +2149,7 @@ export const TauriSutoAPI = {
 
   /** Save binary data using native OS Save File dialog (or browser download) */
   async saveBinaryFile(filename, data) {
-    if (!hasTauri()) {
+    if (!hasNativeTauri()) {
       return await ApiDevice.saveBinaryFile(filename, data);
     }
     const byteArr = data instanceof Uint8Array ? Array.from(data) : Array.from(new Uint8Array(data));
@@ -2134,7 +2158,7 @@ export const TauriSutoAPI = {
 
   /** Open native OS folder selection dialog */
   async pickFolder() {
-    if (!hasTauri()) {
+    if (!hasNativeTauri()) {
       return null;
     }
     return await invoke('suto_pick_folder');
@@ -2142,11 +2166,90 @@ export const TauriSutoAPI = {
 
   /** Save binary data to a specific folder on disk */
   async saveFileToPath(folder, filename, data) {
-    if (!hasTauri()) {
+    if (!hasNativeTauri()) {
       return null;
     }
     const byteArr = data instanceof Uint8Array ? Array.from(data) : Array.from(new Uint8Array(data));
     return await invoke('suto_save_file_to_path', { folder, filename, data: byteArr });
+  },
+
+  /** Query embedded LAN Web Server status (Port 9080) */
+  async getWebServerStatus() {
+    if (!hasTauri()) {
+      const mockEnabled = typeof localStorage !== 'undefined' && localStorage.getItem('s4a_web_server_enabled') === 'true';
+      return {
+        enabled: mockEnabled,
+        port: 9080,
+        primary_url: 'http://localhost:9080',
+        urls: ['http://localhost:9080'],
+      };
+    }
+    return await invoke('suto_get_webserver_status');
+  },
+
+  /** Start or stop embedded LAN Web Server on port 9080 (macOS / Windows) */
+  async setWebServerEnabled(enabled, port = 9080) {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('s4a_web_server_enabled', enabled ? 'true' : 'false');
+    }
+    if (!hasNativeTauri()) {
+      return {
+        enabled: Boolean(enabled),
+        port,
+        primary_url: `http://localhost:${port}`,
+        urls: [`http://localhost:${port}`],
+      };
+    }
+    const status = await invoke('suto_set_webserver_enabled', {
+      enabled: Boolean(enabled),
+      port,
+    });
+    if (enabled) {
+      this.pushLocalStateToLanBridge().catch(() => {});
+    }
+    return status;
+  },
+
+  /** Push host localStorage configurations (ProcessScape layouts, locations, devices) to LAN server */
+  async pushLocalStateToLanBridge() {
+    if (!hasTauri() || typeof localStorage === 'undefined') return;
+    const keysToSync = [
+      's4a_ps_devices',
+      's4a_locations',
+      's4a_scapes_list',
+      's4a_active_scape_id',
+      's4a_alarm_rules',
+    ];
+    const entries = {};
+    for (const k of keysToSync) {
+      const val = localStorage.getItem(k);
+      if (val != null) entries[k] = val;
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('s4a_scape_layout_') || k.startsWith('s4a_ps_'))) {
+        const val = localStorage.getItem(k);
+        if (val != null) entries[k] = val;
+      }
+    }
+    await invoke('suto_sync_shared_state', { entries });
+  },
+
+  /** Pull shared state on LAN client startup so remote browsers immediately see Host configurations */
+  async pullLanBridgeState() {
+    if (!hasLanBridge() || typeof localStorage === 'undefined') return false;
+    try {
+      const entries = await invoke('suto_get_shared_state');
+      if (entries && typeof entries === 'object') {
+        for (const [k, v] of Object.entries(entries)) {
+          if (typeof v === 'string') {
+            localStorage.setItem(k, v);
+          }
+        }
+        return true;
+      }
+    } catch (_) {}
+    return false;
   },
 };
 

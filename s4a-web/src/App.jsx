@@ -25,7 +25,7 @@ import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/proc
 import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels } from './modules/processscape/engine/alarmEngine';
 import { subscribeLive } from './util/liveDataSource';
 import './App.css';
-import { isDesktop, isMobile, isWeb, checkIsWeb, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
+import { isDesktop, isMobile, isWeb, checkIsWeb, checkIsDesktopHost, checkIsLanBridge, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
 import * as liveRecorder from './util/liveRecorder';
 import { clearLiveSelection, setLiveSelection } from './util/liveSelection';
 
@@ -250,10 +250,102 @@ function App() {
         setSelectedLocationId(null);
       }
       try { refreshAssignedChannels(); } catch (_) {}
+      TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
     };
     window.addEventListener('sensor-locations-changed', handleLocChanged);
     return () => window.removeEventListener('sensor-locations-changed', handleLocChanged);
   }, []);
+
+  // Embedded LAN Web Server (Port 9080) for Desktop App (macOS & Windows)
+  const [webServerStatus, setWebServerStatus] = React.useState({
+    enabled: false,
+    port: 9080,
+    primary_url: 'http://localhost:9080',
+    urls: ['http://localhost:9080'],
+  });
+  const [webServerLoading, setWebServerLoading] = React.useState(false);
+  const [webServerCopied, setWebServerCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    if (checkIsLanBridge()) {
+      TauriSutoAPI.pullLanBridgeState()
+        .then((pulled) => {
+          if (mounted && pulled) {
+            try {
+              setLocationsList(getLocations());
+              refreshAssignedChannels();
+            } catch (_) {}
+          }
+        })
+        .catch(() => {});
+    } else if (!isMobile) {
+      TauriSutoAPI.getWebServerStatus()
+        .then(async (status) => {
+          if (!mounted || !status) return;
+          const savedPref = typeof localStorage !== 'undefined' && localStorage.getItem('s4a_web_server_enabled') === 'true';
+          if (savedPref && !status.enabled && checkIsDesktopHost()) {
+            try {
+              const started = await TauriSutoAPI.setWebServerEnabled(true, 9080);
+              if (mounted && started) setWebServerStatus(started);
+              return;
+            } catch (_) {}
+          }
+          setWebServerStatus(status);
+        })
+        .catch(() => {});
+    }
+    return () => { mounted = false; };
+  }, []);
+
+  const handleToggleWebServer = async (e) => {
+    if (e) e.stopPropagation();
+    if (webServerLoading) return;
+    const nextEnabled = !webServerStatus.enabled;
+    setWebServerLoading(true);
+    try {
+      const updated = await TauriSutoAPI.setWebServerEnabled(nextEnabled, 9080);
+      if (updated) {
+        setWebServerStatus(updated);
+      }
+      if (window.showAppNotification) {
+        if (nextEnabled) {
+          window.showAppNotification(
+            intl.get('WEB_SERVER_ENABLED_TITLE') || 'LAN Web Server Enabled (Port 9080)',
+            intl.get('WEB_SERVER_ENABLED_MSG', { url: updated?.primary_url || 'http://localhost:9080' }) ||
+              `Other PCs on your LAN can now access all S4A features at:\n${updated?.primary_url || 'http://localhost:9080'}`,
+            'success'
+          );
+        } else {
+          window.showAppNotification(
+            intl.get('WEB_SERVER_DISABLED_TITLE') || 'LAN Web Server Stopped',
+            intl.get('WEB_SERVER_DISABLED_MSG') || 'Port 9080 web server has been turned off.',
+            'info'
+          );
+        }
+      }
+    } catch (err) {
+      if (window.showAppNotification) {
+        window.showAppNotification(
+          intl.get('WEB_SERVER_ERROR_TITLE') || 'Web Server Error',
+          err?.message || String(err),
+          'error'
+        );
+      }
+    } finally {
+      setWebServerLoading(false);
+    }
+  };
+
+  const handleCopyWebServerUrl = (e) => {
+    if (e) e.stopPropagation();
+    const url = webServerStatus.primary_url || `http://localhost:${webServerStatus.port || 9080}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+    setWebServerCopied(true);
+    setTimeout(() => setWebServerCopied(false), 1800);
+  };
 
   // System-wide alarm monitoring and active alarms badge
   const [showAlarmCenterModal, setShowAlarmCenterModal] = React.useState(false);
@@ -506,15 +598,16 @@ function App() {
 
   const handleCsdExportConfirmed = async () => {
     setCsdGapDialogOpen(false);
-    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage('Exporting to CSD... 0%');
+    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_CSD_PROGRESS', { pct: 0 }) || 'Exporting to CSD... 0%');
     try {
       await TestAPI.exportToCsd((p) => {
-        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting to CSD... ${Math.round(p * 100)}%`);
+        const pct = Math.round(p * 100);
+        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_CSD_PROGRESS', { pct }) || `Exporting to CSD... ${pct}%`);
       });
-      window.showAppNotification('Export Complete', 'CSD file exported successfully.', 'success');
+      window.showAppNotification(intl.get('APP_EXPORT_COMPLETE') || 'Export Complete', intl.get('APP_CSD_EXPORT_SUCCESS') || 'CSD file exported successfully.', 'success');
     } catch (e) {
       console.error(e);
-      window.showAppNotification('Export Failed', 'Failed to export data to CSD: ' + e.message, 'error');
+      window.showAppNotification(intl.get('APP_EXPORT_FAILED') || 'Export Failed', (intl.get('APP_EXPORT_CSD_FAILED') || 'Failed to export data to CSD: ') + e.message, 'error');
     } finally {
       if (globalLoadingRef.current) globalLoadingRef.current.hide();
     }
@@ -540,11 +633,11 @@ function App() {
       }
       if (e.detail.error) {
         setFileLoading(false);
-        const errMsg = e.detail.errorMessage ? e.detail.errorMessage : 'An unknown error occurred while loading the file.';
+        const errMsg = e.detail.errorMessage ? e.detail.errorMessage : (intl.get('APP_UNKNOWN_LOAD_ERROR') || 'An unknown error occurred while loading the file.');
         if (window.showAppNotification) {
           window.showAppNotification(
-            "File Load Failed",
-            `There was a problem loading your file. The file header format verification failed:\n\n${errMsg}`,
+            intl.get('APP_FILE_LOAD_FAILED') || "File Load Failed",
+            intl.get('APP_FILE_LOAD_FAILED_MSG', { errMsg }) || `There was a problem loading your file. The file header format verification failed:\n\n${errMsg}`,
             "error"
           );
         }
@@ -556,7 +649,7 @@ function App() {
         document.activeElement.blur();
       }
       const { title, message, type } = e.detail;
-      setNotiTitle(title || 'Notification');
+      setNotiTitle(title || (intl.get('APP_NOTIFICATION') || 'Notification'));
       setNotiMsg(message || '');
       setNotiType(type || 'info');
       setNotiOpen(true);
@@ -625,8 +718,8 @@ function App() {
           TauriSutoAPI.logClientEvent('INFO', 'RECORDER', `Live recording saved (${result.rowCount} rows): ${savedPath}`);
           if (window.showAppNotification) {
             window.showAppNotification(
-              'Recording Saved',
-              `Live recording successfully saved (${result.rowCount} rows):\n${savedPath}`,
+              intl.get('APP_RECORDING_SAVED') || 'Recording Saved',
+              intl.get('APP_REC_SAVED_PATH_MSG', { rows: result.rowCount, path: savedPath }) || `Live recording successfully saved (${result.rowCount} rows):\n${savedPath}`,
               'success'
             );
           }
@@ -644,8 +737,8 @@ function App() {
         URL.revokeObjectURL(url);
         if (window.showAppNotification) {
           window.showAppNotification(
-            'Recording Saved',
-            `Live recording (${result.rowCount} rows) downloaded: ${result.filename}`,
+            intl.get('APP_RECORDING_SAVED') || 'Recording Saved',
+            intl.get('APP_REC_DOWNLOADED_MSG', { rows: result.rowCount, filename: result.filename }) || `Live recording (${result.rowCount} rows) downloaded: ${result.filename}`,
             'success'
           );
         }
@@ -654,7 +747,7 @@ function App() {
       console.error('[Recorder] Save failed:', err);
       TauriSutoAPI.logClientEvent('ERROR', 'RECORDER', `Saving live recording failed: ${err?.message || err}`);
       if (window.showAppNotification) {
-        window.showAppNotification('Save Failed', `Could not save live recording: ${err?.message || err}`, 'error');
+        window.showAppNotification(intl.get('APP_SAVE_FAILED') || 'Save Failed', (intl.get('APP_REC_SAVE_FAILED_MSG') || 'Could not save live recording: ') + `${err?.message || err}`, 'error');
       }
     }
   };
@@ -669,8 +762,8 @@ function App() {
         TauriSutoAPI.logClientEvent('WARN', 'RECORDER', 'Recording stopped but no samples had been captured');
         if (window.showAppNotification) {
           window.showAppNotification(
-            'Recording Stopped',
-            'Recording stopped, but no measurement samples were captured yet.',
+            intl.get('APP_RECORDING_STOPPED') || 'Recording Stopped',
+            intl.get('APP_REC_NO_SAMPLES_MSG') || 'Recording stopped, but no measurement samples were captured yet.',
             'warning'
           );
         }
@@ -682,8 +775,8 @@ function App() {
         if (!hasAssignedChannels) {
           if (window.showAppNotification) {
             window.showAppNotification(
-              'No Assigned Channels',
-              'No location or measurement point channels are assigned to record.',
+              intl.get('APP_NO_ASSIGNED_CHANNELS') || 'No Assigned Channels',
+              intl.get('APP_NO_ASSIGNED_CHANNELS_MSG') || 'No location or measurement point channels are assigned to record.',
               'warning'
             );
           }
@@ -862,9 +955,9 @@ function App() {
     const res = await TestAPI.saveRepairedCopy();
     setRepairInfo(null);
     if (res && res.saved) {
-      window.showAppNotification('Repaired Copy Saved', 'A repaired copy was saved. The original file was not modified.', 'success');
+      window.showAppNotification(intl.get('APP_REPAIRED_COPY_SAVED') || 'Repaired Copy Saved', intl.get('APP_REPAIRED_COPY_SAVED_MSG') || 'A repaired copy was saved. The original file was not modified.', 'success');
     } else {
-      window.showAppNotification('Save Cancelled', 'No repaired copy was saved.', 'info');
+      window.showAppNotification(intl.get('APP_SAVE_CANCELLED') || 'Save Cancelled', intl.get('APP_SAVE_CANCELLED_MSG') || 'No repaired copy was saved.', 'info');
     }
   };
 
@@ -910,7 +1003,7 @@ function App() {
     if (filePath && TestAPI.loadFileFromPath) {
       loadSuccess = await TestAPI.loadFileFromPath(filePath);
       if (!loadSuccess && window.showAppNotification) {
-        window.showAppNotification("File Not Found", `Could not open file at: ${filePath}`, "error");
+        window.showAppNotification(intl.get('APP_FILE_NOT_FOUND') || "File Not Found", intl.get('APP_FILE_NOT_FOUND_PATH', { path: filePath }) || `Could not open file at: ${filePath}`, "error");
       }
     } else if (TestAPI.getHandleForFile && TestAPI.loadFileFromHandle) {
       const handle = await TestAPI.getHandleForFile(file.name);
@@ -921,7 +1014,7 @@ function App() {
         return;
       } else {
         if (window.showAppNotification) {
-          window.showAppNotification("File Not Found", `The requested file "${file.name}" could not be found.`, "error");
+          window.showAppNotification(intl.get('APP_FILE_NOT_FOUND') || "File Not Found", intl.get('APP_FILE_NOT_FOUND_NAME', { name: file.name }) || `The requested file "${file.name}" could not be found.`, "error");
         }
       }
     } else if (TestAPI.openFile) {
@@ -949,21 +1042,22 @@ function App() {
     TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Export started: all channels to CSV`);
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
+      window.showAppNotification(intl.get('APP_EXPORT_ABORTED') || "Export Aborted", intl.get('FILEINFO_NO_FILE') || "No file is currently loaded.", "warning");
       return;
     }
     if (globalLoadingRef.current) {
-      globalLoadingRef.current.showWithMessage("Exporting to CSV... 0%");
+      globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_CSV_PROGRESS', { pct: 0 }) || "Exporting to CSV... 0%");
     }
     try {
       await TestAPI.exportAllChannelsToCsv((progress) => {
         if (globalLoadingRef.current) {
-          globalLoadingRef.current.showWithMessage(`Exporting to CSV... ${Math.round(progress * 100)}%`);
+          const pct = Math.round(progress * 100);
+          globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_CSV_PROGRESS', { pct }) || `Exporting to CSV... ${pct}%`);
         }
       });
     } catch (e) {
       console.error(e);
-      window.showAppNotification("Export Failed", "Failed to export data to CSV: " + e.message, "error");
+      window.showAppNotification(intl.get('APP_EXPORT_FAILED') || "Export Failed", (intl.get('APP_EXPORT_CSV_FAILED') || "Failed to export data to CSV: ") + e.message, "error");
     } finally {
       if (globalLoadingRef.current) {
         globalLoadingRef.current.hide();
@@ -975,11 +1069,11 @@ function App() {
     TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Export started: CSV to CSD`);
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification('Export Aborted', 'No file is currently loaded.', 'warning');
+      window.showAppNotification(intl.get('APP_EXPORT_ABORTED') || 'Export Aborted', intl.get('FILEINFO_NO_FILE') || 'No file is currently loaded.', 'warning');
       return;
     }
     if (!TestAPI.isCsvMode || !TestAPI.isCsvMode()) {
-      window.showAppNotification('Export Aborted', 'Export to CSD is only available when a CSV file is loaded.', 'warning');
+      window.showAppNotification(intl.get('APP_EXPORT_ABORTED') || 'Export Aborted', intl.get('APP_EXPORT_CSD_ONLY_CSV') || 'Export to CSD is only available when a CSV file is loaded.', 'warning');
       return;
     }
     const summary = TestAPI.getGapSummary ? TestAPI.getGapSummary() : { gapCount: 0, gaps: [] };
@@ -994,15 +1088,16 @@ function App() {
   const handleCsdExportSplit = async () => {
     setCsdGapDialogOpen(false);
     const segCount = csdGapSummary?.segments?.length ?? 1;
-    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting ${segCount} CSD files... 0%`);
+    if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_SPLIT_CSD_PROGRESS', { count: segCount, pct: 0 }) || `Exporting ${segCount} CSD files... 0%`);
     try {
       await TestAPI.exportToCsdSplit((p) => {
-        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(`Exporting ${segCount} CSD files... ${Math.round(p * 100)}%`);
+        const pct = Math.round(p * 100);
+        if (globalLoadingRef.current) globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_SPLIT_CSD_PROGRESS', { count: segCount, pct }) || `Exporting ${segCount} CSD files... ${pct}%`);
       });
-      window.showAppNotification('Export Complete', `${segCount} CSD file(s) exported successfully.`, 'success');
+      window.showAppNotification(intl.get('APP_EXPORT_COMPLETE') || 'Export Complete', intl.get('APP_SPLIT_CSD_EXPORT_SUCCESS', { count: segCount }) || `${segCount} CSD file(s) exported successfully.`, 'success');
     } catch (e) {
       console.error(e);
-      window.showAppNotification('Export Failed', 'Failed to split-export CSD files: ' + e.message, 'error');
+      window.showAppNotification(intl.get('APP_EXPORT_FAILED') || 'Export Failed', (intl.get('APP_SPLIT_CSD_EXPORT_FAILED') || 'Failed to split-export CSD files: ') + e.message, 'error');
     } finally {
       if (globalLoadingRef.current) globalLoadingRef.current.hide();
     }
@@ -1012,21 +1107,22 @@ function App() {
     TauriSutoAPI.logClientEvent('INFO', 'EXPORT', `Export started: all channels to Excel`);
     handleShareClose();
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) {
-      window.showAppNotification("Export Aborted", "No file is currently loaded.", "warning");
+      window.showAppNotification(intl.get('APP_EXPORT_ABORTED') || "Export Aborted", intl.get('FILEINFO_NO_FILE') || "No file is currently loaded.", "warning");
       return;
     }
     if (globalLoadingRef.current) {
-      globalLoadingRef.current.showWithMessage("Exporting to Excel... 0%");
+      globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_EXCEL_PROGRESS', { pct: 0 }) || "Exporting to Excel... 0%");
     }
     try {
       await TestAPI.exportAllChannelsToExcel((progress) => {
         if (globalLoadingRef.current) {
-          globalLoadingRef.current.showWithMessage(`Exporting to Excel... ${Math.round(progress * 100)}%`);
+          const pct = Math.round(progress * 100);
+          globalLoadingRef.current.showWithMessage(intl.get('APP_EXPORTING_EXCEL_PROGRESS', { pct }) || `Exporting to Excel... ${pct}%`);
         }
       });
     } catch (e) {
       console.error(e);
-      window.showAppNotification("Export Failed", "Failed to export data to Excel: " + e.message, "error");
+      window.showAppNotification(intl.get('APP_EXPORT_FAILED') || "Export Failed", (intl.get('APP_EXPORT_EXCEL_FAILED') || "Failed to export data to Excel: ") + e.message, "error");
     } finally {
       if (globalLoadingRef.current) {
         globalLoadingRef.current.hide();
@@ -1035,7 +1131,7 @@ function App() {
   };
 
   if (!initDone) {
-    return <div className="loading-screen">Loading...</div>;
+    return <div className="loading-screen">{intl.get('APP_LOADING') || 'Loading...'}</div>;
   }
 
   return (
@@ -1083,13 +1179,13 @@ function App() {
               }}
               title={
                 appMode === 'processscape' && psMode === 'editor'
-                  ? "Back to Live Scape"
-                  : (analyzingFromReadout ? "Back to Readout" : "Back to Home")
+                  ? (intl.get('APP_BACK_TO_LIVE_SCAPE') || "Back to Live Scape")
+                  : (analyzingFromReadout ? (intl.get('APP_BACK_TO_READOUT') || "Back to Readout") : (intl.get('APP_BACK_TO_HOME') || "Back to Home"))
               }
               aria-label={
                 appMode === 'processscape' && psMode === 'editor'
-                  ? "Back to Live Scape"
-                  : (analyzingFromReadout ? "Back to Readout" : "Back to Home")
+                  ? (intl.get('APP_BACK_TO_LIVE_SCAPE') || "Back to Live Scape")
+                  : (analyzingFromReadout ? (intl.get('APP_BACK_TO_READOUT') || "Back to Readout") : (intl.get('APP_BACK_TO_HOME') || "Back to Home"))
               }
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1098,19 +1194,19 @@ function App() {
             </button>
           )}
           {appMode === 'analyze' && (
-            <span className="header-mode-indicator analyze">File Analysis</span>
+            <span className="header-mode-indicator analyze">{intl.get('FILE_ANALYSIS_BADGE') || 'File Analysis'}</span>
           )}
           {appMode === 'monitor' && (
-            <span className="header-mode-indicator monitor">Device Studio</span>
+            <span className="header-mode-indicator monitor">{intl.get('APP_DEVICE_STUDIO') || 'Device Studio'}</span>
           )}
           {appMode === 'processscape' && (
             <button
               type="button"
               className={`header-mode-indicator processscape ${activeTab === 'processscape' ? 'is-active active' : ''}`}
               onClick={() => switchTab('processscape')}
-              title="Click to view ProcessScape canvas"
+              title={intl.get('APP_CLICK_VIEW_PS_CANVAS') || "Click to view ProcessScape canvas"}
             >
-              ProcessScape
+              {intl.get('PROCESS_SCAPE') || 'ProcessScape'}
             </button>
           )}
         </div>
@@ -1131,12 +1227,14 @@ function App() {
                 className="tab-btn"
                 onClick={() => setShowSensorManagerModal(true)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-                title={recState.recording ? "Location & sensors (Read-only during recording, alarms configurable)" : "Location & sensors (Detect Devices, Locations, Measurement Points, Channels)"}
+                title={recState.recording
+                  ? (intl.get('APP_LOC_SENSORS_READONLY_TITLE') || "Location & sensors (Read-only during recording, alarms configurable)")
+                  : (intl.get('APP_LOC_SENSORS_TITLE') || "Location & sensors (Detect Devices, Locations, Measurement Points, Channels)")}
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4.93 19.07a10 10 0 0 1 0-14.14M2.1 21.9a14 14 0 0 1 0-19.8M19.07 4.93a10 10 0 0 1 0 14.14M21.9 2.1a14 14 0 0 1 0 19.8M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
                 </svg>
-                Location & sensors
+                {intl.get('APP_LOCATION_AND_SENSORS') || 'Location & sensors'}
               </button>
               {recState.recording && (
                 <>
@@ -1144,7 +1242,7 @@ function App() {
                     className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
                     onClick={() => switchTab('livegraphic')}
                   >
-                    Graphic View
+                    {intl.get('GRAPHIC_VIEW') || 'Graphic View'}
                   </button>
                   <button
                     className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
@@ -1484,7 +1582,130 @@ function App() {
 
               <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
 
-              {/* 2. System Diagnostic Logs */}
+              {/* 2. Enable Web Server (Port 9080) for Desktop App (macOS & Windows) */}
+              {!isMobile && (
+                <>
+                  {checkIsLanBridge() ? (
+                    <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
+                      <span>🖧</span>
+                      <span>{intl.get('LAN_CLIENT_CONNECTED') || 'Connected via LAN Web Server (:9080)'}</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
+                        onClick={handleToggleWebServer}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '15px' }}>🖧</span>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                              {intl.get('ENABLE_WEB_SERVER') || 'Enable Web Server'}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                              {intl.get('WEB_SERVER_PORT_HINT') || 'LAN Access · Port 9080'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={webServerStatus.enabled}
+                          disabled={webServerLoading}
+                          onClick={handleToggleWebServer}
+                          style={{
+                            width: '38px',
+                            height: '22px',
+                            borderRadius: '999px',
+                            border: 'none',
+                            padding: '2px',
+                            cursor: webServerLoading ? 'wait' : 'pointer',
+                            backgroundColor: webServerStatus.enabled ? '#00ac86' : '#cbd5e1',
+                            transition: 'background-color 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: webServerStatus.enabled ? 'flex-end' : 'flex-start',
+                            flexShrink: 0,
+                          }}
+                          title={intl.get('ENABLE_WEB_SERVER') || 'Enable Web Server'}
+                        >
+                          <span
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              backgroundColor: '#ffffff',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                              transition: 'transform 0.2s ease',
+                            }}
+                          />
+                        </button>
+                      </div>
+
+                      {webServerStatus.enabled && (
+                        <div
+                          style={{
+                            marginTop: '2px',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: '#f0fdf4',
+                            border: '1px solid #bbf7d0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                          }}
+                        >
+                          <a
+                            href={webServerStatus.primary_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              fontSize: '11.5px',
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
+                              color: '#047857',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={webServerStatus.primary_url}
+                          >
+                            ● {webServerStatus.primary_url}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={handleCopyWebServerUrl}
+                            style={{
+                              border: '1px solid #86efac',
+                              backgroundColor: '#ffffff',
+                              color: '#065f46',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {webServerCopied
+                              ? (intl.get('WEB_SERVER_COPIED') || '✓ Copied')
+                              : (intl.get('WEB_SERVER_COPY_URL') || 'Copy')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+                </>
+              )}
+
+              {/* 3. System Diagnostic Logs */}
               <MenuItem
                 onClick={() => {
                   setInfoMenuAnchorEl(null);
@@ -1800,7 +2021,7 @@ function App() {
         }}
       >
         <DialogTitle className="dialog-title" onClose={() => setRecentDialogOpen(false)}>
-          Recent Files
+          {intl.get('RECENT_FILES') || 'Recent Files'}
         </DialogTitle>
         <DialogContent style={{ padding: '8px 16px' }}>
           <List style={{ width: '100%', maxHeight: '50vh', overflow: 'auto', boxSizing: 'border-box' }}>
@@ -1839,10 +2060,10 @@ function App() {
             setRecentDialogOpen(false);
             handleOpenFile();
           }} color="primary" variant="contained">
-            Open New File...
+            {intl.get('APP_OPEN_NEW_FILE') || 'Open New File...'}
           </Button>
           <Button onClick={() => setRecentDialogOpen(false)}>
-            Cancel
+            {intl.get('CANCEL') || 'Cancel'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1883,7 +2104,7 @@ function App() {
         </DialogContent>
         <DialogActions style={{ padding: '8px 24px 16px 24px' }}>
           <Button onClick={() => setNotiOpen(false)} color={notiOpen ? getNotiColors(notiType).btnColor : 'primary'} variant="contained" style={{ borderRadius: '8px', fontWeight: '700' }}>
-            Dismiss
+            {intl.get('APP_DISMISS') || 'Dismiss'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1910,7 +2131,7 @@ function App() {
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fcd34d" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          Large CSV File Detected
+          {intl.get('APP_LARGE_CSV_TITLE') || 'Large CSV File Detected'}
         </DialogTitle>
 
         <DialogContent style={{ padding: '0', background: '#fff' }}>
@@ -1951,7 +2172,7 @@ function App() {
               {/* Message */}
               <div style={{ padding: '20px 24px', fontSize: '13.5px', color: '#334155', lineHeight: '1.7' }}>
                 <p style={{ margin: '0 0 14px', fontWeight: '500' }}>
-                  The csv file size is too huge, convert to CSD file will have more effective analyze data.
+                  {intl.get('APP_LARGE_CSV_DESC') || 'The csv file size is too huge, convert to CSD file will have more effective analyze data.'}
                 </p>
                 <div style={{
                   background: '#ecfdf5', border: '1px solid #a7f3d0',
@@ -1959,13 +2180,13 @@ function App() {
                   fontSize: '12.5px', color: '#065f46',
                 }}>
                   <div style={{ fontWeight: '800', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>✨</span> Converting to CSD format offers:
+                    <span>✨</span> {intl.get('APP_LARGE_CSV_OFFERS') || 'Converting to CSD format offers:'}
                   </div>
                   <ul style={{ margin: '0', paddingLeft: '18px', lineHeight: '1.9' }}>
-                    <li>Fast binary access — <strong>no re-parsing on every load</strong></li>
-                    <li>Native slider, zoom, and channel rendering</li>
-                    <li>Much smaller memory footprint</li>
-                    <li>Support for min/max range per channel</li>
+                    <li>{intl.get('APP_LARGE_CSV_BENEFIT_1') || 'Fast binary access — no re-parsing on every load'}</li>
+                    <li>{intl.get('APP_LARGE_CSV_BENEFIT_2') || 'Native slider, zoom, and channel rendering'}</li>
+                    <li>{intl.get('APP_LARGE_CSV_BENEFIT_3') || 'Much smaller memory footprint'}</li>
+                    <li>{intl.get('APP_LARGE_CSV_BENEFIT_4') || 'Support for min/max range per channel'}</li>
                   </ul>
                 </div>
               </div>
@@ -1988,7 +2209,7 @@ function App() {
             variant="outlined"
             style={{ borderRadius: '8px', fontWeight: '700', color: '#64748b', borderColor: '#cbd5e1', textTransform: 'none' }}
           >
-            Cancel
+            {intl.get('CANCEL') || 'Cancel'}
           </Button>
 
           {/* Open as CSV anyway */}
@@ -2000,7 +2221,7 @@ function App() {
             variant="outlined"
             style={{ borderRadius: '8px', fontWeight: '700', color: '#92400e', borderColor: '#f59e0b', textTransform: 'none' }}
           >
-            Open as CSV Anyway
+            {intl.get('APP_OPEN_CSV_ANYWAY') || 'Open as CSV Anyway'}
           </Button>
 
           {/* Convert to CSD — primary action */}
@@ -2016,7 +2237,7 @@ function App() {
               color: '#fff', padding: '8px 20px',
             }}
           >
-            ✨ Convert to CSD
+            {intl.get('APP_CONVERT_TO_CSD_BTN') || '✨ Convert to CSD'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2039,7 +2260,7 @@ function App() {
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#f59e0b" strokeWidth="2.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          Export Data Analysis
+          {intl.get('APP_CSD_GAP_TITLE') || 'Export Data Analysis'}
         </DialogTitle>
 
         <DialogContent style={{ padding: '0', background: '#f8fafc' }}>
@@ -2063,10 +2284,10 @@ function App() {
                 {/* ── Stats strip ── */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: '#e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
                   {[
-                    { label: 'Gaps Found', value: gapCount, color: gapCount > 0 ? '#f59e0b' : '#10b981' },
-                    { label: 'Real Samples', value: (csdGapSummary.totalRealSamples ?? 0).toLocaleString(), color: '#00ac86' },
-                    { label: 'N/A Slots', value: (csdGapSummary.totalMissingSamples ?? 0).toLocaleString(), color: gapCount > 0 ? '#ef4444' : '#10b981' },
-                    { label: 'N/A Ratio', value: `${naPercent.toFixed(1)}%`, color: naPercent > 20 ? '#ef4444' : naPercent > 5 ? '#f59e0b' : '#10b981' },
+                    { label: intl.get('APP_GAP_STAT_GAPS') || 'Gaps Found', value: gapCount, color: gapCount > 0 ? '#f59e0b' : '#10b981' },
+                    { label: intl.get('APP_GAP_STAT_REAL') || 'Real Samples', value: (csdGapSummary.totalRealSamples ?? 0).toLocaleString(), color: '#00ac86' },
+                    { label: intl.get('APP_GAP_STAT_NA_SLOTS') || 'N/A Slots', value: (csdGapSummary.totalMissingSamples ?? 0).toLocaleString(), color: gapCount > 0 ? '#ef4444' : '#10b981' },
+                    { label: intl.get('APP_GAP_STAT_NA_RATIO') || 'N/A Ratio', value: `${naPercent.toFixed(1)}%`, color: naPercent > 20 ? '#ef4444' : naPercent > 5 ? '#f59e0b' : '#10b981' },
                   ].map((s, i) => (
                     <div key={i} style={{ background: '#fff', padding: '14px 16px', textAlign: 'center' }}>
                       <div style={{ fontSize: '20px', fontWeight: '800', color: s.color }}>{s.value}</div>
@@ -2077,10 +2298,10 @@ function App() {
 
                 {/* ── Meta row ── */}
                 <div style={{ padding: '9px 20px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '11.5px', color: '#475569', fontWeight: '600' }}>
-                  <span>⏱ Interval: <strong style={{ color: '#0f172a' }}>{csdGapSummary.detectedIntervalSec}s</strong></span>
-                  <span>🕐 Start: <strong style={{ color: '#0f172a' }}>{csdGapSummary.startTimeMs ? fmt(csdGapSummary.startTimeMs) : '—'}</strong></span>
-                  <span>🔚 End: <strong style={{ color: '#0f172a' }}>{csdGapSummary.stopTimeMs ? fmt(csdGapSummary.stopTimeMs) : '—'}</strong></span>
-                  <span>📂 Continuous segments: <strong style={{ color: '#0f172a' }}>{segCount}</strong></span>
+                  <span>⏱ {intl.get('INTERVAL') || 'Interval'}: <strong style={{ color: '#0f172a' }}>{csdGapSummary.detectedIntervalSec}s</strong></span>
+                  <span>🕐 {intl.get('START_TIME') || 'Start'}: <strong style={{ color: '#0f172a' }}>{csdGapSummary.startTimeMs ? fmt(csdGapSummary.startTimeMs) : '—'}</strong></span>
+                  <span>🔚 {intl.get('END_TIME') || 'End'}: <strong style={{ color: '#0f172a' }}>{csdGapSummary.stopTimeMs ? fmt(csdGapSummary.stopTimeMs) : '—'}</strong></span>
+                  <span>📂 {intl.get('APP_GAP_CONTINUOUS_SEGMENTS') || 'Continuous segments'}: <strong style={{ color: '#0f172a' }}>{segCount}</strong></span>
                 </div>
 
                 {/* ── Two-choice cards ── */}
@@ -2094,14 +2315,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '24px' }}>📦</span>
                         <div>
-                          <div style={{ fontWeight: '800', fontSize: '14px', color: '#92400e' }}>Single CSD File</div>
-                          <div style={{ fontSize: '11px', color: '#b45309' }}>Full timeline preserved</div>
+                          <div style={{ fontWeight: '800', fontSize: '14px', color: '#92400e' }}>{intl.get('APP_GAP_SINGLE_CSD_TITLE') || 'Single CSD File'}</div>
+                          <div style={{ fontSize: '11px', color: '#b45309' }}>{intl.get('APP_GAP_SINGLE_CSD_SUB') || 'Full timeline preserved'}</div>
                         </div>
                       </div>
                       <div style={{ fontSize: '12px', color: '#78350f', lineHeight: '1.6', background: '#fef3c7', borderRadius: '6px', padding: '10px 12px' }}>
-                        The CSV has <strong>{gapCount} timestamp gap{gapCount > 1 ? 's' : ''}</strong>. CSD requires a uniform grid, so <strong>{(csdGapSummary.totalMissingSamples ?? 0).toLocaleString()} missing slots</strong> will be filled with <code style={{ background: '#fed7aa', padding: '1px 4px', borderRadius: '3px' }}>−9999 (N/A)</code>.
-                        <br /><br />
-                        The resulting file will contain <strong style={{ color: naPercent > 20 ? '#dc2626' : '#b45309' }}>{naPercent.toFixed(1)}% N/A data</strong> out of {(csdGapSummary.totalCsdSamples ?? 0).toLocaleString()} total slots.
+                        {intl.get('APP_GAP_SINGLE_CSD_DESC', {
+                          gapCount,
+                          missingSlots: (csdGapSummary.totalMissingSamples ?? 0).toLocaleString(),
+                          naPercent: naPercent.toFixed(1),
+                          totalSlots: (csdGapSummary.totalCsdSamples ?? 0).toLocaleString()
+                        }) || `The CSV has ${gapCount} timestamp gap${gapCount > 1 ? 's' : ''}. CSD requires a uniform grid, so ${(csdGapSummary.totalMissingSamples ?? 0).toLocaleString()} missing slots will be filled with −9999 (N/A). The resulting file will contain ${naPercent.toFixed(1)}% N/A data out of ${(csdGapSummary.totalCsdSamples ?? 0).toLocaleString()} total slots.`}
                       </div>
                       <Button
                         onClick={handleCsdExportConfirmed}
@@ -2109,7 +2333,7 @@ function App() {
                         fullWidth
                         style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', color: '#fff', borderRadius: '8px', fontWeight: '800', fontSize: '13px', textTransform: 'none', padding: '10px' }}
                       >
-                        Save as 1 CSD File ({naPercent.toFixed(1)}% N/A)
+                        {intl.get('APP_GAP_SAVE_1_CSD_BTN', { pct: naPercent.toFixed(1) }) || `Save as 1 CSD File (${naPercent.toFixed(1)}% N/A)`}
                       </Button>
                     </div>
 
@@ -2121,14 +2345,12 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '24px' }}>🗂</span>
                         <div>
-                          <div style={{ fontWeight: '800', fontSize: '14px', color: '#065f46' }}>Split into {segCount} CSD Files</div>
-                          <div style={{ fontSize: '11px', color: '#047857' }}>Zero N/A — pure real data</div>
+                          <div style={{ fontWeight: '800', fontSize: '14px', color: '#065f46' }}>{intl.get('APP_GAP_SPLIT_CSD_TITLE', { count: segCount }) || `Split into ${segCount} CSD Files`}</div>
+                          <div style={{ fontSize: '11px', color: '#047857' }}>{intl.get('APP_GAP_SPLIT_CSD_SUB') || 'Zero N/A — pure real data'}</div>
                         </div>
                       </div>
                       <div style={{ fontSize: '12px', color: '#064e3b', lineHeight: '1.6', background: '#d1fae5', borderRadius: '6px', padding: '10px 12px' }}>
-                        Each continuous period becomes its own independent CSD file — <strong>no N/A padding</strong>. Files are named <code style={{ background: '#a7f3d0', padding: '1px 4px', borderRadius: '3px' }}>name_part01.csd</code>, <code style={{ background: '#a7f3d0', padding: '1px 4px', borderRadius: '3px' }}>name_part02.csd</code> …
-                        <br /><br />
-                        You will receive <strong style={{ color: '#065f46' }}>{segCount} file{segCount > 1 ? 's' : ''}</strong>, each containing 100% real data.
+                        {intl.get('APP_GAP_SPLIT_CSD_DESC', { count: segCount }) || `Each continuous period becomes its own independent CSD file — no N/A padding. Files are named name_part01.csd, name_part02.csd … You will receive ${segCount} file${segCount > 1 ? 's' : ''}, each containing 100% real data.`}
                       </div>
                       <Button
                         onClick={handleCsdExportSplit}
@@ -2136,7 +2358,7 @@ function App() {
                         fullWidth
                         style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color: '#fff', borderRadius: '8px', fontWeight: '800', fontSize: '13px', textTransform: 'none', padding: '10px' }}
                       >
-                        Split into {segCount} CSD File{segCount > 1 ? 's' : ''} (0% N/A)
+                        {intl.get('APP_GAP_SPLIT_CSD_BTN', { count: segCount }) || `Split into ${segCount} CSD File${segCount > 1 ? 's' : ''} (0% N/A)`}
                       </Button>
                     </div>
                   </div>
@@ -2144,11 +2366,11 @@ function App() {
                   /* No gaps — single clean export */
                   <div style={{ padding: '16px' }}>
                     <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '14px 16px', fontSize: '13px', color: '#065f46', marginBottom: '12px' }}>
-                      ✅ No timestamp gaps detected. This CSV is fully continuous — the CSD output will be an exact 1-to-1 conversion with <strong>0% N/A data</strong>.
+                      {intl.get('APP_GAP_NO_GAPS_MSG') || '✅ No timestamp gaps detected. This CSV is fully continuous — the CSD output will be an exact 1-to-1 conversion with 0% N/A data.'}
                     </div>
                     <Button onClick={handleCsdExportConfirmed} variant="contained" fullWidth
                       style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color: '#fff', borderRadius: '8px', fontWeight: '800', fontSize: '14px', textTransform: 'none', padding: '12px' }}>
-                      Export to CSD
+                      {intl.get('APP_EXPORT_TO_CSD_BTN') || 'Export to CSD'}
                     </Button>
                   </div>
                 )}
@@ -2157,13 +2379,13 @@ function App() {
                 {gapCount > 0 && (
                   <div style={{ padding: '0 16px 16px' }}>
                     <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      Gap details ({gapCount} gaps)
+                      {intl.get('APP_GAP_DETAILS_HEADER', { count: gapCount }) || `Gap details (${gapCount} gaps)`}
                     </div>
                     <div style={{ maxHeight: '170px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
                         <thead>
                           <tr style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
-                            {['#', 'Gap Start', 'Resume At', 'Duration', 'Missing Samples'].map((h, i) => (
+                            {['#', intl.get('APP_GAP_TH_START') || 'Gap Start', intl.get('APP_GAP_TH_RESUME') || 'Resume At', intl.get('DURATION') || 'Duration', intl.get('APP_GAP_TH_MISSING') || 'Missing Samples'].map((h, i) => (
                               <th key={i} style={{ padding: '7px 10px', textAlign: i === 0 ? 'center' : i === 4 ? 'right' : 'left', fontWeight: '700', color: '#334155', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
@@ -2191,7 +2413,7 @@ function App() {
         <DialogActions style={{ padding: '12px 20px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0' }}>
           <Button onClick={() => setCsdGapDialogOpen(false)} variant="outlined"
             style={{ borderRadius: '8px', fontWeight: '700', color: '#475569', borderColor: '#cbd5e1', textTransform: 'none' }}>
-            Cancel
+            {intl.get('CANCEL') || 'Cancel'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2203,7 +2425,7 @@ function App() {
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ffe000" strokeWidth="2.2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            <span>Repair Header And Save?</span>
+            <span>{intl.get('APP_REPAIR_HEADER_TITLE') || 'Repair Header And Save?'}</span>
           </div>
         </DialogTitle>
         <DialogContent style={{ padding: '20px 24px' }}>
@@ -2219,13 +2441,10 @@ function App() {
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6' }}>
-                  This file has an invalid <strong>{what}</strong> in its header
-                  {repairInfo && repairInfo.fileName ? ` (${repairInfo.fileName})` : ''}.
-                  The data has been read using a repaired header, but your local file is still broken.
+                  {intl.get('APP_REPAIR_HEADER_DESC', { what, file: repairInfo && repairInfo.fileName ? ` (${repairInfo.fileName})` : '' }) || `This file has an invalid ${what} in its header${repairInfo && repairInfo.fileName ? ` (${repairInfo.fileName})` : ''}. The data has been read using a repaired header, but your local file is still broken.`}
                 </div>
                 <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.6', background: '#f1f5f9', borderRadius: '8px', padding: '10px 12px' }}>
-                  A repaired copy will be saved as <code style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px' }}>name_repaired.csd</code>.
-                  The original file is <strong>never modified</strong>.
+                  {intl.get('APP_REPAIR_HEADER_NOTE') || 'A repaired copy will be saved as name_repaired.csd. The original file is never modified.'}
                 </div>
               </div>
             );
@@ -2234,11 +2453,11 @@ function App() {
         <DialogActions style={{ padding: '12px 20px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0', gap: '8px' }}>
           <Button onClick={handleDismissRepair} variant="outlined"
             style={{ borderRadius: '8px', fontWeight: '700', color: '#64748b', borderColor: '#cbd5e1', textTransform: 'none' }}>
-            Dismiss
+            {intl.get('APP_DISMISS') || 'Dismiss'}
           </Button>
           <Button onClick={handleSaveRepairedCopy} variant="contained"
             style={{ background: 'linear-gradient(135deg,#00ac86,#007d61)', color: '#fff', borderRadius: '8px', fontWeight: '800', textTransform: 'none' }}>
-            Save Repaired Copy
+            {intl.get('APP_SAVE_REPAIRED_COPY') || 'Save Repaired Copy'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2247,41 +2466,42 @@ function App() {
 
       {/* Recording start: sampling interval */}
       <Dialog open={recStartOpen} onClose={() => setRecStartOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Start Live Recording</DialogTitle>
+        <DialogTitle>{intl.get('APP_START_LIVE_REC_TITLE') || 'Start Live Recording'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             margin="dense"
-            label="Sampling interval (seconds)"
+            label={intl.get('APP_SAMPLING_INTERVAL_SEC') || "Sampling interval (seconds)"}
             type="number"
             fullWidth
             value={recIntervalInput}
             onChange={(e) => setRecIntervalInput(e.target.value)}
             inputProps={{ min: 1, max: 3600 }}
-            helperText="The first sample is taken immediately, the next after each interval — e.g. 10 s: 09:00:01, 09:00:11, 09:00:21…"
+            helperText={intl.get('APP_SAMPLING_INTERVAL_HELP') || "The first sample is taken immediately, the next after each interval — e.g. 10 s: 09:00:01, 09:00:11, 09:00:21…"}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'RECORDER', 'Recording start cancelled'); setRecStartOpen(false); }}>Cancel</Button>
+          <Button onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'RECORDER', 'Recording start cancelled'); setRecStartOpen(false); }}>{intl.get('CANCEL') || 'Cancel'}</Button>
           <Button variant="contained" onClick={handleStartRecordingFromDialog}>
-            Start Recording
+            {intl.get('APP_START_RECORDING') || 'Start Recording'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* A recording is still running — confirm before leaving */}
       <Dialog open={Boolean(exitConfirm)} onClose={() => setExitConfirm(null)} maxWidth="xs">
-        <DialogTitle>Recording in progress</DialogTitle>
+        <DialogTitle>{intl.get('APP_REC_IN_PROGRESS_TITLE') || 'Recording in progress'}</DialogTitle>
         <DialogContent>
           <div style={{ fontSize: 14, color: '#334155' }}>
-            A live recording is still running. Stop it and save the CSV before{' '}
-            {exitConfirm && exitConfirm.action === 'close' ? 'closing the app' : 'returning to home'}?
+            {exitConfirm && exitConfirm.action === 'close'
+              ? (intl.get('APP_REC_EXIT_CLOSE_MSG') || 'A live recording is still running. Stop it and save the CSV before closing the app?')
+              : (intl.get('APP_REC_EXIT_HOME_MSG') || 'A live recording is still running. Stop it and save the CSV before returning to home?')}
           </div>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'APP', 'Exit cancelled — recording continues'); setExitConfirm(null); }}>Keep Recording</Button>
+          <Button onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'APP', 'Exit cancelled — recording continues'); setExitConfirm(null); }}>{intl.get('APP_KEEP_RECORDING') || 'Keep Recording'}</Button>
           <Button variant="contained" onClick={handleExitConfirmProceed}>
-            Stop &amp; Save
+            {intl.get('APP_STOP_AND_SAVE') || 'Stop & Save'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2302,16 +2522,16 @@ function App() {
             <span className={`status-dot ${appMode === 'monitor' || fileLoaded ? 'active' : ''}`}></span>
             <span className="status-text">
               {appMode === 'monitor'
-                ? `Monitor: ${deviceInfo?.device || 'Live SUTO Sensor'}`
+                ? (intl.get('APP_STATUS_MONITOR', { device: deviceInfo?.device || (intl.get('APP_LIVE_SUTO_SENSOR') || 'Live SUTO Sensor') }) || `Monitor: ${deviceInfo?.device || 'Live SUTO Sensor'}`)
                 : fileLoaded
-                  ? 'Data Loaded'
-                  : 'Ready'}
+                  ? (intl.get('APP_STATUS_DATA_LOADED') || 'Data Loaded')
+                  : (intl.get('APP_STATUS_READY') || 'Ready')}
             </span>
           </div>
           {appMode === 'analyze' && fileLoaded && loadedFilename && (
             <>
               <span className="status-separator">|</span>
-              <div className="current-file-display" title="Current Opened File">
+              <div className="current-file-display" title={intl.get('APP_CURRENT_OPENED_FILE') || "Current Opened File"}>
                 <svg className="file-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -2323,12 +2543,12 @@ function App() {
         <div className="status-bar-right">
           {appMode === 'monitor' && (
             <span className="status-badge" style={{ color: '#10b981', borderColor: '#059669' }}>
-              ONLINE MONITOR
+              {intl.get('APP_ONLINE_MONITOR_BADGE') || 'ONLINE MONITOR'}
             </span>
           )}
           {appMode === 'analyze' && fileLoaded && TestAPI.isCsvMode && (
             <span className="status-badge">
-              {TestAPI.isCsvMode() ? 'CSV File' : 'CSD File'}
+              {TestAPI.isCsvMode() ? (intl.get('APP_CSV_FILE_BADGE') || 'CSV File') : (intl.get('APP_CSD_FILE_BADGE') || 'CSD File')}
             </span>
           )}
           <span className="status-timestamp">
@@ -2354,10 +2574,10 @@ function App() {
               </svg>
             </div>
             <h2 className="file-loading-title">
-              Loading File...
+              {intl.get('APP_LOADING_FILE') || 'Loading File...'}
             </h2>
             <p className="file-loading-subtitle">
-              Reading binary slices for <strong className="file-loading-filename">{loadingFilename}</strong>
+              {intl.get('APP_READING_SLICES_FOR') || 'Reading binary slices for'} <strong className="file-loading-filename">{loadingFilename}</strong>
             </p>
 
             <div className="file-loading-bar-track">
@@ -2367,7 +2587,7 @@ function App() {
               />
             </div>
             <div className="file-loading-pct">
-              {Math.round(fileLoadingProgress * 100)}% Completed
+              {intl.get('APP_PCT_COMPLETED', { pct: Math.round(fileLoadingProgress * 100) }) || `${Math.round(fileLoadingProgress * 100)}% Completed`}
             </div>
           </div>
         </div>

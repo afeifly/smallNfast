@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import intl from 'react-intl-universal';
 import * as liveRecorder from '../../util/liveRecorder';
 import { getLiveSelection, subscribeLiveSelection } from '../../util/liveSelection';
 import { getOnlineCache } from './OnlineView';
@@ -123,10 +124,11 @@ export default function LiveTableView() {
       const lmPrefix = (m.location && m.measurementPoint)
         ? `${m.location} / ${m.measurementPoint}`
         : (m.location || m.measurementPoint ? `${m.location || m.measurementPoint}` : '');
-      const fullTitle = lmPrefix ? `${lmPrefix} · ${m.name || `Channel ${id}`}` : (c?.channel_name || m.name || `Channel ${id}`);
+      const defaultChLabel = intl.get('ONLINE_CHANNEL_NUM', { id }) || `Channel ${id}`;
+      const fullTitle = lmPrefix ? `${lmPrefix} · ${m.name || defaultChLabel}` : (c?.channel_name || m.name || defaultChLabel);
       return {
         id,
-        name: (c && (c.channel_name || c.sensor_description)) || m.name || `Channel ${id}`,
+        name: (c && (c.channel_name || c.sensor_description)) || m.name || defaultChLabel,
         fullTitle,
         unit: (c && c.unit) || m.unit || '',
         resolution: (c && typeof c.resolution === 'number' && c.resolution >= 0 ? c.resolution : m.resolution) ?? 2,
@@ -169,36 +171,38 @@ export default function LiveTableView() {
       <div className="live-view-toolbar">
         <span className="live-view-title">
           {session.recording ? <span className="rec-pulse-dot" /> : <span className="live-paused-dot" />}
-          {session.recording ? 'Recording' : 'Recording stopped'}
+          {session.recording ? (intl.get('LIVE_TV_RECORDING') || 'Recording') : (intl.get('LIVE_TV_RECORDING_STOPPED') || 'Recording stopped')}
         </span>
         <span className="live-view-meta">
-          {session.rows.length} samples · {columns.length} channels
-          {!following && pendingCount > 0 ? ` · ${pendingCount} new` : ''}
+          {session.rows.length} {intl.get('LIVE_TV_SAMPLES') || 'samples'} · {columns.length} {intl.get('LIVE_TV_CHANNELS') || 'channels'}
+          {!following && pendingCount > 0 ? ` · ${pendingCount} ${intl.get('LIVE_TV_NEW') || 'new'}` : ''}
         </span>
         <span className="live-toolbar-spacer" />
         <span className="live-view-meta">
-          {following ? 'Cols follow Graphic View' : 'Paused — scroll to top to resume'}
+          {following ? (intl.get('LIVE_TV_COLS_FOLLOW_GV') || 'Cols follow Graphic View') : (intl.get('LIVE_TV_PAUSED_SCROLL_TOP') || 'Paused — scroll to top to resume')}
         </span>
       </div>
 
       <div className="live-table-scroll" ref={scrollRef} onScroll={handleScroll}>
         {!following && pendingCount > 0 && (
           <button className="live-new-rows-pill" onClick={jumpToTop}>
-            ↓ {pendingCount} new row{pendingCount === 1 ? '' : 's'} — click to resume
+            ↓ {pendingCount === 1
+              ? (intl.get('LIVE_TV_NEW_ROW_CLICK', { count: pendingCount }) || `${pendingCount} new row — click to resume`)
+              : (intl.get('LIVE_TV_NEW_ROWS_CLICK', { count: pendingCount }) || `${pendingCount} new rows — click to resume`)}
           </button>
         )}
 
         {columns.length === 0 ? (
           <div className="live-table-empty">
-            No channels selected — check the channels you want in the Graphic View toolbar.
+            {intl.get('LIVE_TV_NO_CHANNELS_SELECTED') || 'No channels selected — check the channels you want in the Graphic View toolbar.'}
           </div>
         ) : visibleRows.length === 0 ? (
-          <div className="live-table-empty">Waiting for the first samples…</div>
+          <div className="live-table-empty">{intl.get('LIVE_TV_WAITING_FIRST_SAMPLES') || 'Waiting for the first samples…'}</div>
         ) : (
           <table className="live-table">
             <thead>
               <tr>
-                <th className="live-table-time">Date Time</th>
+                <th className="live-table-time">{intl.get('LIVE_TV_DATE_TIME') || 'Date Time'}</th>
                 {columns.map((c) => {
                   const cfg = channelConfigMap.get(String(c.id)) || channelConfigMap.get(String(c.name || '').trim().toLowerCase());
                   const inAlarm = isChannelInAlarm(c.id);
@@ -206,7 +210,7 @@ export default function LiveTableView() {
                     <th key={c.id} title={c.fullTitle || c.name} className={inAlarm ? 'live-table-th-alarm' : ''}>
                       {c.unit ? `${c.name} (${c.unit})` : c.name}
                       {inAlarm && (
-                        <span className="live-table-th-alarm-badge" title="Channel currently in alarm">🔔</span>
+                        <span className="live-table-th-alarm-badge" title={intl.get('LIVE_TV_CHANNEL_IN_ALARM') || 'Channel currently in alarm'}>🔔</span>
                       )}
                     </th>
                   );
@@ -243,7 +247,7 @@ export default function LiveTableView() {
 
         {olderNotRendered > 0 && (
           <div className="live-table-empty">
-            Scroll down to load older rows · {olderNotRendered} more in this session
+            {intl.get('LIVE_TV_SCROLL_OLDER_ROWS', { count: olderNotRendered }) || `Scroll down to load older rows · ${olderNotRendered} more in this session`}
           </div>
         )}
       </div>

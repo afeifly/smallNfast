@@ -1,4 +1,5 @@
 import React, { Component } from 'react';
+import intl from 'react-intl-universal';
 import * as d3 from 'd3';
 import $ from 'jquery';
 import Tooltip from '@mui/material/Tooltip';
@@ -27,10 +28,10 @@ const MAX_UNITS = 4;
 
 /** Recording-window presets (minutes + short label). */
 const RANGE_OPTIONS = [
-  { min: 30, label: '30 min' },
-  { min: 60, label: '60 min' },
-  { min: 240, label: '4 h' },
-  { min: 1440, label: '1 day' },
+  { min: 30, key: 'LIVE_GV_RANGE_30M', label: '30 min' },
+  { min: 60, key: 'LIVE_GV_RANGE_60M', label: '60 min' },
+  { min: 240, key: 'LIVE_GV_RANGE_4H', label: '4 h' },
+  { min: 1440, key: 'LIVE_GV_RANGE_1D', label: '1 day' },
 ];
 
 /**
@@ -101,20 +102,20 @@ class LiveGraphicView extends Component {
               <div className="live-title-status">
                 {recording ? <span className="rec-pulse-dot" /> : <span className="live-paused-dot" />}
                 <span className="live-title-label">
-                  {mode === 'history' ? 'Browsing history' : recording ? 'Recording' : 'Stopped'}
+                  {mode === 'history' ? (intl.get('LIVE_GV_BROWSING_HISTORY') || 'Browsing history') : recording ? (intl.get('LIVE_GV_RECORDING') || 'Recording') : (intl.get('LIVE_GV_STOPPED') || 'Stopped')}
                 </span>
-                <span className="live-view-meta">{samples} samples</span>
+                <span className="live-view-meta">{samples} {intl.get('LIVE_GV_SAMPLES') || 'samples'}</span>
 
                 {mode === 'history' && (
                   <>
-                    <button className="live-range-btn" onClick={() => this.shiftHistoryWindow(-1)} title="Previous window">
+                    <button className="live-range-btn" onClick={() => this.shiftHistoryWindow(-1)} title={intl.get('LIVE_GV_PREV_WINDOW') || 'Previous window'}>
                       ◀
                     </button>
-                    <button className="live-range-btn" onClick={() => this.shiftHistoryWindow(1)} title="Next window">
+                    <button className="live-range-btn" onClick={() => this.shiftHistoryWindow(1)} title={intl.get('LIVE_GV_NEXT_WINDOW') || 'Next window'}>
                       ▶
                     </button>
-                    <button className="live-range-btn" onClick={() => this.showAllSession()} title="Show the whole session">
-                      All
+                    <button className="live-range-btn" onClick={() => this.showAllSession()} title={intl.get('LIVE_GV_SHOW_ALL_SESSION') || 'Show the whole session'}>
+                      {intl.get('LIVE_GV_ALL') || 'All'}
                     </button>
                   </>
                 )}
@@ -127,7 +128,7 @@ class LiveGraphicView extends Component {
                         className={`live-range-btn ${rangeMin === opt.min ? 'active' : ''}`}
                         onClick={() => this.handleRangeChange(opt.min)}
                       >
-                        {opt.label}
+                        {intl.get(opt.key) || opt.label}
                     </button>
                     ))}
                   </div>
@@ -136,21 +137,21 @@ class LiveGraphicView extends Component {
                 <button
                   className="live-range-btn live-mode-toggle"
                   onClick={() => this.toggleBrowseMode()}
-                  title={mode === 'history' ? 'Back to live refresh' : 'Freeze and browse the whole session'}
+                  title={mode === 'history' ? (intl.get('LIVE_GV_BACK_TO_LIVE_REFRESH') || 'Back to live refresh') : (intl.get('LIVE_GV_FREEZE_BROWSE') || 'Freeze and browse the whole session')}
                 >
                   {mode === 'history' ? (
                     <>
                       <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
                         <path d="M8 5v14l11-7z" />
                       </svg>
-                      <span>Live</span>
+                      <span>{intl.get('LIVE_GV_LIVE') || 'Live'}</span>
                     </>
                   ) : (
                     <>
                       <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
                         <path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 7 7 6.96 6.96 0 0 1-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8h-1.5z" />
                       </svg>
-                      <span>History</span>
+                      <span>{intl.get('LIVE_GV_HISTORY') || 'History'}</span>
                     </>
                   )}
                 </button>
@@ -158,7 +159,7 @@ class LiveGraphicView extends Component {
 
               <div className="window-title-right-area">
                 {/* Channel list button */}
-                <Tooltip title="Channel">
+                <Tooltip title={intl.get('CHANNEL') || 'Channel'}>
                   <div>
                     <IconButton
                       onClick={() => this.switchChannelList()}
@@ -172,7 +173,7 @@ class LiveGraphicView extends Component {
                 </Tooltip>
 
                 {/* Time period button — the file-style brush, history mode only */}
-                <Tooltip title="Time period">
+                <Tooltip title={intl.get('TIME_PERIOD_LABEL') || 'Time period'}>
                   <div>
                     <IconButton
                       style={buttonStyle}
@@ -186,7 +187,7 @@ class LiveGraphicView extends Component {
                 </Tooltip>
 
                 {/* Print button */}
-                <Tooltip title="Print">
+                <Tooltip title={intl.get('PRINT') || 'Print'}>
                   <div>
                     <IconButton
                       style={buttonStyle}

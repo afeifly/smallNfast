@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
+import intl from 'react-intl-universal';
 import TestAPI from '../../api/TestAPI';
 import { Compressor, createDefaultCompressor, COMPRESSOR_TYPE_LOAD_UNLOAD, COMPRESSOR_TYPE_VARIABLE_FREQUENCY } from '../../analysis/CompressorEngine.js';
 import { analyzeSystem, analyzeSystemFlowChannel, extractChannelData, classifyChannel } from '../../analysis/LeakEngine.js';
@@ -228,7 +229,7 @@ export default function CompressorAnalyze() {
       setProgress(0.05);
 
       if (!channels || channels.length === 0) {
-        setError('No channels found in the loaded file.');
+        setError(intl.get('COMP_ERR_NO_CHANNELS') || 'No channels found in the loaded file.');
         setLoading(false);
         return;
       }
@@ -338,7 +339,7 @@ export default function CompressorAnalyze() {
       }
 
       if (comps.length === 0) {
-        setError('No current (A), power (kW), or flow channels found. Cannot run compressor analysis.');
+        setError(intl.get('COMP_ERR_NO_VALID_CHANNELS') || 'No current (A), power (kW), or flow channels found. Cannot run compressor analysis.');
         setLoading(false);
         return;
       }
@@ -392,7 +393,7 @@ export default function CompressorAnalyze() {
       setSystemResult(result.system);
     } catch (e) {
       console.error('Analysis error:', e);
-      setError('Analysis failed: ' + e.message);
+      setError((intl.get('COMP_ERR_ANALYSIS_FAILED') || 'Analysis failed: ') + e.message);
     }
 
     setLoading(false);
@@ -417,9 +418,9 @@ export default function CompressorAnalyze() {
     const totalHours = compressors.reduce((s, c) => s + c.TotalHours, 0);
 
     const pieData = [
-      { label: 'Full Load', value: compressors.reduce((s, c) => s + c.FullLoadHours, 0), color: '#00ac86' },
-      { label: 'Unload', value: compressors.reduce((s, c) => s + c.UnLoadHours, 0), color: '#f59e0b' },
-      { label: 'No Load', value: compressors.reduce((s, c) => s + c.NoLoadHours, 0), color: '#ef4444' },
+      { label: intl.get('COMP_FULL_LOAD') || 'Full Load', value: compressors.reduce((s, c) => s + c.FullLoadHours, 0), color: '#00ac86' },
+      { label: intl.get('COMP_UNLOAD') || 'Unload', value: compressors.reduce((s, c) => s + c.UnLoadHours, 0), color: '#f59e0b' },
+      { label: intl.get('COMP_NO_LOAD') || 'No Load', value: compressors.reduce((s, c) => s + c.NoLoadHours, 0), color: '#ef4444' },
     ].filter(d => d.value > 0);
 
     if (pieData.length === 0) return;
@@ -527,9 +528,9 @@ export default function CompressorAnalyze() {
     const legendOffset = margin.left + Math.max(0, (width - margin.left - margin.right - totalLegendWidth) / 2);
     const legend = svg.append('g').attr('transform', `translate(${legendOffset}, 315)`);
     const legData = [
-      { label: 'Full Load', color: '#00ac86' },
-      { label: 'Unload', color: '#f59e0b' },
-      { label: 'No Load', color: '#ef4444' },
+      { label: intl.get('COMP_FULL_LOAD') || 'Full Load', color: '#00ac86' },
+      { label: intl.get('COMP_UNLOAD') || 'Unload', color: '#f59e0b' },
+      { label: intl.get('COMP_NO_LOAD') || 'No Load', color: '#ef4444' },
     ];
     legData.forEach((d, i) => {
       const g = legend.append('g').attr('transform', `translate(${i * 120}, 0)`);
@@ -545,8 +546,8 @@ export default function CompressorAnalyze() {
       <div className="analyze-container">
         <div className="empty-state-container">
           <Icons.Compressor />
-          <h3 className="empty-state-title">Compressor Analysis</h3>
-          <p className="empty-state-desc">Open a CSD file to run compressor analysis.</p>
+          <h3 className="empty-state-title">{intl.get('COMP_TITLE') || 'Compressor Analysis'}</h3>
+          <p className="empty-state-desc">{intl.get('COMP_OPEN_FILE_HINT') || 'Open a CSD file to run compressor analysis.'}</p>
         </div>
       </div>
     );
@@ -562,7 +563,7 @@ export default function CompressorAnalyze() {
           onClick={() => setMobileTab('config')}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span>Parameters</span>
+          <span>{intl.get('COMP_PARAMETERS') || 'Parameters'}</span>
         </button>
         <button
           type="button"
@@ -570,35 +571,35 @@ export default function CompressorAnalyze() {
           onClick={() => setMobileTab('report')}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-          <span>Analysis Results</span>
+          <span>{intl.get('COMP_ANALYSIS_RESULTS') || 'Analysis Results'}</span>
         </button>
       </div>
 
       {/* Sidebar Settings */}
       <aside className="analyze-sidebar">
-        <h3 className="sidebar-section-title">Settings</h3>
+        <h3 className="sidebar-section-title">{intl.get('COMP_SETTINGS') || 'Settings'}</h3>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Analyze Type</label>
+          <label className="sidebar-label">{intl.get('COMP_ANALYZE_TYPE') || 'Analyze Type'}</label>
           <select
             className="sidebar-input"
             value={analyzeMode}
             onChange={(e) => setAnalyzeMode(e.target.value)}
           >
-            <option value="compressor">Compressor Analyses</option>
-            <option value="system">System Analyses</option>
+            <option value="compressor">{intl.get('COMP_COMPRESSOR_ANALYSES') || 'Compressor Analyses'}</option>
+            <option value="system">{intl.get('COMP_SYSTEM_ANALYSES') || 'System Analyses'}</option>
           </select>
         </div>
 
         {analyzeMode === 'system' && (
           <div className="sidebar-input-group">
-            <label className="sidebar-label">System Flow Channel</label>
+            <label className="sidebar-label">{intl.get('COMP_SYSTEM_FLOW_CHANNEL') || 'System Flow Channel'}</label>
             <select
               className="sidebar-input"
               value={systemFlowChannelId || ''}
               onChange={(e) => setSystemFlowChannelId(e.target.value || null)}
             >
-              {flowChannels.length === 0 && <option value="">No flow channels</option>}
+              {flowChannels.length === 0 && <option value="">{intl.get('COMP_NO_FLOW_CHANNELS') || 'No flow channels'}</option>}
               {flowChannels.map((ch) => (
                 <option key={ch.channel_id} value={ch.channel_id}>
                   {ch.full_channel_name || ch.logic_channel_description || ch.channel_id}
@@ -609,26 +610,26 @@ export default function CompressorAnalyze() {
         )}
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Analysis Time Period (optional)</label>
+          <label className="sidebar-label">{intl.get('COMP_ANALYSIS_TIME_PERIOD') || 'Analysis Time Period (optional)'}</label>
           <input
             className="sidebar-input"
             type="datetime-local"
             value={startTimeStr}
             onChange={(e) => setStartTimeStr(e.target.value)}
-            placeholder="Start"
+            placeholder={intl.get('COMP_START') || 'Start'}
           />
           <input
             className="sidebar-input"
             type="datetime-local"
             value={stopTimeStr}
             onChange={(e) => setStopTimeStr(e.target.value)}
-            placeholder="End"
+            placeholder={intl.get('COMP_END') || 'End'}
             style={{ marginTop: '6px' }}
           />
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Currency</label>
+          <label className="sidebar-label">{intl.get('COMP_CURRENCY') || 'Currency'}</label>
           <input
             className="sidebar-input"
             type="text"
@@ -638,7 +639,7 @@ export default function CompressorAnalyze() {
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Cost per m³ (air)</label>
+          <label className="sidebar-label">{intl.get('COMP_COST_PER_M3_AIR') || 'Cost per m³ (air)'}</label>
           <input
             className="sidebar-input"
             type="number"
@@ -650,7 +651,7 @@ export default function CompressorAnalyze() {
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Energy Cost (€/kWh)</label>
+          <label className="sidebar-label">{intl.get('COMP_ENERGY_COST') || 'Energy Cost (€/kWh)'}</label>
           <input
             className="sidebar-input"
             type="number"
@@ -662,7 +663,7 @@ export default function CompressorAnalyze() {
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Supply Voltage (V)</label>
+          <label className="sidebar-label">{intl.get('COMP_SUPPLY_VOLTAGE') || 'Supply Voltage (V)'}</label>
           <input
             className="sidebar-input"
             type="number"
@@ -674,7 +675,7 @@ export default function CompressorAnalyze() {
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Leak Threshold Flow</label>
+          <label className="sidebar-label">{intl.get('COMP_LEAK_THRESHOLD_FLOW') || 'Leak Threshold Flow'}</label>
           <input
             className="sidebar-input"
             type="number"
@@ -686,7 +687,7 @@ export default function CompressorAnalyze() {
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">CO₂ Emission (kg/kWh)</label>
+          <label className="sidebar-label">{intl.get('COMP_CO2_EMISSION') || 'CO₂ Emission (kg/kWh)'}</label>
           <input
             className="sidebar-input"
             type="number"
@@ -698,7 +699,7 @@ export default function CompressorAnalyze() {
         </div>
 
         <div className="sidebar-input-group">
-          <label className="sidebar-label">Working Hour / Year</label>
+          <label className="sidebar-label">{intl.get('COMP_WORKING_HOUR_PER_YEAR') || 'Working Hour / Year'}</label>
           <input
             className="sidebar-input"
             type="number"
@@ -716,11 +717,11 @@ export default function CompressorAnalyze() {
             checked={showCO2}
             onChange={(e) => setShowCO2(e.target.checked)}
           />
-          <label htmlFor="showCO2" className="sidebar-label" style={{ margin: 0 }}>Display CO₂ in report</label>
+          <label htmlFor="showCO2" className="sidebar-label" style={{ margin: 0 }}>{intl.get('COMP_DISPLAY_CO2_IN_REPORT') || 'Display CO₂ in report'}</label>
         </div>
 
         <button className="sidebar-reload-btn" onClick={() => runAnalysis()} disabled={loading}>
-          {loading ? 'Analyzing...' : 'Run Analysis'}
+          {loading ? (intl.get('COMP_ANALYZING_BTN') || 'Analyzing...') : (intl.get('COMP_RUN_ANALYSIS') || 'Run Analysis')}
         </button>
 
         <button 
@@ -741,7 +742,7 @@ export default function CompressorAnalyze() {
             outline: 'none'
           }}
         >
-          Configure Compressors
+          {intl.get('COMP_CONFIGURE_COMPRESSORS') || 'Configure Compressors'}
         </button>
 
         {error && <div className="analyze-error">{error}</div>}
@@ -751,12 +752,14 @@ export default function CompressorAnalyze() {
       <main className="analyze-main-content">
         {loading ? (
           <div className="empty-state-container" style={{ height: '80vh' }}>
-            <div className="empty-state-title">Analyzing & Compiling Compressor Data...</div>
+            <div className="empty-state-title">{intl.get('COMP_ANALYZING_DATA') || 'Analyzing & Compiling Compressor Data...'}</div>
             <div className="empty-state-desc" style={{ width: '300px' }}>
               <div style={{ width: '100%', height: '8px', background: '#cbd5e1', borderRadius: '4px', overflow: 'hidden', marginTop: '12px' }}>
                 <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: '#00ac86', transition: 'width 0.1s ease' }}></div>
               </div>
-              <div style={{ fontSize: '11px', marginTop: '6px', color: '#64748b' }}>{(progress * 100).toFixed(0)}% loaded</div>
+              <div style={{ fontSize: '11px', marginTop: '6px', color: '#64748b' }}>
+                {intl.get('COMP_PERCENT_LOADED', { percent: (progress * 100).toFixed(0) }) || `${(progress * 100).toFixed(0)}% loaded`}
+              </div>
             </div>
           </div>
         ) : systemResult ? (
@@ -764,9 +767,9 @@ export default function CompressorAnalyze() {
             {/* Report Header */}
             <div className="report-header screen-only" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div className="report-title-section" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <h2 className="report-main-title" style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: 0 }}>{analyzeMode === 'system' ? 'System Analysis Report' : 'Compressor Analysis Report'}</h2>
+                <h2 className="report-main-title" style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', margin: 0 }}>{analyzeMode === 'system' ? (intl.get('COMP_SYSTEM_REPORT_TITLE') || 'System Analysis Report') : (intl.get('COMP_REPORT_TITLE') || 'Compressor Analysis Report')}</h2>
                 <p className="report-subtitle" style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
-                  {analyzeMode === 'system' ? 'System flow + compressor efficiency statistics' : 'System analysis details and efficiency statistics'}
+                  {analyzeMode === 'system' ? (intl.get('COMP_SYSTEM_REPORT_SUBTITLE') || 'System flow + compressor efficiency statistics') : (intl.get('COMP_REPORT_SUBTITLE') || 'System analysis details and efficiency statistics')}
                 </p>
               </div>
               <button 
@@ -795,15 +798,15 @@ export default function CompressorAnalyze() {
                   <line x1="16" y1="17" x2="8" y2="17"></line>
                   <polyline points="10 9 9 9 8 9"></polyline>
                 </svg>
-                Export PDF
+                {intl.get('COMP_EXPORT_PDF') || 'Export PDF'}
               </button>
             </div>
 
             {/* Print Header (Print Only) */}
             <div className="print-only" style={{ marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>Compressor Analysis Report</h2>
+              <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>{intl.get('COMP_REPORT_TITLE') || 'Compressor Analysis Report'}</h2>
               <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
-                System analysis details and efficiency statistics — Generated on {new Date().toLocaleDateString()}
+                {intl.get('COMP_REPORT_SUBTITLE') || 'System analysis details and efficiency statistics'} — {intl.get('COMP_GENERATED_ON') || 'Generated on'} {new Date().toLocaleDateString()}
               </p>
             </div>
 
@@ -812,28 +815,28 @@ export default function CompressorAnalyze() {
               <div className="metric-card">
                 <div className="metric-icon-wrap primary"><Icons.Energy /></div>
                 <div className="metric-info">
-                  <span className="metric-label">Total Energy</span>
+                  <span className="metric-label">{intl.get('COMP_TOTAL_ENERGY') || 'Total Energy'}</span>
                   <span className="metric-value">{fmtKwh(systemResult.totalEnergyConsumption)}</span>
                 </div>
               </div>
               <div className="metric-card">
                 <div className="metric-icon-wrap warning"><Icons.Dollar /></div>
                 <div className="metric-info">
-                  <span className="metric-label">Total Cost</span>
+                  <span className="metric-label">{intl.get('COMP_TOTAL_COST') || 'Total Cost'}</span>
                   <span className="metric-value">{fmtCost(systemResult.totalCost)}</span>
                 </div>
               </div>
               <div className="metric-card">
                 <div className="metric-icon-wrap info"><Icons.Clock /></div>
                 <div className="metric-info">
-                  <span className="metric-label">Full Load Hours</span>
+                  <span className="metric-label">{intl.get('COMP_FULL_LOAD_HOURS') || 'Full Load Hours'}</span>
                   <span className="metric-value">{fmtHrs(systemResult.totalFullLoadHours)}</span>
                 </div>
               </div>
               <div className="metric-card">
                 <div className="metric-icon-wrap warning"><Icons.Droplet /></div>
                 <div className="metric-info">
-                  <span className="metric-label">Total Leakage</span>
+                  <span className="metric-label">{intl.get('COMP_TOTAL_LEAKAGE') || 'Total Leakage'}</span>
                   <span className="metric-value">{fmt(systemResult.totalLeakage, 1)} m³</span>
                 </div>
               </div>
@@ -842,50 +845,50 @@ export default function CompressorAnalyze() {
             {/* System Analyze — designated system flow channel summary (CAA System Analyze) */}
             {analyzeMode === 'system' && systemFlowResult && (
               <div className="table-card">
-                <h4 className="card-title">System Analyze — {systemFlowResult.flowUnit} flow channel</h4>
+                <h4 className="card-title">{intl.get('COMP_SYSTEM_ANALYZE_FLOW_CHANNEL', { unit: systemFlowResult.flowUnit }) || `System Analyze — ${systemFlowResult.flowUnit} flow channel`}</h4>
                 <div className="report-table-wrapper">
                   <table className="report-table">
                     <tbody>
                       <tr>
-                        <td><strong>Average Flow</strong></td>
+                        <td><strong>{intl.get('COMP_AVERAGE_FLOW') || 'Average Flow'}</strong></td>
                         <td>{fmtFlow(systemFlowResult.averageFlow)} {systemFlowResult.flowUnit}</td>
-                        <td><strong>Max Flow</strong></td>
+                        <td><strong>{intl.get('COMP_MAX_FLOW') || 'Max Flow'}</strong></td>
                         <td>{fmtFlow(systemFlowResult.maxFlow)} {systemFlowResult.flowUnit}</td>
                       </tr>
                       <tr>
-                        <td><strong>Min Flow</strong></td>
+                        <td><strong>{intl.get('COMP_MIN_FLOW') || 'Min Flow'}</strong></td>
                         <td>{fmtFlow(systemFlowResult.minFlow)} {systemFlowResult.flowUnit}</td>
-                        <td><strong>Total Air Delivery</strong></td>
+                        <td><strong>{intl.get('COMP_TOTAL_AIR_DELIVERY') || 'Total Air Delivery'}</strong></td>
                         <td>{fmt(systemFlowResult.totalAirDelivery, 1)} m³</td>
                       </tr>
                       <tr>
-                        <td><strong>Total Air Delivery (1 yr)</strong></td>
+                        <td><strong>{intl.get('COMP_TOTAL_AIR_DELIVERY_1YR') || 'Total Air Delivery (1 yr)'}</strong></td>
                         <td>{fmt(systemFlowResult.totalAirDeliveryOneYear, 0)} m³</td>
-                        <td><strong>Valid Record Time</strong></td>
+                        <td><strong>{intl.get('COMP_VALID_RECORD_TIME') || 'Valid Record Time'}</strong></td>
                         <td>{fmt(systemFlowResult.validHours, 1)} h</td>
                       </tr>
                       <tr>
-                        <td><strong>Average Leakage</strong></td>
+                        <td><strong>{intl.get('COMP_AVERAGE_LEAKAGE') || 'Average Leakage'}</strong></td>
                         <td>{fmtFlow(leakThreshold || systemFlowResult.minFlow)} {systemFlowResult.flowUnit}</td>
-                        <td><strong>Total Leakage</strong></td>
+                        <td><strong>{intl.get('COMP_TOTAL_LEAKAGE') || 'Total Leakage'}</strong></td>
                         <td>{fmt(systemFlowResult.totalLeakage, 1)} m³</td>
                       </tr>
                       <tr>
-                        <td><strong>Leakage Rate</strong></td>
+                        <td><strong>{intl.get('COMP_LEAKAGE_RATE') || 'Leakage Rate'}</strong></td>
                         <td>{fmtPct(systemFlowResult.leakageRate)}</td>
-                        <td><strong>Leakage Cost</strong></td>
+                        <td><strong>{intl.get('COMP_LEAKAGE_COST') || 'Leakage Cost'}</strong></td>
                         <td>{fmtCost(systemFlowResult.leakageCost)}</td>
                       </tr>
                       <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
-                        <td><strong>Cost per m³</strong></td>
+                        <td><strong>{intl.get('COMP_COST_PER_M3') || 'Cost per m³'}</strong></td>
                         <td>{fmtCost(systemFlowResult.costPerM3)}/m³</td>
-                        <td><strong>Total Cost</strong></td>
+                        <td><strong>{intl.get('COMP_TOTAL_COST') || 'Total Cost'}</strong></td>
                         <td>{fmtCost(systemFlowResult.totalCost)}</td>
                       </tr>
                       <tr>
-                        <td><strong>Total Leakage (1 yr)</strong></td>
+                        <td><strong>{intl.get('COMP_TOTAL_LEAKAGE_1YR') || 'Total Leakage (1 yr)'}</strong></td>
                         <td>{fmt(systemFlowResult.totalLeakageOneYear, 1)} m³</td>
-                        <td><strong>Total Cost (1 yr)</strong></td>
+                        <td><strong>{intl.get('COMP_TOTAL_COST_1YR') || 'Total Cost (1 yr)'}</strong></td>
                         <td>{fmtCost(systemFlowResult.totalCostOneYear)}</td>
                       </tr>
                     </tbody>
@@ -896,63 +899,63 @@ export default function CompressorAnalyze() {
 
             {/* Flow & System Summary Table — matching CAA StatisticsReportDialog */}
             <div className="table-card">
-              <h4 className="card-title">Flow & System Summary</h4>
+              <h4 className="card-title">{intl.get('COMP_FLOW_SYSTEM_SUMMARY') || 'Flow & System Summary'}</h4>
               <div className="report-table-wrapper">
                 <table className="report-table">
                   <tbody>
                     <tr>
-                      <td><strong>Average Flow</strong></td>
+                      <td><strong>{intl.get('COMP_AVERAGE_FLOW') || 'Average Flow'}</strong></td>
                       <td>{fmtFlow(systemResult.averageFlow)} {systemResult.flowUnit}</td>
-                      <td><strong>Max Flow</strong></td>
+                      <td><strong>{intl.get('COMP_MAX_FLOW') || 'Max Flow'}</strong></td>
                       <td>{fmtFlow(systemResult.maxFlow)} {systemResult.flowUnit}</td>
                     </tr>
                     <tr>
-                      <td><strong>Min Flow</strong></td>
+                      <td><strong>{intl.get('COMP_MIN_FLOW') || 'Min Flow'}</strong></td>
                       <td>{fmtFlow(systemResult.minFlow)} {systemResult.flowUnit}</td>
-                      <td><strong>Total Air Delivery</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL_AIR_DELIVERY') || 'Total Air Delivery'}</strong></td>
                       <td>{fmt(systemResult.totalAirDelivery, 1)} m³</td>
                     </tr>
                     <tr>
-                      <td><strong>Total Air Delivery (1 yr)</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL_AIR_DELIVERY_1YR') || 'Total Air Delivery (1 yr)'}</strong></td>
                       <td>{fmt(systemResult.totalAirDeliveryOneYear, 0)} m³</td>
-                      <td><strong>Total Cost</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL_COST') || 'Total Cost'}</strong></td>
                       <td>{fmtCost(systemResult.totalCost)}</td>
                     </tr>
                     <tr>
-                      <td><strong>Total Cost (1 yr)</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL_COST_1YR') || 'Total Cost (1 yr)'}</strong></td>
                       <td>{fmtCost(systemResult.totalCostOneYear)}</td>
-                      <td><strong>Cost per m³</strong></td>
+                      <td><strong>{intl.get('COMP_COST_PER_M3') || 'Cost per m³'}</strong></td>
                       <td>{fmtCost(systemResult.totalAirDelivery > 0 ? systemResult.totalCost / systemResult.totalAirDelivery : 0)}/m³</td>
                     </tr>
                     <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
-                      <td><strong>Average Leakage</strong></td>
+                      <td><strong>{intl.get('COMP_AVERAGE_LEAKAGE') || 'Average Leakage'}</strong></td>
                       <td>{fmtFlow(leakThreshold)} {systemResult.flowUnit}</td>
-                      <td><strong>Total Leakage</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL_LEAKAGE') || 'Total Leakage'}</strong></td>
                       <td>{fmt(systemResult.totalLeakage, 1)} m³</td>
                     </tr>
                     <tr>
-                      <td><strong>Leakage Rate</strong></td>
+                      <td><strong>{intl.get('COMP_LEAKAGE_RATE') || 'Leakage Rate'}</strong></td>
                       <td>{fmtPct(systemResult.leakageRate)}</td>
-                      <td><strong>Leakage Cost</strong></td>
+                      <td><strong>{intl.get('COMP_LEAKAGE_COST') || 'Leakage Cost'}</strong></td>
                       <td>{fmtCost(systemResult.leakageCost)}</td>
                     </tr>
                     <tr>
-                      <td><strong>Leakage Cost (1 yr)</strong></td>
+                      <td><strong>{intl.get('COMP_LEAKAGE_COST_1YR') || 'Leakage Cost (1 yr)'}</strong></td>
                       <td>{fmtCost(systemResult.leakageCost * (systemResult.totalAirDeliveryOneYear / Math.max(1, systemResult.totalAirDelivery)))}</td>
-                      <td><strong>Total Leakage (1 yr)</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL_LEAKAGE_1YR') || 'Total Leakage (1 yr)'}</strong></td>
                       <td>{fmt(systemResult.totalLeakage * (systemResult.totalAirDeliveryOneYear / Math.max(1, systemResult.totalAirDelivery)), 1)} m³</td>
                     </tr>
                     {showCO2 && (
                         <tr style={{ borderTop: '1.5px solid #cbd5e1' }}>
-                          <td><strong>Number of Compressors</strong></td>
+                          <td><strong>{intl.get('COMP_NUMBER_OF_COMPRESSORS') || 'Number of Compressors'}</strong></td>
                           <td>{systemResult.numCompressorsSelected} / {systemResult.numCompressors}</td>
-                          <td><strong>Total CO₂</strong></td>
+                          <td><strong>{intl.get('COMP_TOTAL_CO2') || 'Total CO₂'}</strong></td>
                           <td>{fmt(systemResult.totalCO2Emmision, 2)} kg</td>
                         </tr>
                       )}
                       {showCO2 && (
                         <tr>
-                          <td><strong>Total CO₂ (1 yr)</strong></td>
+                          <td><strong>{intl.get('COMP_TOTAL_CO2_1YR') || 'Total CO₂ (1 yr)'}</strong></td>
                           <td>{fmt(systemResult.totalCO2EmmisionOneYear, 2)} kg</td>
                           <td></td>
                           <td></td>
@@ -966,38 +969,38 @@ export default function CompressorAnalyze() {
             {/* Charts */}
             <div className="charts-row">
               <div className="chart-card" style={{ flex: 1 }}>
-                <h4 className="card-title">Load Distribution</h4>
+                <h4 className="card-title">{intl.get('COMP_LOAD_DISTRIBUTION') || 'Load Distribution'}</h4>
                 <svg ref={pieRef} width="100%" height="340"></svg>
               </div>
               <div className="chart-card" style={{ flex: 1.5 }}>
-                <h4 className="card-title">Energy by Compressor</h4>
+                <h4 className="card-title">{intl.get('COMP_ENERGY_BY_COMPRESSOR') || 'Energy by Compressor'}</h4>
                 <svg ref={barRef} width="100%" height="340"></svg>
               </div>
             </div>
 
             {/* Per-Compressor Table — matching CAA JTableFields layout */}
             <div className="table-card">
-              <h4 className="card-title">Compressor Details</h4>
+              <h4 className="card-title">{intl.get('COMP_COMPRESSOR_DETAILS') || 'Compressor Details'}</h4>
               <div className="report-table-wrapper">
                 <table className="report-table">
                   <thead>
                     <tr>
-                      <th>Compressor</th>
-                      <th>Type</th>
-                      <th>Full Load (h)</th>
-                      <th>Full (%)</th>
-                      <th>Unload (h)</th>
-                      <th>Unload (%)</th>
-                      <th>No Load (h)</th>
-                      <th>Total (h)</th>
-                      <th>Starts (#)</th>
-                      <th>Cycles (#)</th>
-                      <th>Energy (kWh)</th>
-                      <th>Cost (€)</th>
-                      <th>Max Flow</th>
-                      <th>Avg Flow</th>
-                      <th>Spec. Power</th>
-                      {showCO2 && <th>CO₂ (kg)</th>}
+                      <th>{intl.get('COMP_TH_COMPRESSOR') || 'Compressor'}</th>
+                      <th>{intl.get('COMP_TH_TYPE') || 'Type'}</th>
+                      <th>{intl.get('COMP_TH_FULL_LOAD_H') || 'Full Load (h)'}</th>
+                      <th>{intl.get('COMP_TH_FULL_PCT') || 'Full (%)'}</th>
+                      <th>{intl.get('COMP_TH_UNLOAD_H') || 'Unload (h)'}</th>
+                      <th>{intl.get('COMP_TH_UNLOAD_PCT') || 'Unload (%)'}</th>
+                      <th>{intl.get('COMP_TH_NO_LOAD_H') || 'No Load (h)'}</th>
+                      <th>{intl.get('COMP_TH_TOTAL_H') || 'Total (h)'}</th>
+                      <th>{intl.get('COMP_TH_STARTS') || 'Starts (#)'}</th>
+                      <th>{intl.get('COMP_TH_CYCLES') || 'Cycles (#)'}</th>
+                      <th>{intl.get('COMP_TH_ENERGY_KWH') || 'Energy (kWh)'}</th>
+                      <th>{intl.get('COMP_TH_COST_EUR') || 'Cost (€)'}</th>
+                      <th>{intl.get('COMP_MAX_FLOW') || 'Max Flow'}</th>
+                      <th>{intl.get('COMP_TH_AVG_FLOW') || 'Avg Flow'}</th>
+                      <th>{intl.get('COMP_TH_SPEC_POWER') || 'Spec. Power'}</th>
+                      {showCO2 && <th>{intl.get('COMP_TH_CO2_KG') || 'CO₂ (kg)'}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1024,7 +1027,7 @@ export default function CompressorAnalyze() {
                   </tbody>
                   <tfoot>
                     <tr className="footer-total-row">
-                      <td><strong>Total</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL') || 'Total'}</strong></td>
                       <td></td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.FullLoadHours, 0))}</td>
                       <td></td>
@@ -1048,18 +1051,18 @@ export default function CompressorAnalyze() {
 
             {/* 1-Year Projection Table */}
             <div className="table-card">
-              <h4 className="card-title">1-Year Projection</h4>
+              <h4 className="card-title">{intl.get('COMP_1YR_PROJECTION') || '1-Year Projection'}</h4>
               <div className="report-table-wrapper">
                 <table className="report-table">
                   <thead>
                     <tr>
-                      <th>Compressor</th>
-                      <th>Energy (kWh)</th>
-                      <th>Cost (€)</th>
-                      <th>Full Load (h)</th>
-                      <th>Unload (h)</th>
-                      <th>No Load (h)</th>
-                      {showCO2 && <th>CO₂ (kg)</th>}
+                      <th>{intl.get('COMP_TH_COMPRESSOR') || 'Compressor'}</th>
+                      <th>{intl.get('COMP_TH_ENERGY_KWH') || 'Energy (kWh)'}</th>
+                      <th>{intl.get('COMP_TH_COST_EUR') || 'Cost (€)'}</th>
+                      <th>{intl.get('COMP_TH_FULL_LOAD_H') || 'Full Load (h)'}</th>
+                      <th>{intl.get('COMP_TH_UNLOAD_H') || 'Unload (h)'}</th>
+                      <th>{intl.get('COMP_TH_NO_LOAD_H') || 'No Load (h)'}</th>
+                      {showCO2 && <th>{intl.get('COMP_TH_CO2_KG') || 'CO₂ (kg)'}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1077,7 +1080,7 @@ export default function CompressorAnalyze() {
                   </tbody>
                   <tfoot>
                     <tr className="footer-total-row">
-                      <td><strong>Total</strong></td>
+                      <td><strong>{intl.get('COMP_TOTAL') || 'Total'}</strong></td>
                       <td>{fmtKwh(systemResult.totalEnergyConsumptionOneYear)}</td>
                       <td>{fmtCost(systemResult.totalCostOneYear)}</td>
                       <td>{fmtHrs(compressors.reduce((s, c) => s + c.FullLoadHoursOneYear, 0))}</td>
@@ -1092,7 +1095,7 @@ export default function CompressorAnalyze() {
           </>
         ) : (
           <div className="empty-state-container">
-            <p>Click "Run Analysis" to start.</p>
+            <p>{intl.get('COMP_CLICK_RUN_TO_START') || 'Click "Run Analysis" to start.'}</p>
           </div>
         )}
       </main>
@@ -1100,7 +1103,7 @@ export default function CompressorAnalyze() {
       {/* Per-Compressor Configuration Dialog */}
       <Dialog maxWidth="md" fullWidth open={settingsOpen} onClose={() => setSettingsOpen(false)} className="compressor-settings-dialog">
         <DialogTitle style={{ fontWeight: '800', color: '#0f172a' }}>
-          Configure Compressors
+          {intl.get('COMP_CONFIGURE_COMPRESSORS') || 'Configure Compressors'}
         </DialogTitle>
         <DialogContent dividers>
           {editingCompressors.length > 0 ? (
@@ -1108,7 +1111,7 @@ export default function CompressorAnalyze() {
               {/* Left pane: Selector */}
               <div style={{ width: '220px', borderRight: '1px solid #e2e8f0', paddingRight: '16px' }}>
                 <div style={{ fontWeight: '700', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.05em' }}>
-                  Compressor List
+                  {intl.get('COMP_COMPRESSOR_LIST') || 'Compressor List'}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {editingCompressors.map((c, idx) => (
@@ -1140,7 +1143,7 @@ export default function CompressorAnalyze() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <h4 style={{ margin: 0, fontWeight: '800', fontSize: '15px', color: '#0f172a' }}>
-                        Settings for {editingCompressors[selectedCompIdx].Description || `Compressor ${editingCompressors[selectedCompIdx].Unit}`}
+                        {intl.get('COMP_SETTINGS_FOR') || 'Settings for'} {editingCompressors[selectedCompIdx].Description || `Compressor ${editingCompressors[selectedCompIdx].Unit}`}
                       </h4>
                       <FormControlLabel
                         control={
@@ -1150,40 +1153,40 @@ export default function CompressorAnalyze() {
                             color="primary"
                           />
                         }
-                        label={<span style={{ fontWeight: '700', fontSize: '13px', color: '#475569' }}>Include in analysis</span>}
+                        label={<span style={{ fontWeight: '700', fontSize: '13px', color: '#475569' }}>{intl.get('COMP_INCLUDE_IN_ANALYSIS') || 'Include in analysis'}</span>}
                       />
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '4px' }}>
                       <TextField
-                        label="Description"
+                        label={intl.get('COMP_DESCRIPTION') || 'Description'}
                         value={editingCompressors[selectedCompIdx].Description}
                         onChange={(e) => handleUpdateEditingComp('Description', e.target.value)}
                         fullWidth
                         size="small"
                       />
                       <FormControl fullWidth size="small">
-                        <InputLabel>Compressor Type</InputLabel>
+                        <InputLabel>{intl.get('COMP_COMPRESSOR_TYPE') || 'Compressor Type'}</InputLabel>
                         <Select
                           value={editingCompressors[selectedCompIdx].Type}
-                          label="Compressor Type"
+                          label={intl.get('COMP_COMPRESSOR_TYPE') || 'Compressor Type'}
                           onChange={(e) => handleUpdateEditingComp('Type', e.target.value)}
                         >
-                          <MenuItem value={COMPRESSOR_TYPE_LOAD_UNLOAD}>Load / Unload</MenuItem>
-                          <MenuItem value={COMPRESSOR_TYPE_VARIABLE_FREQUENCY}>Variable Frequency</MenuItem>
+                          <MenuItem value={COMPRESSOR_TYPE_LOAD_UNLOAD}>{intl.get('COMP_LOAD_UNLOAD') || 'Load / Unload'}</MenuItem>
+                          <MenuItem value={COMPRESSOR_TYPE_VARIABLE_FREQUENCY}>{intl.get('COMP_VARIABLE_FREQUENCY') || 'Variable Frequency'}</MenuItem>
                         </Select>
                       </FormControl>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '4px' }}>
                       <FormControl fullWidth size="small">
-                        <InputLabel>Flow Channel (optional)</InputLabel>
+                        <InputLabel>{intl.get('COMP_FLOW_CHANNEL_OPTIONAL') || 'Flow Channel (optional)'}</InputLabel>
                         <Select
                           value={editingCompressors[selectedCompIdx].flowChannelId || ''}
-                          label="Flow Channel (optional)"
+                          label={intl.get('COMP_FLOW_CHANNEL_OPTIONAL') || 'Flow Channel (optional)'}
                           onChange={(e) => handleUpdateEditingComp('flowChannelId', e.target.value || null)}
                         >
-                          <MenuItem value="">None</MenuItem>
+                          <MenuItem value="">{intl.get('COMP_NONE') || 'None'}</MenuItem>
                           {flowChannels.map((ch) => (
                             <MenuItem key={ch.channel_id} value={ch.channel_id}>
                               {ch.full_channel_name || ch.logic_channel_description || ch.channel_id}
@@ -1197,11 +1200,11 @@ export default function CompressorAnalyze() {
                       /* Load / Unload Settings */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '4px' }}>
                         <div style={{ fontWeight: '800', fontSize: '12px', color: '#00ac86', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Fixed Speed Configuration
+                          {intl.get('COMP_FIXED_SPEED_CONFIG') || 'Fixed Speed Configuration'}
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                           <TextField
-                            label={`Air Delivery (${editingCompressors[selectedCompIdx].AirDeliveryUnit || 'm³/h'})`}
+                            label={`${intl.get('COMP_AIR_DELIVERY') || 'Air Delivery'} (${editingCompressors[selectedCompIdx].AirDeliveryUnit || 'm³/h'})`}
                             type="number"
                             value={editingCompressors[selectedCompIdx].FullLoadAirDelivery}
                             onChange={(e) => handleUpdateEditingComp('FullLoadAirDelivery', parseFloat(e.target.value) || 0)}
@@ -1209,47 +1212,47 @@ export default function CompressorAnalyze() {
                             fullWidth
                           />
                           <TextField
-                            label={`Load Threshold (${editingCompressors[selectedCompIdx].hasPowerChannel ? 'kW' : 'A'})`}
+                            label={`${intl.get('COMP_LOAD_THRESHOLD') || 'Load Threshold'} (${editingCompressors[selectedCompIdx].hasPowerChannel ? 'kW' : 'A'})`}
                             type="number"
                             value={editingCompressors[selectedCompIdx].FullLoadCurrentThreshold}
                             onChange={(e) => handleUpdateEditingComp('FullLoadCurrentThreshold', parseFloat(e.target.value) || 0)}
                             size="small"
                             fullWidth
-                            helperText="Above this value is classified as Full Load"
+                            helperText={intl.get('COMP_LOAD_THRESHOLD_HELP') || 'Above this value is classified as Full Load'}
                           />
                           <TextField
-                            label={`Unload/Stop Threshold (${editingCompressors[selectedCompIdx].hasPowerChannel ? 'kW' : 'A'})`}
+                            label={`${intl.get('COMP_UNLOAD_STOP_THRESHOLD') || 'Unload/Stop Threshold'} (${editingCompressors[selectedCompIdx].hasPowerChannel ? 'kW' : 'A'})`}
                             type="number"
                             value={editingCompressors[selectedCompIdx].NoLoadCurrentThreshold}
                             onChange={(e) => handleUpdateEditingComp('NoLoadCurrentThreshold', parseFloat(e.target.value) || 0)}
                             size="small"
                             fullWidth
-                            helperText="Below this value is classified as stopped/no-load"
+                            helperText={intl.get('COMP_UNLOAD_STOP_THRESHOLD_HELP') || 'Below this value is classified as stopped/no-load'}
                           />
                         </div>
 
                         {!editingCompressors[selectedCompIdx].hasPowerChannel && (
                           <>
                             <div style={{ fontWeight: '800', fontSize: '12px', color: '#64748b', marginTop: '4px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                              Nominal Current & Cos Phi Parameters
+                              {intl.get('COMP_NOMINAL_CURRENT_COSPHI') || 'Nominal Current & Cos Phi Parameters'}
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
                               <TextField
-                                label="Full Load (A)"
+                                label={intl.get('COMP_FULL_LOAD_A') || 'Full Load (A)'}
                                 type="number"
                                 value={editingCompressors[selectedCompIdx].FullLoadCurrent}
                                 onChange={(e) => handleUpdateEditingComp('FullLoadCurrent', parseFloat(e.target.value) || 0)}
                                 size="small"
                               />
                               <TextField
-                                label="Unload (A)"
+                                label={intl.get('COMP_UNLOAD_A') || 'Unload (A)'}
                                 type="number"
                                 value={editingCompressors[selectedCompIdx].UnLoadCurrent}
                                 onChange={(e) => handleUpdateEditingComp('UnLoadCurrent', parseFloat(e.target.value) || 0)}
                                 size="small"
                               />
                               <TextField
-                                label="Full Cos Phi"
+                                label={intl.get('COMP_FULL_COS_PHI') || 'Full Cos Phi'}
                                 type="number"
                                 inputProps={{ step: '0.01', min: '0', max: '1' }}
                                 value={editingCompressors[selectedCompIdx].FullLoadCosP}
@@ -1257,7 +1260,7 @@ export default function CompressorAnalyze() {
                                 size="small"
                               />
                               <TextField
-                                label="Unload Cos Phi"
+                                label={intl.get('COMP_UNLOAD_COS_PHI') || 'Unload Cos Phi'}
                                 type="number"
                                 inputProps={{ step: '0.01', min: '0', max: '1' }}
                                 value={editingCompressors[selectedCompIdx].UnLoadCosP}
@@ -1272,14 +1275,14 @@ export default function CompressorAnalyze() {
                       /* Variable Frequency Settings */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '4px' }}>
                         <div style={{ fontWeight: '800', fontSize: '12px', color: '#00ac86', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Variable Frequency Drive Presets
+                          {intl.get('COMP_VFD_PRESETS') || 'Variable Frequency Drive Presets'}
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                           <FormControl fullWidth size="small">
-                            <InputLabel>Motor Power (kW)</InputLabel>
+                            <InputLabel>{intl.get('COMP_MOTOR_POWER_KW') || 'Motor Power (kW)'}</InputLabel>
                             <Select
                               value={editingCompressors[selectedCompIdx].VFMotorPower}
-                              label="Motor Power (kW)"
+                              label={intl.get('COMP_MOTOR_POWER_KW') || 'Motor Power (kW)'}
                               onChange={(e) => handleUpdateEditingComp('VFMotorPower', e.target.value)}
                             >
                               {[22, 30, 37, 45, 55, 75, 90, 110, 132, 160, 200, 250].map((val) => (
@@ -1288,10 +1291,10 @@ export default function CompressorAnalyze() {
                             </Select>
                           </FormControl>
                           <FormControl fullWidth size="small">
-                            <InputLabel>System Pressure (bar)</InputLabel>
+                            <InputLabel>{intl.get('COMP_SYSTEM_PRESSURE_BAR') || 'System Pressure (bar)'}</InputLabel>
                             <Select
                               value={editingCompressors[selectedCompIdx].VFSystemPressure}
-                              label="System Pressure (bar)"
+                              label={intl.get('COMP_SYSTEM_PRESSURE_BAR') || 'System Pressure (bar)'}
                               onChange={(e) => handleUpdateEditingComp('VFSystemPressure', e.target.value)}
                             >
                               {[7.5, 10, 13].map((val) => (
@@ -1302,12 +1305,12 @@ export default function CompressorAnalyze() {
                         </div>
                         
                         <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px dashed #cbd5e1', fontSize: '11px', color: '#475569' }}>
-                          <div style={{ fontWeight: '700', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#0f172a' }}>Computed VF Curve Parameters:</div>
+                          <div style={{ fontWeight: '700', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#0f172a' }}>{intl.get('COMP_COMPUTED_VF_CURVE') || 'Computed VF Curve Parameters:'}</div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
-                            <div>Min Flow: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryMin} m³/min</strong></div>
-                            <div>P2 Flow: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryP2} m³/min</strong></div>
-                            <div>P3 Flow: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryP3} m³/min</strong></div>
-                            <div>Max Flow: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryMax} m³/min</strong></div>
+                            <div>{intl.get('COMP_MIN_FLOW') || 'Min Flow'}: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryMin} m³/min</strong></div>
+                            <div>{intl.get('COMP_P2_FLOW') || 'P2 Flow'}: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryP2} m³/min</strong></div>
+                            <div>{intl.get('COMP_P3_FLOW') || 'P3 Flow'}: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryP3} m³/min</strong></div>
+                            <div>{intl.get('COMP_MAX_FLOW') || 'Max Flow'}: <strong>{editingCompressors[selectedCompIdx].VFAirDeliveryMax} m³/min</strong></div>
                             <div>Min {editingCompressors[selectedCompIdx].hasPowerChannel ? 'Power' : 'Amp'}: <strong>{editingCompressors[selectedCompIdx].hasPowerChannel ? `${editingCompressors[selectedCompIdx].VFPowerMin} kW` : `${editingCompressors[selectedCompIdx].VFAmpMin.toFixed(1)} A`}</strong></div>
                             <div>P2 {editingCompressors[selectedCompIdx].hasPowerChannel ? 'Power' : 'Amp'}: <strong>{editingCompressors[selectedCompIdx].hasPowerChannel ? `${editingCompressors[selectedCompIdx].VFPowerP2} kW` : `${editingCompressors[selectedCompIdx].VFAmpP2.toFixed(1)} A`}</strong></div>
                             <div>P3 {editingCompressors[selectedCompIdx].hasPowerChannel ? 'Power' : 'Amp'}: <strong>{editingCompressors[selectedCompIdx].hasPowerChannel ? `${editingCompressors[selectedCompIdx].VFPowerP3} kW` : `${editingCompressors[selectedCompIdx].VFAmpP3.toFixed(1)} A`}</strong></div>
@@ -1322,12 +1325,12 @@ export default function CompressorAnalyze() {
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-              No compressors discovered in the loaded file yet. Run analysis once to populate.
+              {intl.get('COMP_NO_COMPRESSORS_DISCOVERED') || 'No compressors discovered in the loaded file yet. Run analysis once to populate.'}
             </div>
           )}
         </DialogContent>
         <DialogActions style={{ padding: '16px 24px' }}>
-          <Button onClick={() => setSettingsOpen(false)}>Cancel</Button>
+          <Button onClick={() => setSettingsOpen(false)}>{intl.get('CANCEL') || 'Cancel'}</Button>
           <Button
             onClick={handleSaveSettings}
             color="primary"
@@ -1335,7 +1338,7 @@ export default function CompressorAnalyze() {
             disabled={editingCompressors.length === 0}
             style={{ fontWeight: '700', borderRadius: '6px' }}
           >
-            Apply Configurations
+            {intl.get('COMP_APPLY_CONFIGURATIONS') || 'Apply Configurations'}
           </Button>
         </DialogActions>
       </Dialog>

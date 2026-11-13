@@ -1,4 +1,5 @@
 import React from 'react';
+import intl from 'react-intl-universal';
 import TestAPI from '../../api/TestAPI';
 import './FileInfoView.css';
 
@@ -42,7 +43,7 @@ function FileInfoView() {
   if (!fileInfo) {
     return (
       <div className="file-info-empty">
-        <div className="empty-message">No file is currently loaded.</div>
+        <div className="empty-message">{intl.get('FILEINFO_NO_FILE') || 'No file is currently loaded.'}</div>
       </div>
     );
   }
@@ -59,8 +60,8 @@ function FileInfoView() {
   return (
     <div className="file-info-view-container">
       <div className="file-info-dashboard-header">
-        <h1 className="dashboard-title">File Details & Metadata</h1>
-        <p className="dashboard-subtitle">Overview of the loaded measurement database file</p>
+        <h1 className="dashboard-title">{intl.get('FILEINFO_TITLE') || 'File Details & Metadata'}</h1>
+        <p className="dashboard-subtitle">{intl.get('FILEINFO_SUBTITLE') || 'Overview of the loaded measurement database file'}</p>
       </div>
 
       <div className="dashboard-grid">
@@ -70,42 +71,42 @@ function FileInfoView() {
             <svg className="card-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <h2>File Properties</h2>
+            <h2>{intl.get('FILEINFO_PROPERTIES') || 'File Properties'}</h2>
           </div>
           <div className="card-content">
             <div className="property-item">
-              <span className="property-label">File Name</span>
+              <span className="property-label">{intl.get('FILE_NAME') || 'File Name'}</span>
               <span className="property-value filename-highlight">{fileInfo.name}</span>
             </div>
             <div className="property-item">
-              <span className="property-label">Format Type</span>
+              <span className="property-label">{intl.get('FILEINFO_FORMAT_TYPE') || 'Format Type'}</span>
               <span className="property-value">
                 <span className={`format-tag ${fileInfo.isCsv ? 'tag-csv' : 'tag-csd'}`}>
-                  {fileInfo.isCsv ? 'CSV Text' : 'CSD Binary'}
+                  {fileInfo.isCsv ? (intl.get('FILEINFO_FORMAT_CSV') || 'CSV Text') : (intl.get('FILEINFO_FORMAT_CSD') || 'CSD Binary')}
                 </span>
               </span>
             </div>
             {fileInfo.start && (
               <div className="property-item">
-                <span className="property-label">Start Date/Time</span>
+                <span className="property-label">{intl.get('FILEINFO_START_DATETIME') || 'Start Date/Time'}</span>
                 <span className="property-value">{new Date(fileInfo.start).toLocaleString()}</span>
               </div>
             )}
             {fileInfo.stop && (
               <div className="property-item">
-                <span className="property-label">End Date/Time</span>
+                <span className="property-label">{intl.get('FILEINFO_END_DATETIME') || 'End Date/Time'}</span>
                 <span className="property-value">{new Date(fileInfo.stop).toLocaleString()}</span>
               </div>
             )}
             {fileInfo.start && fileInfo.stop && (
               <div className="property-item">
-                <span className="property-label">Total Duration</span>
+                <span className="property-label">{intl.get('FILEINFO_TOTAL_DURATION') || 'Total Duration'}</span>
                 <span className="property-value duration-highlight">{durationStr}</span>
               </div>
             )}
             <div className="property-item">
-              <span className="property-label">Total Channels</span>
-              <span className="property-value">{fileInfo.channels ? fileInfo.channels.length : 0} Channels</span>
+              <span className="property-label">{intl.get('FILEINFO_TOTAL_CHANNELS') || 'Total Channels'}</span>
+              <span className="property-value">{intl.get('FILEINFO_CHANNELS_VALUE', { count: fileInfo.channels ? fileInfo.channels.length : 0 }) || `${fileInfo.channels ? fileInfo.channels.length : 0} Channels`}</span>
             </div>
           </div>
         </div>
@@ -116,19 +117,19 @@ function FileInfoView() {
             <svg className="card-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
-            <h2>Channels & Sensors</h2>
+            <h2>{intl.get('FILEINFO_CHANNELS_SENSORS') || 'Channels & Sensors'}</h2>
           </div>
           <div className="card-content">
             <div className="channels-table-scroll-wrapper">
               <table className="channels-dashboard-table">
                 <thead>
                   <tr>
-                    <th>Index</th>
-                    <th>Name / Description</th>
-                    <th>Sensor Model</th>
-                    <th>Unit</th>
-                    <th>Resolution</th>
-                    {!fileInfo.isCsv && <th>Min ~ Max</th>}
+                    <th>{intl.get('FILEINFO_TH_INDEX') || 'Index'}</th>
+                    <th>{intl.get('FILEINFO_TH_NAME_DESC') || 'Name / Description'}</th>
+                    <th>{intl.get('FILEINFO_TH_SENSOR_MODEL') || 'Sensor Model'}</th>
+                    <th>{intl.get('FILEINFO_TH_UNIT') || 'Unit'}</th>
+                    <th>{intl.get('FILEINFO_TH_RESOLUTION') || 'Resolution'}</th>
+                    {!fileInfo.isCsv && <th>{intl.get('FILEINFO_TH_MIN_MAX') || 'Min ~ Max'}</th>}
                   </tr>
                 </thead>
                 <tbody>

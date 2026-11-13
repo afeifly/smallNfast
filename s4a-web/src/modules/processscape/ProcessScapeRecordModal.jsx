@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import intl from 'react-intl-universal';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -148,9 +149,9 @@ export default function ProcessScapeRecordModal({
       <DialogTitle className="ps-rec-title-bar">
         <div className="ps-rec-title-wrap">
           <span className="ps-rec-title-dot" />
-          <span className="ps-rec-title-text">ProcessScape Live Recording</span>
+          <span className="ps-rec-title-text">{intl.get('PS_REC_LIVE_RECORDING_TITLE') || 'ProcessScape Live Recording'}</span>
         </div>
-        <span className="ps-rec-badge">Multi-Device SCADA</span>
+        <span className="ps-rec-badge">{intl.get('PS_REC_MULTI_DEVICE_BADGE') || 'Multi-Device SCADA'}</span>
       </DialogTitle>
 
       <DialogContent dividers className="ps-rec-content">
@@ -158,7 +159,7 @@ export default function ProcessScapeRecordModal({
         <div className="ps-rec-interval-box">
           <div className="ps-rec-interval-header">
             <label className="ps-rec-section-label" htmlFor="ps-rec-interval-input">
-              Sampling Interval
+              {intl.get('PS_REC_SAMPLING_INTERVAL') || 'Sampling Interval'}
             </label>
             <div className="ps-rec-preset-chips">
               {intervalPresets.map(sec => (
@@ -181,7 +182,7 @@ export default function ProcessScapeRecordModal({
             value={intervalInput}
             onChange={(e) => setIntervalInput(e.target.value)}
             inputProps={{ min: 1, max: 3600 }}
-            helperText="The first sample is captured immediately, subsequent samples at each interval boundary."
+            helperText={intl.get('PS_REC_INTERVAL_HELPER') || 'The first sample is captured immediately, subsequent samples at each interval boundary.'}
           />
         </div>
 
@@ -189,9 +190,9 @@ export default function ProcessScapeRecordModal({
         <div className="ps-rec-channels-section">
           <div className="ps-rec-section-header">
             <div>
-              <span className="ps-rec-section-label">Select Channels to Log</span>
+              <span className="ps-rec-section-label">{intl.get('PS_REC_SELECT_CHANNELS') || 'Select Channels to Log'}</span>
               <span className="ps-rec-count-hint">
-                ({selectedCount} of {totalChannelsCount} selected)
+                ({intl.get('PS_REC_SELECTED_COUNT', { selected: selectedCount, total: totalChannelsCount }) || `${selectedCount} of ${totalChannelsCount} selected`})
               </span>
             </div>
             {totalChannelsCount > 0 && (
@@ -201,7 +202,7 @@ export default function ProcessScapeRecordModal({
                   className="ps-rec-action-link"
                   onClick={() => setSelectedKeys(new Set(assignedChannels.map(c => c.key)))}
                 >
-                  Select All
+                  {intl.get('PS_REC_SELECT_ALL') || 'Select All'}
                 </button>
                 <span className="ps-rec-divider">•</span>
                 <button
@@ -209,7 +210,7 @@ export default function ProcessScapeRecordModal({
                   className="ps-rec-action-link"
                   onClick={() => setSelectedKeys(new Set())}
                 >
-                  Deselect All
+                  {intl.get('PS_REC_DESELECT_ALL') || 'Deselect All'}
                 </button>
               </div>
             )}
@@ -218,10 +219,9 @@ export default function ProcessScapeRecordModal({
           {totalChannelsCount === 0 ? (
             <div className="ps-rec-empty-state">
               <div className="ps-rec-empty-icon">📍</div>
-              <div className="ps-rec-empty-title">No Assigned Channels Found</div>
+              <div className="ps-rec-empty-title">{intl.get('PS_REC_NO_CHANNELS_TITLE') || 'No Assigned Channels Found'}</div>
               <div className="ps-rec-empty-desc">
-                Only channels assigned to a Location and Measurement Point are recorded in ProcessScape.
-                Please assign device channels in the Sensor Manager first.
+                {intl.get('PS_REC_NO_CHANNELS_DESC') || 'Only channels assigned to a Location and Measurement Point are recorded in ProcessScape. Please assign device channels in the Sensor Manager first.'}
               </div>
               {onOpenSensorManager && (
                 <Button
@@ -233,7 +233,7 @@ export default function ProcessScapeRecordModal({
                   }}
                   style={{ textTransform: 'none', borderColor: '#00ac86', color: '#00ac86', fontWeight: 600 }}
                 >
-                  ⚙️ Open Sensor & Measurement Point Manager
+                  ⚙️ {intl.get('PS_REC_OPEN_SENSOR_MANAGER') || 'Open Sensor & Measurement Point Manager'}
                 </Button>
               )}
             </div>
@@ -250,14 +250,14 @@ export default function ProcessScapeRecordModal({
                           indeterminate={isIndeterminate}
                           onChange={handleToggleAll}
                           style={{ padding: 2, color: '#00ac86' }}
-                          title="Toggle all channels"
+                          title={intl.get('PS_REC_TOGGLE_ALL_CHANNELS') || 'Toggle all channels'}
                         />
-                        <span>Log</span>
+                        <span>{intl.get('PS_REC_LOG_COL') || 'Log'}</span>
                       </div>
                     </th>
-                    <th style={{ width: '28%' }}>Location</th>
-                    <th style={{ width: '32%' }}>Measurement Point</th>
-                    <th>Channel</th>
+                    <th style={{ width: '28%' }}>{intl.get('LOCATION') || 'Location'}</th>
+                    <th style={{ width: '32%' }}>{intl.get('MEASUREMENT_POINT') || 'Measurement Point'}</th>
+                    <th>{intl.get('CHANNEL') || 'Channel'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -299,13 +299,13 @@ export default function ProcessScapeRecordModal({
                                 <div style={{ fontWeight: 800, color: '#00ac86', marginBottom: 2 }}>
                                   📟 {row.deviceName}
                                 </div>
-                                {row.deviceSerial && <div><strong>Serial:</strong> {row.deviceSerial}</div>}
+                                {row.deviceSerial && <div><strong>{intl.get('PS_REC_SERIAL_LABEL') || 'Serial:'}</strong> {row.deviceSerial}</div>}
                                 {row.deviceIp && (
-                                  <div><strong>Address:</strong> {row.deviceIp}{row.devicePort ? `:${row.devicePort}` : ''}</div>
+                                  <div><strong>{intl.get('PS_REC_ADDRESS_LABEL') || 'Address:'}</strong> {row.deviceIp}{row.devicePort ? `:${row.devicePort}` : ''}</div>
                                 )}
-                                <div><strong>Transport:</strong> {row.transportType.toUpperCase()}</div>
+                                <div><strong>{intl.get('PS_REC_TRANSPORT_LABEL') || 'Transport:'}</strong> {row.transportType.toUpperCase()}</div>
                                 {row.originalName && row.originalName !== row.name && (
-                                  <div><strong>Sensor:</strong> {row.originalName}</div>
+                                  <div><strong>{intl.get('PS_REC_SENSOR_LABEL') || 'Sensor:'}</strong> {row.originalName}</div>
                                 )}
                               </div>
                             }
@@ -314,7 +314,7 @@ export default function ProcessScapeRecordModal({
                               <span className="ps-rec-ch-name">{row.name}</span>
                               {row.unit && <span className="ps-rec-ch-unit">({row.unit})</span>}
                               <span className="ps-rec-ch-id">Ch {row.channel_id}</span>
-                              <span className="ps-rec-info-icon" title="Device & Sensor Info">ℹ️</span>
+                              <span className="ps-rec-info-icon" title={intl.get('PS_REC_DEVICE_SENSOR_INFO') || 'Device & Sensor Info'}>ℹ️</span>
                             </div>
                           </Tooltip>
                         </td>
@@ -333,10 +333,10 @@ export default function ProcessScapeRecordModal({
           onClick={onClose}
           style={{ textTransform: 'none', color: '#64748b', fontWeight: 600 }}
         >
-          Cancel
+          {intl.get('CANCEL') || 'Cancel'}
         </Button>
         <Tooltip
-          title={selectedCount === 0 ? 'Select at least 1 channel to start recording' : ''}
+          title={selectedCount === 0 ? (intl.get('PS_REC_SELECT_AT_LEAST_ONE') || 'Select at least 1 channel to start recording') : ''}
           disableHoverListener={selectedCount > 0}
         >
           <span>
@@ -358,7 +358,7 @@ export default function ProcessScapeRecordModal({
               }}
             >
               <span className="ps-rec-btn-dot" />
-              Start Recording ({selectedCount})
+              {intl.get('PS_REC_START_RECORDING_BTN', { count: selectedCount }) || `Start Recording (${selectedCount})`}
             </Button>
           </span>
         </Tooltip>

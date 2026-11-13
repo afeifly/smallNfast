@@ -149,12 +149,12 @@ class YAxisSetting extends Component {
     const max = parseFloat(this.maxValue);
 
     if (isNaN(min) || isNaN(max)) {
-      window.showAppNotification(intl.get('YAXIS_SETTING') || "Y-Axis Setting", "Please enter valid numbers for the Y-axis range.", "warning");
+      window.showAppNotification(intl.get('YAXIS_SETTING') || "Y-Axis Setting", intl.get('GV_YAXIS_INVALID_NUMBERS') || "Please enter valid numbers for the Y-axis range.", "warning");
       return;
     }
 
     if (min === max) {
-      window.showAppNotification(intl.get('YAXIS_SETTING') || "Y-Axis Setting", "From and To values cannot be equal.", "warning");
+      window.showAppNotification(intl.get('YAXIS_SETTING') || "Y-Axis Setting", intl.get('GV_YAXIS_EQUAL_VALUES') || "From and To values cannot be equal.", "warning");
       return;
     }
 

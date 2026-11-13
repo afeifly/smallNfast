@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import intl from 'react-intl-universal';
 import TauriSutoAPI from '../api/TauriSutoAPI';
 import BleSutoAPI from '../api/BleSutoAPI';
 import { checkIsNative, isMobile } from '../util/platform';
@@ -198,7 +199,7 @@ export default function DeviceConnectModal({
   const executeAutoDetect = async () => {
     setShowAutoDetectConfirm(false);
     setModbusDiscovering(true);
-    setModbusDiscoverStatus('Detecting device...');
+    setModbusDiscoverStatus(intl.get('DEV_DETECTING_DEVICE') || 'Detecting device...');
     setError(null);
     setSelectedScalingIdx(null);
     // Auto-detect will clear all current channels and try to fetch channels
@@ -224,17 +225,18 @@ export default function DeviceConnectModal({
       if (res && res.channels && res.channels.length > 0) {
         setModbusChannels(res.channels);
         setDetectedSutoInfo(res.deviceInfo);
-        const model = res.deviceInfo?.model || 'Device';
+        const model = res.deviceInfo?.model || (intl.get('DEV_DEVICE_DEFAULT') || 'Device');
         const serial = res.deviceInfo?.serial ? ` (${res.deviceInfo.serial})` : '';
         setModbusName(`${model}${serial}`);
         return res;
       } else {
-        setError(`No device or active channels found on ${isRtu ? modbusSerialPort : `${modbusHost}:${port}`} (Slave ID: ${slaveId}). Check connection or add channels manually.`);
+        const targetLabel = isRtu ? modbusSerialPort : `${modbusHost}:${port}`;
+        setError(intl.get('DEV_NO_ACTIVE_CHANNELS_FOUND', { target: targetLabel, slaveId }) || `No device or active channels found on ${targetLabel} (Slave ID: ${slaveId}). Check connection or add channels manually.`);
         return null;
       }
     } catch (err) {
       console.error('[DeviceConnectModal] Discovery error:', err);
-      setError('Detection Failed: ' + (err?.message || err));
+      setError((intl.get('DEV_DETECTION_FAILED_PREFIX') || 'Detection Failed: ') + (err?.message || err));
       return null;
     } finally {
       setModbusDiscovering(false);
@@ -424,7 +426,7 @@ export default function DeviceConnectModal({
                   success: Boolean(mVal && mVal.isValid),
                   value: scaledVal,
                   rawValue: rawVal,
-                  error: (mVal && mVal.isValid) ? null : 'Invalid sensor reading'
+                  error: (mVal && mVal.isValid) ? null : (intl.get('DEV_INVALID_SENSOR_READING') || 'Invalid sensor reading')
                 });
               });
               setModbusTestResults(results);
@@ -460,7 +462,7 @@ export default function DeviceConnectModal({
       }
       setModbusTestResults(results);
     } catch (err) {
-      setError('Modbus Test Failed: ' + (err?.message || err));
+      setError((intl.get('DEV_MODBUS_TEST_FAILED_PREFIX') || 'Modbus Test Failed: ') + (err?.message || err));
     } finally {
       setModbusTesting(false);
     }
@@ -481,7 +483,7 @@ export default function DeviceConnectModal({
       let devSerial = detectedSutoInfo?.serial || null;
 
       if (!channelsToUse || channelsToUse.length === 0) {
-        setError('No channels configured to connect. Add channels or click Auto-Detect.');
+        setError(intl.get('DEV_NO_CHANNELS_CONFIGURED') || 'No channels configured to connect. Add channels or click Auto-Detect.');
         setLoading(false);
         return;
       }
@@ -593,7 +595,7 @@ export default function DeviceConnectModal({
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] USB connect error:', err);
-      const msg = typeof err === 'string' ? err : (err?.message || 'Failed to connect via USB. Please verify cable.');
+      const msg = typeof err === 'string' ? err : (err?.message || (intl.get('DEV_USB_CONNECT_FAILED') || 'Failed to connect via USB. Please verify cable.'));
       setError(msg);
     } finally {
       setLoading(false);
@@ -610,14 +612,14 @@ export default function DeviceConnectModal({
       }
       const port = parseInt(tcpPort, 10);
       if (isNaN(port) || port < 1 || port > 65535) {
-        throw new Error('Please enter a valid TCP port number (1-65535)');
+        throw new Error(intl.get('DEV_INVALID_TCP_PORT') || 'Please enter a valid TCP port number (1-65535)');
       }
       const conn = await TauriSutoAPI.connectTcp(tcpHost.trim(), port);
       onConnected({ ...conn, activeTab: 'tcp', transport: 'TCP' });
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] TCP connect error:', err);
-      setError(err?.message || 'Failed to connect to Ethernet device. Check IP address and port.');
+      setError(err?.message || (intl.get('DEV_TCP_CONNECT_FAILED') || 'Failed to connect to Ethernet device. Check IP address and port.'));
     } finally {
       setLoading(false);
     }
@@ -636,7 +638,7 @@ export default function DeviceConnectModal({
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] WebAPI connect error:', err);
-      setError(err?.message || 'Failed to connect to WebAPI device. Check IP address and network connection.');
+      setError(err?.message || (intl.get('DEV_API_CONNECT_FAILED') || 'Failed to connect to WebAPI device. Check IP address and network connection.'));
     } finally {
       setLoading(false);
     }
@@ -654,7 +656,7 @@ export default function DeviceConnectModal({
     setLanScanning(true);
     setLanDiscovered([]);
     setLanSelectedIds(new Set());
-    setLanProgress({ scanned: 0, total: 1, percent: 30, currentIp: 'Broadcasting on UDP port 8800...' });
+    setLanProgress({ scanned: 0, total: 1, percent: 30, currentIp: intl.get('DEV_BROADCASTING_UDP_8800') || 'Broadcasting on UDP port 8800...' });
 
     const abortController = new AbortController();
     scanAbortRef.current = abortController;
@@ -697,7 +699,7 @@ export default function DeviceConnectModal({
         scanned: 1,
         total: 1,
         percent: 100,
-        currentIp: 'Complete'
+        currentIp: intl.get('DEV_COMPLETE') || 'Complete'
       });
     } catch (_) {
     } finally {
@@ -756,7 +758,7 @@ export default function DeviceConnectModal({
 
       onClose();
     } catch (err) {
-      setError(err?.message || 'Failed to get sensors from selected devices.');
+      setError(err?.message || (intl.get('DEV_GET_SENSORS_FAILED') || 'Failed to get sensors from selected devices.'));
     } finally {
       setLoading(false);
     }
@@ -771,7 +773,7 @@ export default function DeviceConnectModal({
       setHasScannedBle(true);
     } catch (err) {
       console.error('[DeviceConnectModal] BLE scan error:', err);
-      const msg = typeof err === 'string' ? err : (err?.message || 'Failed to scan Bluetooth devices. Ensure Bluetooth is enabled.');
+      const msg = typeof err === 'string' ? err : (err?.message || (intl.get('DEV_BLE_SCAN_FAILED') || 'Failed to scan Bluetooth devices. Ensure Bluetooth is enabled.'));
       setError(msg);
     } finally {
       setScanningBle(false);
@@ -791,7 +793,7 @@ export default function DeviceConnectModal({
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] BLE connect error:', err);
-      const msg = typeof err === 'string' ? err : (err?.message || `Failed to connect to ${dev.name}.`);
+      const msg = typeof err === 'string' ? err : (err?.message || (intl.get('DEV_BLE_CONNECT_DEVICE_FAILED', { name: dev.name }) || `Failed to connect to ${dev.name}.`));
       setError(msg);
     } finally {
       setLoading(false);
@@ -811,7 +813,7 @@ export default function DeviceConnectModal({
       onClose();
     } catch (err) {
       console.error('[DeviceConnectModal] BLE connect error:', err);
-      const msg = typeof err === 'string' ? err : (err?.message || 'Bluetooth connection cancelled or failed.');
+      const msg = typeof err === 'string' ? err : (err?.message || (intl.get('DEV_BLE_CONNECT_CANCELLED') || 'Bluetooth connection cancelled or failed.'));
       setError(msg);
     } finally {
       setLoading(false);
@@ -826,14 +828,14 @@ export default function DeviceConnectModal({
           className={`lan-detect-mode-btn ${lanDetectMode === 'auto' ? 'active' : ''}`}
           onClick={() => setLanDetectMode('auto')}
         >
-          🔍 Auto Detect
+          {intl.get('DEV_AUTO_DETECT_BTN') || '🔍 Auto Detect'}
         </button>
         <button
           type="button"
           className={`lan-detect-mode-btn ${lanDetectMode === 'manual' ? 'active' : ''}`}
           onClick={() => setLanDetectMode('manual')}
         >
-          ✏️ Manual IP Input
+          {intl.get('DEV_MANUAL_IP_BTN') || '✏️ Manual IP Input'}
         </button>
       </div>
 
@@ -850,11 +852,11 @@ export default function DeviceConnectModal({
               {lanScanning ? (
                 <>
                   <span className="lan-scan-spinner" />
-                  <span>Broadcasting &amp; Listening (Port 8800)...</span>
+                  <span>{intl.get('DEV_BROADCASTING_LISTENING_8800') || 'Broadcasting & Listening (Port 8800)...'}</span>
                 </>
               ) : (
                 <>
-                  <span>📡 Auto Detect (Broadcast)</span>
+                  <span>{intl.get('DEV_AUTO_DETECT_BROADCAST_BTN') || '📡 Auto Detect (Broadcast)'}</span>
                 </>
               )}
             </button>
@@ -869,8 +871,8 @@ export default function DeviceConnectModal({
                 />
               </div>
               <div className="lan-progress-status">
-                <span>{lanProgress.currentIp || 'Broadcasting on LAN...'}</span>
-                <span>{lanDiscovered.length} found</span>
+                <span>{lanProgress.currentIp || (intl.get('DEV_BROADCASTING_ON_LAN') || 'Broadcasting on LAN...')}</span>
+                <span>{intl.get('DEV_FOUND_COUNT', { count: lanDiscovered.length }) || `${lanDiscovered.length} found`}</span>
               </div>
             </div>
           )}
@@ -885,10 +887,10 @@ export default function DeviceConnectModal({
                   onChange={handleToggleSelectAll}
                   disabled={lanDiscovered.length === 0}
                 />
-                <span>Select All ({lanDiscovered.length})</span>
+                <span>{intl.get('DEV_SELECT_ALL_COUNT', { count: lanDiscovered.length }) || `Select All (${lanDiscovered.length})`}</span>
               </label>
               <span className="lan-discovered-count">
-                {lanSelectedIds.size} of {lanDiscovered.length} selected
+                {intl.get('DEV_SELECTED_OF_TOTAL', { selected: lanSelectedIds.size, total: lanDiscovered.length }) || `${lanSelectedIds.size} of ${lanDiscovered.length} selected`}
               </span>
             </div>
 
@@ -897,12 +899,14 @@ export default function DeviceConnectModal({
                 <div className="lan-empty-box">
                   <div style={{ fontSize: 24, marginBottom: 4 }}>📡</div>
                   <div style={{ fontWeight: 600, color: '#334155', marginBottom: 2 }}>
-                    {lanScanning ? 'Broadcasting & waiting for devices...' : 'No Devices Discovered'}
+                    {lanScanning
+                      ? (intl.get('DEV_BROADCASTING_WAITING') || 'Broadcasting & waiting for devices...')
+                      : (intl.get('DEV_NO_DEVICES_DISCOVERED') || 'No Devices Discovered')}
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>
                     {lanScanning
-                      ? 'Listening on UDP port 8800. Responding devices will appear automatically.'
-                      : 'Click "Auto Detect (Broadcast)" above to discover devices on the network.'}
+                      ? (intl.get('DEV_LISTENING_UDP_8800_HINT') || 'Listening on UDP port 8800. Responding devices will appear automatically.')
+                      : (intl.get('DEV_CLICK_AUTO_DETECT_HINT') || 'Click "Auto Detect (Broadcast)" above to discover devices on the network.')}
                   </div>
                 </div>
               ) : (
@@ -933,14 +937,14 @@ export default function DeviceConnectModal({
                           {dev.firmware && <span> · FW: {dev.firmware}</span>}
                           {dev.channelsCount > 0 && (
                             <span className="lan-device-ch-badge">
-                              {dev.channelsCount} Channels
+                              {intl.get('DEV_N_CHANNELS', { count: dev.channelsCount }) || `${dev.channelsCount} Channels`}
                             </span>
                           )}
                         </div>
                       </div>
                       <div className="lan-device-status">
                         <span className="lan-status-dot" />
-                        <span>Online</span>
+                        <span>{intl.get('DEV_ONLINE') || 'Online'}</span>
                       </div>
                     </div>
                   );
@@ -950,7 +954,7 @@ export default function DeviceConnectModal({
 
             {lanDiscovered.length > 0 && (
               <div style={{ marginTop: '10px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
-                {lanSelectedIds.size} of {lanDiscovered.length} device(s) selected
+                {intl.get('DEV_DEVICES_SELECTED_OF_TOTAL', { selected: lanSelectedIds.size, total: lanDiscovered.length }) || `${lanSelectedIds.size} of ${lanDiscovered.length} device(s) selected`}
               </div>
             )}
           </div>
@@ -960,7 +964,7 @@ export default function DeviceConnectModal({
           {isTcp ? (
             <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
               <div className="form-group" style={{ flex: 3 }}>
-                <label className="form-label">Device IP Address / Host</label>
+                <label className="form-label">{intl.get('DEV_DEVICE_IP_HOST') || 'Device IP Address / Host'}</label>
                 <input
                   type="text"
                   className="form-input"
@@ -971,7 +975,7 @@ export default function DeviceConnectModal({
                 />
               </div>
               <div className="form-group" style={{ flex: 1.5 }}>
-                <label className="form-label">Port</label>
+                <label className="form-label">{intl.get('DEV_PORT') || 'Port'}</label>
                 <input
                   type="number"
                   className="form-input"
@@ -984,7 +988,7 @@ export default function DeviceConnectModal({
             </div>
           ) : (
             <div className="form-group" style={{ marginTop: '6px' }}>
-              <label className="form-label">WebAPI IP Address / Host</label>
+              <label className="form-label">{intl.get('DEV_WEBAPI_IP_HOST') || 'WebAPI IP Address / Host'}</label>
               <input
                 type="text"
                 className="form-input"
@@ -1011,18 +1015,18 @@ export default function DeviceConnectModal({
         {!isRtu ? (
           <div className="modbus-grid-row modbus-tcp-row">
             <div className="form-group" style={{ flex: 1.5 }}>
-              <label className="form-label">Device Name</label>
+              <label className="form-label">{intl.get('DEV_DEVICE_NAME') || 'Device Name'}</label>
               <input
                 type="text"
                 className="form-input"
                 value={modbusName}
                 onChange={(e) => setModbusName(e.target.value)}
-                placeholder="Modbus TCP Device"
+                placeholder={intl.get('DEV_MODBUS_TCP_DEVICE_PLACEHOLDER') || 'Modbus TCP Device'}
                 disabled={loading}
               />
             </div>
             <div className="form-group" style={{ flex: 1.6 }}>
-              <label className="form-label">Host IP / Address</label>
+              <label className="form-label">{intl.get('DEV_HOST_IP_ADDRESS') || 'Host IP / Address'}</label>
               <input
                 type="text"
                 className="form-input"
@@ -1033,7 +1037,7 @@ export default function DeviceConnectModal({
               />
             </div>
             <div className="form-group modbus-port-group">
-              <label className="form-label">Port</label>
+              <label className="form-label">{intl.get('DEV_PORT') || 'Port'}</label>
               <input
                 type="number"
                 className="form-input"
@@ -1049,39 +1053,41 @@ export default function DeviceConnectModal({
                 className="modbus-scan-channels-link"
                 onClick={handleDetectSutoDevice}
                 disabled={loading || modbusDiscovering || !modbusHost}
-                title={!modbusHost ? "Enter Host IP first to scan SUTO channels" : "Query device at this IP and read SUTO channels"}
+                title={!modbusHost
+                  ? (intl.get('DEV_ENTER_HOST_IP_FIRST_TITLE') || "Enter Host IP first to scan SUTO channels")
+                  : (intl.get('DEV_QUERY_SUTO_CHANNELS_TITLE') || "Query device at this IP and read SUTO channels")}
               >
                 {modbusDiscovering && <span className="spinner-sm" style={{ marginRight: '6px' }} />}
-                <span>Scan Channels (SUTO only)</span>
+                <span>{intl.get('DEV_SCAN_CHANNELS_SUTO_ONLY') || 'Scan Channels (SUTO only)'}</span>
               </button>
             </div>
           </div>
         ) : (
           <div className="modbus-grid-row">
             <div className="form-group" style={{ flex: 1.4 }}>
-              <label className="form-label">Device Name</label>
+              <label className="form-label">{intl.get('DEV_DEVICE_NAME') || 'Device Name'}</label>
               <input
                 type="text"
                 className="form-input"
                 value={modbusName}
                 onChange={(e) => setModbusName(e.target.value)}
-                placeholder="Modbus RTU Device"
+                placeholder={intl.get('DEV_MODBUS_RTU_DEVICE_PLACEHOLDER') || 'Modbus RTU Device'}
                 disabled={loading}
               />
             </div>
             <div className="form-group" style={{ flex: 1.2 }}>
-              <label className="form-label">Serial / COM Port</label>
+              <label className="form-label">{intl.get('DEV_SERIAL_COM_PORT') || 'Serial / COM Port'}</label>
               <input
                 type="text"
                 className="form-input"
                 value={modbusSerialPort}
                 onChange={(e) => setModbusSerialPort(e.target.value)}
-                placeholder="COM1 or /dev/ttyUSB0"
+                placeholder={intl.get('DEV_SERIAL_PORT_PLACEHOLDER') || 'COM1 or /dev/ttyUSB0'}
                 disabled={loading}
               />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label">Baud Rate</label>
+              <label className="form-label">{intl.get('DEV_BAUD_RATE') || 'Baud Rate'}</label>
               <select
                 className="form-input"
                 value={modbusBaudRate}
@@ -1096,7 +1102,7 @@ export default function DeviceConnectModal({
               </select>
             </div>
             <div className="form-group" style={{ flex: 0.8 }}>
-              <label className="form-label">Slave Address</label>
+              <label className="form-label">{intl.get('DEV_SLAVE_ADDRESS') || 'Slave Address'}</label>
               <input
                 type="number"
                 className="form-input"
@@ -1109,16 +1115,16 @@ export default function DeviceConnectModal({
               />
             </div>
             <div className="form-group" style={{ flex: 0.9 }}>
-              <label className="form-label">Parity</label>
+              <label className="form-label">{intl.get('DEV_PARITY') || 'Parity'}</label>
               <select
                 className="form-input"
                 value={modbusParity}
                 onChange={(e) => setModbusParity(e.target.value)}
                 disabled={loading}
               >
-                <option value="none">None (8N1)</option>
-                <option value="even">Even (8E1)</option>
-                <option value="odd">Odd (8O1)</option>
+                <option value="none">{intl.get('DEV_PARITY_NONE') || 'None (8N1)'}</option>
+                <option value="even">{intl.get('DEV_PARITY_EVEN') || 'Even (8E1)'}</option>
+                <option value="odd">{intl.get('DEV_PARITY_ODD') || 'Odd (8O1)'}</option>
               </select>
             </div>
           </div>
@@ -1130,7 +1136,7 @@ export default function DeviceConnectModal({
             <div className="suto-detected-header">
               <div className="suto-detected-title-group">
                 <span className="suto-detected-badge">
-                  <span className="dot"></span> Detected Device
+                  <span className="dot"></span> {intl.get('DEV_DETECTED_DEVICE') || 'Detected Device'}
                 </span>
                 <span className="suto-detected-title">{detectedSutoInfo.model}</span>
               </div>
@@ -1139,27 +1145,27 @@ export default function DeviceConnectModal({
                 className="suto-delete-btn"
                 onClick={handleDeleteDetectedSuto}
                 disabled={loading || modbusDiscovering}
-                title="Delete detected device and configure custom/3rd-party channels"
+                title={intl.get('DEV_DELETE_DETECTED_TITLE') || "Delete detected device and configure custom/3rd-party channels"}
               >
-                🗑️ Delete
+                {intl.get('DEV_DELETE_BTN') || '🗑️ Delete'}
               </button>
             </div>
 
             <div className="suto-meta-chips">
               <div className="suto-chip">
-                <span>Serial No:</span>
+                <span>{intl.get('DEV_SERIAL_NO_LABEL') || 'Serial No:'}</span>
                 <strong>{detectedSutoInfo.serial}</strong>
               </div>
               <div className="suto-chip">
-                <span>Firmware:</span>
+                <span>{intl.get('DEV_FIRMWARE_LABEL') || 'Firmware:'}</span>
                 <strong>v{detectedSutoInfo.softwareVersion}</strong>
               </div>
               <div className="suto-chip">
-                <span>Bus Version:</span>
+                <span>{intl.get('DEV_BUS_VERSION_LABEL') || 'Bus Version:'}</span>
                 <strong>v{detectedSutoInfo.busVersion}</strong>
               </div>
               <div className="suto-chip">
-                <span>Slave Address:</span>
+                <span>{intl.get('DEV_SLAVE_ADDRESS_LABEL') || 'Slave Address:'}</span>
                 <strong>{isRtu ? modbusRtuSlaveId : (modbusSlaveId || 1)}</strong>
               </div>
             </div>
@@ -1170,19 +1176,19 @@ export default function DeviceConnectModal({
         {modbusDiscovering && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', color: '#047857', fontSize: '13px', margin: '8px 0' }}>
             <span className="spinner-sm" />
-            <span>{modbusDiscoverStatus || 'Detecting device...'}</span>
+            <span>{modbusDiscoverStatus || (intl.get('DEV_DETECTING_DEVICE') || 'Detecting device...')}</span>
           </div>
         )}
 
         {/* Channel List Header & Items */}
         <div className={`modbus-channels-header ${isFixedSuto ? 'fixed-suto-header' : ''}`}>
-          <span>Channel Name</span>
-          <span>Unit</span>
-          {!isFixedSuto && <span>Resolution</span>}
-          <span>Func</span>
-          <span>Reg Addr</span>
-          <span>Data Type</span>
-          {!isFixedSuto && <span style={{ textAlign: 'center' }}>Scaling Range</span>}
+          <span>{intl.get('DEV_CHANNEL_NAME') || 'Channel Name'}</span>
+          <span>{intl.get('DEV_UNIT') || 'Unit'}</span>
+          {!isFixedSuto && <span>{intl.get('DEV_RESOLUTION') || 'Resolution'}</span>}
+          <span>{intl.get('DEV_FUNC') || 'Func'}</span>
+          <span>{intl.get('DEV_REG_ADDR') || 'Reg Addr'}</span>
+          <span>{intl.get('DEV_DATA_TYPE') || 'Data Type'}</span>
+          {!isFixedSuto && <span style={{ textAlign: 'center' }}>{intl.get('DEV_SCALING_RANGE') || 'Scaling Range'}</span>}
           {!isFixedSuto && <span></span>}
         </div>
 
@@ -1198,11 +1204,19 @@ export default function DeviceConnectModal({
             const hasCustomScaling = !isDirect;
             const isRowSelected = selectedScalingIdx === idx;
             const scalingBadgeLabel = isDirect
-              ? '1:1 (Direct)'
+              ? (intl.get('DEV_SCALING_1_1_DIRECT') || '1:1 (Direct)')
               : `${x0}..${x1} → ${y0}..${y1}`;
             const scalingBadgeTitle = isDirect
-              ? 'Display Scaling: 1:1 direct passthrough (Click to configure 2-point calibration)'
-              : `Display Scaling: [${x0}..${x1}] → [${y0}..${y1} ${ch.unit || ''}] (Formula: y = ${Number(a1.toFixed(5))}·x + ${Number(a0.toFixed(5))})`;
+              ? (intl.get('DEV_SCALING_DIRECT_TITLE') || 'Display Scaling: 1:1 direct passthrough (Click to configure 2-point calibration)')
+              : (intl.get('DEV_SCALING_CUSTOM_TITLE', {
+                  x0,
+                  x1,
+                  y0,
+                  y1,
+                  unit: ch.unit || '',
+                  a1: Number(a1.toFixed(5)),
+                  a0: Number(a0.toFixed(5))
+                }) || `Display Scaling: [${x0}..${x1}] → [${y0}..${y1} ${ch.unit || ''}] (Formula: y = ${Number(a1.toFixed(5))}·x + ${Number(a0.toFixed(5))})`);
 
             return (
               <div key={ch.id || idx} className={`modbus-channel-row ${isRowSelected ? 'selected-scaling-row' : ''} ${isFixedSuto ? 'fixed-suto-row' : ''}`}>
@@ -1211,7 +1225,7 @@ export default function DeviceConnectModal({
                   className="modbus-input-sm"
                   value={ch.name}
                   onChange={(e) => handleUpdateModbusChannel(idx, 'name', e.target.value)}
-                  placeholder="Name"
+                  placeholder={intl.get('DEV_NAME_PLACEHOLDER') || "Name"}
                   disabled={loading}
                 />
                 <input
@@ -1219,7 +1233,7 @@ export default function DeviceConnectModal({
                   className="modbus-input-sm"
                   value={ch.unit}
                   onChange={(e) => handleUpdateModbusChannel(idx, 'unit', e.target.value)}
-                  placeholder="Unit"
+                  placeholder={intl.get('DEV_UNIT') || "Unit"}
                   disabled={loading || isFixedSuto}
                   readOnly={isFixedSuto}
                 />
@@ -1229,7 +1243,7 @@ export default function DeviceConnectModal({
                     value={ch.resolution !== undefined ? ch.resolution : 2}
                     onChange={(e) => handleUpdateModbusChannel(idx, 'resolution', parseInt(e.target.value, 10))}
                     disabled={loading}
-                    title="Channel display decimal resolution"
+                    title={intl.get('DEV_RESOLUTION_TITLE') || "Channel display decimal resolution"}
                   >
                     <option value={0}>0 (1)</option>
                     <option value={1}>0.1</option>
@@ -1298,7 +1312,7 @@ export default function DeviceConnectModal({
                     type="button"
                     className="modbus-del-btn"
                     onClick={() => handleDeleteModbusChannel(idx)}
-                    title="Delete channel"
+                    title={intl.get('DEV_DELETE_CHANNEL_TITLE') || "Delete channel"}
                     disabled={loading || modbusChannels.length <= 1}
                   >
                     ✕
@@ -1317,7 +1331,7 @@ export default function DeviceConnectModal({
               onClick={handleAddModbusChannel}
               disabled={loading}
             >
-              <span>+</span> Add Channel
+              <span>+</span> {intl.get('DEV_ADD_CHANNEL') || 'Add Channel'}
             </button>
           )}
           <button
@@ -1325,9 +1339,9 @@ export default function DeviceConnectModal({
             className="modbus-add-ch-btn"
             onClick={handleTestModbusChannels}
             disabled={loading || modbusTesting || modbusChannels.length === 0}
-            title="Read current values from configured registers"
+            title={intl.get('DEV_TEST_READ_TITLE') || "Read current values from configured registers"}
           >
-            {modbusTesting ? '⏳ Testing Read...' : '🔍 Test Read'}
+            {modbusTesting ? (intl.get('DEV_TESTING_READ') || '⏳ Testing Read...') : (intl.get('DEV_TEST_READ') || '🔍 Test Read')}
           </button>
         </div>
 
@@ -1335,8 +1349,8 @@ export default function DeviceConnectModal({
         {modbusTestResults && (
           <div className="modbus-test-box">
             <div className="modbus-test-header">
-              <span>Live Register Read Results:</span>
-              <span>{modbusTestResults.filter(r => r.success).length} of {modbusTestResults.length} OK</span>
+              <span>{intl.get('DEV_LIVE_REGISTER_RESULTS') || 'Live Register Read Results:'}</span>
+              <span>{intl.get('DEV_N_OF_TOTAL_OK', { ok: modbusTestResults.filter(r => r.success).length, total: modbusTestResults.length }) || `${modbusTestResults.filter(r => r.success).length} of ${modbusTestResults.length} OK`}</span>
             </div>
             <div className="modbus-test-results-list">
               {modbusTestResults.map((tr, i) => (
@@ -1362,8 +1376,8 @@ export default function DeviceConnectModal({
         {/* Header */}
         <div className="device-connect-header">
           <div>
-            <h3>Connect Hardware</h3>
-            <p>Select your communication medium to initiate live monitoring</p>
+            <h3>{intl.get('DEV_CONNECT_HARDWARE') || 'Connect Hardware'}</h3>
+            <p>{intl.get('DEV_SELECT_COMM_MEDIUM') || 'Select your communication medium to initiate live monitoring'}</p>
           </div>
           <button className="device-connect-close" onClick={onClose}>✕</button>
         </div>
@@ -1377,35 +1391,35 @@ export default function DeviceConnectModal({
                 onClick={() => handleSwitchTab('usb')}
               >
                 <span>🔌</span>
-                <span>{isMobile ? 'USB OTG' : 'Direct USB'}</span>
+                <span>{isMobile ? (intl.get('DEV_USB_OTG') || 'USB OTG') : (intl.get('DIRECT_USB') || 'Direct USB')}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
                 onClick={() => handleSwitchTab('ble')}
               >
                 <span>📶</span>
-                <span>Bluetooth (BLE)</span>
+                <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
                 onClick={() => handleSwitchTab('tcp')}
               >
                 <span>🌐</span>
-                <span>Ethernet TCP</span>
+                <span>{intl.get('ETHERNET_TCP') || 'Ethernet TCP'}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'api' ? 'active' : ''}`}
                 onClick={() => handleSwitchTab('api')}
               >
                 <span>⚡</span>
-                <span>WebAPI</span>
+                <span>{intl.get('DEV_WEBAPI') || 'WebAPI'}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'modbus' ? 'active' : ''}`}
                 onClick={() => handleSwitchTab('modbus')}
               >
                 <span>📟</span>
-                <span>Modbus (TCP/RTU)</span>
+                <span>{intl.get('DEV_MODBUS_TCP_RTU') || 'Modbus (TCP/RTU)'}</span>
               </button>
             </>
           ) : (
@@ -1415,7 +1429,7 @@ export default function DeviceConnectModal({
                 onClick={() => handleSwitchTab('ble')}
               >
                 <span>📶</span>
-                <span>Bluetooth (BLE)</span>
+                <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
               </button>
             </>
           )}
@@ -1426,8 +1440,8 @@ export default function DeviceConnectModal({
           {tab === 'usb' && (
             <p className="tab-desc">
               {isMobile
-                ? 'Connect via USB-C OTG cable to industrial sensor. When prompted, tap "OK" to grant USB permission.'
-                : 'Direct driver connection. Automatically scans for connected sensor.'}
+                ? (intl.get('DEV_USB_OTG_DESC') || 'Connect via USB-C OTG cable to industrial sensor. When prompted, tap "OK" to grant USB permission.')
+                : (intl.get('DEV_USB_DIRECT_DESC') || 'Direct driver connection. Automatically scans for connected sensor.')}
             </p>
           )}
 
@@ -1437,9 +1451,9 @@ export default function DeviceConnectModal({
             <>
               <p className="tab-desc">
                 {isNative
-                  ? 'Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via native Bluetooth.'
+                  ? (intl.get('DEV_BLE_NATIVE_DESC') || 'Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via native Bluetooth.')
                   : (
-                    <>Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via browser <strong>Web Bluetooth</strong>.</>
+                    <>{intl.get('DEV_BLE_WEB_DESC_PREFIX') || 'Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via browser'} <strong>{intl.get('DEV_WEB_BLUETOOTH') || 'Web Bluetooth'}</strong>.</>
                   )}
               </p>
 
@@ -1447,10 +1461,10 @@ export default function DeviceConnectModal({
                 <span>ℹ️</span>
                 <span>
                   {isNative
-                    ? 'Native Bluetooth Low Energy (BLE) engine is active and ready.'
+                    ? (intl.get('DEV_BLE_NATIVE_READY') || 'Native Bluetooth Low Energy (BLE) engine is active and ready.')
                     : BleSutoAPI.isSupported()
-                      ? 'Web Bluetooth is supported in your current browser.'
-                      : (BleSutoAPI.getSupportIssue() || 'Web Bluetooth requires Chrome or a Chromium-based browser.')}
+                      ? (intl.get('DEV_BLE_WEB_SUPPORTED') || 'Web Bluetooth is supported in your current browser.')
+                      : (BleSutoAPI.getSupportIssue() || (intl.get('DEV_BLE_WEB_REQUIRES_CHROME') || 'Web Bluetooth requires Chrome or a Chromium-based browser.'))}
                 </span>
               </div>
 
@@ -1462,27 +1476,27 @@ export default function DeviceConnectModal({
                     onChange={(e) => setShowAllBle(e.target.checked)}
                     disabled={loading || scanningBle}
                   />
-                  <span>Show all nearby Bluetooth devices (unfiltered)</span>
+                  <span>{intl.get('DEV_BLE_SHOW_ALL') || 'Show all nearby Bluetooth devices (unfiltered)'}</span>
                 </label>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', marginLeft: '24px' }}>
                   {showAllBle
-                    ? 'Scanning all nearby Bluetooth devices.'
-                    : 'Default: Filtered by compatible sensor hardware services for quick selection.'}
+                    ? (intl.get('DEV_BLE_SCANNING_ALL_HINT') || 'Scanning all nearby Bluetooth devices.')
+                    : (intl.get('DEV_BLE_FILTERED_HINT') || 'Default: Filtered by compatible sensor hardware services for quick selection.')}
                 </div>
               </div>
 
               {isNative && bleDevices.length > 0 && (
                 <div className="ble-device-list">
                   <div className="ble-device-list-header">
-                    Discovered BLE Devices ({bleDevices.length}):
+                    {intl.get('DEV_DISCOVERED_BLE_DEVICES', { count: bleDevices.length }) || `Discovered BLE Devices (${bleDevices.length}):`}
                   </div>
                   <div className="ble-device-items">
                     {bleDevices.map((dev) => (
                       <div key={dev.id} className="ble-device-card">
                         <div className="ble-card-left">
                           <div className="ble-card-title">
-                            {dev.name || 'Unnamed Sensor'}
-                            {dev.is_suto && <span className="suto-pill">Sensor</span>}
+                            {dev.name || (intl.get('DEV_UNNAMED_SENSOR') || 'Unnamed Sensor')}
+                            {dev.is_suto && <span className="suto-pill">{intl.get('DEV_SENSOR_BADGE') || 'Sensor'}</span>}
                           </div>
                           <div className="ble-card-id">{dev.id}</div>
                         </div>
@@ -1495,7 +1509,7 @@ export default function DeviceConnectModal({
                             onClick={() => handleConnectBleDevice(dev)}
                             disabled={loading || scanningBle}
                           >
-                            Connect
+                            {intl.get('DEV_CONNECT') || 'Connect'}
                           </button>
                         </div>
                       </div>
@@ -1506,7 +1520,7 @@ export default function DeviceConnectModal({
 
               {isNative && hasScannedBle && bleDevices.length === 0 && !scanningBle && (
                 <div className="ble-empty-notice">
-                  No nearby BLE sensors found. Make sure the sensor is powered on, Bluetooth is broadcasting, and try scanning again.
+                  {intl.get('DEV_NO_BLE_SENSORS_FOUND') || 'No nearby BLE sensors found. Make sure the sensor is powered on, Bluetooth is broadcasting, and try scanning again.'}
                 </div>
               )}
             </>
@@ -1530,7 +1544,7 @@ export default function DeviceConnectModal({
             onClick={onClose}
             disabled={loading}
           >
-            Close
+            {intl.get('CLOSE') || 'Close'}
           </button>
 
           {tab === 'usb' && (
@@ -1539,7 +1553,11 @@ export default function DeviceConnectModal({
               onClick={handleConnectUsb}
               disabled={loading}
             >
-              {loading ? 'Connecting via USB...' : (isMobile ? '🔌 Detect & Connect USB OTG' : '🔌 Detect & Connect USB')}
+              {loading
+                ? (intl.get('DEV_CONNECTING_USB') || 'Connecting via USB...')
+                : (isMobile
+                  ? (intl.get('DEV_DETECT_CONNECT_USB_OTG') || '🔌 Detect & Connect USB OTG')
+                  : (intl.get('DEV_DETECT_CONNECT_USB') || '🔌 Detect & Connect USB'))}
             </button>
           )}
 
@@ -1551,7 +1569,9 @@ export default function DeviceConnectModal({
                 onClick={handleGetSensors}
                 disabled={loading || lanSelectedIds.size === 0}
               >
-                {loading ? 'Retrieving Sensors...' : `📥 Get Sensors (${lanSelectedIds.size} Device${lanSelectedIds.size === 1 ? '' : 's'})`}
+                {loading
+                  ? (intl.get('DEV_RETRIEVING_SENSORS') || 'Retrieving Sensors...')
+                  : (intl.get('DEV_GET_SENSORS_BTN', { count: lanSelectedIds.size, plural: lanSelectedIds.size === 1 ? '' : 's' }) || `📥 Get Sensors (${lanSelectedIds.size} Device${lanSelectedIds.size === 1 ? '' : 's'})`)}
               </button>
             ) : (
               <button
@@ -1560,7 +1580,9 @@ export default function DeviceConnectModal({
                 onClick={handleConnectTcp}
                 disabled={loading || !tcpHost.trim()}
               >
-                {loading ? 'Connecting...' : '🌐 Connect via Ethernet TCP'}
+                {loading
+                  ? (intl.get('DEV_CONNECTING') || 'Connecting...')
+                  : (intl.get('DEV_CONNECT_ETHERNET_TCP') || '🌐 Connect via Ethernet TCP')}
               </button>
             )
           )}
@@ -1573,7 +1595,9 @@ export default function DeviceConnectModal({
                 onClick={handleGetSensors}
                 disabled={loading || lanSelectedIds.size === 0}
               >
-                {loading ? 'Retrieving Sensors...' : `📥 Get Sensors (${lanSelectedIds.size} Device${lanSelectedIds.size === 1 ? '' : 's'})`}
+                {loading
+                  ? (intl.get('DEV_RETRIEVING_SENSORS') || 'Retrieving Sensors...')
+                  : (intl.get('DEV_GET_SENSORS_BTN', { count: lanSelectedIds.size, plural: lanSelectedIds.size === 1 ? '' : 's' }) || `📥 Get Sensors (${lanSelectedIds.size} Device${lanSelectedIds.size === 1 ? '' : 's'})`)}
               </button>
             ) : (
               <button
@@ -1582,7 +1606,9 @@ export default function DeviceConnectModal({
                 onClick={handleConnectApi}
                 disabled={loading || !apiHost.trim()}
               >
-                {loading ? 'Connecting...' : '⚡ Connect to WebAPI'}
+                {loading
+                  ? (intl.get('DEV_CONNECTING') || 'Connecting...')
+                  : (intl.get('DEV_CONNECT_WEBAPI') || '⚡ Connect to WebAPI')}
               </button>
             )
           )}
@@ -1596,8 +1622,10 @@ export default function DeviceConnectModal({
                 disabled={loading || scanningBle}
               >
                 {scanningBle
-                  ? '📡 Scanning nearby devices (3s)...'
-                  : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan BLE Sensors')}
+                  ? (intl.get('DEV_SCANNING_NEARBY_BLE') || '📡 Scanning nearby devices (3s)...')
+                  : (showAllBle
+                    ? (intl.get('DEV_SCAN_ALL_BLE') || '📶 Scan All BLE Devices')
+                    : (intl.get('DEV_SCAN_BLE_SENSORS') || '📶 Scan BLE Sensors'))}
               </button>
             ) : (
               <button
@@ -1606,7 +1634,11 @@ export default function DeviceConnectModal({
                 onClick={handleConnectBle}
                 disabled={loading || !BleSutoAPI.isSupported()}
               >
-                {loading ? 'Pairing Bluetooth...' : (showAllBle ? '📶 Scan All BLE Devices' : '📶 Scan BLE Sensors')}
+                {loading
+                  ? (intl.get('DEV_PAIRING_BLUETOOTH') || 'Pairing Bluetooth...')
+                  : (showAllBle
+                    ? (intl.get('DEV_SCAN_ALL_BLE') || '📶 Scan All BLE Devices')
+                    : (intl.get('DEV_SCAN_BLE_SENSORS') || '📶 Scan BLE Sensors'))}
               </button>
             )
           )}
@@ -1618,7 +1650,9 @@ export default function DeviceConnectModal({
               onClick={handleConnectModbus}
               disabled={loading || modbusTesting || modbusDiscovering || modbusChannels.length === 0}
             >
-              {loading ? 'Connecting...' : 'Connect to device'}
+              {loading
+                ? (intl.get('DEV_CONNECTING') || 'Connecting...')
+                : (intl.get('DEV_CONNECT_TO_DEVICE') || 'Connect to device')}
             </button>
           )}
         </div>
@@ -1631,10 +1665,10 @@ export default function DeviceConnectModal({
                 <div className="modbus-scaling-dialog-title-box">
                   <span className="modbus-scaling-dialog-icon">📐</span>
                   <div>
-                    <div className="modbus-scaling-dialog-title">Display Scaling</div>
+                    <div className="modbus-scaling-dialog-title">{intl.get('DEV_DISPLAY_SCALING') || 'Display Scaling'}</div>
                     <div className="modbus-scaling-dialog-subtitle">
-                      Channel: <strong>{selectedModbusChannel.name || `Channel ${selectedScalingIdx + 1}`}</strong>
-                      {selectedModbusChannel.unit ? ` (${selectedModbusChannel.unit})` : ''} • Reg Addr: <code>0x{(selectedModbusChannel.regAddr ?? 0).toString(16).toUpperCase().padStart(4, '0')}</code>
+                      {intl.get('DEV_CHANNEL_LABEL') || 'Channel:'} <strong>{selectedModbusChannel.name || `Channel ${selectedScalingIdx + 1}`}</strong>
+                      {selectedModbusChannel.unit ? ` (${selectedModbusChannel.unit})` : ''} • {intl.get('DEV_REG_ADDR_LABEL') || 'Reg Addr:'} <code>0x{(selectedModbusChannel.regAddr ?? 0).toString(16).toUpperCase().padStart(4, '0')}</code>
                     </div>
                   </div>
                 </div>
@@ -1642,7 +1676,7 @@ export default function DeviceConnectModal({
                   type="button"
                   className="modbus-scaling-dialog-close"
                   onClick={() => setSelectedScalingIdx(null)}
-                  title="Close dialog"
+                  title={intl.get('DEV_CLOSE_DIALOG') || "Close dialog"}
                 >
                   ✕
                 </button>
@@ -1652,26 +1686,26 @@ export default function DeviceConnectModal({
                 {/* Mathematical concept explanation */}
                 <div className="modbus-scaling-concept-card">
                   <div className="concept-math">
-                    <span>Formula:</span>
+                    <span>{intl.get('DEV_FORMULA_LABEL') || 'Formula:'}</span>
                     <code>y = a₁ · x + a₀</code>
                   </div>
                   <div className="concept-desc">
-                    Two-point linear calibration mapping raw <strong>Input Range (X)</strong> to scaled <strong>Display Output (Y)</strong>.
+                    {intl.get('DEV_SCALING_CONCEPT_PART1') || 'Two-point linear calibration mapping raw '}<strong>{intl.get('DEV_INPUT_RANGE_X') || 'Input Range (X)'}</strong>{intl.get('DEV_SCALING_CONCEPT_PART2') || ' to scaled '}<strong>{intl.get('DEV_DISPLAY_OUTPUT_Y') || 'Display Output (Y)'}</strong>.
                   </div>
                 </div>
 
                 {/* 2-Point Table Grid */}
                 <div className="modbus-scaling-grid-table">
                   <div className="modbus-grid-col-header">
-                    <span>Calibration Point</span>
-                    <span>Input Range (X) <small>Sensor / Raw Signal</small></span>
+                    <span>{intl.get('DEV_CALIBRATION_POINT') || 'Calibration Point'}</span>
+                    <span>{intl.get('DEV_INPUT_RANGE_X') || 'Input Range (X)'} <small>{intl.get('DEV_SENSOR_RAW_SIGNAL') || 'Sensor / Raw Signal'}</small></span>
                     <span></span>
-                    <span>Display Scaling (Y) <small>Engineering Value</small></span>
+                    <span>{intl.get('DEV_DISPLAY_SCALING_Y') || 'Display Scaling (Y)'} <small>{intl.get('DEV_ENGINEERING_VALUE') || 'Engineering Value'}</small></span>
                   </div>
 
                   {/* Low Point (X0 -> Y0) */}
                   <div className="modbus-grid-row">
-                    <div className="grid-point-tag low">Low (0)</div>
+                    <div className="grid-point-tag low">{intl.get('DEV_LOW_0') || 'Low (0)'}</div>
                     <div className="grid-input-wrapper">
                       <input
                         type="number"
@@ -1700,7 +1734,7 @@ export default function DeviceConnectModal({
 
                   {/* High Point (X1 -> Y1) */}
                   <div className="modbus-grid-row">
-                    <div className="grid-point-tag high">High (1)</div>
+                    <div className="grid-point-tag high">{intl.get('DEV_HIGH_1') || 'High (1)'}</div>
                     <div className="grid-input-wrapper">
                       <input
                         type="number"
@@ -1730,21 +1764,21 @@ export default function DeviceConnectModal({
 
                 {/* Quick Presets */}
                 <div className="modbus-scaling-presets-section">
-                  <div className="modbus-preset-header">Quick Presets:</div>
+                  <div className="modbus-preset-header">{intl.get('DEV_QUICK_PRESETS') || 'Quick Presets:'}</div>
                   <div className="modbus-scaling-presets-pills">
                     <button
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('direct') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'direct')}
-                      title="Direct 1:1 passthrough (no scaling)"
+                      title={intl.get('DEV_PRESET_DIRECT_TITLE') || "Direct 1:1 passthrough (no scaling)"}
                     >
-                      1:1 Direct
+                      {intl.get('DEV_PRESET_1_1_DIRECT') || '1:1 Direct'}
                     </button>
                     <button
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('4_20ma') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, '4_20ma')}
-                      title="Current loop: 4-20 mA input"
+                      title={intl.get('DEV_PRESET_4_20MA_TITLE') || "Current loop: 4-20 mA input"}
                     >
                       4 - 20 mA
                     </button>
@@ -1752,7 +1786,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('0_20ma') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_20ma')}
-                      title="Current loop: 0-20 mA input"
+                      title={intl.get('DEV_PRESET_0_20MA_TITLE') || "Current loop: 0-20 mA input"}
                     >
                       0 - 20 mA
                     </button>
@@ -1760,7 +1794,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('0_10v') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_10v')}
-                      title="Voltage signal: 0-10 V input"
+                      title={intl.get('DEV_PRESET_0_10V_TITLE') || "Voltage signal: 0-10 V input"}
                     >
                       0 - 10 V
                     </button>
@@ -1768,7 +1802,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('0_10000') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_10000')}
-                      title="Raw integer register counts: 0 to 10,000"
+                      title={intl.get('DEV_PRESET_0_10000_TITLE') || "Raw integer register counts: 0 to 10,000"}
                     >
                       0 - 10,000
                     </button>
@@ -1776,7 +1810,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('0_65535') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_65535')}
-                      title="16-bit UINT register counts: 0 to 65,535"
+                      title={intl.get('DEV_PRESET_0_65535_TITLE') || "16-bit UINT register counts: 0 to 65,535"}
                     >
                       0 - 65,535
                     </button>
@@ -1784,7 +1818,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('div_10') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'div_10')}
-                      title="Divide raw register by 10 (0.1×)"
+                      title={intl.get('DEV_PRESET_DIV_10_TITLE') || "Divide raw register by 10 (0.1×)"}
                     >
                       0.1 (÷10)
                     </button>
@@ -1792,7 +1826,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('div_100') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'div_100')}
-                      title="Divide raw register by 100 (0.01×)"
+                      title={intl.get('DEV_PRESET_DIV_100_TITLE') || "Divide raw register by 100 (0.01×)"}
                     >
                       0.01 (÷100)
                     </button>
@@ -1800,7 +1834,7 @@ export default function DeviceConnectModal({
                       type="button"
                       className={`scaling-pill-btn ${isPresetActive('div_1000') ? 'active' : ''}`}
                       onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'div_1000')}
-                      title="Divide raw register by 1,000 (0.001×)"
+                      title={intl.get('DEV_PRESET_DIV_1000_TITLE') || "Divide raw register by 1,000 (0.001×)"}
                     >
                       0.001 (÷1000)
                     </button>
@@ -1810,16 +1844,16 @@ export default function DeviceConnectModal({
                 {/* Derived Parameters & Live Verification */}
                 <div className="modbus-scaling-calc-box">
                   <div className="calc-details-col">
-                    <span className="calc-label">Calculated Parameters:</span>
+                    <span className="calc-label">{intl.get('DEV_CALCULATED_PARAMETERS') || 'Calculated Parameters:'}</span>
                     <div className="calc-pills">
-                      <span>a₁ (Slope): <strong>{formatCoeff(selectedModbusChannel.a1, 1)}</strong></span>
-                      <span>a₀ (Offset): <strong>{formatCoeff(selectedModbusChannel.a0, 0)}</strong></span>
+                      <span>{intl.get('DEV_SLOPE_A1') || 'a₁ (Slope):'} <strong>{formatCoeff(selectedModbusChannel.a1, 1)}</strong></span>
+                      <span>{intl.get('DEV_OFFSET_A0') || 'a₀ (Offset):'} <strong>{formatCoeff(selectedModbusChannel.a0, 0)}</strong></span>
                     </div>
                   </div>
                   <div className="calc-test-col">
-                    <span className="calc-label">Interactive Test Conversion:</span>
+                    <span className="calc-label">{intl.get('DEV_INTERACTIVE_TEST_CONVERSION') || 'Interactive Test Conversion:'}</span>
                     <div className="calc-test-row">
-                      <span className="calc-test-prefix">Raw X:</span>
+                      <span className="calc-test-prefix">{intl.get('DEV_RAW_X_LABEL') || 'Raw X:'}</span>
                       <input
                         type="number"
                         step="any"
@@ -1842,16 +1876,16 @@ export default function DeviceConnectModal({
                   type="button"
                   className="scaling-dialog-btn-secondary"
                   onClick={() => handleResetChannelScaling(selectedScalingIdx)}
-                  title="Reset back to 1:1 direct passthrough"
+                  title={intl.get('DEV_RESET_SCALING_TITLE') || "Reset back to 1:1 direct passthrough"}
                 >
-                  Reset to 1:1
+                  {intl.get('DEV_RESET_TO_1_1') || 'Reset to 1:1'}
                 </button>
                 <button
                   type="button"
                   className="scaling-dialog-btn-primary"
                   onClick={() => setSelectedScalingIdx(null)}
                 >
-                  Done
+                  {intl.get('DEV_DONE') || 'Done'}
                 </button>
               </div>
             </div>
@@ -1863,13 +1897,15 @@ export default function DeviceConnectModal({
           <div className="modbus-confirm-overlay" onClick={() => setShowAutoDetectConfirm(false)}>
             <div className="modbus-confirm-card" onClick={(e) => e.stopPropagation()}>
               <div className="modbus-confirm-icon">⚠️</div>
-              <div className="modbus-confirm-title">Replace Current Channels?</div>
+              <div className="modbus-confirm-title">{intl.get('DEV_REPLACE_CHANNELS_TITLE') || 'Replace Current Channels?'}</div>
               <div className="modbus-confirm-msg">
                 <p style={{ margin: '0 0 10px 0' }}>
-                  Scanning will clear the current channel list ({modbusChannels.length} channel{modbusChannels.length === 1 ? '' : 's'}) and query <strong>{modbusHost || 'the device'}</strong> to discover channels.
+                  {intl.get('DEV_REPLACE_CHANNELS_MSG_PART1', { count: modbusChannels.length, plural: modbusChannels.length === 1 ? '' : 's' }) || `Scanning will clear the current channel list (${modbusChannels.length} channel${modbusChannels.length === 1 ? '' : 's'}) and query `}
+                  <strong>{modbusHost || (intl.get('DEV_THE_DEVICE') || 'the device')}</strong>
+                  {intl.get('DEV_REPLACE_CHANNELS_MSG_PART2') || ' to discover channels.'}
                 </p>
                 <p style={{ margin: 0, fontSize: 12, color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px 10px', lineHeight: 1.45, textAlign: 'left' }}>
-                  ℹ️ <strong>Note:</strong> Auto-fetching channel structures is only supported on certain SUTO devices and gateways with built-in metadata support. Standard 3rd-party Modbus devices should be configured manually using &ldquo;Add Channel&rdquo;.
+                  ℹ️ <strong>{intl.get('DEV_NOTE_LABEL') || 'Note:'}</strong> {intl.get('DEV_REPLACE_CHANNELS_NOTE') || 'Auto-fetching channel structures is only supported on certain SUTO devices and gateways with built-in metadata support. Standard 3rd-party Modbus devices should be configured manually using \u201cAdd Channel\u201d.'}
                 </p>
               </div>
               <div className="modbus-confirm-actions">
@@ -1878,14 +1914,14 @@ export default function DeviceConnectModal({
                   className="modbus-confirm-cancel-btn"
                   onClick={() => setShowAutoDetectConfirm(false)}
                 >
-                  Cancel
+                  {intl.get('CANCEL') || 'Cancel'}
                 </button>
                 <button
                   type="button"
                   className="modbus-confirm-proceed-btn"
                   onClick={executeAutoDetect}
                 >
-                  Yes, Scan Channels
+                  {intl.get('DEV_YES_SCAN_CHANNELS') || 'Yes, Scan Channels'}
                 </button>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
+import intl from 'react-intl-universal';
 import Dialog from '@mui/material/Dialog';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
@@ -154,7 +155,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
     if (!baseMeta || !baseMeta.channels || !formulaExpr.trim()) {
       setFormulaValidation({
         valid: false,
-        error: 'Enter a formula expression (e.g. ch1 * 2, ch1 + ch2)',
+        error: intl.get('MOD_ENTER_FORMULA_EXPR') || 'Enter a formula expression (e.g. ch1 * 2, ch1 + ch2)',
         sampleCalc: '',
       });
       return;
@@ -168,7 +169,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       setFormulaValidation({
         valid: true,
         error: null,
-        sampleCalc: `Cumulative integration ∫(channel × dt) — accumulates over all samples. Result unit = source unit × seconds.`,
+        sampleCalc: intl.get('MOD_INTEGRAL_CALC_DESC') || `Cumulative integration ∫(channel × dt) — accumulates over all samples. Result unit = source unit × seconds.`,
       });
     } else {
       // Sample calculation using first sample or min values
@@ -178,8 +179,8 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       });
       const calcResult = res.eval(sampleVals);
       const sampleStr = calcResult !== null && !isNaN(calcResult)
-        ? `Syntax valid. Sample #1 result: ${calcResult.toFixed(2)}`
-        : 'Syntax valid';
+        ? (intl.get('MOD_SYNTAX_VALID_SAMPLE', { result: calcResult.toFixed(2) }) || `Syntax valid. Sample #1 result: ${calcResult.toFixed(2)}`)
+        : (intl.get('MOD_SYNTAX_VALID') || 'Syntax valid');
       setFormulaValidation({ valid: true, error: null, sampleCalc: sampleStr });
     }
   }, [formulaExpr, baseMeta]);
@@ -415,7 +416,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
         .attr('fill', '#00ac86')
         .attr('font-size', 10)
         .attr('font-weight', 700)
-        .text('EXTENSION ZONE');
+        .text(intl.get('MOD_EXTENSION_ZONE') || 'EXTENSION ZONE');
     }
 
     // Shaded cutdown area & split vertical line
@@ -450,7 +451,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
         .attr('fill', '#ef4444')
         .attr('font-size', 10)
         .attr('font-weight', 700)
-        .text('CUTDOWN ZONE (TRIMMED)');
+        .text(intl.get('MOD_CUTDOWN_ZONE') || 'CUTDOWN ZONE (TRIMMED)');
     }
 
     // Axes
@@ -597,7 +598,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
     if (window.showAppNotification) {
       window.showAppNotification(
-        'Formula Applied',
+        intl.get('MOD_NOTIFY_FORMULA_APPLIED') || 'Formula Applied',
         formulaMode === 'replace'
           ? `Replaced ${targetCh ? targetCh.name : `ch${formulaTargetChId}`} with ${formulaExpr.trim()}`
           : `Created new channel "${newFormula.name}"`,
@@ -711,7 +712,11 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
   const handleSaveToOldFile = async () => {
     if (totalModifiedCells === 0) {
       if (window.showAppNotification) {
-        window.showAppNotification('No Changes', 'No values have been modified to save.', 'info');
+        window.showAppNotification(
+          intl.get('MOD_NOTIFY_NO_CHANGES') || 'No Changes',
+          intl.get('MOD_NOTIFY_NO_VALUES_MODIFIED') || 'No values have been modified to save.',
+          'info'
+        );
       }
       return;
     }
@@ -722,7 +727,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       if (res && res.success) {
         if (window.showAppNotification) {
           window.showAppNotification(
-            res.persisted ? 'Saved to File' : 'Updated In-Memory',
+            res.persisted
+              ? (intl.get('MOD_NOTIFY_SAVED_TO_FILE') || 'Saved to File')
+              : (intl.get('MOD_NOTIFY_UPDATED_IN_MEMORY') || 'Updated In-Memory'),
             res.persisted
               ? `Successfully saved ${res.count || totalModifiedCells} modified values directly to the file.`
               : `Updated ${totalModifiedCells} values in memory. Use "Save as New File" to export a file copy.`,
@@ -732,13 +739,21 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
         await loadRealtimeRows(realtimeStartSample, realtimePageSize);
       } else {
         if (window.showAppNotification) {
-          window.showAppNotification('Notice', 'Cannot overwrite file directly. Please use "Save as New File".', 'warning');
+          window.showAppNotification(
+            intl.get('MOD_NOTIFY_NOTICE') || 'Notice',
+            intl.get('MOD_NOTIFY_CANNOT_OVERWRITE') || 'Cannot overwrite file directly. Please use "Save as New File".',
+            'warning'
+          );
         }
       }
     } catch (err) {
       console.error('[DataModifierModal] handleSaveToOldFile error:', err);
       if (window.showAppNotification) {
-        window.showAppNotification('Save Error', err.message || 'Failed to save to old file', 'error');
+        window.showAppNotification(
+          intl.get('MOD_NOTIFY_SAVE_ERROR') || 'Save Error',
+          err.message || (intl.get('MOD_NOTIFY_SAVE_FAILED') || 'Failed to save to old file'),
+          'error'
+        );
       }
     } finally {
       setIsSavingOld(false);
@@ -749,7 +764,11 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
     setCellOverrides({});
     await loadRealtimeRows(realtimeStartSample, realtimePageSize);
     if (window.showAppNotification) {
-      window.showAppNotification('Edits Reset', 'All unsaved modifications have been cleared.', 'info');
+      window.showAppNotification(
+        intl.get('MOD_NOTIFY_EDITS_RESET') || 'Edits Reset',
+        intl.get('MOD_NOTIFY_EDITS_CLEARED') || 'All unsaved modifications have been cleared.',
+        'info'
+      );
     }
   };
 
@@ -794,8 +813,8 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       if (res && res.success) {
         if (window.showAppNotification) {
           window.showAppNotification(
-            'Export Successful',
-            `Exported modified file as ${res.fileName}`,
+            intl.get('MOD_NOTIFY_EXPORT_SUCCESS') || 'Export Successful',
+            intl.get('MOD_NOTIFY_EXPORTED_AS', { fileName: res.fileName }) || `Exported modified file as ${res.fileName}`,
             'success'
           );
         }
@@ -821,7 +840,11 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       setIsExporting(false);
       console.error('[DataModifierModal] Export error:', err);
       if (window.showAppNotification) {
-        window.showAppNotification('Export Error', err.message || 'Failed to export file', 'error');
+        window.showAppNotification(
+          intl.get('MOD_NOTIFY_EXPORT_ERROR') || 'Export Error',
+          err.message || (intl.get('MOD_NOTIFY_EXPORT_FAILED') || 'Failed to export file'),
+          'error'
+        );
       }
     }
   };
@@ -847,14 +870,13 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
       <div className="modifier-header">
         <div className="modifier-header-title">
           <AutoFixHighIcon style={{ color: '#00ac86' }} />
-          <span>Data Studio: File Modification & Real-time Editor</span>
-          <span className="modifier-header-badge">Studio</span>
+          <span>{intl.get('MOD_HEADER_TITLE') || 'Data Studio: File Modification & Real-time Editor'}</span>
+          <span className="modifier-header-badge">{intl.get('MOD_HEADER_BADGE') || 'Studio'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {baseMeta && (
             <span className="modifier-header-meta">
-              Source: <strong>{baseMeta.fileName}</strong> ({baseMeta.channels.length} channels,{' '}
-              {baseMeta.numSamples.toLocaleString()} samples)
+              {intl.get('MOD_SOURCE_LABEL') || 'Source:'} <strong>{baseMeta.fileName}</strong> ({intl.get('MOD_CHANNELS_SAMPLES_META', { channels: baseMeta.channels.length, samples: baseMeta.numSamples.toLocaleString() }) || `${baseMeta.channels.length} channels, ${baseMeta.numSamples.toLocaleString()} samples`})
             </span>
           )}
           <IconButton onClick={onClose} size="small" style={{ color: '#94a3b8' }}>
@@ -873,19 +895,19 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               className={`modifier-nav-tab ${activeTab === 'formulas' ? 'active' : ''}`}
               onClick={() => setActiveTab('formulas')}
             >
-              Channel Formulas
+              {intl.get('MOD_TAB_CHANNEL_FORMULAS') || 'Channel Formulas'}
             </button>
             <button
               className={`modifier-nav-tab ${activeTab === 'extend' ? 'active' : ''}`}
               onClick={() => setActiveTab('extend')}
             >
-              Time Range
+              {intl.get('MOD_TAB_TIME_RANGE') || 'Time Range'}
             </button>
             <button
               className={`modifier-nav-tab ${activeTab === 'realtime' ? 'active' : ''}`}
               onClick={() => setActiveTab('realtime')}
             >
-              Real-time Modify
+              {intl.get('MOD_TAB_REALTIME_MODIFY') || 'Real-time Modify'}
             </button>
           </div>
 
@@ -897,12 +919,12 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <div className="modifier-section-title" style={{ marginBottom: 0 }}>
-                      Channel Formulas & Scaling Editor
+                      {intl.get('MOD_FORMULAS_SCALING_EDITOR') || 'Channel Formulas & Scaling Editor'}
                     </div>
                     <IconButton
                       size="small"
                       onClick={() => setShowFormulaNote((prev) => !prev)}
-                      title="Click to view formula instructions"
+                      title={intl.get('MOD_VIEW_FORMULA_INSTRUCTIONS') || 'Click to view formula instructions'}
                       style={{ padding: 2 }}
                     >
                       <InfoOutlinedIcon style={{ fontSize: 16, color: showFormulaNote ? '#00ac86' : '#64748b' }} />
@@ -911,15 +933,15 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
                   {showFormulaNote && (
                     <div className="modifier-formula-note-box">
-                      Write easy formulas to scale existing channels or calculate new channels (e.g. <code>ch1 * 2</code>, <code>ch1 + ch2</code>, <code>(ch1 - ch2) / 2</code>). You can also remove any channel from the export using the <strong>×</strong> tail icon on each channel chip below.
+                      {intl.get('MOD_FORMULA_NOTE_DESC') || 'Write easy formulas to scale existing channels or calculate new channels (e.g. ch1 * 2, ch1 + ch2, (ch1 - ch2) / 2). You can also remove any channel from the export using the × tail icon on each channel chip below.'}
                     </div>
                   )}
 
                   {/* Quick Presets Bar */}
                   <div className="modifier-form-group">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <label className="modifier-label" style={{ marginBottom: 0 }}>Quick Formula Presets</label>
-                      <span style={{ fontSize: 11, color: '#64748b' }}>Click to apply</span>
+                      <label className="modifier-label" style={{ marginBottom: 0 }}>{intl.get('MOD_QUICK_FORMULA_PRESETS') || 'Quick Formula Presets'}</label>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>{intl.get('MOD_CLICK_TO_APPLY') || 'Click to apply'}</span>
                     </div>
                     <div className="modifier-presets-container">
                       <button
@@ -931,7 +953,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           setFormulaTargetChId(baseMeta?.channels?.[0]?.channel_id ?? 0);
                         }}
                       >
-                        Scale (ch1 × 2)
+                        {intl.get('MOD_PRESET_SCALE') || 'Scale (ch1 × 2)'}
                       </button>
                       <button
                         type="button"
@@ -943,7 +965,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           setFormulaNewUnit(baseMeta?.channels?.[0]?.unit || '');
                         }}
                       >
-                        Sum (ch1 + ch2)
+                        {intl.get('MOD_PRESET_SUM') || 'Sum (ch1 + ch2)'}
                       </button>
                       <button
                         type="button"
@@ -955,7 +977,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           setFormulaNewUnit(baseMeta?.channels?.[0]?.unit || '');
                         }}
                       >
-                        Diff (ch1 - ch2)
+                        {intl.get('MOD_PRESET_DIFF') || 'Diff (ch1 - ch2)'}
                       </button>
                       <button
                         type="button"
@@ -967,7 +989,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           setFormulaNewUnit(baseMeta?.channels?.[0]?.unit || '');
                         }}
                       >
-                        Average ((ch1 + ch2)/2)
+                        {intl.get('MOD_PRESET_AVERAGE') || 'Average ((ch1 + ch2)/2)'}
                       </button>
                       <button
                         type="button"
@@ -983,14 +1005,14 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           setFormulaNewUnit(srcUnit ? `${srcUnit}·s` : 'm³');
                         }}
                       >
-                        ∫ Integral (flow → volume)
+                        {intl.get('MOD_PRESET_INTEGRAL') || '∫ Integral (flow → volume)'}
                       </button>
                     </div>
                   </div>
 
                   {/* Formula Expression Input */}
                   <div className="modifier-form-group">
-                    <label className="modifier-label">Formula Expression</label>
+                    <label className="modifier-label">{intl.get('MOD_FORMULA_EXPRESSION') || 'Formula Expression'}</label>
                     <div className="modifier-formula-input-wrapper">
                       <span className="modifier-formula-prefix">fx</span>
                       <input
@@ -998,14 +1020,14 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                         className="modifier-formula-input"
                         value={formulaExpr}
                         onChange={(e) => setFormulaExpr(e.target.value)}
-                        placeholder="e.g. ch1 * 2, ch1 + ch2, (ch1 - ch2) / 2"
+                        placeholder={intl.get('MOD_FORMULA_PLACEHOLDER') || 'e.g. ch1 * 2, ch1 + ch2, (ch1 - ch2) / 2'}
                       />
                       {formulaExpr && (
                         <button
                           type="button"
                           className="modifier-formula-clear-btn"
                           onClick={() => setFormulaExpr('')}
-                          title="Clear formula"
+                          title={intl.get('MOD_CLEAR_FORMULA') || 'Clear formula'}
                         >
                           ×
                         </button>
@@ -1017,7 +1039,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       {formulaValidation.valid ? (
                         <span>✓ {formulaValidation.sampleCalc}</span>
                       ) : (
-                        <span>⚠ {formulaValidation.error || 'Invalid formula expression'}</span>
+                        <span>⚠ {formulaValidation.error || (intl.get('MOD_INVALID_FORMULA') || 'Invalid formula expression')}</span>
                       )}
                     </div>
                   </div>
@@ -1025,7 +1047,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                   {/* Quick Insert Chips */}
                   <div className="modifier-form-group">
                     <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
-                      Click to Insert Channels & Operators:
+                      {intl.get('MOD_CLICK_INSERT_CHANNELS') || 'Click to Insert Channels & Operators:'}
                     </div>
                     <div className="modifier-chips-container">
                       {baseMeta &&
@@ -1063,7 +1085,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                                   title={`Restore ch${idx + 1} to output file`}
                                 >
                                   <RestoreIcon style={{ fontSize: 12 }} />
-                                  <span>Restore</span>
+                                  <span>{intl.get('MOD_RESTORE') || 'Restore'}</span>
                                 </button>
                               ) : (
                                 <button
@@ -1103,7 +1125,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
                   {/* Output Destination Selection */}
                   <div className="modifier-form-group">
-                    <label className="modifier-label">Destination</label>
+                    <label className="modifier-label">{intl.get('MOD_DESTINATION') || 'Destination'}</label>
                     <div className="modifier-radio-row">
                       <label className="modifier-radio-label">
                         <input
@@ -1113,7 +1135,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           checked={formulaMode === 'new_channel'}
                           onChange={() => setFormulaMode('new_channel')}
                         />
-                        <span>Save as New Channel</span>
+                        <span>{intl.get('MOD_SAVE_AS_NEW_CHANNEL') || 'Save as New Channel'}</span>
                       </label>
                       <label className="modifier-radio-label">
                         <input
@@ -1123,34 +1145,34 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           checked={formulaMode === 'replace'}
                           onChange={() => setFormulaMode('replace')}
                         />
-                        <span>Replace Existing Channel</span>
+                        <span>{intl.get('MOD_REPLACE_EXISTING_CHANNEL') || 'Replace Existing Channel'}</span>
                       </label>
                     </div>
 
                     {formulaMode === 'new_channel' ? (
                       <div className="modifier-row" style={{ marginTop: 10 }}>
                         <div style={{ flex: 2 }}>
-                          <label className="modifier-label" style={{ fontSize: 11 }}>New Channel Name</label>
+                          <label className="modifier-label" style={{ fontSize: 11 }}>{intl.get('MOD_NEW_CHANNEL_NAME') || 'New Channel Name'}</label>
                           <input
                             type="text"
                             className="modifier-input"
                             value={formulaNewName}
                             onChange={(e) => setFormulaNewName(e.target.value)}
-                            placeholder="e.g. Total Flow or CH1 x 2"
+                            placeholder={intl.get('MOD_NEW_CHANNEL_NAME_PLACEHOLDER') || 'e.g. Total Flow or CH1 x 2'}
                           />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label className="modifier-label" style={{ fontSize: 11 }}>Unit</label>
+                          <label className="modifier-label" style={{ fontSize: 11 }}>{intl.get('MOD_UNIT') || 'Unit'}</label>
                           <input
                             type="text"
                             className="modifier-input"
                             value={formulaNewUnit}
                             onChange={(e) => setFormulaNewUnit(e.target.value)}
-                            placeholder="e.g. m³/h, kW"
+                            placeholder={intl.get('MOD_UNIT_PLACEHOLDER') || 'e.g. m³/h, kW'}
                           />
                         </div>
                         <div style={{ flex: '0 0 80px' }}>
-                          <label className="modifier-label" style={{ fontSize: 11 }}>Resolution</label>
+                          <label className="modifier-label" style={{ fontSize: 11 }}>{intl.get('MOD_RESOLUTION') || 'Resolution'}</label>
                           <select
                             className="modifier-select"
                             value={formulaResolution}
@@ -1165,7 +1187,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       </div>
                     ) : (
                       <div style={{ marginTop: 10 }}>
-                        <label className="modifier-label" style={{ fontSize: 11 }}>Target Channel to Replace</label>
+                        <label className="modifier-label" style={{ fontSize: 11 }}>{intl.get('MOD_TARGET_CHANNEL_REPLACE') || 'Target Channel to Replace'}</label>
                         <select
                           className="modifier-select"
                           value={formulaTargetChId}
@@ -1192,14 +1214,14 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                     disabled={!formulaValidation.valid}
                     style={{ opacity: formulaValidation.valid ? 1 : 0.6 }}
                   >
-                    <AddIcon fontSize="small" /> Apply Formula
+                    <AddIcon fontSize="small" /> {intl.get('MOD_APPLY_FORMULA') || 'Apply Formula'}
                   </button>
 
                   {/* Active Formulas List */}
                   {formulaChannels.length > 0 && (
                     <div className="modifier-card-list" style={{ marginTop: 16 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>
-                        ACTIVE FORMULAS ({formulaChannels.length})
+                        {intl.get('MOD_ACTIVE_FORMULAS') || 'ACTIVE FORMULAS'} ({formulaChannels.length})
                       </div>
                       {formulaChannels.map((fc) => (
                         <div key={fc.id} className="modifier-card-item">
@@ -1207,7 +1229,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                             <span className="modifier-card-title">
                               <span>{fc.name}</span>
                               <span className="modifier-tag-type modifier-tag-comb">
-                                {fc.mode === 'replace' ? 'Replace' : 'New Channel'}
+                                {fc.mode === 'replace' ? (intl.get('MOD_TAG_REPLACE') || 'Replace') : (intl.get('MOD_TAG_NEW_CHANNEL') || 'New Channel')}
                               </span>
                             </span>
                             <span className="modifier-card-subtitle" style={{ fontFamily: 'monospace', fontWeight: 600, color: '#00ac86' }}>
@@ -1228,9 +1250,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
             {/* 3. Time Range (Extend / Cutdown) Tab */}
             {activeTab === 'extend' && (
               <div>
-                <div className="modifier-section-title">Time Range</div>
+                <div className="modifier-section-title">{intl.get('MOD_TAB_TIME_RANGE') || 'Time Range'}</div>
                 <div className="modifier-section-desc">
-                  Trim the log file duration by cutting data from the beginning or end, or extend the duration with realistic synthetic data.
+                  {intl.get('MOD_TIME_RANGE_DESC') || 'Trim the log file duration by cutting data from the beginning or end, or extend the duration with realistic synthetic data.'}
                 </div>
 
                 {/* Section A: Cutdown Data Duration */}
@@ -1246,11 +1268,11 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           if (checked) setTimeExtEnabled(false);
                         }}
                       />
-                      Enable Data Cutdown (Trim File Duration)
+                      {intl.get('MOD_ENABLE_DATA_CUTDOWN') || 'Enable Data Cutdown (Trim File Duration)'}
                     </label>
                     {cutdownEnabled && (
                       <span className="modifier-metric-tag" style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>
-                        Active Cutdown
+                        {intl.get('MOD_ACTIVE_CUTDOWN') || 'Active Cutdown'}
                       </span>
                     )}
                   </div>
@@ -1259,18 +1281,18 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                     <div style={{ marginTop: 12 }}>
                       <div className="modifier-row modifier-form-group">
                         <div style={{ flex: 1 }}>
-                          <label className="modifier-label">Cut Direction</label>
+                          <label className="modifier-label">{intl.get('MOD_CUT_DIRECTION') || 'Cut Direction'}</label>
                           <select
                             className="modifier-select"
                             value={cutPosition}
                             onChange={(e) => setCutPosition(e.target.value)}
                           >
-                            <option value="end">Trim from End (Drop trailing data)</option>
-                            <option value="start">Trim from Start (Drop leading data)</option>
+                            <option value="end">{intl.get('MOD_TRIM_FROM_END') || 'Trim from End (Drop trailing data)'}</option>
+                            <option value="start">{intl.get('MOD_TRIM_FROM_START') || 'Trim from Start (Drop leading data)'}</option>
                           </select>
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label className="modifier-label">Trim Amount (Minutes)</label>
+                          <label className="modifier-label">{intl.get('MOD_TRIM_AMOUNT_MINUTES') || 'Trim Amount (Minutes)'}</label>
                           <input
                             type="number"
                             min="1"
@@ -1284,7 +1306,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
                       {/* Quick preset chips for cutdown */}
                       <div className="modifier-row" style={{ gap: 6, marginBottom: 10 }}>
-                        <span style={{ fontSize: 11, color: '#64748b' }}>Quick Cut:</span>
+                        <span style={{ fontSize: 11, color: '#64748b' }}>{intl.get('MOD_QUICK_CUT') || 'Quick Cut:'}</span>
                         <button className="modifier-btn-small" onClick={() => setCutMinutes(15)}>
                           -15m
                         </button>
@@ -1305,7 +1327,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                               setCutMinutes(halfMin);
                             }}
                           >
-                            Cut 50%
+                            {intl.get('MOD_CUT_50_PCT') || 'Cut 50%'}
                           </button>
                         )}
                       </div>
@@ -1323,9 +1345,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                           justifyContent: 'space-between',
                           alignItems: 'center',
                         }}>
-                          <span>Original: <strong>{((baseMeta.stopTimeMs - baseMeta.startTimeMs) / 3600000).toFixed(2)}h</strong></span>
-                          <span>Cut: <strong>-{(cutMinutes / 60).toFixed(2)}h</strong> ({cutPosition === 'end' ? 'from end' : 'from start'})</span>
-                          <span>Output: <strong>{Math.max(0.01, ((baseMeta.stopTimeMs - baseMeta.startTimeMs) / 3600000) - (cutMinutes / 60)).toFixed(2)}h</strong></span>
+                          <span>{intl.get('MOD_ORIGINAL_LABEL') || 'Original:'} <strong>{((baseMeta.stopTimeMs - baseMeta.startTimeMs) / 3600000).toFixed(2)}h</strong></span>
+                          <span>{intl.get('MOD_CUT_LABEL') || 'Cut:'} <strong>-{(cutMinutes / 60).toFixed(2)}h</strong> ({cutPosition === 'end' ? (intl.get('MOD_FROM_END') || 'from end') : (intl.get('MOD_FROM_START') || 'from start')})</span>
+                          <span>{intl.get('MOD_OUTPUT_LABEL') || 'Output:'} <strong>{Math.max(0.01, ((baseMeta.stopTimeMs - baseMeta.startTimeMs) / 3600000) - (cutMinutes / 60)).toFixed(2)}h</strong></span>
                         </div>
                       )}
                     </div>
@@ -1344,14 +1366,14 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                         if (checked) setCutdownEnabled(false);
                       }}
                     />
-                    Enable Time Extension with Bounded Random Variation
+                    {intl.get('MOD_ENABLE_TIME_EXTENSION') || 'Enable Time Extension with Bounded Random Variation'}
                   </label>
 
                   {timeExtEnabled && (
                     <div style={{ marginTop: 12 }}>
                     <div className="modifier-row modifier-form-group">
                       <div style={{ flex: 1 }}>
-                        <label className="modifier-label">Extension Duration (Minutes)</label>
+                        <label className="modifier-label">{intl.get('MOD_EXTENSION_DURATION_MINUTES') || 'Extension Duration (Minutes)'}</label>
                         <input
                           type="number"
                           min="1"
@@ -1379,14 +1401,14 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
                     <div style={{ marginTop: 16 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
-                        Channel Generation Rules in Extension Period:
+                        {intl.get('MOD_CHANNEL_GENERATION_RULES') || 'Channel Generation Rules in Extension Period:'}
                       </div>
                       <table className="modifier-rule-table">
                         <thead>
                           <tr>
-                            <th style={{ width: '28%' }}>Channel</th>
-                            <th style={{ width: '36%' }}>Generation Mode</th>
-                            <th style={{ width: '36%' }}>Bounds / Target Setting</th>
+                            <th style={{ width: '28%' }}>{intl.get('CHANNEL') || 'Channel'}</th>
+                            <th style={{ width: '36%' }}>{intl.get('MOD_GENERATION_MODE') || 'Generation Mode'}</th>
+                            <th style={{ width: '36%' }}>{intl.get('MOD_BOUNDS_TARGET_SETTING') || 'Bounds / Target Setting'}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1414,7 +1436,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                                   <td style={currentMode === 'consumption' ? { padding: '12px 8px', verticalAlign: 'middle' } : {}}>
                                     <strong>{ch.name}</strong>
                                     <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                                      Last: {ch.lastVal.toFixed(1)} {ch.unit}
+                                      {intl.get('MOD_LAST_VAL') || 'Last:'} {ch.lastVal.toFixed(1)} {ch.unit}
                                     </div>
                                   </td>
                                   <td style={currentMode === 'consumption' ? { padding: '12px 8px', verticalAlign: 'middle' } : {}}>
@@ -1452,11 +1474,11 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                                         }
                                       }}
                                     >
-                                      <option value="bounded_random">Bounded Random</option>
-                                      <option value="smooth_walk">Smooth Walk</option>
-                                      <option value="constant">Hold Constant</option>
+                                      <option value="bounded_random">{intl.get('MOD_MODE_BOUNDED_RANDOM') || 'Bounded Random'}</option>
+                                      <option value="smooth_walk">{intl.get('MOD_MODE_SMOOTH_WALK') || 'Smooth Walk'}</option>
+                                      <option value="constant">{intl.get('MOD_MODE_HOLD_CONSTANT') || 'Hold Constant'}</option>
                                       <option value="consumption">
-                                        Consumption Target {ch.isConsumptionCandidate ? '★ Totalizer' : ''}
+                                        {intl.get('MOD_MODE_CONSUMPTION_TARGET') || 'Consumption Target'} {ch.isConsumptionCandidate ? (intl.get('MOD_TOTALIZER_BADGE') || '★ Totalizer') : ''}
                                       </option>
                                     </select>
                                   </td>
@@ -1464,7 +1486,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                                     {currentMode === 'consumption' ? (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0' }}>
                                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                          <span style={{ fontSize: 11, color: '#334155', fontWeight: 600 }}>Target:</span>
+                                          <span style={{ fontSize: 11, color: '#334155', fontWeight: 600 }}>{intl.get('MOD_TARGET_LABEL') || 'Target:'}</span>
                                           <input
                                             type="number"
                                             step="any"
@@ -1519,8 +1541,8 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                                               }));
                                             }}
                                           >
-                                            <option value="jittered">Fluctuating Rate</option>
-                                            <option value="linear">Linear Rate</option>
+                                            <option value="jittered">{intl.get('MOD_RATE_FLUCTUATING') || 'Fluctuating Rate'}</option>
+                                            <option value="linear">{intl.get('MOD_RATE_LINEAR') || 'Linear Rate'}</option>
                                           </select>
                                         </div>
                                       </div>
@@ -1575,7 +1597,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               {/* Top Endpoint: Start Time (2 lines) */}
               <div className="modifier-vprogress-top-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="modifier-vprogress-card-label">Start time</span>
+                  <span className="modifier-vprogress-card-label">{intl.get('MOD_START_TIME_SMALL') || 'Start time'}</span>
                   <span className="modifier-vprogress-card-sub">Rec #1</span>
                 </div>
                 <div className="modifier-vprogress-card-time">
@@ -1589,7 +1611,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                 <div
                   className="modifier-vprogress-track"
                   onClick={(e) => updateFromPointerEvent(e.clientY)}
-                  title="Click to jump to position"
+                  title={intl.get('MOD_CLICK_TO_JUMP') || 'Click to jump to position'}
                 >
                   <div
                     className="modifier-vprogress-bar-fill"
@@ -1606,7 +1628,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                   className="modifier-vprogress-time-label"
                   style={{ top: `${realtimeRatio * 100}%` }}
                   onPointerDown={handleTrackPointerDown}
-                  title="Drag to navigate"
+                  title={intl.get('MOD_DRAG_TO_NAVIGATE') || 'Drag to navigate'}
                 >
                   <div className="modifier-vprogress-time-label-time">
                     {baseMeta ? formatDateTime(currentIndicatorTimeMs) : '-'}
@@ -1621,7 +1643,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               {/* Bottom Endpoint: Stop Time (2 lines) */}
               <div className="modifier-vprogress-bottom-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="modifier-vprogress-card-label">Stop time</span>
+                  <span className="modifier-vprogress-card-label">{intl.get('MOD_STOP_TIME_SMALL') || 'Stop time'}</span>
                   <span className="modifier-vprogress-card-sub">
                     Rec #{(baseMeta?.numSamples || 0).toLocaleString()}
                   </span>
@@ -1636,21 +1658,21 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                 <button
                   className="modifier-btn-small"
                   onClick={() => setRealtimeStartSample(0)}
-                  title="Jump to Start (0%)"
+                  title={intl.get('MOD_JUMP_TO_START') || 'Jump to Start (0%)'}
                 >
-                  Top
+                  {intl.get('MOD_TOP') || 'Top'}
                 </button>
                 <button
                   className="modifier-btn-small"
                   onClick={() => handleNudge(-30)}
-                  title="Step backward 30 minutes"
+                  title={intl.get('MOD_STEP_BACK_30M') || 'Step backward 30 minutes'}
                 >
                   -30m
                 </button>
                 <button
                   className="modifier-btn-small"
                   onClick={() => handleNudge(30)}
-                  title="Step forward 30 minutes"
+                  title={intl.get('MOD_STEP_FWD_30M') || 'Step forward 30 minutes'}
                 >
                   +30m
                 </button>
@@ -1661,9 +1683,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       Math.max(0, (baseMeta?.numSamples || 1) - realtimePageSize)
                     )
                   }
-                  title="Jump to End"
+                  title={intl.get('MOD_JUMP_TO_END') || 'Jump to End'}
                 >
-                  End
+                  {intl.get('MOD_END') || 'End'}
                 </button>
               </div>
 
@@ -1674,9 +1696,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                   style={{ marginBottom: 8, width: '100%', justifyContent: 'center' }}
                 >
                   {totalModifiedCells > 0 ? (
-                    <span>★ {totalModifiedCells} cell(s) modified in {totalModifiedRows} row(s)</span>
+                    <span>★ {intl.get('MOD_CELLS_MODIFIED_IN_ROWS', { cells: totalModifiedCells, rows: totalModifiedRows }) || `${totalModifiedCells} cell(s) modified in ${totalModifiedRows} row(s)`}</span>
                   ) : (
-                    <span style={{ color: '#64748b' }}>No unsaved modifications</span>
+                    <span style={{ color: '#64748b' }}>{intl.get('MOD_NO_UNSAVED_MODIFICATIONS') || 'No unsaved modifications'}</span>
                   )}
                 </div>
 
@@ -1686,9 +1708,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                     onClick={handleSaveToOldFile}
                     disabled={isSavingOld || totalModifiedCells === 0}
                     style={{ width: '100%', justifyContent: 'center' }}
-                    title="Directly overwrites the modified values in the open file / memory buffer"
+                    title={intl.get('MOD_SAVE_TO_OLD_FILE_TIP') || 'Directly overwrites the modified values in the open file / memory buffer'}
                   >
-                    {isSavingOld ? 'Saving to File...' : 'Save to Old File'}
+                    {isSavingOld ? (intl.get('MOD_SAVING_TO_FILE') || 'Saving to File...') : (intl.get('MOD_SAVE_TO_OLD_FILE') || 'Save to Old File')}
                   </button>
 
                   <button
@@ -1702,9 +1724,9 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       border: '1px solid #cbd5e1',
                       fontWeight: 600,
                     }}
-                    title="Export modified data into a new CSD file"
+                    title={intl.get('MOD_SAVE_AS_NEW_FILE_TIP') || 'Export modified data into a new CSD file'}
                   >
-                    Save as New File (.csd)
+                    {intl.get('MOD_SAVE_AS_NEW_FILE_CSD') || 'Save as New File (.csd)'}
                   </button>
 
                   {totalModifiedCells > 0 && (
@@ -1713,7 +1735,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       onClick={handleResetEdits}
                       style={{ width: '100%', justifyContent: 'center', color: '#dc2626' }}
                     >
-                      Reset All Edits
+                      {intl.get('MOD_RESET_ALL_EDITS') || 'Reset All Edits'}
                     </button>
                   )}
                 </div>
@@ -1731,7 +1753,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               <div className="modifier-realtime-table-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 260 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                    Channels:
+                    {intl.get('MOD_CHANNELS_LABEL') || 'Channels:'}
                   </span>
                   <button
                     className="modifier-btn-small"
@@ -1739,17 +1761,17 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                     onClick={() =>
                       setRealtimeSelectedChs(baseMeta ? baseMeta.channels.map((c) => c.channel_id) : [])
                     }
-                    title="Show all channels"
+                    title={intl.get('MOD_SHOW_ALL_CHANNELS') || 'Show all channels'}
                   >
-                    All
+                    {intl.get('MOD_ALL') || 'All'}
                   </button>
                   <button
                     className="modifier-btn-small"
                     style={{ padding: '2px 6px', fontSize: 10 }}
                     onClick={() => setRealtimeSelectedChs([])}
-                    title="Hide all channels"
+                    title={intl.get('MOD_HIDE_ALL_CHANNELS') || 'Hide all channels'}
                   >
-                    None
+                    {intl.get('MOD_NONE') || 'None'}
                   </button>
                   {baseMeta &&
                     baseMeta.channels
@@ -1777,7 +1799,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                 {/* Show: 12, 50, 150 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                    Show:
+                    {intl.get('MOD_SHOW_LABEL') || 'Show:'}
                   </span>
                   <div className="modifier-rows-selector">
                     {[15, 50, 150].map((sz) => (
@@ -1800,7 +1822,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       }
                       title={`Previous ${realtimePageSize} records`}
                     >
-                      &larr; Prev
+                      &larr; {intl.get('CONS_PREV') || 'Prev'}
                     </button>
                     <button
                       className="modifier-btn-small"
@@ -1815,7 +1837,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
                       }
                       title={`Next ${realtimePageSize} records`}
                     >
-                      Next &rarr;
+                      {intl.get('NEXT') || 'Next'} &rarr;
                     </button>
                   </div>
                 </div>
@@ -1824,19 +1846,19 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               {/* Sub-Header: Range info & editing guidance */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 11, color: '#475569' }}>
                 <div>
-                  Records <strong>{(realtimeStartSample + 1).toLocaleString()}</strong> –{' '}
+                  {intl.get('MOD_RECORDS_LABEL') || 'Records'} <strong>{(realtimeStartSample + 1).toLocaleString()}</strong> –{' '}
                   <strong>
                     {(Math.min(baseMeta?.numSamples || 0, realtimeStartSample + realtimeRows.length)).toLocaleString()}
                   </strong>{' '}
-                  of <strong>{(baseMeta?.numSamples || 0).toLocaleString()}</strong>
+                  {intl.get('MOD_OF_LABEL') || 'of'} <strong>{(baseMeta?.numSamples || 0).toLocaleString()}</strong>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {totalModifiedCells > 0 ? (
                     <span style={{ color: '#00ac86', fontWeight: 700 }}>
-                      ● {totalModifiedCells} unsaved cell edit(s)
+                      ● {intl.get('MOD_UNSAVED_CELL_EDITS', { count: totalModifiedCells }) || `${totalModifiedCells} unsaved cell edit(s)`}
                     </span>
                   ) : (
-                    <span style={{ color: '#94a3b8' }}>Click any cell to edit</span>
+                    <span style={{ color: '#94a3b8' }}>{intl.get('MOD_CLICK_CELL_TO_EDIT') || 'Click any cell to edit'}</span>
                   )}
                 </div>
               </div>
@@ -1845,18 +1867,18 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               <div className="modifier-realtime-table-scroll">
                 {realtimeLoading ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', fontSize: 13 }}>
-                    Loading samples...
+                    {intl.get('MOD_LOADING_SAMPLES') || 'Loading samples...'}
                   </div>
                 ) : realtimeRows.length === 0 ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', fontSize: 13 }}>
-                    No records available. Drag the vertical indicator on the left to navigate.
+                    {intl.get('MOD_NO_RECORDS_AVAILABLE') || 'No records available. Drag the vertical indicator on the left to navigate.'}
                   </div>
                 ) : (
                   <table className="modifier-editable-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 65, textAlign: 'center' }}>Record #</th>
-                        <th style={{ width: 155, textAlign: 'left' }}>Timestamp</th>
+                        <th style={{ width: 65, textAlign: 'center' }}>{intl.get('MOD_RECORD_NUM') || 'Record #'}</th>
+                        <th style={{ width: 155, textAlign: 'left' }}>{intl.get('MOD_TIMESTAMP') || 'Timestamp'}</th>
                         {selectedChannelsList.map((ch) => (
                           <th key={ch.channel_id}>
                             <div>{ch.name}</div>
@@ -1924,45 +1946,45 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               {/* Metrics summary bar */}
               <div className="modifier-metrics-bar">
                 <div className="modifier-metric-card">
-                  <div className="modifier-metric-label">Duration</div>
+                  <div className="modifier-metric-label">{intl.get('DURATION') || 'Duration'}</div>
                   <div className="modifier-metric-value">
                     {previewData && previewData.hasExtension ? (
                       <>
                         <span>+{(extraMinutes / 60).toFixed(1)}h</span>
-                        <span className="modifier-metric-tag">Extended</span>
+                        <span className="modifier-metric-tag">{intl.get('MOD_EXTENDED') || 'Extended'}</span>
                       </>
                     ) : (previewData && previewData.hasCutdown) ? (
                       <>
                         <span>-{(cutMinutes / 60).toFixed(1)}h</span>
-                        <span className="modifier-metric-tag" style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>Cutdown</span>
+                        <span className="modifier-metric-tag" style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>{intl.get('MOD_CUTDOWN') || 'Cutdown'}</span>
                       </>
                     ) : (
-                      <span>Unchanged</span>
+                      <span>{intl.get('MOD_UNCHANGED') || 'Unchanged'}</span>
                     )}
                   </div>
                 </div>
 
                 <div className="modifier-metric-card">
-                  <div className="modifier-metric-label">Total Samples</div>
+                  <div className="modifier-metric-label">{intl.get('MOD_TOTAL_SAMPLES') || 'Total Samples'}</div>
                   <div className="modifier-metric-value">
                     {previewData ? previewData.newNumSamples.toLocaleString() : '-'}
                   </div>
                 </div>
 
                 <div className="modifier-metric-card">
-                  <div className="modifier-metric-label">Output Channels</div>
+                  <div className="modifier-metric-label">{intl.get('MOD_OUTPUT_CHANNELS') || 'Output Channels'}</div>
                   <div className="modifier-metric-value">
                     {previewData ? (
                       <>
                         <span>{previewData.channels.length}</span>
                         {previewData.channels.length > (baseMeta ? baseMeta.channels.length : 0) && (
                           <span className="modifier-metric-tag">
-                            +{previewData.channels.length - baseMeta.channels.length} New
+                            +{previewData.channels.length - baseMeta.channels.length} {intl.get('MOD_NEW_TAG') || 'New'}
                           </span>
                         )}
                         {removedChannelIds.length > 0 && (
                           <span className="modifier-metric-tag" style={{ backgroundColor: '#fee2e2', color: '#dc2626' }}>
-                            -{removedChannelIds.length} Removed
+                            -{removedChannelIds.length} {intl.get('MOD_REMOVED_TAG') || 'Removed'}
                           </span>
                         )}
                       </>
@@ -1977,10 +1999,10 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               <div className="modifier-chart-container">
                 <div className="modifier-chart-header">
                   <div className="modifier-chart-title">
-                    <span>Interactive Preview</span>
+                    <span>{intl.get('MOD_INTERACTIVE_PREVIEW') || 'Interactive Preview'}</span>
                     {previewData && previewData.hasCutdown && !previewData.hasExtension && (
                       <span style={{ fontSize: 11, color: '#ea580c', fontWeight: 600 }}>
-                        (Trimmed -{cutMinutes} min {cutPosition === 'end' ? 'from end' : 'from start'})
+                        ({intl.get('MOD_TRIMMED_BADGE', { min: cutMinutes, pos: cutPosition === 'end' ? (intl.get('MOD_FROM_END') || 'from end') : (intl.get('MOD_FROM_START') || 'from start') }) || `Trimmed -${cutMinutes} min ${cutPosition === 'end' ? 'from end' : 'from start'}`})
                       </span>
                     )}
                   </div>
@@ -2029,7 +2051,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               checked={autoOpenAfterExport}
               onChange={(e) => setAutoOpenAfterExport(e.target.checked)}
             />
-            Open generated file in S4A immediately
+            {intl.get('MOD_OPEN_GENERATED_IMMEDIATELY') || 'Open generated file in S4A immediately'}
           </label>
 
           {isExporting && (
@@ -2049,7 +2071,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
 
         <div className="modifier-footer-right">
           <button className="modifier-btn-small" onClick={onClose} disabled={isExporting}>
-            Cancel
+            {intl.get('CANCEL') || 'Cancel'}
           </button>
           <button
             className="modifier-btn-small"
@@ -2057,7 +2079,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
             onClick={() => handleExport('csv')}
             disabled={isExporting}
           >
-            Export to CSV
+            {intl.get('MOD_EXPORT_TO_CSV') || 'Export to CSV'}
           </button>
           <button
             className="modifier-btn-primary"
@@ -2065,7 +2087,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
             onClick={() => handleExport('csd')}
             disabled={isExporting}
           >
-            Export to CSD Binary
+            {intl.get('MOD_EXPORT_TO_CSD_BINARY') || 'Export to CSD Binary'}
           </button>
         </div>
       </div>
@@ -2090,21 +2112,21 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
             <WarningAmberIcon style={{ fontSize: 24 }} />
           </div>
           <div>
-            <div className="modifier-confirm-title">Remove Channel from File?</div>
-            <div className="modifier-confirm-subtitle">Cutdown Confirmation</div>
+            <div className="modifier-confirm-title">{intl.get('MOD_REMOVE_CHANNEL_TITLE') || 'Remove Channel from File?'}</div>
+            <div className="modifier-confirm-subtitle">{intl.get('MOD_CUTDOWN_CONFIRMATION') || 'Cutdown Confirmation'}</div>
           </div>
         </div>
 
         <div className="modifier-confirm-body">
-          Are you sure you want to cut down and remove channel{' '}
+          {intl.get('MOD_REMOVE_CHANNEL_CONFIRM_PREFIX') || 'Are you sure you want to cut down and remove channel'}{' '}
           <strong style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace', color: '#0f172a' }}>
             ch{channelToDelete ? channelToDelete.idx + 1 : ''}{' '}
             {channelToDelete?.unit ? `[${channelToDelete.unit}] ` : ''}
             {channelToDelete?.name}
           </strong>{' '}
-          from the output file?
+          {intl.get('MOD_REMOVE_CHANNEL_CONFIRM_SUFFIX') || 'from the output file?'}
           <div className="modifier-confirm-alert-box">
-            ⚠ This channel will be omitted from the exported CSD / CSV file. You can restore it anytime before downloading by clicking &apos;Restore&apos; on the channel chip.
+            {intl.get('MOD_REMOVE_CHANNEL_ALERT') || "⚠ This channel will be omitted from the exported CSD / CSV file. You can restore it anytime before downloading by clicking 'Restore' on the channel chip."}
           </div>
         </div>
 
@@ -2114,7 +2136,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
             className="modifier-btn-small"
             onClick={() => setChannelToDelete(null)}
           >
-            Cancel
+            {intl.get('CANCEL') || 'Cancel'}
           </button>
           <button
             type="button"
@@ -2126,7 +2148,7 @@ export default function DataModifierModal({ open, onClose, onFileReloaded }) {
               }
             }}
           >
-            Remove Channel
+            {intl.get('MOD_REMOVE_CHANNEL_BTN') || 'Remove Channel'}
           </button>
         </div>
       </div>

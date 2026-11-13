@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import intl from 'react-intl-universal';
 import TauriSutoAPI from '../api/TauriSutoAPI';
 import './DebugLogModal.css';
 
@@ -105,12 +106,12 @@ export default function DebugLogModal({ isOpen, onClose }) {
           <div className="debug-log-header-left">
             <span className="debug-log-icon">📋</span>
             <div>
-              <h3 className="debug-log-title">S4A System & Diagnostic Logs</h3>
+              <h3 className="debug-log-title">{intl.get('DBG_TITLE') || 'S4A System & Diagnostic Logs'}</h3>
             </div>
           </div>
           <div className="debug-log-header-right">
-            <span className="debug-log-counter">{filteredLogs.length} entries</span>
-            <button className="debug-log-close-btn" onClick={onClose} title="Close">
+            <span className="debug-log-counter">{intl.get('DBG_ENTRIES_COUNT', { count: filteredLogs.length }) || `${filteredLogs.length} entries`}</span>
+            <button className="debug-log-close-btn" onClick={onClose} title={intl.get('CLOSE') || 'Close'}>
               ✕
             </button>
           </div>
@@ -119,7 +120,7 @@ export default function DebugLogModal({ isOpen, onClose }) {
         {/* File Path Banner */}
         {logFilePath && (
           <div className="debug-log-path-banner">
-            <span className="path-label">Log File:</span>
+            <span className="path-label">{intl.get('DBG_LOG_FILE_LABEL') || 'Log File:'}</span>
             <code className="path-value">{typeof logFilePath === 'string' ? logFilePath : ''}</code>
           </div>
         )}
@@ -134,16 +135,16 @@ export default function DebugLogModal({ isOpen, onClose }) {
                 onClick={() => setFilterLevel(lvl)}
               >
                 {lvl === 'ALL'
-                  ? 'All Logs'
+                  ? (intl.get('DBG_FILTER_ALL') || 'All Logs')
                   : lvl === 'COMM'
-                  ? 'Hardware & Comm'
+                  ? (intl.get('DBG_FILTER_COMM') || 'Hardware & Comm')
                   : lvl === 'FILE'
-                  ? 'Files (CSD/CSV)'
+                  ? (intl.get('DBG_FILTER_FILE') || 'Files (CSD/CSV)')
                   : lvl === 'APP'
-                  ? 'Application'
+                  ? (intl.get('DBG_FILTER_APP') || 'Application')
                   : lvl === 'WARN'
-                  ? 'Warnings'
-                  : 'Errors'}
+                  ? (intl.get('DBG_FILTER_WARN') || 'Warnings')
+                  : (intl.get('DBG_FILTER_ERROR') || 'Errors')}
               </button>
             ))}
           </div>
@@ -151,7 +152,7 @@ export default function DebugLogModal({ isOpen, onClose }) {
           <div className="debug-log-search-box">
             <input
               type="text"
-              placeholder="Search in logs..."
+              placeholder={intl.get('DBG_SEARCH_PLACEHOLDER') || 'Search in logs...'}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -164,13 +165,13 @@ export default function DebugLogModal({ isOpen, onClose }) {
                 checked={autoScroll}
                 onChange={e => setAutoScroll(e.target.checked)}
               />
-              Auto-scroll
+              {intl.get('DBG_AUTOSCROLL') || 'Auto-scroll'}
             </label>
             <button className="action-btn copy-btn" onClick={handleCopyAll}>
-              {copied ? '✓ Copied!' : 'Copy All'}
+              {copied ? (intl.get('DBG_COPIED') || '✓ Copied!') : (intl.get('DBG_COPY_ALL') || 'Copy All')}
             </button>
             <button className="action-btn clear-btn" onClick={handleClear}>
-              Clear
+              {intl.get('DBG_CLEAR') || 'Clear'}
             </button>
           </div>
         </div>
@@ -179,7 +180,7 @@ export default function DebugLogModal({ isOpen, onClose }) {
         <div className="debug-log-console" ref={logContainerRef}>
           {filteredLogs.length === 0 ? (
             <div className="debug-log-empty">
-              No logs captured yet. Try clicking "Detect & Connect Device" to begin recording USB communication.
+              {intl.get('DBG_EMPTY_STATE') || 'No logs captured yet. Try clicking "Detect & Connect Device" to begin recording USB communication.'}
             </div>
           ) : (
             filteredLogs.map(entry => {

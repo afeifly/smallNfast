@@ -20,10 +20,7 @@ pub use files::{
     suto_read_file, suto_read_file_slice, suto_remove_recent_file, suto_save_binary_file,
     suto_pick_folder, suto_save_file_to_path, RecentFileEntry,
 };
-pub use webserver::{
-    suto_get_webserver_status, suto_set_webserver_enabled,
-    suto_get_shared_state, suto_sync_shared_state,
-};
+pub use webserver::*;
 
 #[cfg(target_os = "windows")]
 pub mod driver_windows;

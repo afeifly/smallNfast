@@ -67,12 +67,10 @@ export default function ScapeManagerModal({
   const handleCreateNew = (e) => {
     e.preventDefault();
     const title = newTitle.trim() || 'New Plant Scape';
-    const created = createNewScape(title, '', { setActive: false });
+    createNewScape(title, '', { setActive: false });
     refreshList();
-    if (onEditScape) {
-      onEditScape(created);
-    }
-    onClose();
+    setNewTitle('');
+    setShowCreateForm(false);
   };
 
   const handleDuplicate = (id, e) => {
@@ -205,7 +203,7 @@ export default function ScapeManagerModal({
               autoFocus
             />
             <button type="submit" className="ps-mgr-btn-primary">
-              Create & Design
+              Create
             </button>
           </form>
         )}
@@ -272,7 +270,7 @@ export default function ScapeManagerModal({
                   <div className="ps-mgr-card-actions">
                     <button
                       type="button"
-                      className="ps-mgr-action-btn btn-edit"
+                      className={`ps-mgr-action-btn btn-edit ${isActive ? 'is-current-active' : ''}`}
                       onClick={(e) => { e.stopPropagation(); handleEdit(scape.id); }}
                       title="Modify & edit this scape layout"
                     >

@@ -20,7 +20,7 @@ import ProcessScapeView from './modules/processscape/ProcessScapeView';
 import SensorManagerModal from './modules/processscape/SensorManagerModal';
 import ProcessScapeRecordModal from './modules/processscape/ProcessScapeRecordModal';
 import AlarmCenterModal from './components/AlarmCenterModal';
-import { getLocations, autoReconnectSavedDevices, getSavedDevices, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
+import { getLocations, autoReconnectSavedDevices, getSavedDevices, saveDevices, upsertDeviceList, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
 import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/processscape/engine/scapeStorage';
 import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels } from './modules/processscape/engine/alarmEngine';
 import { subscribeLive } from './util/liveDataSource';
@@ -30,7 +30,15 @@ import * as liveRecorder from './util/liveRecorder';
 import { clearLiveSelection, setLiveSelection } from './util/liveSelection';
 
 import intl from 'react-intl-universal';
-import locales from './locales/en-US';
+import localesEn from './locales/en-US';
+import localesZh from './locales/zh-CN';
+import localesDe from './locales/de-DE';
+
+const LOCALES = {
+  'en-US': localesEn,
+  'zh-CN': localesZh,
+  'de-DE': localesDe
+};
 
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -160,7 +168,31 @@ function App() {
   const [showDebugLogs, setShowDebugLogs] = React.useState(false);
   const [showConnectModal, setShowConnectModal] = React.useState(false);
   const [showDownloadModal, setShowDownloadModal] = React.useState(false);
+  const [infoMenuAnchorEl, setInfoMenuAnchorEl] = React.useState(null);
   const [analyzingFromReadout, setAnalyzingFromReadout] = React.useState(false);
+
+  const [currentLang, setCurrentLang] = React.useState(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('app_language');
+      if (saved === 'cn' || saved === 'zh-CN') return 'cn';
+      if (saved === 'de' || saved === 'de-DE') return 'de';
+      if (saved === 'en' || saved === 'en-US') return 'en';
+    }
+    return 'en';
+  });
+
+  const handleLanguageChange = React.useCallback((langKey) => {
+    const localeKey = langKey === 'cn' ? 'zh-CN' : (langKey === 'de' ? 'de-DE' : 'en-US');
+    intl.init({
+      currentLocale: localeKey,
+      locales: LOCALES
+    }).then(() => {
+      setCurrentLang(langKey);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('app_language', langKey);
+      }
+    });
+  }, []);
 
   // ProcessScape states
   const [psTitle, setPsTitle] = React.useState('ProcessScape');
@@ -414,11 +446,10 @@ function App() {
       }
     }
 
+    const localeKey = currentLang === 'cn' ? 'zh-CN' : (currentLang === 'de' ? 'de-DE' : 'en-US');
     intl.init({
-      currentLocale: 'en-US',
-      locales: {
-        'en-US': locales
-      }
+      currentLocale: localeKey,
+      locales: LOCALES
     }).then(() => {
       setInitDone(true);
     });
@@ -569,6 +600,13 @@ function App() {
     clearOnlineCache();
     setAnalyzingFromReadout(false);
     setDeviceInfo(conn);
+    if (conn?.deviceItem) {
+      try {
+        const currentDevs = getSavedDevices() || [];
+        const updated = upsertDeviceList(currentDevs, [conn.deviceItem]);
+        saveDevices(updated);
+      } catch (_) {}
+    }
     TestAPI.setMode('monitor');
     setAppMode('monitor');
     setActiveTab('online');
@@ -1112,7 +1150,7 @@ function App() {
                     className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
                     onClick={() => switchTab('livetable')}
                   >
-                    Table View
+                    {intl.get('TABLE_VIEW') || 'Table View'}
                   </button>
                 </>
               )}
@@ -1123,14 +1161,14 @@ function App() {
                 className={`tab-btn ${activeTab === 'online' ? 'active' : ''}`}
                 onClick={() => switchTab('online')}
               >
-                Online View
+                {intl.get('ONLINE_VIEW') || 'Online View'}
               </button>
               {recState.hasSession && (
                 <button
                   className={`tab-btn ${activeTab === 'livegraphic' ? 'active' : ''}`}
                   onClick={() => switchTab('livegraphic')}
                 >
-                  Graphic View
+                  {intl.get('GRAPHIC_VIEW') || 'Graphic View'}
                 </button>
               )}
               {recState.hasSession && (
@@ -1138,7 +1176,7 @@ function App() {
                   className={`tab-btn ${activeTab === 'livetable' ? 'active' : ''}`}
                   onClick={() => switchTab('livetable')}
                 >
-                  Table View
+                  {intl.get('TABLE_VIEW') || 'Table View'}
                 </button>
               )}
               {/* Readout hammers the device — never offered while recording, or when a Modbus device is connected */}
@@ -1150,7 +1188,7 @@ function App() {
                     setActiveTab('readout');
                   }}
                 >
-                  Readout
+                  {intl.get('READOUT') || 'Readout'}
                 </button>
               )}
             </div>
@@ -1160,26 +1198,26 @@ function App() {
                 className={`tab-btn ${activeTab === 'fileinfo' ? 'active' : ''}`}
                 onClick={() => switchTab('fileinfo')}
               >
-                File Info
+                {intl.get('FILE_INFO') || 'File Info'}
               </button>
               <button
                 className={`tab-btn ${activeTab === 'graphic' ? 'active' : ''}`}
                 onClick={() => switchTab('graphic')}
               >
-                Graphic View
+                {intl.get('GRAPHIC_VIEW') || 'Graphic View'}
               </button>
               <button
                 className={`tab-btn ${activeTab === 'table' ? 'active' : ''}`}
                 onClick={() => switchTab('table')}
               >
-                Table View
+                {intl.get('TABLE_VIEW') || 'Table View'}
               </button>
               {featureReport && (
                 <button
                   className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
                   onClick={() => switchTab('report')}
                 >
-                  Consumption Report
+                  {intl.get('CONSUMPTION_REPORT') || 'Consumption Report'}
                 </button>
               )}
               {featureCompressor && (
@@ -1187,14 +1225,14 @@ function App() {
                   className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
                   onClick={() => switchTab('analyze')}
                 >
-                  Compressor Analyze
+                  {intl.get('COMPRESSOR_ANALYZE') || 'Compressor Analyze'}
                 </button>
               )}
               <button
                 className="tab-btn"
                 onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Data modifier opened'); setModifierOpen(true); }}
               >
-                Data Studio
+                {intl.get('DATA_STUDIO') || 'Data Studio'}
               </button>
             </div>
           ) : null}
@@ -1208,7 +1246,7 @@ function App() {
                   <Tooltip
                     title={recState.recording
                       ? `Stop recording & save CSV (${recState.samples} samples, ${recState.channels} channels)`
-                      : 'Record ProcessScape live values to CSV'}
+                      : (intl.get('REC_PS_LIVE_CSV') || 'Record ProcessScape live values to CSV')}
                   >
                     <button
                       className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
@@ -1232,7 +1270,7 @@ function App() {
                           <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
                             <path d="M8 5v14l11-7z" />
                           </svg>
-                          Record
+                          {intl.get('RECORD') || 'Record'}
                         </>
                       )}
                     </button>
@@ -1241,7 +1279,7 @@ function App() {
 
               {/* Only show Live Runtime View button when actively in Editor mode to return to runtime */}
               {psMode === 'editor' && (
-                <Tooltip title="Live Runtime View (Save & Exit Editor)">
+                <Tooltip title={intl.get('LIVE_RUNTIME_VIEW') || 'Live Runtime View (Save & Exit Editor)'}>
                   <IconButton
                     className="header-icon-btn"
                     onClick={() => {
@@ -1270,7 +1308,7 @@ function App() {
               <Tooltip
                 title={recState.recording
                   ? `Stop recording & save CSV (${recState.samples} samples)`
-                  : 'Record live values to CSV'}
+                  : (intl.get('REC_LIVE_CSV') || 'Record live values to CSV')}
               >
                 <button
                   className={`header-rec-btn ${recState.recording ? 'is-recording' : ''}`}
@@ -1294,7 +1332,7 @@ function App() {
                       <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
                         <path d="M8 5v14l11-7z" />
                       </svg>
-                      Record
+                      {intl.get('RECORD') || 'Record'}
                     </>
                   )}
                 </button>
@@ -1303,19 +1341,19 @@ function App() {
 
             {appMode === 'analyze' && fileLoaded && (
               <>
-                <Tooltip title="Open File">
+                <Tooltip title={intl.get('OPEN_FILE') || 'Open File'}>
                   <IconButton className="header-icon-btn" onClick={handleHeaderOpenCsd} style={{ color: '#0f172a' }}>
                     <FolderOpenIcon />
                   </IconButton>
                 </Tooltip>
 
-                <Tooltip title="Append File">
+                <Tooltip title={intl.get('APPEND_FILE') || 'Append File'}>
                   <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
                     <AddIcon />
                   </IconButton>
                 </Tooltip>
 
-                <Tooltip title="Export Data">
+                <Tooltip title={intl.get('EXPORT_DATA') || 'Export Data'}>
                   <IconButton className="header-icon-btn" onClick={handleShareClick} style={{ color: '#0f172a' }}>
                     <ShareIcon />
                   </IconButton>
@@ -1327,86 +1365,149 @@ function App() {
                 >
                   {TestAPI.isCsvMode && TestAPI.isCsvMode() && (
                     <MenuItem onClick={handleExportCsdOption}>
-                      Export CSV to CSD
+                      {intl.get('EXPORT_CSV_TO_CSD') || 'Export CSV to CSD'}
                     </MenuItem>
                   )}
                   <MenuItem
                     onClick={handleExportCsvOption}
                     disabled={Boolean(TestAPI.isCsvMode && TestAPI.isCsvMode())}
                   >
-                    Export all to CSV
+                    {intl.get('EXPORT_ALL_TO_CSV') || 'Export all to CSV'}
                   </MenuItem>
                   <MenuItem onClick={handleExportExcelOption}>
-                    Export all to Excel
+                    {intl.get('EXPORT_ALL_TO_EXCEL') || 'Export all to Excel'}
                   </MenuItem>
                 </Menu>
               </>
             )}
 
-            {/* Alarm Center Bell Button */}
-            <Tooltip
-              title={
-                unackedAlarmsCount > 0
-                  ? `Alarm Center (${unackedAlarmsCount} unacknowledged alarm${unackedAlarmsCount > 1 ? 's' : ''})`
-                  : activeAlarmsCount > 0
-                  ? `Alarm Center (${activeAlarmsCount} acknowledged alarm${activeAlarmsCount > 1 ? 's' : ''} active)`
-                  : 'Alarm Center'
-              }
-            >
-              <IconButton
-                className={`header-icon-btn header-alarm-btn ${unackedAlarmsCount > 0 ? 'has-unacked-alarms' : (activeAlarmsCount > 0 ? 'has-acked-alarms' : '')}`}
-                onClick={() => setShowAlarmCenterModal(true)}
-                style={{
-                  color: unackedAlarmsCount > 0 ? '#dc2626' : (activeAlarmsCount > 0 ? '#b91c1c' : '#334155'),
-                  padding: '6px',
-                  position: 'relative'
-                }}
-                aria-label="Alarm Center"
+            {/* Alarm Center Bell Button (only shown when Active Alarms count > 0) */}
+            {activeAlarmsCount > 0 && (
+              <Tooltip
+                title={
+                  unackedAlarmsCount > 0
+                    ? `Alarm Center (${unackedAlarmsCount} unacknowledged alarm${unackedAlarmsCount > 1 ? 's' : ''})`
+                    : `Alarm Center (${activeAlarmsCount} acknowledged alarm${activeAlarmsCount > 1 ? 's' : ''} active)`
+                }
               >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                {unackedAlarmsCount > 0 && (
-                  <span className="header-alarm-badge">{unackedAlarmsCount}</span>
-                )}
-              </IconButton>
-            </Tooltip>
-
-            {!appMode ? (
-              <>
-                {checkIsWeb() && (
-                  <button
-                    type="button"
-                    className="try-desktop-link"
-                    onClick={() => setShowDownloadModal(true)}
-                    title="Download S4A for Windows, macOS, or Android"
-                  >
-                    <svg className="try-desktop-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.3">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    <span className="try-desktop-text">Try App</span>
-                    <span className="try-desktop-badge">New</span>
-                  </button>
-                )}
-                <span className="homepage-version-badge" title={`S4A Version ${APP_VERSION}`}>
-                  v{APP_VERSION}
-                </span>
-              </>
-            ) : (
-              <Tooltip title="System Diagnostic Logs">
                 <IconButton
-                  className="header-icon-btn"
-                  onClick={() => setShowDebugLogs(true)}
-                  style={{ color: '#334155', padding: '6px' }}
-                  aria-label="System Diagnostic Logs"
+                  className={`header-icon-btn header-alarm-btn ${unackedAlarmsCount > 0 ? 'has-unacked-alarms' : 'has-acked-alarms'}`}
+                  onClick={() => setShowAlarmCenterModal(true)}
+                  style={{
+                    color: unackedAlarmsCount > 0 ? '#dc2626' : '#b91c1c',
+                    padding: '6px',
+                    position: 'relative'
+                  }}
+                  aria-label="Alarm Center"
                 >
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                   </svg>
+                  {unackedAlarmsCount > 0 && (
+                    <span className="header-alarm-badge">{unackedAlarmsCount}</span>
+                  )}
                 </IconButton>
               </Tooltip>
             )}
+
+            {/* Info Icon Button (Opens Dropdown Menu for Language, Diagnostic Logs & About) */}
+            <Tooltip title={intl.get('ABOUT_S4A') || 'System Information'}>
+              <IconButton
+                className="header-icon-btn header-info-btn"
+                onClick={(e) => setInfoMenuAnchorEl(e.currentTarget)}
+                style={{ color: '#334155', padding: '6px' }}
+                aria-label={intl.get('ABOUT_S4A') || 'System Information'}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" strokeWidth="3" />
+                </svg>
+              </IconButton>
+            </Tooltip>
+
+            {/* Dropdown Menu Containing: Language, Diagnostic Logs, About */}
+            <Menu
+              anchorEl={infoMenuAnchorEl}
+              open={Boolean(infoMenuAnchorEl)}
+              onClose={() => setInfoMenuAnchorEl(null)}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+              PaperProps={{
+                elevation: 3,
+                style: {
+                  borderRadius: '10px',
+                  minWidth: '220px',
+                  padding: '4px 0',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
+                }
+              }}
+            >
+              {/* 1. Language Toggle Row */}
+              <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🌐</span>
+                  <span>{intl.get('LANGUAGE') || 'Language'}</span>
+                </span>
+                <div className="header-lang-pill">
+                  <button
+                    type="button"
+                    className={`header-lang-btn ${currentLang === 'en' ? 'active' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); handleLanguageChange('en'); }}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    className={`header-lang-btn ${currentLang === 'cn' ? 'active' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); handleLanguageChange('cn'); }}
+                  >
+                    中文
+                  </button>
+                  <button
+                    type="button"
+                    className={`header-lang-btn ${currentLang === 'de' ? 'active' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); handleLanguageChange('de'); }}
+                  >
+                    DE
+                  </button>
+                </div>
+              </div>
+
+              <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+
+              {/* 2. System Diagnostic Logs */}
+              <MenuItem
+                onClick={() => {
+                  setInfoMenuAnchorEl(null);
+                  setShowDebugLogs(true);
+                }}
+                style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', gap: '10px', padding: '9px 16px' }}
+              >
+                <span style={{ fontSize: '15px' }}>📋</span>
+                <span>{intl.get('SYSTEM_DIAGNOSTIC_LOGS') || 'System Diagnostic Logs'}</span>
+              </MenuItem>
+
+              {/* 3. About S4A (Version & Multi-Platform) */}
+              <MenuItem
+                onClick={() => {
+                  setInfoMenuAnchorEl(null);
+                  setShowDownloadModal(true);
+                }}
+                style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', gap: '10px', padding: '9px 16px' }}
+              >
+                <span style={{ fontSize: '15px' }}>ℹ️</span>
+                <span>{intl.get('ABOUT_S4A') || 'About S4A'} (v{APP_VERSION})</span>
+              </MenuItem>
+            </Menu>
           </div>
         </div>
       </header>
@@ -1465,25 +1566,25 @@ function App() {
               <div className="landing-modes-grid">
                 {/* Mode Card 1: File Analyze Mode */}
                 <div className="landing-mode-card">
-                  <span className="mode-card-badge badge-analyze">File Analysis</span>
+                  <span className="mode-card-badge badge-analyze">{intl.get('FILE_ANALYSIS_BADGE') || 'File Analysis'}</span>
                   <div className="mode-icon-box mode-icon-analyze">
                     <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <h2 className="mode-card-title">File Analyze Mode</h2>
+                  <h2 className="mode-card-title">{intl.get('FILE_ANALYZE_MODE') || 'File Analyze Mode'}</h2>
                   <p className="mode-card-desc">
-                    Open and inspect recorded CSD and CSV log files. Perform deep graphic trends, table lookups, and compressor/consumption reporting.
+                    {intl.get('FILE_ANALYZE_DESC') || 'Open and inspect recorded CSD and CSV log files. Perform deep graphic trends, table lookups, and compressor/consumption reporting.'}
                   </p>
 
                   <button className="landing-cta-btn" onClick={handleOpenFile}>
                     <FolderOpenIcon style={{ fontSize: 20 }} />
-                    Open File
+                    {intl.get('OPEN_FILE') || 'Open File'}
                   </button>
 
                   {recentFiles.length > 0 && (
                     <div className="recent-files-section">
-                      <h3 className="recent-files-title">Recent Files</h3>
+                      <h3 className="recent-files-title">{intl.get('RECENT_FILES') || 'Recent Files'}</h3>
                       <div className="recent-files-list">
                         {recentFiles.map((file, idx) => (
                           <div
@@ -1520,15 +1621,15 @@ function App() {
 
                 {/* Mode Card 2: Device connection */}
                 <div className="landing-mode-card">
-                  <span className="mode-card-badge badge-monitor">Real-time SUTO Hardware</span>
+                  <span className="mode-card-badge badge-monitor">{intl.get('REALTIME_HARDWARE_BADGE') || 'Real-time SUTO Hardware'}</span>
                   <div className="mode-icon-box mode-icon-monitor">
                     <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   </div>
-                  <h2 className="mode-card-title">Device connection</h2>
+                  <h2 className="mode-card-title">{intl.get('DEVICE_CONNECTION') || 'Device connection'}</h2>
                   <p className="mode-card-desc">
-                    Connect to devices via direct USB driver or other communication for real-time monitoring and graphing.
+                    {intl.get('DEVICE_CONNECTION_DESC') || 'Connect to devices via direct USB driver or other communication for real-time monitoring and graphing.'}
                   </p>
 
                   <button
@@ -1538,7 +1639,7 @@ function App() {
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    Detect & Connect Device
+                    {intl.get('DETECT_CONNECT_DEVICE') || 'Detect & Connect Device'}
                   </button>
 
                   {detectError && (
@@ -1548,26 +1649,26 @@ function App() {
                   )}
 
                   <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Supported Transports:</div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>{intl.get('SUPPORTED_TRANSPORTS') || 'Supported Transports:'}</div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#334155', fontWeight: 600 }}>Direct USB</span>
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>Ethernet TCP</span>
-                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>Bluetooth (BLE)</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#334155', fontWeight: 600 }}>{intl.get('DIRECT_USB') || 'Direct USB'}</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>{intl.get('ETHERNET_TCP') || 'Ethernet TCP'}</span>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Mode Card 3: ProcessScape (Multi-Device Plant SCADA) */}
                 <div className="landing-mode-card">
-                  <span className="mode-card-badge badge-processscape">Multi Device · Plant SCADA</span>
+                  <span className="mode-card-badge badge-processscape">{intl.get('MULTI_DEVICE_BADGE') || 'Multi Device · Plant SCADA'}</span>
                   <div className="mode-icon-box mode-icon-processscape">
                     <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                     </svg>
                   </div>
-                  <h2 className="mode-card-title">ProcessScape</h2>
+                  <h2 className="mode-card-title">{intl.get('PROCESS_SCAPE') || 'ProcessScape'}</h2>
                   <p className="mode-card-desc">
-                    Multi-device plant pipeline visualizer, equipment topology, compressors, buffer tanks, chillers, and distributed live telemetry cards.
+                    {intl.get('PROCESS_SCAPE_DESC') || 'Multi-device plant pipeline visualizer, equipment topology, compressors, buffer tanks, chillers, and distributed live telemetry cards.'}
                   </p>
 
                   <button
@@ -1585,14 +1686,14 @@ function App() {
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
-                    Open ProcessScape
+                    {intl.get('OPEN_PROCESS_SCAPE') || 'Open ProcessScape'}
                   </button>
 
                   <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>SCADA Architecture:</div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>{intl.get('SCADA_ARCHITECTURE') || 'SCADA Architecture:'}</div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>Piping Flow</span>
-                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#b45309', fontWeight: 600 }}>Live Telemetry</span>
+                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>{intl.get('PIPING_FLOW') || 'Piping Flow'}</span>
+                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#b45309', fontWeight: 600 }}>{intl.get('LIVE_TELEMETRY') || 'Live Telemetry'}</span>
                     </div>
                   </div>
                 </div>
@@ -1624,17 +1725,17 @@ function App() {
           <div className="landing-container">
             <div className="landing-wrapper">
               <div className="landing-card" style={{ maxWidth: 520, margin: '0 auto' }}>
-                <h2 className="landing-title">File Analyze Mode</h2>
+                <h2 className="landing-title">{intl.get('FILE_ANALYZE_MODE') || 'File Analyze Mode'}</h2>
                 <p className="landing-subtitle">
-                  Select a CSD or CSV file to begin analysis, or pick from recent files below.
+                  {intl.get('FILE_ANALYZE_EMPTY_SUBTITLE') || 'Select a CSD or CSV file to begin analysis, or pick from recent files below.'}
                 </p>
                 <button className="landing-cta-btn" onClick={handleOpenFile}>
                   <FolderOpenIcon style={{ fontSize: 20 }} />
-                  Open File
+                  {intl.get('OPEN_FILE') || 'Open File'}
                 </button>
                 {recentFiles.length > 0 && (
                   <div className="recent-files-section">
-                    <h3 className="recent-files-title">Recent Files</h3>
+                    <h3 className="recent-files-title">{intl.get('RECENT_FILES') || 'Recent Files'}</h3>
                     <div className="recent-files-list">
                       {recentFiles.map((file, idx) => (
                         <div
@@ -2294,7 +2395,7 @@ function App() {
         onConnected={handleDeviceConnected}
       />
 
-      {/* Platform App Download Dialog (Windows, macOS, Android) */}
+      {/* Platform App Download & About S4A Dialog (Windows, macOS, Android) */}
       <DownloadAppModal
         isOpen={showDownloadModal}
         onClose={() => setShowDownloadModal(false)}
@@ -2311,18 +2412,22 @@ function App() {
           if (targetLocId) {
             setSelectedLocationId(targetLocId);
             psActionsRef.current?.setActiveLocationId?.(targetLocId);
-          } else if (!targetScapeId) {
+          } else if (targetScapeId === '') {
             setSelectedLocationId(null);
           }
-          if (!targetScapeId) {
+          if (targetScapeId === '') {
             try { setActiveScapeId(''); } catch (_) { }
             psActionsRef.current?.switchScape?.('');
             psActionsRef.current?.reloadActiveScape?.('');
             return;
           }
-          try { setActiveScapeId(targetScapeId); } catch (_) { }
-          psActionsRef.current?.switchScape?.(targetScapeId);
-          psActionsRef.current?.reloadActiveScape?.(targetScapeId);
+          if (targetScapeId) {
+            try { setActiveScapeId(targetScapeId); } catch (_) { }
+            psActionsRef.current?.switchScape?.(targetScapeId);
+            psActionsRef.current?.reloadActiveScape?.(targetScapeId);
+          } else {
+            psActionsRef.current?.reloadActiveScape?.();
+          }
         }}
         activeDeviceInfo={deviceInfo}
         onDeviceConnected={(conn) => {

@@ -17,6 +17,7 @@ import {
   packCsModbusTcp,
   parseCsModbusTcp,
   applyModbusChannelScaling,
+  calculate2PointScaling,
   parseCSCommChannelSetting,
   buildCSCommChannelSetting,
   CS_CHANNEL_STRUCT_SIZE,
@@ -301,6 +302,41 @@ describe('modbusProtocol Engine', () => {
       expect(applyModbusChannelScaling(50.0, config)).toBe(50.0);
       expect(applyModbusChannelScaling(150.0, config)).toBe(-9999.0); // Out of range
       expect(applyModbusChannelScaling(-10.0, config)).toBe(-9999.0); // Out of range
+    });
+
+    it('supports a1 and a0 aliases without mBA1 / mBA0 prefix', () => {
+      const config = {
+        a1: 0.5,
+        a0: 10.0
+      };
+      expect(applyModbusChannelScaling(20.0, config)).toBe(20.0);
+    });
+
+    it('calculates scaling from two points (x0, x1, y0, y1) when provided', () => {
+      // 4-20 mA mapped to 0-16 bar: at 12 mA (50%), value should be 8.0 bar
+      const config = {
+        x0: 4,
+        x1: 20,
+        y0: 0,
+        y1: 16
+      };
+      expect(applyModbusChannelScaling(12.0, config)).toBeCloseTo(8.0, 4);
+    });
+
+    it('calculate2PointScaling correctly computes slope a1 and offset a0', () => {
+      // Direct 1:1
+      expect(calculate2PointScaling(0, 1, 0, 1)).toEqual({ a1: 1, a0: 0, mBA1: 1, mBA0: 0 });
+
+      // 4-20 mA to 0-16 bar -> slope = 16/16 = 1.0, offset = 0 - 1*4 = -4.0
+      expect(calculate2PointScaling(4, 20, 0, 16)).toEqual({ a1: 1, a0: -4, mBA1: 1, mBA0: -4 });
+
+      // 0-10000 counts to 0-100 m3/h -> slope = 100/10000 = 0.01, offset = 0
+      const res = calculate2PointScaling(0, 10000, 0, 100);
+      expect(res.a1).toBeCloseTo(0.01, 5);
+      expect(res.a0).toBeCloseTo(0.0, 5);
+
+      // Division by zero protection fallback
+      expect(calculate2PointScaling(10, 10, 0, 50)).toEqual({ a1: 1, a0: 0, mBA1: 1, mBA0: 0 });
     });
   });
 
@@ -631,6 +667,211 @@ describe('modbusProtocol Engine', () => {
       await TauriSutoAPI.disconnect();
       const chsEmpty = await TauriSutoAPI.getChannels();
       expect(chsEmpty).toHaveLength(0);
+    });
+  });
+
+  describe('SUTO vs Third-Party Modbus Live Telemetry & Scaling Verification', () => {
+    beforeEach(() => {
+      TauriSutoAPI.disconnectModbus();
+    });
+
+    afterEach(() => {
+      TauriSutoAPI.disconnectModbus();
+      vi.restoreAllMocks();
+    });
+
+    it('readModbusChannel queries SUTO CS-Bus online measurement command for auto-detected SUTO channels', async () => {
+      const sutoCh = {
+        id: 1,
+        channel_id: 1,
+        name: 'Flow',
+        unit: 'm³/h',
+        regAddr: 0,
+        dataType: 8,
+        a1: 2.0,
+        a0: 0.0,
+        isSuto: true
+      };
+
+      // Mock exchangeCsModbus returning 24.0 for channel 1
+      const mockPayload = createMockS331MeasurementValues([24.0]);
+      const exchangeSpy = vi.spyOn(TauriSutoAPI, 'exchangeCsModbus').mockResolvedValue(mockPayload);
+
+      const res = await TauriSutoAPI.readModbusChannel(sutoCh, { isSutoDevice: true });
+      expect(exchangeSpy).toHaveBeenCalled();
+      expect(res.success).toBe(true);
+      expect(res.rawValue).toBeCloseTo(24.0, 1);
+      // Scaled value: 24.0 * 2.0 = 48.0
+      expect(res.value).toBeCloseTo(48.0, 1);
+    });
+
+    it('getMeasurementData applies scaling (x10 -> 240) for 3rd-party Modbus device without bypassing registers', async () => {
+      // Connect as third-party (isSutoDevice: false)
+      await TauriSutoAPI.connectModbusTcp({
+        host: '192.168.1.150',
+        port: 502,
+        slaveId: 1,
+        name: 'Third-Party Flow Meter',
+        isSutoDevice: false,
+        channels: [
+          {
+            id: 1,
+            channel_id: 1,
+            name: 'Flow',
+            unit: 'm³/h',
+            funcCode: 3,
+            regAddr: 0,
+            dataType: 8, // FLOAT_L (Little-endian float)
+            a1: 10.0,
+            a0: 0.0,
+            mBA1: 10.0,
+            mBA0: 0.0,
+            isSuto: false
+          }
+        ]
+      });
+
+      // Float 24.0 in ABCD is [0x41, 0xC0, 0x00, 0x00] -> CDAB is [0x00, 0x00, 0x41, 0xC0]
+      const rawBytes = new Uint8Array([0x00, 0x00, 0x41, 0xC0]);
+
+      vi.spyOn(TauriSutoAPI, 'readModbusRegisters').mockResolvedValue(rawBytes);
+      const exchangeSpy = vi.spyOn(TauriSutoAPI, 'exchangeCsModbus');
+
+      const data = await TauriSutoAPI.getMeasurementData();
+      expect(data).toHaveLength(1);
+      // For third-party device, SUTO CS-Bus batch exchange must NOT be called
+      expect(exchangeSpy).not.toHaveBeenCalled();
+      // Raw value 24.0 scaled x10 must equal 240.0
+      expect(data[0].current_value).toBeCloseTo(240.0, 1);
+      expect(data[0].value).toBeCloseTo(240.0, 1);
+    });
+
+    it('getMeasurementData applies scaling for auto-detected SUTO devices during CS-Bus batch polling', async () => {
+      // Connect as SUTO device (isSutoDevice: true)
+      await TauriSutoAPI.connectModbusTcp({
+        host: '192.168.1.151',
+        port: 502,
+        slaveId: 1,
+        name: 'SUTO S331',
+        isSutoDevice: true,
+        channels: [
+          {
+            id: 1,
+            channel_id: 1,
+            name: 'Flow',
+            unit: 'm³/h',
+            a1: 10.0,
+            a0: 0.0,
+            mBA1: 10.0,
+            mBA0: 0.0,
+            isSuto: true
+          }
+        ]
+      });
+
+      // Mock SUTO CS-Bus batch returning 24.0
+      const mockPayload = createMockS331MeasurementValues([24.0]);
+      vi.spyOn(TauriSutoAPI, 'exchangeCsModbus').mockResolvedValue(mockPayload);
+
+      const data = await TauriSutoAPI.getMeasurementData();
+      expect(data).toHaveLength(1);
+      // Scaled by x10 to 240.0
+      expect(data[0].current_value).toBeCloseTo(240.0, 1);
+      expect(data[0].value).toBeCloseTo(240.0, 1);
+    });
+
+    it('SUTO device with firmware mBA1 = 0.0 does NOT zero out readings (returns true reading 24.0)', async () => {
+      await TauriSutoAPI.connectModbusTcp({
+        host: '192.168.1.152',
+        port: 502,
+        slaveId: 1,
+        name: 'S331 Raw',
+        isSutoDevice: true,
+        channels: [
+          {
+            id: 1,
+            channel_id: 1,
+            name: 'Flow',
+            unit: 'm³/h',
+            a1: 0.0, // Unconfigured firmware slope in SUTO S331
+            a0: 0.0,
+            mBA1: 0.0,
+            mBA0: 0.0,
+            isSuto: true
+          }
+        ]
+      });
+
+      const mockPayload = createMockS331MeasurementValues([24.0]);
+      vi.spyOn(TauriSutoAPI, 'exchangeCsModbus').mockResolvedValue(mockPayload);
+
+      const data = await TauriSutoAPI.getMeasurementData();
+      expect(data).toHaveLength(1);
+      // Must NOT be 0.00; must retain actual measurement 24.0!
+      expect(data[0].current_value).toBeCloseTo(24.0, 1);
+      expect(data[0].value).toBeCloseTo(24.0, 1);
+    });
+
+    it('channelSettingToModbusChannel defaults dataType to FLOAT_L and mBA1 = 0.0 to 1.0', () => {
+      const setting = {
+        logicalChannelNo: 1,
+        channelDescription: 'Flow',
+        unitInASCII: 'm³/h',
+        mBValueAddr: 0,
+        mBA1: 0.0,
+        mBA0: 0.0
+        // mBInputValueType not set -> defaults to FLOAT_L
+      };
+      const ch = channelSettingToModbusChannel(setting);
+      expect(ch.dataType).toBe('FLOAT_L');
+      expect(ch.a1).toBe(1.0);
+      expect(ch.mBA1).toBe(1.0);
+    });
+
+    it('getMeasurementData merges scaling from demanded channels into Modbus polling', async () => {
+      await TauriSutoAPI.connectModbusTcp({
+        host: '192.168.1.153',
+        port: 502,
+        slaveId: 1,
+        name: 'Third-Party Modbus',
+        isSutoDevice: false,
+        channels: [
+          {
+            id: 1,
+            channel_id: 1,
+            name: 'Flow',
+            unit: 'm³/h',
+            funcCode: 3,
+            regAddr: 0,
+            dataType: 8,
+            a1: 1.0, // Initially default 1.0
+            a0: 0.0,
+            mBA1: 1.0,
+            mBA0: 0.0
+          }
+        ]
+      });
+
+      // CDAB word swapped float 24.0
+      const rawBytes = new Uint8Array([0x00, 0x00, 0x41, 0xC0]);
+      vi.spyOn(TauriSutoAPI, 'readModbusRegisters').mockResolvedValue(rawBytes);
+
+      // Demanded channel has x10 scaling configured in Location
+      const demandedChannels = [
+        {
+          id: 1,
+          channel_id: 1,
+          a1: 10.0,
+          a0: 0.0,
+          mBA1: 10.0,
+          mBA0: 0.0
+        }
+      ];
+
+      const data = await TauriSutoAPI.getMeasurementData(null, { demandedChannels });
+      expect(data).toHaveLength(1);
+      expect(data[0].current_value).toBeCloseTo(240.0, 1);
+      expect(data[0].value).toBeCloseTo(240.0, 1);
     });
   });
 });

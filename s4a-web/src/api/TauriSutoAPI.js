@@ -306,6 +306,7 @@ export const TauriSutoAPI = {
     name = '',
     serial = null,
     serialNumber = null,
+    isSutoDevice = false,
     channels = [],
     clearOthers = false
   } = {}) {
@@ -356,6 +357,7 @@ export const TauriSutoAPI = {
       baudRate: isRtu ? baudRate : null,
       parity: isRtu ? parity : null,
       isRtu,
+      isSutoDevice: Boolean(isSutoDevice || (channels && channels.some(c => c.isSuto || c.isSutoDevice))),
       name: devName,
       device: devName,
       transport: isRtu ? `Modbus RTU (${serialPort})` : `Modbus TCP (${host}:${p})`,
@@ -546,6 +548,48 @@ export const TauriSutoAPI = {
     const normType = normalizeModbusDataType(inType);
     const regCount = (normType === 1 || normType === 2) ? 1 : 2;
     const isRtu = Boolean(connectionConfig.isRtu || channel.isRtu);
+    const isSuto = Boolean(channel.isSuto || channel.isSutoDevice || connectionConfig.isSutoDevice || connectionConfig.isSuto);
+
+    // If channel is identified as SUTO device channel, try querying via SUTO CS-Bus online command first
+    if (isSuto) {
+      try {
+        const chIdx = channel.id ?? channel.channel_id ?? 1;
+        const numId = parseInt(chIdx, 10) || 1;
+        const batchCmd = buildCsGetOnlineMeasurementValuesCommand(numId, 1);
+        const respBytes = await this.exchangeCsModbus({
+          host,
+          port,
+          slaveId: slaveId || 1,
+          isRtu,
+          csPacket: batchCmd,
+          timeoutMs: 2500
+        });
+        if (respBytes && respBytes.length >= CS_MEASUREMENT_VALUE_SIZE) {
+          const decodedList = parseCsOnlineMeasurementValues(respBytes, 1);
+          if (decodedList.length > 0 && decodedList[0].isValid) {
+            const rawVal = decodedList[0].value;
+            const hasCustomScaling = Boolean(channel && (
+              (typeof channel.mBA1 === 'number' && Math.abs(channel.mBA1 - 1.0) > 1e-9) ||
+              (typeof channel.a1 === 'number' && Math.abs(channel.a1 - 1.0) > 1e-9) ||
+              (typeof channel.mBA0 === 'number' && Math.abs(channel.mBA0) > 1e-9) ||
+              (typeof channel.a0 === 'number' && Math.abs(channel.a0) > 1e-9) ||
+              (channel.x0 !== undefined && channel.y1 !== undefined && (Math.abs(channel.x0 - (channel.y0 ?? 0)) > 1e-9 || Math.abs(channel.x1 - (channel.y1 ?? 1)) > 1e-9))
+            ));
+            const scaledVal = (rawVal !== null && rawVal !== undefined)
+              ? (hasCustomScaling ? applyModbusChannelScaling(rawVal, channel) : rawVal)
+              : null;
+            return {
+              success: true,
+              value: scaledVal,
+              rawValue: rawVal,
+              channelId: channel.channel_id ?? channel.id
+            };
+          }
+        }
+      } catch (sutoErr) {
+        console.warn(`[TauriSutoAPI] SUTO online measurement read note:`, sutoErr);
+      }
+    }
 
     try {
       const bytes = await this.readModbusRegisters({
@@ -872,11 +916,14 @@ export const TauriSutoAPI = {
 
     return {
       success: discoveredChannels.length > 0,
-      deviceInfo: deviceInfo || {
-        model: 'Device',
-        serial: String(slaveId),
-        softwareVersion: '1.0',
-        busVersion: 1
+      deviceInfo: {
+        ...(deviceInfo || {
+          model: 'Device',
+          serial: String(slaveId),
+          softwareVersion: '1.0',
+          busVersion: 1
+        }),
+        isSutoDevice: true
       },
       channels: discoveredChannels
     };
@@ -1426,57 +1473,75 @@ export const TauriSutoAPI = {
             continue;
           }
 
-          // Attempt SUTO CS-Bus atomic batch polling first (FC 71 TCP / FC 70 RTU: [4, 1, 1, 1, chCount])
+          // Check if this device is an auto-detected SUTO device
+          const isSuto = Boolean(
+            modbusDev.isSutoDevice ||
+            modbusDev.detectedSutoInfo ||
+            chList.some(c => c.isSuto || c.isSutoDevice)
+          );
+
+          // Attempt SUTO CS-Bus atomic batch polling (FC 71 TCP / FC 70 RTU: [4, 1, 1, 1, chCount])
+          // ONLY for SUTO devices. Third-party devices will directly use configured register polling.
           let sutoBatchSuccess = false;
-          try {
-            const host = modbusDev.host || '127.0.0.1';
-            const port = modbusDev.port || 502;
-            const slaveId = modbusDev.slaveId ?? 1;
-            const isRtu = Boolean(modbusDev.isRtu);
+          if (isSuto) {
+            try {
+              const host = modbusDev.host || '127.0.0.1';
+              const port = modbusDev.port || 502;
+              const slaveId = modbusDev.slaveId ?? 1;
+              const isRtu = Boolean(modbusDev.isRtu);
 
-            const batchCmd = buildCsGetOnlineMeasurementValuesCommand(1, chList.length);
-            const respBytes = await this.exchangeCsModbus({
-              host,
-              port,
-              slaveId,
-              isRtu,
-              csPacket: batchCmd,
-              timeoutMs: 2000
-            });
+              const batchCmd = buildCsGetOnlineMeasurementValuesCommand(1, chList.length);
+              const respBytes = await this.exchangeCsModbus({
+                host,
+                port,
+                slaveId,
+                isRtu,
+                csPacket: batchCmd,
+                timeoutMs: 2000
+              });
 
-            if (respBytes && respBytes.length >= CS_MEASUREMENT_VALUE_SIZE) {
-              const decodedList = parseCsOnlineMeasurementValues(respBytes, chList.length);
-              if (decodedList.length > 0) {
-                sutoBatchSuccess = true;
-                decodedList.forEach((mVal, idx) => {
-                  const ch = chList[idx];
-                  if (!ch) return;
-                  const chId = ch.channel_id ?? ch.id ?? (idx + 1);
+              if (respBytes && respBytes.length >= CS_MEASUREMENT_VALUE_SIZE) {
+                const decodedList = parseCsOnlineMeasurementValues(respBytes, chList.length);
+                if (decodedList.length > 0) {
+                  sutoBatchSuccess = true;
+                  decodedList.forEach((mVal, idx) => {
+                    const ch = chList[idx];
+                    if (!ch) return;
+                    const chId = ch.channel_id ?? ch.id ?? (idx + 1);
 
-                  // If demand is active, only include demanded channels in result output
-                  if (demanded) {
-                    const devSerial = String(modbusDev.serial || modbusDev.serial_number || '').toLowerCase();
-                    const devId = String(modbusDev.deviceId || modbusDev.id || '').toLowerCase();
-                    const isChDemanded = demanded.some((d) => {
-                      if (!d) return false;
-                      if (typeof d === 'string' || typeof d === 'number') {
-                        const s = String(d).toLowerCase();
-                        return s === String(chId) || (devSerial && s.includes(devSerial) && s.includes(String(chId)));
-                      }
-                      const dChId = d.channel_id ?? d.channelId ?? d.id;
-                      const dSerial = String(d.deviceSerial || d.serial || d.serial_number || '').toLowerCase();
-                      const dDevId = String(d.deviceId || d.device_id || '').toLowerCase();
-                      if (String(dChId) === String(chId)) {
-                        if (dSerial && devSerial) return dSerial === devSerial;
-                        if (dDevId && devId) return dDevId === devId;
-                        return true;
-                      }
-                      return false;
-                    });
-                    if (!isChDemanded) return;
-                  }
+                    // If demand is active, only include demanded channels in result output
+                    if (demanded) {
+                      const devSerial = String(modbusDev.serial || modbusDev.serial_number || '').toLowerCase();
+                      const devId = String(modbusDev.deviceId || modbusDev.id || '').toLowerCase();
+                      const isChDemanded = demanded.some((d) => {
+                        if (!d) return false;
+                        if (typeof d === 'string' || typeof d === 'number') {
+                          const s = String(d).toLowerCase();
+                          return s === String(chId) || (devSerial && s.includes(devSerial) && s.includes(String(chId)));
+                        }
+                        const dChId = d.channel_id ?? d.channelId ?? d.id;
+                        const dSerial = String(d.deviceSerial || d.serial || d.serial_number || '').toLowerCase();
+                        const dDevId = String(d.deviceId || d.device_id || '').toLowerCase();
+                        if (String(dChId) === String(chId)) {
+                          if (dSerial && devSerial) return dSerial === devSerial;
+                          if (dDevId && devId) return dDevId === devId;
+                          return true;
+                        }
+                        return false;
+                      });
+                      if (!isChDemanded) return;
+                    }
 
-                  const val = mVal.value;
+                    const hasCustomScaling = Boolean(ch && (
+                      (typeof ch.mBA1 === 'number' && Math.abs(ch.mBA1 - 1.0) > 1e-9) ||
+                      (typeof ch.a1 === 'number' && Math.abs(ch.a1 - 1.0) > 1e-9) ||
+                      (typeof ch.mBA0 === 'number' && Math.abs(ch.mBA0) > 1e-9) ||
+                      (typeof ch.a0 === 'number' && Math.abs(ch.a0) > 1e-9) ||
+                      (ch.x0 !== undefined && ch.y1 !== undefined && (Math.abs(ch.x0 - (ch.y0 ?? 0)) > 1e-9 || Math.abs(ch.x1 - (ch.y1 ?? 1)) > 1e-9))
+                    ));
+                    const val = (mVal.value !== null && mVal.value !== undefined)
+                      ? (hasCustomScaling ? applyModbusChannelScaling(mVal.value, ch) : mVal.value)
+                      : null;
                   const histKey = `${modbusDev.deviceId || modbusDev.id}_${chId}`;
                   let history = historyBuffer.get(histKey);
                   if (!history) {
@@ -1505,6 +1570,7 @@ export const TauriSutoAPI = {
                     status: mVal.isValid ? 0 : 1,
                     current_value: val,
                     value: val,
+                    rawValue: mVal.value,
                     device: modbusDev.name || ch.device,
                     deviceId: modbusDev.deviceId || modbusDev.id,
                     serial: modbusDev.serial || modbusDev.serial_number,
@@ -1524,6 +1590,7 @@ export const TauriSutoAPI = {
           } catch (batchErr) {
             // SUTO batch FC 71/70 not supported or timed out; will fall back to channel-by-channel
           }
+        }
 
           // If SUTO batch was not applicable or failed, poll channel-by-channel with Modbus registers
           if (!sutoBatchSuccess) {
@@ -1532,8 +1599,9 @@ export const TauriSutoAPI = {
             for (const ch of chList) {
               const chId = ch.channel_id ?? ch.id;
 
+              let matchedDemandCh = null;
               if (demanded) {
-                const isChDemanded = demanded.some((d) => {
+                matchedDemandCh = demanded.find((d) => {
                   if (!d) return false;
                   if (typeof d === 'string' || typeof d === 'number') {
                     const s = String(d).toLowerCase();
@@ -1549,10 +1617,30 @@ export const TauriSutoAPI = {
                   }
                   return false;
                 });
-                if (!isChDemanded) continue;
+                if (!matchedDemandCh) continue;
               }
+
+              // Merge channel scaling from demanded/location configuration if available
+              const effectiveCh = (matchedDemandCh && typeof matchedDemandCh === 'object')
+                ? {
+                    ...ch,
+                    a1: matchedDemandCh.a1 ?? ch.a1,
+                    a0: matchedDemandCh.a0 ?? ch.a0,
+                    mBA1: matchedDemandCh.mBA1 ?? ch.mBA1,
+                    mBA0: matchedDemandCh.mBA0 ?? ch.mBA0,
+                    x0: matchedDemandCh.x0 ?? ch.x0,
+                    x1: matchedDemandCh.x1 ?? ch.x1,
+                    y0: matchedDemandCh.y0 ?? ch.y0,
+                    y1: matchedDemandCh.y1 ?? ch.y1,
+                    mBRangeLo: matchedDemandCh.mBRangeLo ?? ch.mBRangeLo,
+                    mBRangeHi: matchedDemandCh.mBRangeHi ?? ch.mBRangeHi,
+                    mBScalingLo: matchedDemandCh.mBScalingLo ?? ch.mBScalingLo,
+                    mBScalingHi: matchedDemandCh.mBScalingHi ?? ch.mBScalingHi
+                  }
+                : ch;
+
               try {
-                const res = await this.readModbusChannel(ch, modbusDev);
+                const res = await this.readModbusChannel(effectiveCh, modbusDev);
                 const val = res.value;
                 const histKey = `${modbusDev.deviceId || modbusDev.id}_${chId}`;
                 let history = historyBuffer.get(histKey);
@@ -1579,6 +1667,8 @@ export const TauriSutoAPI = {
                   resolution: ch.resolution ?? 2,
                   status: res.success ? 0 : 1,
                   current_value: val,
+                  value: val,
+                  rawValue: res.rawValue,
                   value: val,
                   device: modbusDev.name || ch.device,
                   deviceId: modbusDev.deviceId || modbusDev.id,

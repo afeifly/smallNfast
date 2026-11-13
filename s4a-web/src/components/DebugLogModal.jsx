@@ -15,7 +15,7 @@ export default function DebugLogModal({ isOpen, onClose }) {
   useEffect(() => {
     if (isOpen) {
       TauriSutoAPI.getLogFilePath()
-        .then(path => setLogFilePath(path || ''))
+        .then(path => setLogFilePath(typeof path === 'string' ? path : (path?.path || '')))
         .catch(() => {});
     }
   }, [isOpen]);
@@ -120,7 +120,7 @@ export default function DebugLogModal({ isOpen, onClose }) {
         {logFilePath && (
           <div className="debug-log-path-banner">
             <span className="path-label">Log File:</span>
-            <code className="path-value">{logFilePath}</code>
+            <code className="path-value">{typeof logFilePath === 'string' ? logFilePath : ''}</code>
           </div>
         )}
 
@@ -191,7 +191,11 @@ export default function DebugLogModal({ isOpen, onClose }) {
                     {entry.level}
                   </span>
                   <span className="log-tag">[{entry.tag}]</span>
-                  <span className="log-message">{entry.message}</span>
+                  <span className="log-message">
+                    {typeof entry.message === 'object' && entry.message !== null
+                      ? JSON.stringify(entry.message)
+                      : String(entry.message ?? '')}
+                  </span>
                   {entry.hex_data && (
                     <div className="log-hex">
                       <span className="hex-prefix">HEX:</span>

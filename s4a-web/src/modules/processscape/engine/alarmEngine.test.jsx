@@ -11,6 +11,7 @@ import {
   isChannelInAlarm,
   isChannelValueInAlarm,
   refreshAssignedChannels,
+  clearActiveAlarmForChannel,
   subscribeAlarms
 } from './alarmEngine';
 import { saveLocations, getLocations } from './sensorManagerStorage';
@@ -248,6 +249,69 @@ describe('alarmEngine', () => {
     expect(ch.alarmConfig).toBeDefined();
     expect(ch.alarmConfig.threshold).toBe(9.5);
     expect(ch.alarmConfig.message).toBe('Tank overpressure!');
+  });
+
+  it('completely removes active alarm when alarm is disabled, keeping history audit trail', () => {
+    const locId = 'loc_disable_test';
+    const mpId = 'mp_disable_test';
+    const chId = 'ch_disable_test';
+
+    saveLocations([
+      {
+        id: locId,
+        name: 'Test Plant',
+        scapeId: 'scape_disable',
+        measurementPoints: [
+          {
+            id: mpId,
+            name: 'Line 1',
+            channels: [
+              {
+                id: chId,
+                name: 'Temperature',
+                unit: '°C',
+                alarmConfig: {
+                  enabled: true,
+                  type: 'high',
+                  threshold: 50,
+                  hysteresis: 1,
+                  delaySeconds: 0,
+                  severity: 'critical'
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]);
+
+    // 1. Trigger alarm with value 60
+    evaluateLiveTelemetry([{ id: chId, value: 60 }]);
+    expect(getActiveAlarms().length).toBe(1);
+    expect(isChannelInAlarm(chId, locId)).toBe(true);
+
+    // 2. Disable alarm via setChannelAlarmConfig
+    setChannelAlarmConfig(locId, mpId, chId, {
+      enabled: false,
+      type: 'high',
+      threshold: 50
+    });
+
+    // Active alarms must be empty immediately
+    expect(getActiveAlarms().length).toBe(0);
+    expect(isChannelInAlarm(chId, locId)).toBe(false);
+
+    // History preserves the triggered event and records a cleared event with duration
+    const history = getAlarmHistory();
+    expect(history.length).toBe(2);
+    expect(history[0].eventType).toBe('cleared');
+    expect(history[0].currentValue).toBe('Alarm Disabled');
+    expect(history[1].eventType).toBe('triggered');
+
+    // 3. Further telemetry with high value should NOT re-trigger alarm while disabled
+    evaluateLiveTelemetry([{ id: chId, value: 75 }]);
+    expect(getActiveAlarms().length).toBe(0);
+    expect(isChannelInAlarm(chId, locId)).toBe(false);
   });
 
   it('renders AlarmCenterModal and navigates to alarm location on click', () => {

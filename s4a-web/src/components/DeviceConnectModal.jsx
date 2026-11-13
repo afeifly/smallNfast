@@ -9,7 +9,15 @@ import {
   convertDiscoveredToSensorManagerDevice
 } from '../api/lanScanner';
 import { buildModbusDevice } from '../modules/processscape/engine/sensorManagerStorage';
-import { MODBUS_DATA_TYPES, normalizeModbusDataType } from '../api/modbusProtocol';
+import {
+  MODBUS_DATA_TYPES,
+  normalizeModbusDataType,
+  calculate2PointScaling,
+  buildCsGetOnlineMeasurementValuesCommand,
+  parseCsOnlineMeasurementValues,
+  CS_MEASUREMENT_VALUE_SIZE,
+  applyModbusChannelScaling
+} from '../api/modbusProtocol';
 import { pausePolling, resumePolling } from '../util/liveDataSource';
 import './DeviceConnectModal.css';
 
@@ -18,34 +26,34 @@ const MODBUS_PRESETS = {
     label: 'Custom Channel Configuration',
     name: 'Modbus Device',
     channels: [
-      { id: 1, name: 'Channel 1', unit: 'm³/h', resolution: 1, funcCode: 3, regAddr: 0, dataType: 8, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Channel 1', unit: 'm³/h', resolution: 1, funcCode: 3, regAddr: 0, dataType: 8, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 }
     ]
   },
   s401_flow: {
     label: 'Flow, Velocity & Consumption (m³/h, m/s, m³)',
     name: 'Flow Meter',
     channels: [
-      { id: 1, name: 'Flow', unit: 'm³/h', resolution: 1, funcCode: 3, regAddr: 0, dataType: 8, a1: 1.0, a0: 0.0 },
-      { id: 2, name: 'Velocity', unit: 'm/s', resolution: 2, funcCode: 3, regAddr: 2, dataType: 8, a1: 1.0, a0: 0.0 },
-      { id: 3, name: 'Consumption', unit: 'm³', resolution: 0, funcCode: 3, regAddr: 4, dataType: 8, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Flow', unit: 'm³/h', resolution: 1, funcCode: 3, regAddr: 0, dataType: 8, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 },
+      { id: 2, name: 'Velocity', unit: 'm/s', resolution: 2, funcCode: 3, regAddr: 2, dataType: 8, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 },
+      { id: 3, name: 'Consumption', unit: 'm³', resolution: 0, funcCode: 3, regAddr: 4, dataType: 8, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 }
     ]
   },
   s520_dew: {
     label: 'Dew Point & Pressure (°C, bar)',
     name: 'Dew Point Sensor',
     channels: [
-      { id: 1, name: 'Dew Point', unit: '°C', resolution: 1, funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 2, name: 'Pressure', unit: 'bar', resolution: 2, funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Dew Point', unit: '°C', resolution: 1, funcCode: 3, regAddr: 0, dataType: 7, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 },
+      { id: 2, name: 'Pressure', unit: 'bar', resolution: 2, funcCode: 3, regAddr: 2, dataType: 7, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 }
     ]
   },
   power_meter: {
     label: 'Generic 3-Phase Power Meter (V, A, kW, kWh)',
     name: 'Power Meter',
     channels: [
-      { id: 1, name: 'Voltage', unit: 'V', resolution: 1, funcCode: 3, regAddr: 0, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 2, name: 'Current', unit: 'A', resolution: 2, funcCode: 3, regAddr: 2, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 3, name: 'Active Power', unit: 'kW', resolution: 2, funcCode: 3, regAddr: 4, dataType: 7, a1: 1.0, a0: 0.0 },
-      { id: 4, name: 'Total Energy', unit: 'kWh', resolution: 1, funcCode: 3, regAddr: 6, dataType: 7, a1: 1.0, a0: 0.0 }
+      { id: 1, name: 'Voltage', unit: 'V', resolution: 1, funcCode: 3, regAddr: 0, dataType: 7, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 },
+      { id: 2, name: 'Current', unit: 'A', resolution: 2, funcCode: 3, regAddr: 2, dataType: 7, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 },
+      { id: 3, name: 'Active Power', unit: 'kW', resolution: 2, funcCode: 3, regAddr: 4, dataType: 7, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 },
+      { id: 4, name: 'Total Energy', unit: 'kWh', resolution: 1, funcCode: 3, regAddr: 6, dataType: 7, x0: 0, x1: 1, y0: 0, y1: 1, a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 }
     ]
   }
 };
@@ -93,6 +101,7 @@ export default function DeviceConnectModal({
   const [modbusRtuSlaveId, setModbusRtuSlaveId] = useState('1');
   const [modbusParity, setModbusParity] = useState('none');
   const [selectedScalingIdx, setSelectedScalingIdx] = useState(null);
+  const [scalingTestInput, setScalingTestInput] = useState('1000');
   const [modbusPreset, setModbusPreset] = useState('s401_flow');
   const [modbusChannels, setModbusChannels] = useState(() => MODBUS_PRESETS.s401_flow.channels.map(c => ({ ...c })));
   const [modbusTestResults, setModbusTestResults] = useState(null);
@@ -100,6 +109,62 @@ export default function DeviceConnectModal({
   const [modbusDiscovering, setModbusDiscovering] = useState(false);
   const [modbusDiscoverStatus, setModbusDiscoverStatus] = useState('');
   const [showAutoDetectConfirm, setShowAutoDetectConfirm] = useState(false);
+
+  const selectedModbusChannel = selectedScalingIdx !== null ? modbusChannels[selectedScalingIdx] : null;
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (selectedScalingIdx !== null) {
+          setSelectedScalingIdx(null);
+        } else if (showAutoDetectConfirm) {
+          setShowAutoDetectConfirm(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedScalingIdx, showAutoDetectConfirm]);
+
+  const formatCoeff = (num, fallback = 0) => {
+    const val = typeof num === 'number' && !isNaN(num) ? num : fallback;
+    if (Number.isInteger(val)) return String(val);
+    const s = val.toFixed(6);
+    return s.replace(/\.?0+$/, '');
+  };
+
+  const isPresetActive = (presetType) => {
+    if (!selectedModbusChannel) return false;
+    const x0 = Number(selectedModbusChannel.x0) || 0;
+    const x1 = Number(selectedModbusChannel.x1) || 0;
+    const y0 = Number(selectedModbusChannel.y0) || 0;
+    const y1 = Number(selectedModbusChannel.y1) || 0;
+    const a1 = Number(selectedModbusChannel.a1) || 1;
+    const a0 = Number(selectedModbusChannel.a0) || 0;
+
+    switch (presetType) {
+      case 'direct':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 1) < 1e-6 && Math.abs(y0) < 1e-6 && Math.abs(y1 - 1) < 1e-6 && Math.abs(a1 - 1) < 1e-6 && Math.abs(a0) < 1e-6;
+      case '4_20ma':
+        return Math.abs(x0 - 4) < 1e-6 && Math.abs(x1 - 20) < 1e-6 && Math.abs(y0) < 1e-6;
+      case '0_20ma':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 20) < 1e-6 && Math.abs(y0) < 1e-6;
+      case '0_10v':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 10) < 1e-6 && Math.abs(y0) < 1e-6;
+      case '0_10000':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 10000) < 1e-6 && Math.abs(y0) < 1e-6;
+      case '0_65535':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 65535) < 1e-6 && Math.abs(y0) < 1e-6;
+      case 'div_10':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 10) < 1e-6 && Math.abs(y0) < 1e-6 && Math.abs(y1 - 1) < 1e-6;
+      case 'div_100':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 100) < 1e-6 && Math.abs(y0) < 1e-6 && Math.abs(y1 - 1) < 1e-6;
+      case 'div_1000':
+        return Math.abs(x0) < 1e-6 && Math.abs(x1 - 1000) < 1e-6 && Math.abs(y0) < 1e-6 && Math.abs(y1 - 1) < 1e-6;
+      default:
+        return false;
+    }
+  };
 
   const handleDeleteDetectedSuto = () => {
     setDetectedSutoInfo(null);
@@ -206,8 +271,14 @@ export default function DeviceConnectModal({
         funcCode: 3,
         regAddr: nextReg,
         dataType: 8,
+        x0: 0,
+        x1: 1,
+        y0: 0,
+        y1: 1,
         a1: 1.0,
-        a0: 0.0
+        a0: 0.0,
+        mBA1: 1.0,
+        mBA0: 0.0
       }
     ]);
   };
@@ -218,6 +289,81 @@ export default function DeviceConnectModal({
       copy[idx] = { ...copy[idx], [field]: value };
       return copy;
     });
+  };
+
+  const handleUpdateChannel2Point = (idx, patch) => {
+    setModbusChannels(prev => {
+      const copy = [...prev];
+      const cur = copy[idx];
+      if (!cur) return prev;
+      const merged = { ...cur, ...patch };
+      const numX0 = merged.x0 === '' ? 0 : (Number(merged.x0) || 0);
+      const numX1 = merged.x1 === '' ? 1 : (Number(merged.x1) || 0);
+      const numY0 = merged.y0 === '' ? 0 : (Number(merged.y0) || 0);
+      const numY1 = merged.y1 === '' ? 1 : (Number(merged.y1) || 0);
+      const { a1, a0 } = calculate2PointScaling(numX0, numX1, numY0, numY1);
+      copy[idx] = {
+        ...merged,
+        a1,
+        a0,
+        mBA1: a1,
+        mBA0: a0,
+        mBRangeLo: numX0,
+        mBRangeHi: numX1,
+        mBScalingLo: numY0,
+        mBScalingHi: numY1,
+        rangeLo: numX0,
+        rangeHi: numX1,
+        scalingLo: numY0,
+        scalingHi: numY1
+      };
+      return copy;
+    });
+  };
+
+  const handleApplyScalingPreset = (idx, presetType) => {
+    const ch = modbusChannels[idx];
+    if (!ch) return;
+    const curY1 = (ch.y1 !== undefined && ch.y1 !== 1 && ch.y1 !== 0) ? ch.y1 : 100;
+    let x0 = 0, x1 = 1, y0 = 0, y1 = 1;
+
+    switch (presetType) {
+      case 'direct':
+        x0 = 0; x1 = 1; y0 = 0; y1 = 1;
+        break;
+      case '4_20ma':
+        x0 = 4; x1 = 20; y0 = 0; y1 = curY1;
+        break;
+      case '0_20ma':
+        x0 = 0; x1 = 20; y0 = 0; y1 = curY1;
+        break;
+      case '0_10v':
+        x0 = 0; x1 = 10; y0 = 0; y1 = curY1;
+        break;
+      case '0_10000':
+        x0 = 0; x1 = 10000; y0 = 0; y1 = curY1;
+        break;
+      case '0_65535':
+        x0 = 0; x1 = 65535; y0 = 0; y1 = curY1;
+        break;
+      case 'div_10':
+        x0 = 0; x1 = 10; y0 = 0; y1 = 1;
+        break;
+      case 'div_100':
+        x0 = 0; x1 = 100; y0 = 0; y1 = 1;
+        break;
+      case 'div_1000':
+        x0 = 0; x1 = 1000; y0 = 0; y1 = 1;
+        break;
+      default:
+        return;
+    }
+
+    handleUpdateChannel2Point(idx, { x0, x1, y0, y1 });
+  };
+
+  const handleResetChannelScaling = (idx) => {
+    handleUpdateChannel2Point(idx, { x0: 0, x1: 1, y0: 0, y1: 1 });
   };
 
   const handleDeleteModbusChannel = (idx) => {
@@ -239,8 +385,58 @@ export default function DeviceConnectModal({
       const port = parseInt(modbusPort, 10) || 502;
       const slaveId = isRtu
         ? (parseInt(modbusRtuSlaveId, 10) || 1)
-        : (modbusSlaveId ? (parseInt(modbusSlaveId, 10) || 0) : 0);
+        : ((modbusSlaveId !== '' && !isNaN(parseInt(modbusSlaveId, 10))) ? parseInt(modbusSlaveId, 10) : 1);
+      const isSuto = Boolean(detectedSutoInfo);
 
+      // If an auto-detected SUTO device is present, read live measurements via SUTO CS-Bus online command
+      if (isSuto && modbusChannels.length > 0) {
+        try {
+          const batchCmd = buildCsGetOnlineMeasurementValuesCommand(1, modbusChannels.length);
+          const respBytes = await TauriSutoAPI.exchangeCsModbus({
+            host: isRtu ? null : modbusHost.trim(),
+            port: isRtu ? null : port,
+            slaveId,
+            isRtu,
+            csPacket: batchCmd,
+            timeoutMs: 3000
+          });
+
+          if (respBytes && respBytes.length >= CS_MEASUREMENT_VALUE_SIZE) {
+            const decodedList = parseCsOnlineMeasurementValues(respBytes, modbusChannels.length);
+            if (decodedList.length > 0) {
+              modbusChannels.forEach((ch, idx) => {
+                const mVal = decodedList[idx];
+                const rawVal = mVal ? mVal.value : null;
+                const hasCustomScaling = Boolean(ch && (
+                  (typeof ch.mBA1 === 'number' && Math.abs(ch.mBA1 - 1.0) > 1e-9) ||
+                  (typeof ch.a1 === 'number' && Math.abs(ch.a1 - 1.0) > 1e-9) ||
+                  (typeof ch.mBA0 === 'number' && Math.abs(ch.mBA0) > 1e-9) ||
+                  (typeof ch.a0 === 'number' && Math.abs(ch.a0) > 1e-9) ||
+                  (ch.x0 !== undefined && ch.y1 !== undefined && (Math.abs(ch.x0 - (ch.y0 ?? 0)) > 1e-9 || Math.abs(ch.x1 - (ch.y1 ?? 1)) > 1e-9))
+                ));
+                const scaledVal = (rawVal !== null && rawVal !== undefined)
+                  ? (hasCustomScaling ? applyModbusChannelScaling(rawVal, ch) : rawVal)
+                  : null;
+                results.push({
+                  channelName: ch.name,
+                  unit: ch.unit,
+                  regAddr: ch.regAddr,
+                  success: Boolean(mVal && mVal.isValid),
+                  value: scaledVal,
+                  rawValue: rawVal,
+                  error: (mVal && mVal.isValid) ? null : 'Invalid sensor reading'
+                });
+              });
+              setModbusTestResults(results);
+              return;
+            }
+          }
+        } catch (sutoErr) {
+          console.warn('[DeviceConnectModal] SUTO CS-Bus test read note, falling back to registers:', sutoErr);
+        }
+      }
+
+      // Standard Modbus register read
       for (const ch of modbusChannels) {
         const res = await TauriSutoAPI.readModbusChannel(ch, {
           host: isRtu ? null : modbusHost.trim(),
@@ -249,7 +445,8 @@ export default function DeviceConnectModal({
           baudRate: isRtu ? (parseInt(modbusBaudRate, 10) || 19200) : null,
           parity: isRtu ? modbusParity : null,
           slaveId,
-          isRtu
+          isRtu,
+          isSutoDevice: isSuto
         });
         results.push({
           channelName: ch.name,
@@ -294,11 +491,13 @@ export default function DeviceConnectModal({
         : (isRtu ? `Modbus RTU (${modbusSerialPort})` : `Modbus TCP (${modbusHost}${port === 502 ? '' : `:${port}`})`);
       const name = modbusName.trim() || defaultName;
 
+      const isSuto = Boolean(detectedSutoInfo);
       const devItem = buildModbusDevice({
         name,
         model: devModel,
         serial: devSerial,
         softwareVersion: detectedSutoInfo?.softwareVersion || null,
+        isSutoDevice: isSuto,
         host: isRtu ? null : modbusHost.trim(),
         port: isRtu ? null : port,
         serialPort: isRtu ? modbusSerialPort.trim() : null,
@@ -321,10 +520,11 @@ export default function DeviceConnectModal({
         parity: isRtu ? modbusParity : null,
         slaveId,
         isRtu,
+        isSutoDevice: isSuto,
         name,
         serial: devItem.serial,
         clearOthers: singleDeviceMode,
-        channels: devItem.sensors[0]?.channels || []
+        channels: (devItem.sensors || []).flatMap(s => s.channels || [])
       });
 
       if (typeof onConnected === 'function') {
@@ -988,8 +1188,21 @@ export default function DeviceConnectModal({
 
         <div className="modbus-channels-container">
           {modbusChannels.map((ch, idx) => {
-            const hasCustomScaling = (ch.a1 !== 1 && ch.a1 !== undefined) || (ch.a0 !== 0 && ch.a0 !== undefined);
+            const x0 = ch.x0 ?? 0;
+            const x1 = ch.x1 ?? 1;
+            const y0 = ch.y0 ?? 0;
+            const y1 = ch.y1 ?? 1;
+            const a1 = ch.a1 ?? 1.0;
+            const a0 = ch.a0 ?? 0.0;
+            const isDirect = Math.abs(x0) < 1e-6 && Math.abs(x1 - 1) < 1e-6 && Math.abs(y0) < 1e-6 && Math.abs(y1 - 1) < 1e-6 && Math.abs(a1 - 1) < 1e-6 && Math.abs(a0) < 1e-6;
+            const hasCustomScaling = !isDirect;
             const isRowSelected = selectedScalingIdx === idx;
+            const scalingBadgeLabel = isDirect
+              ? '1:1 (Direct)'
+              : `${x0}..${x1} → ${y0}..${y1}`;
+            const scalingBadgeTitle = isDirect
+              ? 'Display Scaling: 1:1 direct passthrough (Click to configure 2-point calibration)'
+              : `Display Scaling: [${x0}..${x1}] → [${y0}..${y1} ${ch.unit || ''}] (Formula: y = ${Number(a1.toFixed(5))}·x + ${Number(a0.toFixed(5))})`;
 
             return (
               <div key={ch.id || idx} className={`modbus-channel-row ${isRowSelected ? 'selected-scaling-row' : ''} ${isFixedSuto ? 'fixed-suto-row' : ''}`}>
@@ -1065,10 +1278,17 @@ export default function DeviceConnectModal({
                   <button
                     type="button"
                     className={`modbus-scaling-badge-btn ${hasCustomScaling ? 'modified' : ''} ${isRowSelected ? 'active' : ''}`}
-                    onClick={() => setSelectedScalingIdx(isRowSelected ? null : idx)}
-                    title="Click to view/edit scaling range and calibration formula"
+                    onClick={() => {
+                      setSelectedScalingIdx(idx);
+                      if (ch.x1 !== undefined && ch.x1 !== 0) {
+                        setScalingTestInput(String(ch.x1));
+                      } else {
+                        setScalingTestInput('1000');
+                      }
+                    }}
+                    title={scalingBadgeTitle}
                   >
-                    <span>{hasCustomScaling ? `${ch.a1}x ${ch.a0 >= 0 ? '+' : ''}${ch.a0}` : '1:1 (Direct)'}</span>
+                    <span className="modbus-scaling-badge-text">{scalingBadgeLabel}</span>
                     <span className="modbus-scaling-gear">⚙️</span>
                   </button>
                 )}
@@ -1110,137 +1330,6 @@ export default function DeviceConnectModal({
             {modbusTesting ? '⏳ Testing Read...' : '🔍 Test Read'}
           </button>
         </div>
-
-        {/* Selected Channel Scaling Range Editor Panel (Only for custom/3rd-party channels) */}
-        {!isFixedSuto && selectedChannel && (
-          <div className="modbus-scaling-panel">
-            <div className="modbus-scaling-header">
-              <div className="modbus-scaling-title">
-                <span className="modbus-scaling-icon">⚙️</span>
-                <strong>Scaling Range &amp; Calibration:</strong>
-                <span className="modbus-scaling-ch-tag">
-                  {selectedChannel.name || `Channel ${selectedScalingIdx + 1}`} ({selectedChannel.unit || 'No unit'})
-                </span>
-              </div>
-              <button
-                type="button"
-                className="modbus-scaling-close"
-                onClick={() => setSelectedScalingIdx(null)}
-                title="Close scaling editor"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modbus-scaling-body">
-              <div className="modbus-scaling-formula-row">
-                <span className="modbus-formula-tag">y = a₁ · x + a₀</span>
-                <span className="modbus-formula-desc">Multiplies the raw register reading by <strong>a₁</strong>, then adds offset <strong>a₀</strong>.</span>
-              </div>
-
-              <div className="modbus-scaling-inputs">
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Scale Factor (a₁)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    className="form-input"
-                    value={selectedChannel.a1}
-                    onChange={(e) => handleUpdateModbusChannel(selectedScalingIdx, 'a1', parseFloat(e.target.value) || 0)}
-                    placeholder="1.0"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Offset (a₀)</label>
-                  <input
-                    type="number"
-                    step="any"
-                    className="form-input"
-                    value={selectedChannel.a0}
-                    onChange={(e) => handleUpdateModbusChannel(selectedScalingIdx, 'a0', parseFloat(e.target.value) || 0)}
-                    placeholder="0.0"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              {/* Quick Presets */}
-              <div className="modbus-scaling-presets">
-                <span className="modbus-preset-hint">Quick Presets:</span>
-                <button
-                  type="button"
-                  className={`scaling-pill-btn ${selectedChannel.a1 === 1 && selectedChannel.a0 === 0 ? 'active' : ''}`}
-                  onClick={() => {
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a1', 1.0);
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a0', 0.0);
-                  }}
-                >
-                  1:1 Direct
-                </button>
-                <button
-                  type="button"
-                  className={`scaling-pill-btn ${selectedChannel.a1 === 0.1 && selectedChannel.a0 === 0 ? 'active' : ''}`}
-                  onClick={() => {
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a1', 0.1);
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a0', 0.0);
-                  }}
-                >
-                  0.1 (÷10)
-                </button>
-                <button
-                  type="button"
-                  className={`scaling-pill-btn ${selectedChannel.a1 === 0.01 && selectedChannel.a0 === 0 ? 'active' : ''}`}
-                  onClick={() => {
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a1', 0.01);
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a0', 0.0);
-                  }}
-                >
-                  0.01 (÷100)
-                </button>
-                <button
-                  type="button"
-                  className={`scaling-pill-btn ${selectedChannel.a1 === 0.001 && selectedChannel.a0 === 0 ? 'active' : ''}`}
-                  onClick={() => {
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a1', 0.001);
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a0', 0.0);
-                  }}
-                >
-                  0.001 (÷1000)
-                </button>
-                <button
-                  type="button"
-                  className={`scaling-pill-btn ${selectedChannel.a1 === 10 && selectedChannel.a0 === 0 ? 'active' : ''}`}
-                  onClick={() => {
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a1', 10.0);
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a0', 0.0);
-                  }}
-                >
-                  10 (×10)
-                </button>
-                <button
-                  type="button"
-                  className={`scaling-pill-btn ${selectedChannel.a1 === 100 && selectedChannel.a0 === 0 ? 'active' : ''}`}
-                  onClick={() => {
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a1', 100.0);
-                    handleUpdateModbusChannel(selectedScalingIdx, 'a0', 0.0);
-                  }}
-                >
-                  100 (×100)
-                </button>
-              </div>
-
-              {/* Live Preview */}
-              <div className="modbus-scaling-preview">
-                <span>Scaling Result Preview:</span>
-                <code>
-                  Raw 1000 → {((1000 * (selectedChannel.a1 ?? 1.0)) + (selectedChannel.a0 ?? 0.0)).toFixed(2)} {selectedChannel.unit || ''}
-                </code>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Test Results Display */}
         {modbusTestResults && (
@@ -1533,6 +1622,241 @@ export default function DeviceConnectModal({
             </button>
           )}
         </div>
+
+        {/* Modbus Display Scaling Dialog (2-Point Calibration Modal) */}
+        {tab === 'modbus' && !detectedSutoInfo && selectedModbusChannel && (
+          <div className="modbus-scaling-dialog-overlay" onClick={() => setSelectedScalingIdx(null)}>
+            <div className="modbus-scaling-dialog-card" onClick={(e) => e.stopPropagation()}>
+              <div className="modbus-scaling-dialog-header">
+                <div className="modbus-scaling-dialog-title-box">
+                  <span className="modbus-scaling-dialog-icon">📐</span>
+                  <div>
+                    <div className="modbus-scaling-dialog-title">Display Scaling</div>
+                    <div className="modbus-scaling-dialog-subtitle">
+                      Channel: <strong>{selectedModbusChannel.name || `Channel ${selectedScalingIdx + 1}`}</strong>
+                      {selectedModbusChannel.unit ? ` (${selectedModbusChannel.unit})` : ''} • Reg Addr: <code>0x{(selectedModbusChannel.regAddr ?? 0).toString(16).toUpperCase().padStart(4, '0')}</code>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="modbus-scaling-dialog-close"
+                  onClick={() => setSelectedScalingIdx(null)}
+                  title="Close dialog"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="modbus-scaling-dialog-body">
+                {/* Mathematical concept explanation */}
+                <div className="modbus-scaling-concept-card">
+                  <div className="concept-math">
+                    <span>Formula:</span>
+                    <code>y = a₁ · x + a₀</code>
+                  </div>
+                  <div className="concept-desc">
+                    Two-point linear calibration mapping raw <strong>Input Range (X)</strong> to scaled <strong>Display Output (Y)</strong>.
+                  </div>
+                </div>
+
+                {/* 2-Point Table Grid */}
+                <div className="modbus-scaling-grid-table">
+                  <div className="modbus-grid-col-header">
+                    <span>Calibration Point</span>
+                    <span>Input Range (X) <small>Sensor / Raw Signal</small></span>
+                    <span></span>
+                    <span>Display Scaling (Y) <small>Engineering Value</small></span>
+                  </div>
+
+                  {/* Low Point (X0 -> Y0) */}
+                  <div className="modbus-grid-row">
+                    <div className="grid-point-tag low">Low (0)</div>
+                    <div className="grid-input-wrapper">
+                      <input
+                        type="number"
+                        step="any"
+                        className="grid-input"
+                        value={selectedModbusChannel.x0 !== undefined ? selectedModbusChannel.x0 : 0}
+                        onChange={(e) => handleUpdateChannel2Point(selectedScalingIdx, { x0: e.target.value })}
+                        placeholder="0"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="grid-arrow">➔</div>
+                    <div className="grid-input-wrapper with-unit">
+                      <input
+                        type="number"
+                        step="any"
+                        className="grid-input"
+                        value={selectedModbusChannel.y0 !== undefined ? selectedModbusChannel.y0 : 0}
+                        onChange={(e) => handleUpdateChannel2Point(selectedScalingIdx, { y0: e.target.value })}
+                        placeholder="0"
+                        disabled={loading}
+                      />
+                      <span className="grid-unit-badge">{selectedModbusChannel.unit || '--'}</span>
+                    </div>
+                  </div>
+
+                  {/* High Point (X1 -> Y1) */}
+                  <div className="modbus-grid-row">
+                    <div className="grid-point-tag high">High (1)</div>
+                    <div className="grid-input-wrapper">
+                      <input
+                        type="number"
+                        step="any"
+                        className="grid-input"
+                        value={selectedModbusChannel.x1 !== undefined ? selectedModbusChannel.x1 : 1}
+                        onChange={(e) => handleUpdateChannel2Point(selectedScalingIdx, { x1: e.target.value })}
+                        placeholder="1"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="grid-arrow">➔</div>
+                    <div className="grid-input-wrapper with-unit">
+                      <input
+                        type="number"
+                        step="any"
+                        className="grid-input"
+                        value={selectedModbusChannel.y1 !== undefined ? selectedModbusChannel.y1 : 1}
+                        onChange={(e) => handleUpdateChannel2Point(selectedScalingIdx, { y1: e.target.value })}
+                        placeholder="1"
+                        disabled={loading}
+                      />
+                      <span className="grid-unit-badge">{selectedModbusChannel.unit || '--'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="modbus-scaling-presets-section">
+                  <div className="modbus-preset-header">Quick Presets:</div>
+                  <div className="modbus-scaling-presets-pills">
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('direct') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'direct')}
+                      title="Direct 1:1 passthrough (no scaling)"
+                    >
+                      1:1 Direct
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('4_20ma') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, '4_20ma')}
+                      title="Current loop: 4-20 mA input"
+                    >
+                      4 - 20 mA
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('0_20ma') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_20ma')}
+                      title="Current loop: 0-20 mA input"
+                    >
+                      0 - 20 mA
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('0_10v') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_10v')}
+                      title="Voltage signal: 0-10 V input"
+                    >
+                      0 - 10 V
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('0_10000') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_10000')}
+                      title="Raw integer register counts: 0 to 10,000"
+                    >
+                      0 - 10,000
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('0_65535') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, '0_65535')}
+                      title="16-bit UINT register counts: 0 to 65,535"
+                    >
+                      0 - 65,535
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('div_10') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'div_10')}
+                      title="Divide raw register by 10 (0.1×)"
+                    >
+                      0.1 (÷10)
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('div_100') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'div_100')}
+                      title="Divide raw register by 100 (0.01×)"
+                    >
+                      0.01 (÷100)
+                    </button>
+                    <button
+                      type="button"
+                      className={`scaling-pill-btn ${isPresetActive('div_1000') ? 'active' : ''}`}
+                      onClick={() => handleApplyScalingPreset(selectedScalingIdx, 'div_1000')}
+                      title="Divide raw register by 1,000 (0.001×)"
+                    >
+                      0.001 (÷1000)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Derived Parameters & Live Verification */}
+                <div className="modbus-scaling-calc-box">
+                  <div className="calc-details-col">
+                    <span className="calc-label">Calculated Parameters:</span>
+                    <div className="calc-pills">
+                      <span>a₁ (Slope): <strong>{formatCoeff(selectedModbusChannel.a1, 1)}</strong></span>
+                      <span>a₀ (Offset): <strong>{formatCoeff(selectedModbusChannel.a0, 0)}</strong></span>
+                    </div>
+                  </div>
+                  <div className="calc-test-col">
+                    <span className="calc-label">Interactive Test Conversion:</span>
+                    <div className="calc-test-row">
+                      <span className="calc-test-prefix">Raw X:</span>
+                      <input
+                        type="number"
+                        step="any"
+                        className="calc-test-input"
+                        value={scalingTestInput}
+                        onChange={(e) => setScalingTestInput(e.target.value)}
+                        placeholder="1000"
+                      />
+                      <span className="calc-test-arrow">➔</span>
+                      <span className="calc-test-result">
+                        {((parseFloat(scalingTestInput) || 0) * (selectedModbusChannel.a1 ?? 1.0) + (selectedModbusChannel.a0 ?? 0.0)).toFixed(selectedModbusChannel.resolution ?? 2)} {selectedModbusChannel.unit || ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modbus-scaling-dialog-footer">
+                <button
+                  type="button"
+                  className="scaling-dialog-btn-secondary"
+                  onClick={() => handleResetChannelScaling(selectedScalingIdx)}
+                  title="Reset back to 1:1 direct passthrough"
+                >
+                  Reset to 1:1
+                </button>
+                <button
+                  type="button"
+                  className="scaling-dialog-btn-primary"
+                  onClick={() => setSelectedScalingIdx(null)}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Channel scan warning confirmation dialog */}
         {showAutoDetectConfirm && (

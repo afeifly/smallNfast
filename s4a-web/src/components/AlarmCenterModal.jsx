@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import intl from 'react-intl-universal';
 import './AlarmCenterModal.css';
 import { formatChannelValue, getDefaultUnitResolution } from '../util/resolution';
 import {
@@ -121,9 +122,9 @@ export default function AlarmCenterModal({
               </svg>
             </div>
             <div>
-              <h2 className="alarm-modal-title">Alarm Center</h2>
+              <h2 className="alarm-modal-title">{intl.get('ALARM_CENTER') || 'Alarm Center'}</h2>
               <p className="alarm-modal-subtitle">
-                System-wide telemetry monitoring across all assigned channels &amp; locations
+                {intl.get('ALARM_CENTER_SUBTITLE') || 'System-wide telemetry monitoring across all assigned channels & locations'}
               </p>
             </div>
           </div>
@@ -131,7 +132,7 @@ export default function AlarmCenterModal({
             type="button"
             className="alarm-modal-close-btn"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={intl.get('CLOSE') || 'Close'}
           >
             ✕
           </button>
@@ -144,7 +145,7 @@ export default function AlarmCenterModal({
             className={`alarm-modal-tab-btn ${activeTab === 'active' ? 'active' : ''}`}
             onClick={() => setActiveTab('active')}
           >
-            Active Alarms
+            {intl.get('ACTIVE_ALARMS') || 'Active Alarms'}
             <span className={`alarm-tab-badge ${activeAlarms.length > 0 ? 'danger' : 'neutral'}`}>
               {activeAlarms.length}
             </span>
@@ -154,7 +155,7 @@ export default function AlarmCenterModal({
             className={`alarm-modal-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
             onClick={() => setActiveTab('history')}
           >
-            Alarm History
+            {intl.get('ALARM_HISTORY') || 'Alarm History'}
             <span className="alarm-tab-badge neutral">
               {alarmHistory.length}
             </span>
@@ -168,16 +169,19 @@ export default function AlarmCenterModal({
               {activeAlarms.length === 0 ? (
                 <div className="alarm-empty-state">
                   <div className="alarm-empty-icon">✅</div>
-                  <h3 className="alarm-empty-title">All Systems Normal</h3>
+                  <h3 className="alarm-empty-title">{intl.get('ALL_SYSTEMS_NORMAL') || 'All Systems Normal'}</h3>
                   <p className="alarm-empty-desc">
-                    No active alarms detected across any assigned location channels.
+                    {intl.get('NO_ACTIVE_ALARMS_DESC') || 'No active alarms detected across any assigned location channels.'}
                   </p>
                 </div>
               ) : (
                 <>
                   <div className="alarm-active-toolbar">
                     <span className="alarm-toolbar-summary">
-                      {activeAlarms.length} {activeAlarms.length === 1 ? 'channel requires' : 'channels require'} attention
+                      {intl.get('CHANNELS_REQUIRE_ATTENTION', {
+                        count: activeAlarms.length,
+                        plural: activeAlarms.length === 1 ? 'channel' : 'channels'
+                      }) || `${activeAlarms.length} ${activeAlarms.length === 1 ? 'channel requires' : 'channels require'} attention`}
                     </span>
                     <button
                       type="button"
@@ -189,7 +193,7 @@ export default function AlarmCenterModal({
                         }
                       }}
                     >
-                      Acknowledge All
+                      {intl.get('ACKNOWLEDGE_ALL') || 'Acknowledge All'}
                     </button>
                   </div>
 
@@ -201,12 +205,14 @@ export default function AlarmCenterModal({
                           <div className="alarm-card-top">
                             <div className="alarm-card-tags">
                               <span className={`alarm-sev-badge ${isWarn ? 'warning' : 'critical'}`}>
-                                {isWarn ? 'Warning' : 'Critical'}
+                                {isWarn
+                                  ? (intl.get('SEVERITY_WARNING') || 'Warning')
+                                  : (intl.get('SEVERITY_CRITICAL') || 'Critical')}
                               </span>
-                              <span className="alarm-loc-tag" title="Location">
-                                📍 {alarm.locationName || 'Location'}
+                              <span className="alarm-loc-tag" title={intl.get('LOCATION') || 'Location'}>
+                                📍 {alarm.locationName || (intl.get('LOCATION') || 'Location')}
                               </span>
-                              <span className="alarm-mp-tag" title="Measurement Point">
+                              <span className="alarm-mp-tag" title={intl.get('MEASUREMENT_POINT') || 'Measurement Point'}>
                                 ⚡ {alarm.measurementPointName}
                               </span>
                             </div>
@@ -222,13 +228,13 @@ export default function AlarmCenterModal({
                                 {alarm.unit && <span className="alarm-unit">({alarm.unit})</span>}
                               </h4>
                               <div className="alarm-rule-info">
-                                <span>Condition: <strong>{alarm.ruleType}</strong></span>
+                                <span>{intl.get('CONDITION') || 'Condition'}: <strong>{alarm.ruleType}</strong></span>
                                 <span>·</span>
-                                <span>Threshold: <strong>{alarm.threshold} {alarm.unit}</strong></span>
+                                <span>{intl.get('THRESHOLD') || 'Threshold'}: <strong>{alarm.threshold} {alarm.unit}</strong></span>
                                 {alarm.hysteresis > 0 && (
                                   <>
                                     <span>·</span>
-                                    <span>Hysteresis: <strong>{alarm.hysteresis} {alarm.unit}</strong></span>
+                                    <span>{intl.get('HYSTERESIS') || 'Hysteresis'}: <strong>{alarm.hysteresis} {alarm.unit}</strong></span>
                                   </>
                                 )}
                               </div>
@@ -238,7 +244,7 @@ export default function AlarmCenterModal({
                             </div>
 
                             <div className="alarm-current-val-box">
-                              <span className="alarm-val-label">Current Value</span>
+                              <span className="alarm-val-label">{intl.get('CURRENT_VALUE') || 'Current Value'}</span>
                               <span className="alarm-val-num">
                                 {formatDisplayVal(alarm.currentValue, alarm.unit, alarm.resolution)} {alarm.unit}
                               </span>
@@ -250,9 +256,9 @@ export default function AlarmCenterModal({
                               type="button"
                               className="alarm-jump-btn"
                               onClick={() => onGoToLocation && onGoToLocation(alarm)}
-                              title={`Jump to ${alarm.locationName}`}
+                              title={`${intl.get('GO_TO_LOCATION') || 'Jump to'} ${alarm.locationName}`}
                             >
-                              Go to Location →
+                              {intl.get('GO_TO_LOCATION') || 'Go to Location'} →
                             </button>
                             {!alarm.acknowledged ? (
                               <button
@@ -260,10 +266,10 @@ export default function AlarmCenterModal({
                                 className="alarm-ack-btn"
                                 onClick={() => acknowledgeAlarm(alarm.id)}
                               >
-                                Acknowledge
+                                {intl.get('ACKNOWLEDGE') || 'Acknowledge'}
                               </button>
                             ) : (
-                              <span className="alarm-acked-label">✓ Acknowledged</span>
+                              <span className="alarm-acked-label">✓ {intl.get('ACKNOWLEDGED') || 'Acknowledged'}</span>
                             )}
                           </div>
                         </div>
@@ -279,7 +285,7 @@ export default function AlarmCenterModal({
                 <input
                   type="text"
                   className="alarm-history-search"
-                  placeholder="Filter by location, channel, or event..."
+                  placeholder={intl.get('FILTER_ALARMS_PLACEHOLDER') || 'Filter by location, channel, or event...'}
                   value={historyFilter}
                   onChange={(e) => setHistoryFilter(e.target.value)}
                 />
@@ -290,19 +296,19 @@ export default function AlarmCenterModal({
                     onClick={handleExportHistoryCsv}
                     disabled={alarmHistory.length === 0}
                   >
-                    Export CSV
+                    {intl.get('EXPORT_CSV') || 'Export CSV'}
                   </button>
                   <button
                     type="button"
                     className="alarm-action-btn danger-outline"
                     onClick={() => {
-                      if (window.confirm('Are you sure you want to clear all alarm history?')) {
+                      if (window.confirm(intl.get('CLEAR_HISTORY_CONFIRM') || 'Are you sure you want to clear all alarm history?')) {
                         clearAlarmHistory();
                       }
                     }}
                     disabled={alarmHistory.length === 0}
                   >
-                    Clear History
+                    {intl.get('CLEAR_HISTORY') || 'Clear History'}
                   </button>
                 </div>
               </div>
@@ -310,9 +316,11 @@ export default function AlarmCenterModal({
               {filteredHistory.length === 0 ? (
                 <div className="alarm-empty-state">
                   <div className="alarm-empty-icon">📋</div>
-                  <h3 className="alarm-empty-title">No Alarm History</h3>
+                  <h3 className="alarm-empty-title">{intl.get('NO_ALARM_HISTORY') || 'No Alarm History'}</h3>
                   <p className="alarm-empty-desc">
-                    {historyFilter ? 'No events matching your filter.' : 'Historical alarm trigger and recovery events will appear here.'}
+                    {historyFilter
+                      ? (intl.get('NO_HISTORY_MATCHING') || 'No events matching your filter.')
+                      : (intl.get('NO_HISTORY_DEFAULT') || 'Historical alarm trigger and recovery events will appear here.')}
                   </p>
                 </div>
               ) : (
@@ -320,13 +328,13 @@ export default function AlarmCenterModal({
                   <table className="alarm-history-table">
                     <thead>
                       <tr>
-                        <th>Time</th>
-                        <th>Event</th>
-                        <th>Location</th>
-                        <th>Measurement Point</th>
-                        <th>Channel</th>
-                        <th>Trigger Value / Rule</th>
-                        <th>Duration</th>
+                        <th>{intl.get('TIME') || 'Time'}</th>
+                        <th>{intl.get('EVENT') || 'Event'}</th>
+                        <th>{intl.get('LOCATION') || 'Location'}</th>
+                        <th>{intl.get('MEASUREMENT_POINT') || 'Measurement Point'}</th>
+                        <th>{intl.get('CHANNEL') || 'Channel'}</th>
+                        <th>{intl.get('TRIGGER_VALUE_RULE') || 'Trigger Value / Rule'}</th>
+                        <th>{intl.get('DURATION') || 'Duration'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -338,7 +346,11 @@ export default function AlarmCenterModal({
                             <td className="alarm-td-time">{formatTs(item.timestamp)}</td>
                             <td>
                               <span className={`alarm-event-badge ${evtClass}`}>
-                                {evt === 'triggered' ? '⚡ Triggered' : (evt === 'cleared' ? '✓ Cleared' : '👁️ Acked')}
+                                {evt === 'triggered'
+                                  ? `⚡ ${intl.get('EVENT_TRIGGERED') || 'Triggered'}`
+                                  : (evt === 'cleared'
+                                      ? `✓ ${intl.get('EVENT_CLEARED') || 'Cleared'}`
+                                      : `👁️ ${intl.get('EVENT_ACKED') || 'Acked'}`)}
                               </span>
                             </td>
                             <td>{item.locationName || '--'}</td>

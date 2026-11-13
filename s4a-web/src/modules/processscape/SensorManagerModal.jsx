@@ -15,7 +15,7 @@ import {
   isSameDevice
 } from './engine/sensorManagerStorage';
 import { getAllScapes, createNewScape, getActiveScapeId, setActiveScapeId } from './engine/scapeStorage';
-import { setChannelAlarmConfig, ALARM_RULE_TYPES } from './engine/alarmEngine';
+import { setChannelAlarmConfig, clearActiveAlarmForChannel, ALARM_RULE_TYPES } from './engine/alarmEngine';
 
 export default function SensorManagerModal({
   isOpen,
@@ -223,22 +223,59 @@ export default function SensorManagerModal({
         const incomingDev = conn.deviceItem;
         const currentDevs = getSavedDevices();
         const alreadyExists = currentDevs.some(d => isSameDevice(d, incomingDev)) || devices.some(d => isSameDevice(d, incomingDev));
-        if (alreadyExists) {
-          setSyncFeedback(`⚠️ "${incomingDev.name}" is already in Sensor Manager`);
-          setLoadingDevices(false);
-          setTimeout(() => setSyncFeedback(null), 3500);
-          return;
-        }
         setDevices(prev => {
           const updated = upsertDeviceList(prev, [incomingDev]);
           saveDevices(updated);
           return updated;
         });
+
+        // If device channels are updated, update any matching assigned channels across locations
+        const incomingChannels = (incomingDev.sensors || []).flatMap(s => s.channels || []);
+        if (incomingChannels.length > 0) {
+          handleUpdateLocations(locations.map(loc => ({
+            ...loc,
+            measurementPoints: (loc.measurementPoints || []).map(mp => ({
+              ...mp,
+              channels: (mp.channels || []).map(ch => {
+                const matched = incomingChannels.find(ic =>
+                  (ch.id && ic.id && ch.id === ic.id) ||
+                  (ch.channel_id !== undefined && ic.channel_id !== undefined && String(ch.channel_id) === String(ic.channel_id) && (
+                    (ch.deviceId && ic.deviceId && ch.deviceId === ic.deviceId) ||
+                    (ch.deviceSerial && ic.deviceSerial && ch.deviceSerial === ic.deviceSerial) ||
+                    (ch.device && ic.device && ch.device === ic.device)
+                  ))
+                );
+                if (!matched) return ch;
+                return {
+                  ...ch,
+                  a1: matched.a1,
+                  a0: matched.a0,
+                  mBA1: matched.mBA1,
+                  mBA0: matched.mBA0,
+                  x0: matched.x0,
+                  x1: matched.x1,
+                  y0: matched.y0,
+                  y1: matched.y1,
+                  mBRangeLo: matched.mBRangeLo,
+                  mBRangeHi: matched.mBRangeHi,
+                  mBScalingLo: matched.mBScalingLo,
+                  mBScalingHi: matched.mBScalingHi,
+                  displayScaling: matched.displayScaling,
+                  unit: matched.unit || ch.unit
+                };
+              })
+            }))
+          })));
+        }
+
         if (typeof onDeviceConnected === 'function') {
           onDeviceConnected(conn);
         }
-        const chCount = (incomingDev.sensors || []).reduce((acc, s) => acc + (s.channels?.length || 0), 0);
-        setSyncFeedback(`✓ Collected "${incomingDev.name}" (${chCount} channels) via ${incomingDev.transport}`);
+        const chCount = incomingChannels.length;
+        setSyncFeedback(alreadyExists
+          ? `✓ Updated "${incomingDev.name}" (${chCount} channels) in Sensor Manager`
+          : `✓ Collected "${incomingDev.name}" (${chCount} channels) via ${incomingDev.transport}`
+        );
         setTimeout(() => setSyncFeedback(null), 4000);
         return;
       }
@@ -460,6 +497,7 @@ export default function SensorManagerModal({
           serialPort: config.serialPort || null,
           baudRate: config.baudRate || null,
           parity: config.parity || null,
+          isSutoDevice: Boolean(config.isSutoDevice || dev.isSutoDevice || allDevChannels.some(c => c.isSuto || c.isSutoDevice)),
           channels: allDevChannels
         });
         setDevices(prev => {
@@ -846,7 +884,21 @@ export default function SensorManagerModal({
       sensorName: sensName,
       sensorId: sensId,
       slaver_addr: ch.slaver_addr,
-      mBValueAddr: ch.mBValueAddr
+      mBValueAddr: ch.mBValueAddr,
+      a1: ch.a1 ?? ch.mBA1 ?? 1.0,
+      a0: ch.a0 ?? ch.mBA0 ?? 0.0,
+      mBA1: ch.mBA1 ?? ch.a1 ?? 1.0,
+      mBA0: ch.mBA0 ?? ch.a0 ?? 0.0,
+      x0: ch.x0,
+      x1: ch.x1,
+      y0: ch.y0,
+      y1: ch.y1,
+      mBRangeLo: ch.mBRangeLo ?? ch.x0,
+      mBRangeHi: ch.mBRangeHi ?? ch.x1,
+      mBScalingLo: ch.mBScalingLo ?? ch.y0,
+      mBScalingHi: ch.mBScalingHi ?? ch.y1,
+      displayScaling: ch.displayScaling ?? true,
+      isSuto: ch.isSuto
     };
 
     const updatedLocs = [...locations];
@@ -928,7 +980,21 @@ export default function SensorManagerModal({
         sensorName: sens.name,
         sensorId: sens.id,
         slaver_addr: c.slaver_addr,
-        mBValueAddr: c.mBValueAddr
+        mBValueAddr: c.mBValueAddr,
+        a1: c.a1 ?? c.mBA1 ?? 1.0,
+        a0: c.a0 ?? c.mBA0 ?? 0.0,
+        mBA1: c.mBA1 ?? c.a1 ?? 1.0,
+        mBA0: c.mBA0 ?? c.a0 ?? 0.0,
+        x0: c.x0,
+        x1: c.x1,
+        y0: c.y0,
+        y1: c.y1,
+        mBRangeLo: c.mBRangeLo ?? c.x0,
+        mBRangeHi: c.mBRangeHi ?? c.x1,
+        mBScalingLo: c.mBScalingLo ?? c.y0,
+        mBScalingHi: c.mBScalingHi ?? c.y1,
+        displayScaling: c.displayScaling ?? true,
+        isSuto: c.isSuto
       };
     });
 
@@ -1053,7 +1119,21 @@ export default function SensorManagerModal({
             sensorName: sensName,
             sensorId: payload.id,
             slaver_addr: c.slaver_addr,
-            mBValueAddr: c.mBValueAddr
+            mBValueAddr: c.mBValueAddr,
+            a1: c.a1 ?? c.mBA1 ?? 1.0,
+            a0: c.a0 ?? c.mBA0 ?? 0.0,
+            mBA1: c.mBA1 ?? c.a1 ?? 1.0,
+            mBA0: c.mBA0 ?? c.a0 ?? 0.0,
+            x0: c.x0,
+            x1: c.x1,
+            y0: c.y0,
+            y1: c.y1,
+            mBRangeLo: c.mBRangeLo ?? c.x0,
+            mBRangeHi: c.mBRangeHi ?? c.x1,
+            mBScalingLo: c.mBScalingLo ?? c.y0,
+            mBScalingHi: c.mBScalingHi ?? c.y1,
+            displayScaling: c.displayScaling ?? true,
+            isSuto: c.isSuto
           };
         });
 
@@ -1118,7 +1198,21 @@ export default function SensorManagerModal({
           sensorName: pSensName,
           sensorId: pSensId,
           slaver_addr: ch.slaver_addr,
-          mBValueAddr: ch.mBValueAddr
+          mBValueAddr: ch.mBValueAddr,
+          a1: ch.a1 ?? ch.mBA1 ?? 1.0,
+          a0: ch.a0 ?? ch.mBA0 ?? 0.0,
+          mBA1: ch.mBA1 ?? ch.a1 ?? 1.0,
+          mBA0: ch.mBA0 ?? ch.a0 ?? 0.0,
+          x0: ch.x0,
+          x1: ch.x1,
+          y0: ch.y0,
+          y1: ch.y1,
+          mBRangeLo: ch.mBRangeLo ?? ch.x0,
+          mBRangeHi: ch.mBRangeHi ?? ch.x1,
+          mBScalingLo: ch.mBScalingLo ?? ch.y0,
+          mBScalingHi: ch.mBScalingHi ?? ch.y1,
+          displayScaling: ch.displayScaling ?? true,
+          isSuto: ch.isSuto
         };
 
         handleUpdateLocations(locations.map(l => {
@@ -1258,7 +1352,21 @@ export default function SensorManagerModal({
             sensorName: sensName,
             sensorId: payload.id,
             slaver_addr: c.slaver_addr,
-            mBValueAddr: c.mBValueAddr
+            mBValueAddr: c.mBValueAddr,
+            a1: c.a1 ?? c.mBA1 ?? 1.0,
+            a0: c.a0 ?? c.mBA0 ?? 0.0,
+            mBA1: c.mBA1 ?? c.a1 ?? 1.0,
+            mBA0: c.mBA0 ?? c.a0 ?? 0.0,
+            x0: c.x0,
+            x1: c.x1,
+            y0: c.y0,
+            y1: c.y1,
+            mBRangeLo: c.mBRangeLo ?? c.x0,
+            mBRangeHi: c.mBRangeHi ?? c.x1,
+            mBScalingLo: c.mBScalingLo ?? c.y0,
+            mBScalingHi: c.mBScalingHi ?? c.y1,
+            displayScaling: c.displayScaling ?? true,
+            isSuto: c.isSuto
           };
         });
 
@@ -1346,7 +1454,21 @@ export default function SensorManagerModal({
               sensorName: channel.sensorName,
               sensorId: channel.sensorId,
               slaver_addr: channel.slaver_addr,
-              mBValueAddr: channel.mBValueAddr
+              mBValueAddr: channel.mBValueAddr,
+              a1: channel.a1 ?? channel.mBA1 ?? 1.0,
+              a0: channel.a0 ?? channel.mBA0 ?? 0.0,
+              mBA1: channel.mBA1 ?? channel.a1 ?? 1.0,
+              mBA0: channel.mBA0 ?? channel.a0 ?? 0.0,
+              x0: channel.x0,
+              x1: channel.x1,
+              y0: channel.y0,
+              y1: channel.y1,
+              mBRangeLo: channel.mBRangeLo ?? channel.x0,
+              mBRangeHi: channel.mBRangeHi ?? channel.x1,
+              mBScalingLo: channel.mBScalingLo ?? channel.y0,
+              mBScalingHi: channel.mBScalingHi ?? channel.y1,
+              displayScaling: channel.displayScaling ?? true,
+              isSuto: channel.isSuto
             }]
           };
         })
@@ -1414,9 +1536,9 @@ export default function SensorManagerModal({
 
   const handleSaveAlarmConfig = () => {
     if (!editingAlarm) return;
-    const { locationId, mpId, channel, enabled, type, threshold, min, max, hysteresis, delaySeconds, severity, message } = editingAlarm;
+    const { locationId, mpId, channel, type, threshold, min, max, hysteresis, delaySeconds, severity, message } = editingAlarm;
     const alarmConfig = {
-      enabled,
+      enabled: true,
       type,
       threshold: Number(threshold) || 0,
       min: Number(min) || 0,
@@ -1447,6 +1569,7 @@ export default function SensorManagerModal({
       };
     });
     handleUpdateLocations(updatedLocs);
+    syncAllLocationsToScapes(updatedLocs);
     setEditingAlarm(null);
     if (onSyncToScape) {
       onSyncToScape();
@@ -1461,6 +1584,7 @@ export default function SensorManagerModal({
       enabled: false
     };
     setChannelAlarmConfig(locationId, mpId, channel.id, alarmConfig);
+    clearActiveAlarmForChannel(channel.id, locationId, 'disabled');
     const updatedLocs = locations.map(loc => {
       if (loc.id !== locationId) return loc;
       return {
@@ -1480,6 +1604,7 @@ export default function SensorManagerModal({
       };
     });
     handleUpdateLocations(updatedLocs);
+    syncAllLocationsToScapes(updatedLocs);
     setEditingAlarm(null);
     if (onSyncToScape) {
       onSyncToScape();
@@ -1795,7 +1920,21 @@ export default function SensorManagerModal({
                                               sensorName: sens.name,
                                               sensorId: sens.id,
                                               slaver_addr: ch.slaver_addr,
-                                              mBValueAddr: ch.mBValueAddr
+                                              mBValueAddr: ch.mBValueAddr,
+                                              a1: ch.a1 ?? ch.mBA1 ?? 1.0,
+                                              a0: ch.a0 ?? ch.mBA0 ?? 0.0,
+                                              mBA1: ch.mBA1 ?? ch.a1 ?? 1.0,
+                                              mBA0: ch.mBA0 ?? ch.a0 ?? 0.0,
+                                              x0: ch.x0,
+                                              x1: ch.x1,
+                                              y0: ch.y0,
+                                              y1: ch.y1,
+                                              mBRangeLo: ch.mBRangeLo ?? ch.x0,
+                                              mBRangeHi: ch.mBRangeHi ?? ch.x1,
+                                              mBScalingLo: ch.mBScalingLo ?? ch.y0,
+                                              mBScalingHi: ch.mBScalingHi ?? ch.y1,
+                                              displayScaling: ch.displayScaling ?? true,
+                                              isSuto: ch.isSuto
                                             });
                                           }}
                                           onDragEnd={handleEndDrag}
@@ -2341,7 +2480,6 @@ export default function SensorManagerModal({
       {editingAlarm && (
         <div
           className="ps-sm-confirm-backdrop"
-          onClick={() => setEditingAlarm(null)}
           role="dialog"
           aria-modal="true"
         >
@@ -2362,14 +2500,6 @@ export default function SensorManagerModal({
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                className={`ps-sm-alarm-toggle-btn ${editingAlarm.enabled ? 'is-enabled' : 'is-disabled'}`}
-                onClick={() => setEditingAlarm({ ...editingAlarm, enabled: !editingAlarm.enabled })}
-                title="Toggle alarm monitoring for this channel"
-              >
-                {editingAlarm.enabled ? 'Alarm: ON' : 'Alarm: OFF'}
-              </button>
             </div>
 
             <div className="ps-sm-confirm-body ps-sm-alarm-body">
@@ -2391,7 +2521,7 @@ export default function SensorManagerModal({
                     });
                   }}
                 >
-                  {ALARM_RULE_TYPES.map(rule => (
+                  {ALARM_RULE_TYPES.slice(0, 3).map(rule => (
                     <option key={rule.type} value={rule.type}>
                       {rule.label}
                     </option>

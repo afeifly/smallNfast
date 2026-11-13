@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { subscribeLive, setViewDemand, setActiveLocationChannels } from '../../../util/liveDataSource';
 import { formatChannelValue, resolveChannelResolution } from '../../../util/resolution';
 import { autoReconnectSavedDevices, getSavedDevices, getLocations } from './sensorManagerStorage';
-import { isChannelInAlarm, getChannelActiveAlarm } from './alarmEngine';
+import { isChannelInAlarm, getChannelActiveAlarm, subscribeAlarms } from './alarmEngine';
+import { applyModbusChannelScaling } from '../../../api/modbusProtocol';
 import TauriSutoAPI from '../../../api/TauriSutoAPI';
 
 function formatVal(val, resolution = 2) {
@@ -263,7 +264,20 @@ export function useProcessScapeTelemetry({
           }
 
           if (liveItem) {
-            const rawVal = liveItem.current_value !== undefined ? liveItem.current_value : liveItem.value;
+            let rawVal = liveItem.current_value !== undefined ? liveItem.current_value : liveItem.value;
+            const chHasScaling = Boolean(ch && (
+              (typeof ch.mBA1 === 'number' && Math.abs(ch.mBA1 - 1.0) > 1e-9) ||
+              (typeof ch.a1 === 'number' && Math.abs(ch.a1 - 1.0) > 1e-9) ||
+              (typeof ch.mBA0 === 'number' && Math.abs(ch.mBA0) > 1e-9) ||
+              (typeof ch.a0 === 'number' && Math.abs(ch.a0) > 1e-9) ||
+              (ch.x0 !== undefined && ch.y1 !== undefined && (Math.abs(ch.x0 - (ch.y0 ?? 0)) > 1e-9 || Math.abs(ch.x1 - (ch.y1 ?? 1)) > 1e-9))
+            ));
+            if (chHasScaling && liveItem.rawValue !== undefined && liveItem.rawValue !== null) {
+              const directScaled = applyModbusChannelScaling(liveItem.rawValue, ch);
+              if (directScaled !== null && directScaled !== undefined) {
+                rawVal = directScaled;
+              }
+            }
             const res = (typeof liveItem.resolution === 'number' && liveItem.resolution >= 0)
               ? liveItem.resolution
               : resolveChannelResolution(liveItem);
@@ -310,6 +324,49 @@ export function useProcessScapeTelemetry({
       lastUpdate: new Date(),
       channelCount: rawList.length
     });
+  }, [setElements]);
+
+  // Subscribe to alarm state changes (trigger, clear, ack, disable) so canvas elements update immediately
+  useEffect(() => {
+    const unsubAlarms = subscribeAlarms(() => {
+      setElements(prevElems => {
+        let changed = false;
+        const nextElems = (prevElems || []).map(el => {
+          if (!el || !Array.isArray(el.channels)) return el;
+          let cardChanged = false;
+          const updatedChannels = el.channels.map(ch => {
+            const activeAlarm = getChannelActiveAlarm(ch.id, el.locationId);
+            const inAlarm = Boolean(activeAlarm) || (ch.alarmConfig?.enabled && (
+              ch.alarmConfig.type === 'high' ? (Number(ch.val) > Number(ch.alarmConfig.threshold)) :
+              ch.alarmConfig.type === 'low' ? (Number(ch.val) < Number(ch.alarmConfig.threshold)) :
+              ch.alarmConfig.type === 'out_of_range' ? (Number(ch.val) < Number(ch.alarmConfig.min) || Number(ch.val) > Number(ch.alarmConfig.max)) : false
+            ));
+            const isAlarmAcked = Boolean(activeAlarm?.acknowledged);
+            const status = inAlarm ? 'alarm' : (ch.status === 'alarm' ? 'normal' : ch.status);
+            const isAlarmChanged = Boolean(ch.isAlarm) !== Boolean(inAlarm);
+            const isAckChanged = Boolean(ch.isAlarmAcked) !== isAlarmAcked;
+
+            if (isAlarmChanged || isAckChanged || (ch.status === 'alarm' && !inAlarm)) {
+              cardChanged = true;
+              return {
+                ...ch,
+                status,
+                isAlarm: inAlarm,
+                isAlarmAcked: isAlarmAcked
+              };
+            }
+            return ch;
+          });
+          if (cardChanged) {
+            changed = true;
+            return { ...el, channels: updatedChannels };
+          }
+          return el;
+        });
+        return changed ? nextElems : prevElems;
+      });
+    });
+    return () => unsubAlarms();
   }, [setElements]);
 
   useEffect(() => {

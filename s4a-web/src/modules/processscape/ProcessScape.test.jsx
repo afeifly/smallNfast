@@ -6293,7 +6293,14 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const titleInput = container.querySelector('.ps-mgr-input');
     fireEvent.change(titleInput, { target: { value: 'Draft Topology' } });
     const createSubmit = container.querySelector('.ps-mgr-create-form button[type="submit"]');
+    expect(createSubmit.textContent).toContain('Create');
     fireEvent.click(createSubmit);
+
+    // Scape is created in the list without rushing into modify; click Modify Scape to edit it
+    const modifyBtn = Array.from(container.querySelectorAll('.ps-mgr-action-btn.btn-edit')).find(b =>
+      b.closest('.ps-mgr-card')?.textContent.includes('Draft Topology')
+    );
+    fireEvent.click(modifyBtn);
 
     // Editor opens on the newly created scape
     expect(latestState?.scapeMode).toBe('editor');

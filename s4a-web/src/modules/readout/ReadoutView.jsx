@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import intl from 'react-intl-universal';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 import { resolveDeviceTypeName } from '../../util/platform';
 import { getOnlineCache } from '../onlineview/OnlineView';
@@ -514,23 +515,23 @@ export default function ReadoutView({
   // Available readout options based on device type matching S4ABase.java
   const availableReadoutOptions = useMemo(() => {
     if (isS332) {
-      return [{ id: 'files', label: 'Recorded Log Files', icon: '📁', badge: filesList.length }];
+      return [{ id: 'files', label: intl.get('RECORDED_LOG_FILES') || 'Recorded Log Files', icon: '📁', badge: filesList.length }];
     }
     if (loggerType === 's418' || loggerType === 's461') {
-      return [{ id: 'files', label: 'Read Logged Data (CSV)', icon: '📊' }];
+      return [{ id: 'files', label: intl.get('READ_LOGGED_DATA_CSV') || 'Read Logged Data (CSV)', icon: '📊' }];
     }
     const options = [
-      { id: 'files', label: 'Read Logger files (CSV)', icon: '📁', badge: filesList.length },
-      { id: 'screenshots', label: 'Read screenshots', icon: '🖼️', badge: screenshotsList.length },
+      { id: 'files', label: intl.get('READ_LOGGER_FILES_CSV') || 'Read Logger files (CSV)', icon: '📁', badge: filesList.length },
+      { id: 'screenshots', label: intl.get('READ_SCREENSHOTS') || 'Read screenshots', icon: '🖼️', badge: screenshotsList.length },
     ];
     if (loggerType === 's600' || loggerType === 's605') {
-      options.push({ id: 'report', label: 'Export report', icon: '📑' });
+      options.push({ id: 'report', label: intl.get('EXPORT_REPORT') || 'Export report', icon: '📑' });
     }
     if (loggerType === 's605' || loggerType === 's606') {
-      options.push({ id: 'calibration', label: 'Export user calibration history', icon: '⚖️' });
+      options.push({ id: 'calibration', label: intl.get('EXPORT_USER_CAL_HISTORY') || 'Export user calibration history', icon: '⚖️' });
     }
     if (loggerType === 's606') {
-      options.push({ id: 'alarm', label: 'Export alarm history', icon: '⚠️' });
+      options.push({ id: 'alarm', label: intl.get('EXPORT_ALARM_HISTORY') || 'Export alarm history', icon: '⚠️' });
     }
     return options;
   }, [isS332, loggerType, screenshotsList.length, filesList.length]);
@@ -1029,7 +1030,9 @@ export default function ReadoutView({
           <div className="readout-device-texts">
             <div className="readout-device-title-row">
               <h2 className="readout-device-title">{deviceDisplayName}</h2>
-              <span className="readout-badge read-logger-title" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>Readout</span>
+              <span className="readout-badge read-logger-title" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                {intl.get('READOUT_TITLE') || 'Readout'}
+              </span>
               {isEthernet ? (
                 <span className="readout-badge badge-tcp">Ethernet {cleanIp ? `(${cleanIp})` : ''}</span>
               ) : isBle ? (
@@ -1051,9 +1054,9 @@ export default function ReadoutView({
                   <span>•</span>
                 </>
               )}
-              <span>Channels: {deviceChannels.length} configured</span>
+              <span>{intl.get('READOUT_CONFIGURED_CHANNELS', { count: deviceChannels.length }) || `Channels: ${deviceChannels.length} configured`}</span>
               <span>•</span>
-              <span>Live polling automatically pauses while reading logger files</span>
+              <span>{intl.get('READOUT_POLLING_PAUSED_HINT') || 'Live polling automatically pauses while reading logger files'}</span>
             </div>
           </div>
         </div>
@@ -1085,9 +1088,9 @@ export default function ReadoutView({
               <button
                 className="readout-btn-secondary"
                 onClick={onClose}
-                title="Close Readout Dialog"
+                title={intl.get('CLOSE_READOUT_DIALOG') || 'Close Readout Dialog'}
               >
-                ✕ Close
+                ✕ {intl.get('CLOSE') || 'Close'}
               </button>
             </div>
           )}
@@ -1101,11 +1104,15 @@ export default function ReadoutView({
           <div className="readout-progress-card">
             <div className="readout-progress-spin" />
             <div className="readout-progress-info">
-              <h4>Transferring Readout Data from Device...</h4>
+              <h4>{intl.get('TRANSFERRING_READOUT_DATA') || 'Transferring Readout Data from Device...'}</h4>
               <p>
                 {readoutProgressInfo?.total
-                  ? `Transferring records (${readoutProgressInfo.current.toLocaleString()} / ${readoutProgressInfo.total.toLocaleString()}) and formatting to CSV (${readingProgress}%)`
-                  : `Transferring records and formatting to CSV (${readingProgress}%)`}
+                  ? (intl.get('TRANSFERRING_RECORDS_FMT', {
+                      current: readoutProgressInfo.current.toLocaleString(),
+                      total: readoutProgressInfo.total.toLocaleString(),
+                      percent: readingProgress,
+                    }) || `Transferring records (${readoutProgressInfo.current.toLocaleString()} / ${readoutProgressInfo.total.toLocaleString()}) and formatting to CSV (${readingProgress}%)`)
+                  : (intl.get('TRANSFERRING_RECORDS_SIMPLE', { percent: readingProgress }) || `Transferring records and formatting to CSV (${readingProgress}%)`)}
               </p>
               <div className="readout-progress-bar">
                 <div className="readout-progress-fill" style={{ width: `${readingProgress}%` }} />
@@ -1119,23 +1126,25 @@ export default function ReadoutView({
           <div className="readout-result-banner">
             <div className="readout-banner-icon">✓</div>
             <div className="readout-banner-content">
-              <h4>Readout Completed Successfully!</h4>
+              <h4>{intl.get('READOUT_SUCCESS_TITLE') || 'Readout Completed Successfully!'}</h4>
               <p>
-                Exported <strong>{readResult.rowCount.toLocaleString()} records</strong> to <strong>{readResult.filename}</strong>.
-                Each row includes its own exact timestamp.
+                {intl.get('READOUT_SUCCESS_DESC', {
+                  count: readResult.rowCount.toLocaleString(),
+                  filename: readResult.filename,
+                }) || `Exported ${readResult.rowCount.toLocaleString()} records to ${readResult.filename}. Each row includes its own exact timestamp.`}
               </p>
               <div className="readout-banner-actions">
                 <button className="readout-btn-primary" onClick={handleOpenInS4A}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  Analyze in S4A (Graphic & Table)
+                  {intl.get('ANALYZE_IN_S4A') || 'Analyze in S4A (Graphic & Table)'}
                 </button>
                 <button className="readout-btn-secondary" onClick={handleDownloadFile}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  Download .CSV
+                  {intl.get('DOWNLOAD_CSV') || 'Download .CSV'}
                 </button>
               </div>
             </div>
@@ -1160,14 +1169,14 @@ export default function ReadoutView({
                   onClick={fetchScreenshots}
                   disabled={loadingDeviceData}
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh List'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_LIST') || 'Refresh List'}`}
                 </button>
                 <button
                   className="readout-btn-primary"
                   onClick={handleDownloadSelectedScreenshots}
                   disabled={selectedScreenshots.size === 0 || downloadingScreenshot !== null}
                 >
-                  Download Selected ({selectedScreenshots.size})
+                  {intl.get('DOWNLOAD_SELECTED', { count: selectedScreenshots.size }) || `Download Selected (${selectedScreenshots.size})`}
                 </button>
               </div>
             </div>
@@ -1202,10 +1211,10 @@ export default function ReadoutView({
                           />
                         </label>
                       </th>
-                      <th style={{ minWidth: 240 }}>Screenshot File Name</th>
-                      <th style={{ width: 190 }}>Captured Time</th>
-                      <th style={{ width: 120 }}>Size</th>
-                      <th style={{ width: 170, textAlign: 'right', paddingRight: '28px' }}>Actions</th>
+                      <th style={{ minWidth: 240 }}>{intl.get('FILE_NAME') || 'Screenshot File Name'}</th>
+                      <th style={{ width: 190 }}>{intl.get('CAPTURED_TIME') || 'Captured Time'}</th>
+                      <th style={{ width: 120 }}>{intl.get('SIZE') || 'Size'}</th>
+                      <th style={{ width: 170, textAlign: 'right', paddingRight: '28px' }}>{intl.get('ACTIONS') || 'Actions'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1283,7 +1292,7 @@ export default function ReadoutView({
                               disabled={downloadingScreenshot === s.name}
                               title="Preview screenshot and download to computer"
                             >
-                              {downloadingScreenshot === s.name ? 'Loading...' : 'Preview & download'}
+                              {downloadingScreenshot === s.name ? (intl.get('REFRESHING') || 'Loading...') : (intl.get('PREVIEW_AND_DOWNLOAD') || 'Preview & download')}
                             </button>
                           </td>
                         </tr>
@@ -1303,12 +1312,12 @@ export default function ReadoutView({
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>🖼️</div>
-                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Screenshot Images Found in Device</h4>
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>{intl.get('NO_SCREENSHOTS_FOUND') || 'No Screenshot Images Found in Device'}</h4>
                 <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b' }}>
                   The connected unit has no saved screenshot captures.
                 </p>
                 <button className="readout-btn-secondary" onClick={fetchScreenshots} disabled={loadingDeviceData}>
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Screenshots'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_SCREENSHOTS') || 'Refresh Screenshots'}`}
                 </button>
               </div>
             )}
@@ -1320,7 +1329,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Compact Logger Data</h3>
+                <h3>{intl.get('COMPACT_LOGGER_DATA') || 'Compact Logger Data'}</h3>
                 <p>Read recorded telemetry without fixed time constraints. Each row is stamped with exact date and time.</p>
               </div>
               <div className="readout-section-actions">
@@ -1330,44 +1339,44 @@ export default function ReadoutView({
                   disabled={loadingDeviceData}
                   title="Refresh logger status from device"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Status'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_STATUS') || 'Refresh Status'}`}
                 </button>
               </div>
             </div>
 
             <div className="readout-stat-grid">
               <div className="readout-stat-card">
-                <span className="readout-stat-label">Rec. Numbers</span>
+                <span className="readout-stat-label">{intl.get('REC_NUMBERS') || 'Rec. Numbers'}</span>
                 <span className="readout-stat-value">
                   {loggerStatus?.recorded_count !== undefined ? loggerStatus.recorded_count : '---'}
                 </span>
-                <span className="readout-stat-sub">Samples in internal ring buffer</span>
+                <span className="readout-stat-sub">{intl.get('SAMPLES_RING_BUFFER') || 'Samples in internal ring buffer'}</span>
               </div>
               <div className="readout-stat-card">
-                <span className="readout-stat-label">Start Time</span>
+                <span className="readout-stat-label">{intl.get('START_TIME') || 'Start Time'}</span>
                 <span className="readout-stat-value" style={{ fontSize: '1rem', marginTop: 8 }}>
                   {loggerStatus?.start_time ? formatUnixTimestamp(loggerStatus.start_time) : '---'}
                 </span>
-                <span className="readout-stat-sub">Earliest available log timestamp</span>
+                <span className="readout-stat-sub">{intl.get('EARLIEST_LOG_TS') || 'Earliest available log timestamp'}</span>
               </div>
               <div className="readout-stat-card">
-                <span className="readout-stat-label">End Time</span>
+                <span className="readout-stat-label">{intl.get('END_TIME') || 'End Time'}</span>
                 <span className="readout-stat-value" style={{ fontSize: '1rem', marginTop: 8 }}>
                   {loggerStatus?.end_time ? formatUnixTimestamp(loggerStatus.end_time) : '---'}
                 </span>
-                <span className="readout-stat-sub">Latest available log timestamp</span>
+                <span className="readout-stat-sub">{intl.get('LATEST_LOG_TS') || 'Latest available log timestamp'}</span>
               </div>
             </div>
 
             <div className="readout-range-card">
-              <div className="readout-range-title">Select Readout Time Period:</div>
+              <div className="readout-range-title">{intl.get('SELECT_READOUT_TIME_PERIOD') || 'Select Readout Time Period:'}</div>
               <div className="readout-preset-buttons">
                 {[
-                  { id: 'last_hour', label: 'Last 1 Hour (60 pts)' },
-                  { id: 'last_day', label: 'Last 24 Hours (1,440 pts)' },
-                  { id: 'last_week', label: 'Last 7 Days' },
-                  { id: 'all', label: 'Entire Memory' },
-                  { id: 'custom', label: 'Custom Range' },
+                  { id: 'last_hour', label: `${intl.get('LAST_HOUR') || 'Last 1 Hour'} (60 pts)` },
+                  { id: 'last_day', label: `${intl.get('LAST_DAY') || 'Last 24 Hours'} (1,440 pts)` },
+                  { id: 'last_week', label: intl.get('LAST_WEEK') || 'Last 7 Days' },
+                  { id: 'all', label: intl.get('ENTIRE_MEMORY') || 'Entire Memory' },
+                  { id: 'custom', label: intl.get('CUSTOM_RANGE') || 'Custom Range' },
                 ].map((p) => (
                   <button
                     key={p.id}
@@ -1382,7 +1391,7 @@ export default function ReadoutView({
               {s418Period === 'custom' && (
                 <div className="readout-custom-inputs">
                   <div className="readout-input-group">
-                    <label>Start Date & Time:</label>
+                    <label>{intl.get('START_DATETIME') || 'Start Date & Time:'}</label>
                     <input
                       type="datetime-local"
                       value={s418CustomStart}
@@ -1390,7 +1399,7 @@ export default function ReadoutView({
                     />
                   </div>
                   <div className="readout-input-group">
-                    <label>End Date & Time:</label>
+                    <label>{intl.get('END_DATETIME') || 'End Date & Time:'}</label>
                     <input
                       type="datetime-local"
                       value={s418CustomEnd}
@@ -1407,7 +1416,7 @@ export default function ReadoutView({
                 onClick={handleReadS418Log}
                 disabled={Boolean(readingProgress)}
               >
-                {readingProgress ? 'Reading from device...' : 'Read to CSV'}
+                {readingProgress ? (intl.get('READING_FROM_DEVICE') || 'Reading from device...') : (intl.get('READ_TO_CSV') || 'Read to CSV')}
               </button>
             </div>
           </div>
@@ -1418,7 +1427,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Logger data</h3>
+                <h3>{intl.get('LOGGER_DATA') || 'Logger data'}</h3>
                 <p>Read volumetric flow, energy rate, and thermal sensor history from internal logger storage.</p>
               </div>
               <div className="readout-section-actions">
@@ -1428,20 +1437,20 @@ export default function ReadoutView({
                   disabled={loadingDeviceData}
                   title="Refresh logger status from device"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Status'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_STATUS') || 'Refresh Status'}`}
                 </button>
               </div>
             </div>
 
             <div className="readout-range-card">
-              <div className="readout-range-title">Choose Extraction Interval:</div>
+              <div className="readout-range-title">{intl.get('CHOOSE_EXTRACTION_INTERVAL') || 'Choose Extraction Interval:'}</div>
               <div className="readout-preset-buttons">
                 {[
-                  { id: 'last_hour', label: 'Last hour' },
-                  { id: 'last_day', label: 'Last day' },
-                  { id: 'last_week', label: 'Last week' },
-                  { id: 'last_month', label: 'Last month' },
-                  { id: 'period', label: 'Time period' },
+                  { id: 'last_hour', label: intl.get('LAST_HOUR') || 'Last hour' },
+                  { id: 'last_day', label: intl.get('LAST_DAY') || 'Last day' },
+                  { id: 'last_week', label: intl.get('LAST_WEEK') || 'Last week' },
+                  { id: 'last_month', label: intl.get('LAST_MONTH') || 'Last month' },
+                  { id: 'period', label: intl.get('TIME_PERIOD_LABEL') || 'Time period' },
                 ].map((p) => (
                   <button
                     key={p.id}
@@ -1456,7 +1465,7 @@ export default function ReadoutView({
               {s461Period === 'period' && (
                 <div className="readout-custom-inputs" style={{ marginTop: '16px' }}>
                   <div className="readout-input-group">
-                    <label>From Date:</label>
+                    <label>{intl.get('FROM_DATE') || 'From Date:'}</label>
                     <input
                       type="date"
                       value={s461StartDate}
@@ -1464,7 +1473,7 @@ export default function ReadoutView({
                     />
                   </div>
                   <div className="readout-input-group">
-                    <label>Start Hour:</label>
+                    <label>{intl.get('START_HOUR') || 'Start Hour:'}</label>
                     <select
                       value={s461StartHour}
                       onChange={(e) => setS461StartHour(e.target.value)}
@@ -1477,7 +1486,7 @@ export default function ReadoutView({
                     </select>
                   </div>
                   <div className="readout-input-group">
-                    <label>To Date:</label>
+                    <label>{intl.get('TO_DATE') || 'To Date:'}</label>
                     <input
                       type="date"
                       value={s461EndDate}
@@ -1485,7 +1494,7 @@ export default function ReadoutView({
                     />
                   </div>
                   <div className="readout-input-group">
-                    <label>End Hour:</label>
+                    <label>{intl.get('END_HOUR') || 'End Hour:'}</label>
                     <select
                       value={s461EndHour}
                       onChange={(e) => setS461EndHour(e.target.value)}
@@ -1513,7 +1522,7 @@ export default function ReadoutView({
                 onClick={handleReadS461Log}
                 disabled={Boolean(readingProgress)}
               >
-                {readingProgress ? 'Reading from device...' : 'Read to CSV'}
+                {readingProgress ? (intl.get('READING_FROM_DEVICE') || 'Reading from device...') : (intl.get('READ_TO_CSV') || 'Read to CSV')}
               </button>
             </div>
           </div>
@@ -1534,7 +1543,7 @@ export default function ReadoutView({
                   disabled={loadingDeviceData}
                   title="Refresh recorded session files from S332"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Files'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_FILES') || 'Refresh Files'}`}
                 </button>
               </div>
             </div>
@@ -1581,13 +1590,13 @@ export default function ReadoutView({
                   <table className="readout-data-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 180 }}>File Name</th>
-                        <th style={{ width: 170 }}>Start Time</th>
-                        <th style={{ width: 170 }}>End Time</th>
-                        <th style={{ width: 120 }}>Duration</th>
-                        <th style={{ width: 90 }}>Interval</th>
-                        <th style={{ width: 100 }}>Channels</th>
-                        <th style={{ width: 140, textAlign: 'right' }}>Action</th>
+                        <th style={{ width: 180 }}>{intl.get('FILE_NAME') || 'File Name'}</th>
+                        <th style={{ width: 170 }}>{intl.get('START_TIME') || 'Start Time'}</th>
+                        <th style={{ width: 170 }}>{intl.get('END_TIME') || 'End Time'}</th>
+                        <th style={{ width: 120 }}>{intl.get('DURATION') || 'Duration'}</th>
+                        <th style={{ width: 90 }}>{intl.get('INTERVAL') || 'Interval'}</th>
+                        <th style={{ width: 100 }}>{intl.get('CHANNELS_COUNT') || 'Channels'}</th>
+                        <th style={{ width: 140, textAlign: 'right' }}>{intl.get('ACTION') || 'Action'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1631,7 +1640,7 @@ export default function ReadoutView({
                                 }}
                                 title="Read recorded data from S332 into CSV"
                               >
-                                Read to CSV
+                                {intl.get('READ_TO_CSV') || 'Read to CSV'}
                               </button>
                             </td>
                           </tr>
@@ -1666,7 +1675,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Recorded Measurement Sessions</h3>
+                <h3>{intl.get('RECORDED_MEASUREMENT_SESSIONS') || 'Recorded Measurement Sessions'}</h3>
                 <p>Select a recorded session to read and export directly into a standard S4A CSV file.</p>
               </div>
               <div className="readout-section-actions">
@@ -1676,7 +1685,7 @@ export default function ReadoutView({
                   disabled={loadingDeviceData}
                   title="Refresh recorded session files from device"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Files'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_FILES') || 'Refresh Files'}`}
                 </button>
               </div>
             </div>
@@ -1687,12 +1696,12 @@ export default function ReadoutView({
                   <table className="readout-data-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 170 }}>Start Time</th>
-                        <th style={{ width: 180 }}>End Time</th>
-                        <th style={{ width: 90 }}>Channels</th>
-                        <th style={{ width: 140 }}>Values / Channel</th>
-                        <th style={{ width: 130 }}>File Name</th>
-                        <th style={{ minWidth: 180 }}>Protocol Description</th>
+                        <th style={{ width: 170 }}>{intl.get('START_TIME') || 'Start Time'}</th>
+                        <th style={{ width: 180 }}>{intl.get('END_TIME') || 'End Time'}</th>
+                        <th style={{ width: 90 }}>{intl.get('CHANNELS_COUNT') || 'Channels'}</th>
+                        <th style={{ width: 140 }}>{intl.get('VALUES_PER_CHANNEL') || 'Values / Channel'}</th>
+                        <th style={{ width: 130 }}>{intl.get('FILE_NAME') || 'File Name'}</th>
+                        <th style={{ minWidth: 180 }}>{intl.get('PROTOCOL_DESCRIPTION') || 'Protocol Description'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1720,7 +1729,7 @@ export default function ReadoutView({
                                       }}
                                     />
                                     <span style={{ color: '#059669', fontWeight: 600, fontSize: '0.82rem' }}>
-                                      Recording (In Progress)
+                                      {intl.get('RECORDING_IN_PROGRESS') || 'Recording (In Progress)'}
                                     </span>
                                   </div>
                                   <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
@@ -1758,7 +1767,7 @@ export default function ReadoutView({
                                 </span>
                                 {isRecording && (
                                   <span style={{ fontSize: '0.70rem', color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: 4, border: '1px solid #bae6fd', fontWeight: 600, flexShrink: 0 }}>
-                                    Active Session
+                                    {intl.get('ACTIVE_SESSION') || 'Active Session'}
                                   </span>
                                 )}
                               </div>
@@ -1790,7 +1799,7 @@ export default function ReadoutView({
                       performRead(fname, file?.samplesPerChannel || 500, fileStart, fileEnd, file);
                     }}
                   >
-                    {filesList[selectedFileIdx]?.isRecording ? 'Read Active Session to CSV' : 'Read Selected Session to CSV'}
+                    {filesList[selectedFileIdx]?.isRecording ? (intl.get('READ_ACTIVE_SESSION') || 'Read Active Session to CSV') : (intl.get('READ_SELECTED_SESSION') || 'Read Selected Session to CSV')}
                   </button>
                 </div>
               </>
@@ -1805,7 +1814,7 @@ export default function ReadoutView({
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
                 <div style={{ fontSize: '40px', marginBottom: '12px' }}>📁</div>
-                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Recorded Measurement Sessions Found</h4>
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>{intl.get('NO_RECORDED_SESSIONS_FOUND') || 'No Recorded Measurement Sessions Found'}</h4>
                 <p style={{ margin: '0', fontSize: '0.88rem', color: '#64748b' }}>
                   The connected unit has no saved measurement session files in memory.
                 </p>
@@ -1819,7 +1828,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Export Device Audit Report (PDF)</h3>
+                <h3>{intl.get('EXPORT_AUDIT_REPORT_PDF') || 'Export Device Audit Report (PDF)'}</h3>
               </div>
               <div className="readout-section-actions">
                 <button
@@ -1828,7 +1837,7 @@ export default function ReadoutView({
                   disabled={loadingDeviceData || generatingReport}
                   title="Refresh report session files"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh Sessions'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH_SESSIONS') || 'Refresh Sessions'}`}
                 </button>
               </div>
             </div>
@@ -1851,9 +1860,9 @@ export default function ReadoutView({
                           }}
                           title="Click to sort by start time"
                         >
-                          Start Time {reportSortKey === 'time' ? (reportSortDir === 'desc' ? '▼' : '▲') : ''}
+                          {intl.get('START_TIME') || 'Start Time'} {reportSortKey === 'time' ? (reportSortDir === 'desc' ? '▼' : '▲') : ''}
                         </th>
-                        <th style={{ width: 180 }}>End Time</th>
+                        <th style={{ width: 180 }}>{intl.get('END_TIME') || 'End Time'}</th>
                         <th
                           style={{ width: 160, cursor: 'pointer', userSelect: 'none' }}
                           onClick={() => {
@@ -1866,7 +1875,7 @@ export default function ReadoutView({
                           }}
                           title="Click to sort by file name"
                         >
-                          Session File {reportSortKey === 'name' ? (reportSortDir === 'asc' ? '▲' : '▼') : ''}
+                          {intl.get('SESSION_FILE') || 'Session File'} {reportSortKey === 'name' ? (reportSortDir === 'asc' ? '▲' : '▼') : ''}
                         </th>
                         <th
                           style={{ width: 130, cursor: 'pointer', userSelect: 'none' }}
@@ -1880,9 +1889,9 @@ export default function ReadoutView({
                           }}
                           title="Click to sort by file size"
                         >
-                          File Size {reportSortKey === 'size' ? (reportSortDir === 'desc' ? '▼' : '▲') : ''}
+                          {intl.get('FILE_SIZE') || 'File Size'} {reportSortKey === 'size' ? (reportSortDir === 'desc' ? '▼' : '▲') : ''}
                         </th>
-                        <th style={{ minWidth: 200 }}>Protocol / Description</th>
+                        <th style={{ minWidth: 200 }}>{intl.get('PROTOCOL_DESCRIPTION') || 'Protocol / Description'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1987,10 +1996,10 @@ export default function ReadoutView({
                             animation: 'spin 0.8s linear infinite',
                           }}
                         />
-                        Compiling on Device...
+                        {intl.get('COMPILING_ON_DEVICE') || 'Compiling on Device...'}
                       </span>
                     ) : (
-                      'Generate & Download PDF Report'
+                      intl.get('GENERATE_DOWNLOAD_PDF') || 'Generate & Download PDF Report'
                     )}
                   </button>
                 </div>
@@ -2020,7 +2029,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Export User Calibration History</h3>
+                <h3>{intl.get('USER_CALIBRATION_RECORDS') || 'User Calibration Records'}</h3>
                 <p>Download complete zero-point and span calibration records with calibration timestamps.</p>
               </div>
               <div className="readout-section-actions">
@@ -2030,14 +2039,14 @@ export default function ReadoutView({
                   disabled={loadingDeviceData}
                   title="Refresh calibration records"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH') || 'Refresh'}`}
                 </button>
               </div>
             </div>
 
             <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
               <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚖️</div>
-              <h4 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>User Calibration Records</h4>
+              <h4 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>{intl.get('USER_CALIBRATION_RECORDS') || 'User Calibration Records'}</h4>
               <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b', maxWidth: 480, marginInline: 'auto' }}>
                 Download complete zero-point and span calibration records with calibration timestamps.
               </p>
@@ -2045,7 +2054,7 @@ export default function ReadoutView({
                 className="readout-btn-primary"
                 onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'READOUT', 'Calibration records read started'); performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Cal_Records.csv`, 12); }}
               >
-                Export Calibration Records (CSV)
+                {intl.get('EXPORT_CAL_RECORDS_CSV') || 'Export Calibration Records (CSV)'}
               </button>
             </div>
           </div>
@@ -2056,7 +2065,7 @@ export default function ReadoutView({
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">
-                <h3>Export Device Alarm History</h3>
+                <h3>{intl.get('DEVICE_ALARM_HISTORY') || 'Device Alarm Event History'}</h3>
                 <p>Extract alarm event log table including threshold transgressions and acknowledge times.</p>
               </div>
               <div className="readout-section-actions">
@@ -2066,14 +2075,14 @@ export default function ReadoutView({
                   disabled={loadingDeviceData}
                   title="Refresh alarm records"
                 >
-                  {loadingDeviceData ? 'Refreshing...' : '🔄 Refresh'}
+                  {loadingDeviceData ? (intl.get('REFRESHING') || 'Refreshing...') : `🔄 ${intl.get('REFRESH') || 'Refresh'}`}
                 </button>
               </div>
             </div>
 
             <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
               <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚠️</div>
-              <h4 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>Device Alarm Event History</h4>
+              <h4 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>{intl.get('DEVICE_ALARM_HISTORY') || 'Device Alarm Event History'}</h4>
               <p style={{ margin: '0 0 20px 0', fontSize: '0.88rem', color: '#64748b', maxWidth: 480, marginInline: 'auto' }}>
                 Extract alarm event log table including threshold transgressions and acknowledge times.
               </p>
@@ -2081,7 +2090,7 @@ export default function ReadoutView({
                 className="readout-btn-primary"
                 onClick={() => performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Alarm_History.csv`, 50)}
               >
-                Export Alarm History (CSV)
+                {intl.get('EXPORT_ALARM_HISTORY_CSV') || 'Export Alarm History (CSV)'}
               </button>
             </div>
           </div>
@@ -2144,7 +2153,7 @@ export default function ReadoutView({
                     title="Previous screenshot (Left Arrow)"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    ◀ Previous
+                    ◀ {intl.get('PREVIOUS') || 'Previous'}
                   </button>
                   <button
                     className="readout-btn-secondary"
@@ -2153,7 +2162,7 @@ export default function ReadoutView({
                     title="Next screenshot (Right Arrow)"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    Next ▶
+                    {intl.get('NEXT') || 'Next'} ▶
                   </button>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -2161,7 +2170,7 @@ export default function ReadoutView({
                     className="readout-btn-secondary"
                     onClick={() => setPreviewImage(null)}
                   >
-                    Close
+                    {intl.get('CLOSE') || 'Close'}
                   </button>
                   <button
                     className="readout-btn-primary"
@@ -2169,7 +2178,7 @@ export default function ReadoutView({
                       handleDownloadScreenshot({ name: previewImage.originalName, size: previewImage.size });
                     }}
                   >
-                    Download Screenshot
+                    {intl.get('DOWNLOAD_SCREENSHOT') || 'Download Screenshot'}
                   </button>
                 </div>
               </div>

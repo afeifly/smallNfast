@@ -819,6 +819,7 @@ export function buildModbusDevice({
   model = null,
   serial = null,
   softwareVersion = null,
+  isSutoDevice = false,
   host = '192.168.1.100',
   port = 502,
   serialPort = 'COM1',
@@ -829,6 +830,7 @@ export function buildModbusDevice({
   channels = []
 }) {
   const isRtu = transportType === 'modbus_rtu';
+  const isSuto = Boolean(isSutoDevice || (channels && channels.some(c => c.isSuto || c.isSutoDevice)));
   const p = parseInt(port, 10) || 502;
   const sId = parseInt(slaveId, 10) || (isRtu ? 1 : 0);
   const cleanHost = isRtu
@@ -879,6 +881,19 @@ export function buildModbusDevice({
       mBInputValueType: ch.mBInputValueType ?? ch.dataType ?? 7,
       mBA1: ch.mBA1 ?? ch.a1 ?? 1.0,
       mBA0: ch.mBA0 ?? ch.a0 ?? 0.0,
+      a1: ch.mBA1 ?? ch.a1 ?? 1.0,
+      a0: ch.mBA0 ?? ch.a0 ?? 0.0,
+      x0: ch.x0 ?? ch.mBRangeLo ?? ch.rangeLo ?? 0.0,
+      x1: ch.x1 ?? ch.mBRangeHi ?? ch.rangeHi ?? 1.0,
+      y0: ch.y0 ?? ch.mBScalingLo ?? ch.scalingLo ?? 0.0,
+      y1: ch.y1 ?? ch.mBScalingHi ?? ch.scalingHi ?? 1.0,
+      mBRangeLo: ch.x0 ?? ch.mBRangeLo ?? ch.rangeLo ?? 0.0,
+      mBRangeHi: ch.x1 ?? ch.mBRangeHi ?? ch.rangeHi ?? 1.0,
+      mBScalingLo: ch.y0 ?? ch.mBScalingLo ?? ch.scalingLo ?? 0.0,
+      mBScalingHi: ch.y1 ?? ch.mBScalingHi ?? ch.scalingHi ?? 1.0,
+      displayScaling: ch.displayScaling ?? true,
+      isSuto: isSuto,
+      isSutoDevice: isSuto,
       errorValue: ch.errorValue ?? -9999.0,
       chOptionalConfig: ch.chOptionalConfig ?? 0,
       desc: ch.desc || `Reg 0x${((ch.mBValueAddr ?? ch.regAddr ?? 0)).toString(16).toUpperCase().padStart(4, '0')}`
@@ -920,6 +935,7 @@ export function buildModbusDevice({
     baudRate: isRtu ? baudRate : null,
     parity: isRtu ? parity : null,
     slaveId: sId,
+    isSutoDevice: isSuto,
     isOnline: true,
     connectionConfig: {
       transport: isRtu ? 'modbus_rtu' : 'modbus_tcp',
@@ -931,7 +947,8 @@ export function buildModbusDevice({
       slaveId: sId,
       name,
       model: model || null,
-      serial: finalSerial
+      serial: finalSerial,
+      isSutoDevice: isSuto
     },
     sensors: finalSensors.length > 0 ? finalSensors : [
       {
@@ -1289,6 +1306,20 @@ export function syncAllLocationsToScapes(customLocations = null) {
           deviceSerial: devSerial,
           devicePort: devPort,
           device: devName,
+          a1: ch.a1,
+          a0: ch.a0,
+          mBA1: ch.mBA1,
+          mBA0: ch.mBA0,
+          x0: ch.x0,
+          x1: ch.x1,
+          y0: ch.y0,
+          y1: ch.y1,
+          mBRangeLo: ch.mBRangeLo,
+          mBRangeHi: ch.mBRangeHi,
+          mBScalingLo: ch.mBScalingLo,
+          mBScalingHi: ch.mBScalingHi,
+          displayScaling: ch.displayScaling,
+          isSuto: ch.isSuto,
           alarmConfig: ch.alarmConfig ? { ...ch.alarmConfig } : undefined
         };
       });
@@ -1625,6 +1656,7 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
               slaveId: config.slaveId || dev.slaveId || 1,
               name: dev.name,
               serial: dev.serial || config.serial,
+              isSutoDevice: Boolean(config.isSutoDevice || dev.isSutoDevice || allDevChannels.some(c => c.isSuto)),
               channels: allDevChannels,
               isRtu: rawTransport.includes('rtu') || Boolean(config.isRtu),
               serialPort: config.serialPort || dev.serialPort,

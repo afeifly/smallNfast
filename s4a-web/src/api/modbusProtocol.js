@@ -567,13 +567,38 @@ export function parseCsModbusTcp(response, expectedTransId) {
 const EPSILON = 1.0e-6;
 
 /**
+ * Calculate slope (a1 / mBA1) and offset (a0 / mBA0) from two calibration points (X0 -> Y0, X1 -> Y1).
+ * Exactly implements `ManualAddDeviceModbusPresenterImpl.java#calculateMBA`.
+ *
+ * @param {number} x0 Input low (e.g. 4 mA, 0 V, or 0 raw counts)
+ * @param {number} x1 Input high (e.g. 20 mA, 10 V, or 10000 raw counts)
+ * @param {number} y0 Display output low (e.g. 0.0 bar)
+ * @param {number} y1 Display output high (e.g. 16.0 bar)
+ * @returns {{ a1: number, a0: number, mBA1: number, mBA0: number }}
+ */
+export function calculate2PointScaling(x0, x1, y0, y1) {
+  const numX0 = Number(x0) || 0;
+  const numX1 = Number(x1) || 0;
+  const numY0 = Number(y0) || 0;
+  const numY1 = Number(y1) || 0;
+  const dx = numX1 - numX0;
+  if (Math.abs(dx) < 1e-9) {
+    return { a1: 1.0, a0: 0.0, mBA1: 1.0, mBA0: 0.0 };
+  }
+  const a1 = (numY1 - numY0) / dx;
+  const a0 = numY0 - a1 * numX0;
+  return { a1, a0, mBA1: a1, mBA0: a0 };
+}
+
+/**
  * Apply linear scaling, rounding, and range validation to raw Modbus measurement value.
  * Exactly implements `GetOnLineMeasureValueActionExecutor.java`.
  *
  * @param {number} rawVal Raw decoded double value
  * @param {object} config Channel configuration object:
- *  - mBA1: slope (default 1.0)
- *  - mBA0: intercept (default 0.0)
+ *  - mBA1 or a1: slope (default 1.0)
+ *  - mBA0 or a0: intercept (default 0.0)
+ *  - x0, x1, y0, y1: optional two-point calibration inputs
  *  - chOptionalConfig: bitmask (default 0)
  *  - mBOutputValueType: output type id
  *  - errorValue: sensor error sentinel (default -9999.0)
@@ -593,8 +618,35 @@ export function applyModbusChannelScaling(rawVal, config = {}) {
     return rawVal;
   }
 
-  const a1 = (typeof config.mBA1 === 'number') ? config.mBA1 : 1.0;
-  const a0 = (typeof config.mBA0 === 'number') ? config.mBA0 : 0.0;
+  let a1 = (typeof config.mBA1 === 'number' && Math.abs(config.mBA1) > 1e-9)
+    ? config.mBA1
+    : ((typeof config.a1 === 'number' && Math.abs(config.a1) > 1e-9) ? config.a1 : null);
+  let a0 = (typeof config.mBA0 === 'number')
+    ? config.mBA0
+    : ((typeof config.a0 === 'number') ? config.a0 : null);
+
+  const x0 = typeof config.x0 === 'number' ? config.x0 : (typeof config.mBRangeLo === 'number' ? config.mBRangeLo : (typeof config.rangeLo === 'number' ? config.rangeLo : null));
+  const x1 = typeof config.x1 === 'number' ? config.x1 : (typeof config.mBRangeHi === 'number' ? config.mBRangeHi : (typeof config.rangeHi === 'number' ? config.rangeHi : null));
+  const y0 = typeof config.y0 === 'number' ? config.y0 : (typeof config.mBScalingLo === 'number' ? config.mBScalingLo : (typeof config.scalingLo === 'number' ? config.scalingLo : null));
+  const y1 = typeof config.y1 === 'number' ? config.y1 : (typeof config.mBScalingHi === 'number' ? config.mBScalingHi : (typeof config.scalingHi === 'number' ? config.scalingHi : null));
+
+  if (x0 !== null && x1 !== null && y0 !== null && y1 !== null && Math.abs(x1 - x0) > 1e-9) {
+    const calcA1 = (y1 - y0) / (x1 - x0);
+    const calcA0 = y0 - calcA1 * x0;
+    // If a1 wasn't directly given or if 2-point scaling differs from identity (0->0, 1->1)
+    if (a1 === null || a0 === null || Math.abs(calcA1 - 1.0) > 1e-9 || Math.abs(calcA0) > 1e-9) {
+      a1 = Math.abs(calcA1) > 1e-9 ? calcA1 : 1.0;
+      a0 = calcA0;
+    }
+  }
+
+  if (a1 === null || Math.abs(a1) < 1e-9) {
+    a1 = 1.0;
+  }
+  if (a0 === null) {
+    a0 = 0.0;
+  }
+
   let v = rawVal * a1 + a0;
 
   // Bit 2 (& 0x04): Force integer cast
@@ -989,9 +1041,11 @@ export function channelSettingToModbusChannel(setting) {
     8: 'FLOAT_L'
   };
 
-  const rawType = setting.mBInputValueType ?? 7;
-  const numType = (rawType >= 1 && rawType <= 8) ? rawType : normalizeModbusDataType(rawType);
-  const dataType = typeMap[numType] || 'FLOAT_B';
+  const rawType = (setting.mBInputValueType !== undefined && setting.mBInputValueType !== null && setting.mBInputValueType > 0)
+    ? ((setting.mBInputValueType >= 1 && setting.mBInputValueType <= 8) ? setting.mBInputValueType : normalizeModbusDataType(setting.mBInputValueType))
+    : 8; // Default SUTO Modbus registers to FLOAT_L (Type 8, CDAB word swapped float)
+  const numType = (rawType >= 1 && rawType <= 8) ? rawType : 8;
+  const dataType = typeMap[numType] || 'FLOAT_L';
   const name = setting.channelDescription?.trim()
     || setting.sensorDescription?.trim()
     || `Channel ${setting.logicalChannelNo}`;
@@ -1000,7 +1054,7 @@ export function channelSettingToModbusChannel(setting) {
     ? setting.mBValueAddr
     : ((setting.logicalChannelNo ? setting.logicalChannelNo - 1 : 0) * 2);
   const funcCode = setting.mBAccessFuncCode || 3;
-  const a1 = (setting.mBA1 !== undefined && !Number.isNaN(setting.mBA1)) ? setting.mBA1 : 1.0;
+  const a1 = (setting.mBA1 !== undefined && !Number.isNaN(setting.mBA1) && Math.abs(setting.mBA1) > 1e-9) ? setting.mBA1 : 1.0;
   const a0 = (setting.mBA0 !== undefined && !Number.isNaN(setting.mBA0)) ? setting.mBA0 : 0.0;
 
   // Disabled if bit 1 of chOptionalConfig is set (& 0x02), or slaverType is -1
@@ -1019,6 +1073,18 @@ export function channelSettingToModbusChannel(setting) {
     mBInputValueType: numType,
     a1,
     a0,
+    mBA1: a1,
+    mBA0: a0,
+    x0: setting.mBRangeLo ?? 0.0,
+    x1: setting.mBRangeHi ?? 1.0,
+    y0: setting.mBScalingLo ?? 0.0,
+    y1: setting.mBScalingHi ?? 1.0,
+    mBRangeLo: setting.mBRangeLo ?? 0.0,
+    mBRangeHi: setting.mBRangeHi ?? 1.0,
+    mBScalingLo: setting.mBScalingLo ?? 0.0,
+    mBScalingHi: setting.mBScalingHi ?? 1.0,
+    isSuto: true,
+    isSutoDevice: true,
     active: !isDisabled,
     resolution: setting.resolution ?? 1,
     errorValue: setting.errorValue ?? -9999.0,

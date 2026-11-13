@@ -420,5 +420,37 @@ describe('App', () => {
       expect(container.querySelector('#psRuntimePageTools #toolRuntimeLocationSelect')).not.toBeNull();
     });
   });
+
+  it('renders only the info icon outside and opens dropdown list containing Language, Logs, and About', async () => {
+    const { container } = render(<App />);
+
+    // Wait for initial render to finish
+    await waitFor(() => {
+      expect(container.querySelector('.header-info-btn')).not.toBeNull();
+    });
+
+    // Outside in the header-right: only the info icon is rendered (no language pill or logs button outside)
+    const infoBtn = container.querySelector('.header-info-btn');
+    expect(infoBtn).not.toBeNull();
+    expect(container.querySelector('.header-right .header-logs-btn')).toBeNull();
+
+    // Click the info icon to open the dropdown
+    fireEvent.click(infoBtn);
+
+    // Dropdown contains all three items
+    await waitFor(() => {
+      expect(screen.getByText('System Diagnostic Logs')).toBeDefined();
+      expect(screen.getByText(/About S4A/)).toBeDefined();
+      expect(screen.getByText('EN')).toBeDefined();
+      expect(screen.getByText('中文')).toBeDefined();
+      expect(screen.getByText('DE')).toBeDefined();
+    });
+
+    // Clicking "System Diagnostic Logs" from the dropdown opens the debug logs dialog
+    fireEvent.click(screen.getByText('System Diagnostic Logs'));
+    await waitFor(() => {
+      expect(screen.getByText('S4A System & Diagnostic Logs')).toBeDefined();
+    });
+  });
 });
 

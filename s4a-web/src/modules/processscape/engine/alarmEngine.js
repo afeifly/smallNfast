@@ -250,6 +250,93 @@ export function isChannelValueInAlarm(channel, val) {
 }
 
 /**
+ * Completely clear active alarm for a specific channel (e.g. when disabled or deleted)
+ */
+export function clearActiveAlarmForChannel(channelId, locationId = null, reason = 'disabled') {
+  if (!channelId) return;
+  const now = Date.now();
+  let changed = false;
+
+  const toRemove = activeAlarms.filter(a => {
+    if (locationId && a.locationId !== locationId) return false;
+    return a.channelId === channelId || String(a.id).includes(channelId);
+  });
+
+  if (toRemove.length > 0) {
+    toRemove.forEach(a => {
+      appendHistoryEvent({
+        alarmId: a.id,
+        locationId: a.locationId,
+        locationName: a.locationName,
+        measurementPointName: a.measurementPointName,
+        channelName: a.channelName,
+        unit: a.unit,
+        ruleType: a.ruleType,
+        threshold: a.threshold,
+        currentValue: reason === 'disabled' ? 'Alarm Disabled' : 'Cleared',
+        eventType: 'cleared',
+        severity: a.severity,
+        durationMs: now - a.triggeredAt
+      });
+    });
+
+    activeAlarms = activeAlarms.filter(a => !toRemove.includes(a));
+    changed = true;
+  }
+
+  // Also clean up evalStateMap for this channel
+  for (const [key] of evalStateMap.entries()) {
+    if (key.includes(channelId) && (!locationId || key.startsWith(`${locationId}_`))) {
+      evalStateMap.delete(key);
+    }
+  }
+
+  if (changed) {
+    notifySubscribers();
+  }
+}
+
+/**
+ * Remove active alarms whose channels or rules are no longer enabled in locations
+ */
+export function syncActiveAlarmsWithLocations(locs = null) {
+  const currentLocs = locs || getLocations();
+  const enabledChannelKeys = new Set();
+  (currentLocs || []).forEach(loc => {
+    (loc.measurementPoints || []).forEach(mp => {
+      (mp.channels || []).forEach(ch => {
+        if (ch && ch.alarmConfig && ch.alarmConfig.enabled) {
+          enabledChannelKeys.add(`${loc.id}_${ch.id || ch.channel_id}`);
+        }
+      });
+    });
+  });
+
+  const now = Date.now();
+  const orphaned = activeAlarms.filter(a => !enabledChannelKeys.has(`${a.locationId}_${a.channelId}`));
+  if (orphaned.length > 0) {
+    orphaned.forEach(a => {
+      appendHistoryEvent({
+        alarmId: a.id,
+        locationId: a.locationId,
+        locationName: a.locationName,
+        measurementPointName: a.measurementPointName,
+        channelName: a.channelName,
+        unit: a.unit,
+        ruleType: a.ruleType,
+        threshold: a.threshold,
+        currentValue: 'Alarm Disabled',
+        eventType: 'cleared',
+        severity: a.severity,
+        durationMs: now - a.triggeredAt
+      });
+    });
+    activeAlarms = activeAlarms.filter(a => enabledChannelKeys.has(`${a.locationId}_${a.channelId}`));
+    notifySubscribers();
+  }
+}
+
+/**
  * Build consolidated channel list across all locations to demand polling
  */
 export function refreshAssignedChannels() {
@@ -280,6 +367,7 @@ export function refreshAssignedChannels() {
 
   // Supply demanded channels to global poller so all locations stay actively monitored
   setAlarmChannels(demanded.length > 0 ? demanded : null);
+  syncActiveAlarmsWithLocations(locs);
 }
 
 /**
@@ -349,7 +437,16 @@ export function evaluateLiveTelemetry(res) {
     (loc.measurementPoints || []).forEach(mp => {
       (mp.channels || []).forEach(ch => {
         const cfg = ch.alarmConfig;
-        if (!cfg || !cfg.enabled) return;
+        if (!cfg || !cfg.enabled) {
+          const chKeyRaw = ch.id || ch.channel_id;
+          const hasActive = activeAlarms.some(a =>
+            a.locationId === loc.id && (a.channelId === chKeyRaw || String(a.id).includes(chKeyRaw))
+          );
+          if (hasActive) {
+            clearActiveAlarmForChannel(chKeyRaw, loc.id, 'disabled');
+          }
+          return;
+        }
 
         const chKey = String(ch.channel_id ?? ch.id ?? '').toLowerCase();
         const chNameKey = (ch.name || '').trim().toLowerCase();
@@ -611,6 +708,9 @@ export function setChannelAlarmConfig(locationId, mpId, channelId, alarmConfig) 
   if (changed) {
     saveLocations(nextLocs);
     refreshAssignedChannels();
+    if (!alarmConfig || !alarmConfig.enabled) {
+      clearActiveAlarmForChannel(channelId, locationId, 'disabled');
+    }
   }
   return changed;
 }

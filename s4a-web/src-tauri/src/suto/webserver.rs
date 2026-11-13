@@ -161,9 +161,14 @@ pub fn suto_set_webserver_enabled(
                     if thread_stop.load(Ordering::SeqCst) {
                         break;
                     }
+                    // Accepted sockets inherit non-blocking mode from `listener` on Windows/macOS/BSD.
+                    // Explicitly restore blocking mode so large asset writes don't abort with WouldBlock.
+                    let _ = stream.set_nonblocking(false);
                     let app_clone = app_handle.clone();
                     std::thread::spawn(move || {
-                        let _ = handle_http_connection(stream, app_clone);
+                        if let Err(e) = handle_http_connection(stream, app_clone) {
+                            log_event("WARN", "WEB_SERVER", &format!("HTTP connection error: {}", e), None);
+                        }
                     });
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -199,14 +204,16 @@ pub fn suto_set_webserver_enabled(
 }
 
 fn handle_http_connection(mut stream: TcpStream, app: tauri::AppHandle) -> Result<(), String> {
+    let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(60)));
     let _ = stream.set_nodelay(true);
 
     let mut buf = Vec::with_capacity(8192);
     let mut temp = [0u8; 4096];
     let mut header_end_idx: Option<usize> = None;
     let mut content_length: usize = 0;
+    let read_start = std::time::Instant::now();
 
     // 1. Read HTTP headers
     loop {
@@ -230,6 +237,15 @@ fn handle_http_connection(mut stream: TcpStream, app: tauri::AppHandle) -> Resul
                     return Err("Header too large".into());
                 }
             }
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    && read_start.elapsed() < Duration::from_secs(15) =>
+            {
+                let _ = stream.set_nonblocking(false);
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            }
             Err(_) => break,
         }
     }
@@ -244,6 +260,15 @@ fn handle_http_connection(mut stream: TcpStream, app: tauri::AppHandle) -> Resul
         match stream.read(&mut temp) {
             Ok(0) => break,
             Ok(n) => buf.extend_from_slice(&temp[..n]),
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    && read_start.elapsed() < Duration::from_secs(15) =>
+            {
+                let _ = stream.set_nonblocking(false);
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            }
             Err(_) => break,
         }
     }
@@ -315,6 +340,32 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
+fn write_all_reliable(stream: &mut TcpStream, mut data: &[u8]) -> Result<(), String> {
+    let _ = stream.set_nonblocking(false);
+    let start = std::time::Instant::now();
+    while !data.is_empty() {
+        let chunk_len = data.len().min(65536);
+        match stream.write(&data[..chunk_len]) {
+            Ok(0) => return Err("Socket closed before full response could be written".into()),
+            Ok(n) => {
+                data = &data[n..];
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(ref e)
+                if (e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut)
+                    && start.elapsed() < Duration::from_secs(60) =>
+            {
+                let _ = stream.set_nonblocking(false);
+                std::thread::sleep(Duration::from_millis(5));
+                continue;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
 fn send_response(
     stream: &mut TcpStream,
     status: u16,
@@ -335,11 +386,19 @@ fn send_response(
         content_type,
         body.len()
     );
-    stream
-        .write_all(header.as_bytes())
-        .map_err(|e| e.to_string())?;
-    stream.write_all(body).map_err(|e| e.to_string())?;
+    write_all_reliable(stream, header.as_bytes())?;
+    write_all_reliable(stream, body)?;
     let _ = stream.flush();
+    // Gracefully half-close write side and briefly drain until client EOF so Winsock/OS
+    // never sends a TCP RST while large asset packets are still in flight over LAN.
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(250)));
+    let mut drain = [0u8; 512];
+    while let Ok(n) = stream.read(&mut drain) {
+        if n == 0 {
+            break;
+        }
+    }
     Ok(())
 }
 

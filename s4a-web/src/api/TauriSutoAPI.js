@@ -149,7 +149,7 @@ export const TauriSutoAPI = {
     try {
       await this.getChannels();
     } catch (_) {}
-    return {
+    const connRes = {
       address: res,
       transport: 'USB',
       deviceId: sInfo?.device_id,
@@ -158,6 +158,8 @@ export const TauriSutoAPI = {
       device: sInfo?.device_name,
       serial: sInfo?.serial_number,
     };
+    this._saveSharedTransportSession();
+    return connRes;
   },
 
   /** Connect to SUTO device via Ethernet TCP Socket */
@@ -175,7 +177,7 @@ export const TauriSutoAPI = {
     try {
       await this.getChannels();
     } catch (_) {}
-    return {
+    const connRes = {
       address: res,
       host,
       port,
@@ -186,6 +188,8 @@ export const TauriSutoAPI = {
       device: sInfo?.device_name,
       serial: sInfo?.serial_number,
     };
+    this._saveSharedTransportSession();
+    return connRes;
   },
 
   /**
@@ -237,7 +241,7 @@ export const TauriSutoAPI = {
         sInfo = await invoke('suto_get_system_info');
       } catch (_) {}
 
-      return {
+      const connRes = {
         address: res,
         transport: 'BLE',
         deviceId: sInfo?.device_id,
@@ -246,6 +250,8 @@ export const TauriSutoAPI = {
         device: targetName || sInfo?.device_name || 'SUTO BLE Device',
         serial: sInfo?.serial_number,
       };
+      this._saveSharedTransportSession();
+      return connRes;
     }
 
     activeTransport = 'BLE_WEB';
@@ -391,6 +397,7 @@ export const TauriSutoAPI = {
     };
 
     activeModbusDevices.set(devKey, devInfo);
+    this._saveSharedTransportSession();
     return devInfo;
   },
 
@@ -431,6 +438,7 @@ export const TauriSutoAPI = {
     if (activeModbusDevices.size === 0 && (activeTransport === 'MODBUS_TCP' || activeTransport === 'MODBUS_RTU')) {
       activeTransport = null;
     }
+    this._saveSharedTransportSession();
   },
 
   /**
@@ -978,6 +986,7 @@ export const TauriSutoAPI = {
       await invoke('suto_disconnect');
     }
     activeTransport = null;
+    this._saveSharedTransportSession();
     return true;
   },
 
@@ -1432,8 +1441,11 @@ export const TauriSutoAPI = {
       }
 
       // 2. Poll native Tauri hardware values (if native socket is active)
+      if (!activeTransport && activeModbusDevices.size === 0 && hasLanBridge()) {
+        this.hydrateFromSharedSession();
+      }
       let values = [];
-      const isNativeActive = hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE');
+      const isNativeActive = hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || hasLanBridge());
       const isNativeNeeded = isNativeActive && (!demanded || this._isNativeDemanded(demanded));
       if (isNativeNeeded) {
         try {
@@ -2200,25 +2212,107 @@ export const TauriSutoAPI = {
         urls: [`http://localhost:${port}`],
       };
     }
+    if (enabled) {
+      await this.pushLocalStateToLanBridge({ force: true }).catch(() => {});
+    }
     const status = await invoke('suto_set_webserver_enabled', {
       enabled: Boolean(enabled),
       port,
     });
     if (enabled) {
-      this.pushLocalStateToLanBridge().catch(() => {});
+      this.pushLocalStateToLanBridge({ force: true }).catch(() => {});
     }
     return status;
   },
 
-  /** Push host localStorage configurations (ProcessScape layouts, locations, devices) to LAN server */
-  async pushLocalStateToLanBridge() {
+  /** Save active hardware transport & Modbus devices into shared session */
+  _saveSharedTransportSession() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('s4a_shared_session_v1');
+      const prev = raw ? JSON.parse(raw) : {};
+      const next = {
+        ...prev,
+        activeTransport: activeTransport === 'BLE_WEB' ? prev.activeTransport || null : activeTransport,
+        activeModbusDevices: Array.from(activeModbusDevices.entries()),
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem('s4a_shared_session_v1', JSON.stringify(next));
+      const isMockTest = Boolean(typeof window !== 'undefined' && window.__TAURI_INTERNALS__?.invoke?.mock && !hasLanBridge() && localStorage.getItem('s4a_web_server_enabled') !== 'true');
+      if (!isMockTest) {
+        this.pushLocalStateToLanBridge().catch(() => {});
+      }
+    } catch (_) {}
+  },
+
+  /** Update UI session metadata (appMode, deviceInfo, selectedLocationId, loadedFilePath) in shared session */
+  updateSharedSession(patch = {}) {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('s4a_shared_session_v1');
+      const prev = raw ? JSON.parse(raw) : {};
+      const next = {
+        ...prev,
+        ...patch,
+        activeTransport: activeTransport === 'BLE_WEB' ? prev.activeTransport || null : (activeTransport ?? prev.activeTransport ?? null),
+        activeModbusDevices: activeModbusDevices.size > 0
+          ? Array.from(activeModbusDevices.entries())
+          : (prev.activeModbusDevices || []),
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem('s4a_shared_session_v1', JSON.stringify(next));
+      const isMockTest = Boolean(typeof window !== 'undefined' && window.__TAURI_INTERNALS__?.invoke?.mock && !hasLanBridge() && localStorage.getItem('s4a_web_server_enabled') !== 'true');
+      if (!isMockTest) {
+        this.pushLocalStateToLanBridge().catch(() => {});
+      }
+    } catch (_) {}
+  },
+
+  /** Read parsed shared session object from localStorage */
+  getSharedSession() {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('s4a_shared_session_v1');
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  },
+
+  /** Hydrate in-memory activeTransport and activeModbusDevices from shared session */
+  hydrateFromSharedSession() {
+    const session = this.getSharedSession();
+    if (!session) return null;
+    if (session.activeTransport && session.activeTransport !== 'BLE_WEB' && !activeTransport) {
+      activeTransport = session.activeTransport;
+    }
+    if (Array.isArray(session.activeModbusDevices) && session.activeModbusDevices.length > 0 && activeModbusDevices.size === 0) {
+      for (const entry of session.activeModbusDevices) {
+        if (Array.isArray(entry) && entry.length === 2 && entry[0] && entry[1]) {
+          activeModbusDevices.set(entry[0], entry[1]);
+        }
+      }
+    }
+    return session;
+  },
+
+  /** Push localStorage configurations (ProcessScape layouts, locations, devices, alarms, session) to LAN server */
+  async pushLocalStateToLanBridge({ force = false } = {}) {
     if (!hasTauri() || typeof localStorage === 'undefined') return;
+    if (!force && typeof window !== 'undefined' && window.__TAURI_INTERNALS__?.invoke?.mock && !hasLanBridge() && localStorage.getItem('s4a_web_server_enabled') !== 'true') {
+      return;
+    }
     const keysToSync = [
-      's4a_ps_devices',
-      's4a_locations',
-      's4a_scapes_list',
-      's4a_active_scape_id',
-      's4a_alarm_rules',
+      's4a_sensor_locations_v1',
+      's4a_sensor_devices_v1',
+      's4a_processscapes_v1',
+      's4a_active_scape_id_v1',
+      's4a_processscape_views_v1',
+      's4a_alarm_history_v1',
+      'recentCsdFiles',
+      'selectedChannels',
+      'app_language',
+      's4a_shared_session_v1',
     ];
     const entries = {};
     for (const k of keysToSync) {
@@ -2227,30 +2321,44 @@ export const TauriSutoAPI = {
     }
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('s4a_scape_layout_') || k.startsWith('s4a_ps_'))) {
+      if (k && k.startsWith('s4a_') && k !== 's4a_web_server_enabled') {
         const val = localStorage.getItem(k);
         if (val != null) entries[k] = val;
       }
     }
+    if (Object.keys(entries).length === 0) return;
     await invoke('suto_sync_shared_state', { entries });
   },
 
-  /** Pull shared state on LAN client startup so remote browsers immediately see Host configurations */
+  /** Pull shared state from LAN server so Host and remote browsers stay in sync */
   async pullLanBridgeState() {
-    if (!hasLanBridge() || typeof localStorage === 'undefined') return false;
+    if (!hasTauri() || typeof localStorage === 'undefined') return false;
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__?.invoke?.mock && !hasLanBridge()) {
+      return false;
+    }
     try {
       const entries = await invoke('suto_get_shared_state');
       if (entries && typeof entries === 'object') {
+        let changed = false;
         for (const [k, v] of Object.entries(entries)) {
-          if (typeof v === 'string') {
+          if (k === '__sync_ts__' || k === 's4a_web_server_enabled') continue;
+          if (typeof v === 'string' && localStorage.getItem(k) !== v) {
             localStorage.setItem(k, v);
+            changed = true;
           }
         }
-        return true;
+        this.hydrateFromSharedSession();
+        return changed || Object.keys(entries).length > 0;
       }
     } catch (_) {}
     return false;
   },
 };
+
+if (typeof window !== 'undefined' && hasLanBridge()) {
+  try {
+    TauriSutoAPI.hydrateFromSharedSession();
+  } catch (_) {}
+}
 
 export default TauriSutoAPI;

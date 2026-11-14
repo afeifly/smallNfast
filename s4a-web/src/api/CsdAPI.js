@@ -24,7 +24,7 @@
 
 import CsvAPI from './CsvAPI';
 import TauriSutoAPI from './TauriSutoAPI';
-import { checkIsDesktop } from '../util/platform';
+import { checkIsDesktop, checkIsDesktopHost } from '../util/platform';
 import { DOWNSAMPLING_MODE, getDownsamplingMode, scanBuckets } from '../util/downsample';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1113,6 +1113,7 @@ function _saveRecentMeta(name, size, path = null) {
         console.warn('[CsdAPI] Failed to add recent file to desktop config:', err);
       });
     }
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   } catch { /* ignore */ }
 }
 
@@ -1283,7 +1284,7 @@ const CsdAPI = {
    * - Safari/Firefox: falls back to <input type="file">.
    */
   async openFile() {
-    if (checkIsDesktop() && TauriSutoAPI.isAvailable()) {
+    if (checkIsDesktopHost() && TauriSutoAPI.isAvailable()) {
       try {
         const filePath = await TauriSutoAPI.pickFile();
         if (filePath) {
@@ -1309,7 +1310,7 @@ const CsdAPI = {
    * Returns { ok, reason?, numFiles? }.
    */
   async openAppend() {
-    if (checkIsDesktop() && TauriSutoAPI.isAvailable()) {
+    if (checkIsDesktopHost() && TauriSutoAPI.isAvailable()) {
       try {
         const filePath = await TauriSutoAPI.pickFile();
         if (filePath) {
@@ -1375,6 +1376,10 @@ const CsdAPI = {
       return CsvAPI.getNumLoadedFiles ? CsvAPI.getNumLoadedFiles() : 1;
     }
     return _files.length > 0 ? _files.length : (_fileLoaded ? 1 : 0);
+  },
+
+  getLoadedFilePath() {
+    return _file?.path || _files?.[0]?.file?.path || null;
   },
 
   /**
@@ -1455,6 +1460,7 @@ const CsdAPI = {
       if (TauriSutoAPI.isAvailable() && target?.path) {
         await TauriSutoAPI.removeRecentFile(target.path);
       }
+      TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
       return list;
     } catch {
       return [];
@@ -1484,6 +1490,7 @@ const CsdAPI = {
           }
         }
         localStorage.setItem('recentCsdFiles', JSON.stringify(merged.slice(0, 10)));
+        TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
         return merged.slice(0, 10);
       }
     } catch (e) {

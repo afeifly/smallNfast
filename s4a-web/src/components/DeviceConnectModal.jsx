@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import intl from 'react-intl-universal';
 import TauriSutoAPI from '../api/TauriSutoAPI';
 import BleSutoAPI from '../api/BleSutoAPI';
-import { checkIsNative, isMobile } from '../util/platform';
+import { checkIsNative, checkIsLanBridge, isMobile } from '../util/platform';
 import {
   getDefaultSubnet,
   scanLanRange,
@@ -69,7 +69,8 @@ export default function DeviceConnectModal({
   singleDeviceMode = true
 }) {
   const isNative = checkIsNative();
-  const [tab, setTab] = useState(initialTab || (isMobile ? 'ble' : (isNative ? 'usb' : 'ble'))); // 'usb' | 'tcp' | 'ble' | 'api'
+  const isMobileNative = isMobile && !checkIsLanBridge();
+  const [tab, setTab] = useState(initialTab || (isMobileNative ? 'ble' : (isNative ? 'usb' : 'ble'))); // 'usb' | 'tcp' | 'ble' | 'api'
   const [tcpHost, setTcpHost] = useState('192.168.1.100');
   const [tcpPort, setTcpPort] = useState('502');
   const [apiHost, setApiHost] = useState('192.168.1.100');
@@ -552,7 +553,7 @@ export default function DeviceConnectModal({
       if (initialTab) {
         setTab(initialTab);
       } else {
-        setTab(isMobile ? 'ble' : (isNative ? 'usb' : 'ble'));
+        setTab(isMobileNative ? 'ble' : (isNative ? 'usb' : 'ble'));
       }
       if (initialMode) {
         setLanDetectMode(initialMode);
@@ -1391,7 +1392,7 @@ export default function DeviceConnectModal({
                 onClick={() => handleSwitchTab('usb')}
               >
                 <span>🔌</span>
-                <span>{isMobile ? (intl.get('DEV_USB_OTG') || 'USB OTG') : (intl.get('DIRECT_USB') || 'Direct USB')}</span>
+                <span>{isMobileNative ? (intl.get('DEV_USB_OTG') || 'USB OTG') : (intl.get('DIRECT_USB') || 'Direct USB')}</span>
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
@@ -1439,7 +1440,7 @@ export default function DeviceConnectModal({
         <div className="device-connect-body">
           {tab === 'usb' && (
             <p className="tab-desc">
-              {isMobile
+              {isMobileNative
                 ? (intl.get('DEV_USB_OTG_DESC') || 'Connect via USB-C OTG cable to industrial sensor. When prompted, tap "OK" to grant USB permission.')
                 : (intl.get('DEV_USB_DIRECT_DESC') || 'Direct driver connection. Automatically scans for connected sensor.')}
             </p>
@@ -1555,7 +1556,7 @@ export default function DeviceConnectModal({
             >
               {loading
                 ? (intl.get('DEV_CONNECTING_USB') || 'Connecting via USB...')
-                : (isMobile
+                : (isMobileNative
                   ? (intl.get('DEV_DETECT_CONNECT_USB_OTG') || '🔌 Detect & Connect USB OTG')
                   : (intl.get('DEV_DETECT_CONNECT_USB') || '🔌 Detect & Connect USB'))}
             </button>

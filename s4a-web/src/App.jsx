@@ -271,15 +271,42 @@ function App() {
     if (checkIsLanBridge()) {
       TauriSutoAPI.pullLanBridgeState()
         .then((pulled) => {
-          if (mounted && pulled) {
-            try {
-              setLocationsList(getLocations());
-              refreshAssignedChannels();
-            } catch (_) {}
-          }
+          if (!mounted) return;
+          try {
+            const locs = getLocations();
+            setLocationsList(locs);
+            refreshAssignedChannels();
+            if (TestAPI.getRecentFiles) {
+              setRecentFiles(TestAPI.getRecentFiles());
+            }
+            const session = TauriSutoAPI.getSharedSession();
+            if (session) {
+              if (session.deviceInfo) {
+                setDeviceInfo(session.deviceInfo);
+              }
+              if (session.selectedLocationId) {
+                setSelectedLocationId(session.selectedLocationId);
+              }
+              if (session.appMode === 'processscape') {
+                TestAPI.setMode('processscape');
+                setAppMode('processscape');
+                setActiveTab('processscape');
+              } else if (session.appMode === 'monitor' && session.deviceInfo) {
+                TestAPI.setMode('monitor');
+                setAppMode('monitor');
+                setActiveTab('online');
+              } else if (session.appMode === 'analyze' && session.loadedFilePath && TestAPI.loadFileFromPath) {
+                TestAPI.loadFileFromPath(session.loadedFilePath).catch(() => {});
+              }
+            }
+            if (pulled) {
+              psActionsRef.current?.reloadActiveScape?.();
+            }
+          } catch (_) {}
         })
         .catch(() => {});
     } else if (!isMobile) {
+      TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
       TauriSutoAPI.getWebServerStatus()
         .then(async (status) => {
           if (!mounted || !status) return;
@@ -291,12 +318,52 @@ function App() {
               return;
             } catch (_) {}
           }
+          if (status.enabled) {
+            TauriSutoAPI.pushLocalStateToLanBridge?.({ force: true }).catch?.(() => {});
+          }
           setWebServerStatus(status);
         })
         .catch(() => {});
     }
     return () => { mounted = false; };
   }, []);
+
+  // Keep shared session state synchronized across Desktop Host and LAN Web Clients
+  React.useEffect(() => {
+    if (!initDone) return;
+    if (checkIsLanBridge() && !appMode && !deviceInfo) return;
+    const loadedFilePath = fileLoaded && TestAPI.getLoadedFilePath ? TestAPI.getLoadedFilePath() : null;
+    TauriSutoAPI.updateSharedSession?.({
+      appMode,
+      deviceInfo,
+      selectedLocationId,
+      loadedFilePath,
+    });
+  }, [initDone, appMode, deviceInfo, selectedLocationId, fileLoaded]);
+
+  // Periodically pull shared state updates when LAN Bridge or Web Server is active
+  React.useEffect(() => {
+    if (!checkIsLanBridge() && !webServerStatus.enabled) return undefined;
+    const timer = setInterval(async () => {
+      try {
+        const updated = await TauriSutoAPI.pullLanBridgeState();
+        if (updated) {
+          const locs = getLocations();
+          setLocationsList(locs);
+          try { refreshAssignedChannels(); } catch (_) {}
+          if (TestAPI.getRecentFiles) {
+            setRecentFiles(TestAPI.getRecentFiles());
+          }
+          psActionsRef.current?.reloadActiveScape?.();
+          const session = TauriSutoAPI.getSharedSession();
+          if (session?.deviceInfo && !deviceInfo) {
+            setDeviceInfo(session.deviceInfo);
+          }
+        }
+      } catch (_) {}
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [webServerStatus.enabled, deviceInfo]);
 
   const handleToggleWebServer = async (e) => {
     if (e) e.stopPropagation();
@@ -897,7 +964,9 @@ function App() {
       clearLiveSelection();
       clearReadoutCache();
       clearOnlineCache();
-      TauriSutoAPI.disconnect().catch(console.warn);
+      if (!checkIsLanBridge()) {
+        TauriSutoAPI.disconnect().catch(console.warn);
+      }
       TestAPI.setMode('analyze');
       setDeviceInfo(null);
     }
@@ -1583,18 +1652,20 @@ function App() {
               <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
 
               {/* 2. Enable Web Server (Port 9080) for Desktop App (macOS & Windows) */}
-              {!isMobile && (
+              {checkIsLanBridge() ? (
                 <>
-                  {checkIsLanBridge() ? (
-                    <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
-                      <span>🖧</span>
-                      <span>{intl.get('LAN_CLIENT_CONNECTED') || 'Connected via LAN Web Server (:9080)'}</span>
-                    </div>
-                  ) : (
-                    <div
-                      style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
+                    <span>🖧</span>
+                    <span>{intl.get('LAN_CLIENT_CONNECTED') || 'Connected via LAN Web Server (:9080)'}</span>
+                  </div>
+                  <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
+                </>
+              ) : !isMobile && (
+                <>
+                  <div
+                    style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                       <div
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
                         onClick={handleToggleWebServer}
@@ -1699,8 +1770,7 @@ function App() {
                           </button>
                         </div>
                       )}
-                    </div>
-                  )}
+                  </div>
                   <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
                 </>
               )}

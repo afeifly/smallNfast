@@ -9,6 +9,7 @@
 import { getLocations, saveLocations } from './sensorManagerStorage';
 import { setAlarmChannels } from '../../../util/liveDataSource';
 import { formatChannelValue, resolveChannelResolution } from '../../../util/resolution';
+import TauriSutoAPI from '../../../api/TauriSutoAPI';
 
 export const STORAGE_KEY_ALARM_HISTORY = 's4a_alarm_history_v1';
 const MAX_HISTORY_ITEMS = 500;
@@ -80,6 +81,7 @@ function saveAlarmHistory(history) {
   if (!storage) return;
   try {
     storage.setItem(STORAGE_KEY_ALARM_HISTORY, JSON.stringify(alarmHistory));
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   } catch (e) {
     console.warn('[AlarmEngine] Error saving history:', e);
   }

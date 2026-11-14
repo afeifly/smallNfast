@@ -6,6 +6,7 @@
 
 import exampleLayoutJson from '../templates/example-compressor-station-layout.json';
 import { pointsToPath } from './pipeUtils';
+import TauriSutoAPI from '../../../api/TauriSutoAPI';
 
 const STORAGE_KEY_SCAPES = 's4a_processscapes_v1';
 const STORAGE_KEY_ACTIVE = 's4a_active_scape_id_v1';
@@ -47,6 +48,7 @@ export function saveScapeView(scapeId, view) {
       zoom: Number((view.zoom || 1.0).toFixed(3))
     };
     storage.setItem(STORAGE_KEY_VIEWS, JSON.stringify(map));
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   } catch (_) {}
 }
 
@@ -206,9 +208,11 @@ export function setActiveScapeId(id) {
   if (!storage) return;
   if (!id) {
     storage.setItem(STORAGE_KEY_ACTIVE, '');
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
     return;
   }
   storage.setItem(STORAGE_KEY_ACTIVE, id);
+  TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
 }
 
 /**
@@ -275,6 +279,8 @@ export function saveScape(scape, { setActive = true } = {}) {
   storage.setItem(STORAGE_KEY_SCAPES, JSON.stringify(newList));
   if (setActive) {
     setActiveScapeId(updatedScape.id);
+  } else {
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   }
   return updatedScape;
 }
@@ -339,6 +345,8 @@ export function deleteScape(id) {
   if (activeId === id) {
     const nextActiveId = newList[0]?.id || '';
     setActiveScapeId(nextActiveId);
+  } else {
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   }
   return true;
 }

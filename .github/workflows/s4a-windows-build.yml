@@ -91,12 +91,12 @@ jobs:
       - name: Run Frontend Tests
         run: npm test -- --run
 
+      - name: Build Web Application
+        run: npm run build
+
       - name: Run Rust Tests
         working-directory: s4a-web/src-tauri
         run: cargo test
-
-      - name: Build Web Application
-        run: npm run build
 
       - name: Build Tauri Windows Release (.exe and installers)
         run: npm run tauri:build
@@ -201,12 +201,12 @@ jobs:
       - name: Run Frontend Tests
         run: npm test -- --run
 
+      - name: Build Web Application
+        run: npm run build
+
       - name: Run Rust Tests
         working-directory: s4a-web/src-tauri
         run: cargo test
-
-      - name: Build Web Application
-        run: npm run build
 
       - name: Build Tauri macOS Release
         run: npm run tauri:build

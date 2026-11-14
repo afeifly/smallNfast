@@ -43,8 +43,49 @@ static SERVER_CTRL: LazyLock<Mutex<ServerController>> = LazyLock::new(|| {
     })
 });
 
+static SHARED_STATE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+    if let Ok(mut p) = std::env::current_exe() {
+        p.pop();
+        let dir_str = p.to_string_lossy();
+        // Do not write inside a signed macOS .app bundle (.app/Contents/MacOS)
+        if !dir_str.contains(".app/Contents/MacOS") {
+            p.push("s4a_lan_shared_state.json");
+            if std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&p)
+                .is_ok()
+            {
+                return p;
+            }
+        }
+    }
+    let mut tmp = std::env::temp_dir();
+    tmp.push("s4a_lan_shared_state.json");
+    tmp
+});
+
+fn load_shared_state_from_disk() -> HashMap<String, String> {
+    let path = &*SHARED_STATE_PATH;
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
+                return map;
+            }
+        }
+    }
+    HashMap::new()
+}
+
+fn save_shared_state_to_disk(map: &HashMap<String, String>) {
+    let path = &*SHARED_STATE_PATH;
+    if let Ok(json) = serde_json::to_string(map) {
+        let _ = std::fs::write(path, json.as_bytes());
+    }
+}
+
 static SHARED_STORAGE: LazyLock<Mutex<HashMap<String, String>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+    LazyLock::new(|| Mutex::new(load_shared_state_from_disk()));
 
 /// Detect the host machine's primary LAN IPv4 address using OS routing table lookup (no packet sent)
 pub fn detect_lan_ips(port: u16) -> (String, Vec<String>) {
@@ -91,8 +132,23 @@ pub fn suto_get_webserver_status() -> Result<WebServerStatus, String> {
 #[tauri::command]
 pub fn suto_sync_shared_state(entries: HashMap<String, String>) -> Result<(), String> {
     let mut store = SHARED_STORAGE.lock().unwrap_or_else(|p| p.into_inner());
+    let mut changed = false;
     for (k, v) in entries {
-        store.insert(k, v);
+        if k == "__sync_ts__" {
+            continue;
+        }
+        if store.get(&k) != Some(&v) {
+            store.insert(k, v);
+            changed = true;
+        }
+    }
+    if changed {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis().to_string())
+            .unwrap_or_else(|_| "1".to_string());
+        store.insert("__sync_ts__".to_string(), now_ms);
+        save_shared_state_to_disk(&store);
     }
     Ok(())
 }
@@ -434,11 +490,25 @@ fn guess_mime_type(path: &str) -> &'static str {
 
 fn inject_lan_bridge_flag(html_bytes: &[u8]) -> Vec<u8> {
     let html = String::from_utf8_lossy(html_bytes);
-    let script_tag = "<script>window.__S4A_LAN_BRIDGE__ = true;</script>";
-    if let Some(idx) = html.find("</head>") {
+    let shared_map = suto_get_shared_state().unwrap_or_default();
+    let shared_json = serde_json::to_string(&shared_map)
+        .unwrap_or_else(|_| "{}".to_string())
+        .replace("</", "<\\/");
+    let script_tag = format!(
+        "<script>window.__S4A_LAN_BRIDGE__ = true;window.__S4A_SHARED_STATE__ = {};(function(){{try{{var s=window.__S4A_SHARED_STATE__||{{}};for(var k in s){{if(Object.prototype.hasOwnProperty.call(s,k)&&typeof s[k]==='string'){{window.localStorage.setItem(k,s[k]);}}}}}}catch(e){{}}}})();</script>",
+        shared_json
+    );
+    if let Some(idx) = html.find("<head>") {
+        let insert_at = idx + "<head>".len();
+        let mut out = String::with_capacity(html.len() + script_tag.len() + 2);
+        out.push_str(&html[..insert_at]);
+        out.push_str(&script_tag);
+        out.push_str(&html[insert_at..]);
+        out.into_bytes()
+    } else if let Some(idx) = html.find("</head>") {
         let mut out = String::with_capacity(html.len() + script_tag.len() + 2);
         out.push_str(&html[..idx]);
-        out.push_str(script_tag);
+        out.push_str(&script_tag);
         out.push_str(&html[idx..]);
         out.into_bytes()
     } else {
@@ -446,53 +516,36 @@ fn inject_lan_bridge_flag(html_bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-fn serve_static_asset(
-    stream: &mut TcpStream,
-    app: &tauri::AppHandle,
-    req_path: &str,
-) -> Result<(), String> {
-    let clean_path = if req_path == "/" || req_path.is_empty() {
-        "index.html".to_string()
-    } else {
-        req_path.trim_start_matches('/').to_string()
-    };
-
-    // 1. Try Tauri's embedded asset resolver
-    let resolver = app.asset_resolver();
-    for candidate in [
-        clean_path.clone(),
-        format!("/{}", clean_path),
-        "index.html".to_string(),
-        "/index.html".to_string(),
-    ] {
-        // Only fall back to index.html if the requested path has no file extension (SPA route) or is index.html
-        if (candidate == "index.html" || candidate == "/index.html")
-            && clean_path != "index.html"
-            && clean_path.contains('.')
-        {
-            continue;
+fn percent_decode_path(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (
+                (bytes[i + 1] as char).to_digit(16),
+                (bytes[i + 2] as char).to_digit(16),
+            ) {
+                out.push(((h << 4) | l) as u8);
+                i += 3;
+                continue;
+            }
         }
-        if let Some(asset) = resolver.get(candidate.clone()) {
-            let is_html = candidate.ends_with("index.html");
-            let bytes = if is_html {
-                inject_lan_bridge_flag(asset.bytes())
-            } else {
-                asset.bytes().to_vec()
-            };
-            let mime = if is_html {
-                "text/html; charset=utf-8"
-            } else {
-                guess_mime_type(&clean_path)
-            };
-            return send_response(stream, 200, mime, &bytes);
-        }
+        out.push(bytes[i]);
+        i += 1;
     }
+    String::from_utf8_lossy(&out).into_owned()
+}
 
-    // 2. Fallback: Check local `dist/` directory (useful in dev mode)
-    let dist_candidates = [PathBuf::from("../dist"), PathBuf::from("dist")];
+fn try_serve_from_disk_dist(clean_path: &str) -> Option<(&'static str, Vec<u8>)> {
+    let dist_candidates = [
+        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../dist")),
+        PathBuf::from("../dist"),
+        PathBuf::from("dist"),
+    ];
     for dist_dir in &dist_candidates {
         if dist_dir.exists() {
-            let target_file = dist_dir.join(&clean_path);
+            let target_file = dist_dir.join(clean_path);
             let file_to_read = if target_file.is_file() {
                 Some((target_file, clean_path.ends_with("index.html")))
             } else if !clean_path.contains('.') {
@@ -516,12 +569,76 @@ fn serve_static_asset(
                     let mime = if is_html {
                         "text/html; charset=utf-8"
                     } else {
-                        guess_mime_type(&clean_path)
+                        guess_mime_type(clean_path)
                     };
-                    return send_response(stream, 200, mime, &bytes);
+                    return Some((mime, bytes));
                 }
             }
         }
+    }
+    None
+}
+
+fn try_serve_from_embedded_assets(
+    app: &tauri::AppHandle,
+    clean_path: &str,
+) -> Option<(&'static str, Vec<u8>)> {
+    let resolver = app.asset_resolver();
+    for candidate in [
+        clean_path.to_string(),
+        format!("/{}", clean_path),
+        "index.html".to_string(),
+        "/index.html".to_string(),
+    ] {
+        // Only fall back to index.html if the requested path has no file extension (SPA route) or is index.html
+        if (candidate == "index.html" || candidate == "/index.html")
+            && clean_path != "index.html"
+            && clean_path.contains('.')
+        {
+            continue;
+        }
+        if let Some(asset) = resolver.get(candidate.clone()) {
+            let is_html = candidate.ends_with("index.html");
+            let bytes = if is_html {
+                inject_lan_bridge_flag(asset.bytes())
+            } else {
+                asset.bytes().to_vec()
+            };
+            let mime = if is_html {
+                "text/html; charset=utf-8"
+            } else {
+                guess_mime_type(clean_path)
+            };
+            return Some((mime, bytes));
+        }
+    }
+    None
+}
+
+fn serve_static_asset(
+    stream: &mut TcpStream,
+    app: &tauri::AppHandle,
+    req_path: &str,
+) -> Result<(), String> {
+    let decoded_path = percent_decode_path(req_path);
+    let clean_path = if decoded_path == "/" || decoded_path.is_empty() {
+        "index.html".to_string()
+    } else {
+        decoded_path.trim_start_matches('/').replace('\\', "/")
+    };
+
+    // In dev builds (`npm run tauri:dev` / `dev-macos.sh`), check `dist/` on disk first.
+    // In production release builds (GitHub Actions `.exe` / `.dmg` / `.app`), check embedded Tauri assets first.
+    let resolved = if cfg!(debug_assertions) {
+        try_serve_from_disk_dist(&clean_path)
+            .or_else(|| try_serve_from_embedded_assets(app, &clean_path))
+    } else {
+        try_serve_from_embedded_assets(app, &clean_path)
+            .or_else(|| try_serve_from_disk_dist(&clean_path))
+    };
+
+    if let Some((mime, bytes)) = resolved {
+        return send_response(stream, 200, mime, &bytes);
     }
 
     send_response(

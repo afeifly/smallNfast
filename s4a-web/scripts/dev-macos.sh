@@ -56,7 +56,9 @@ else
   fi
 fi
 
-# 2. Build the dev-mode Rust binary (debug => loads devUrl).
+# 2. Build frontend dist for the embedded LAN Web Server (:9080) and build Rust app.
+echo ">> building frontend dist for LAN Web Server (:9080)..."
+( cd "$ROOT" && npm run build )
 echo ">> building Rust app (dev profile)..."
 ( cd "$SRC" && cargo build )
 

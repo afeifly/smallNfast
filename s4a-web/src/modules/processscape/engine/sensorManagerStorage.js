@@ -49,6 +49,7 @@ export function saveLocations(locations) {
         window.dispatchEvent(new CustomEvent('sensor-locations-changed', { detail: locations }));
       } catch (_) {}
     }
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   } catch (err) {
     console.warn('[SensorManager] Error saving locations:', err);
   }
@@ -320,6 +321,7 @@ export function saveDevices(devices) {
   if (!storage) return;
   try {
     storage.setItem(STORAGE_KEY_SENSOR_DEVICES, JSON.stringify(devices));
+    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
   } catch (err) {
     console.warn('[SensorManager] Error saving devices:', err);
   }

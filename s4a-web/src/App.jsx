@@ -441,6 +441,7 @@ function App() {
 
   // System-wide alarm monitoring and active alarms badge
   const [showAlarmCenterModal, setShowAlarmCenterModal] = React.useState(false);
+  const [alarmCenterInitialTab, setAlarmCenterInitialTab] = React.useState('active');
   const [activeAlarmsCount, setActiveAlarmsCount] = React.useState(() => getActiveAlarms().length);
   const [unackedAlarmsCount, setUnackedAlarmsCount] = React.useState(
     () => getActiveAlarms().filter(a => !a.acknowledged).length
@@ -1584,7 +1585,10 @@ function App() {
               >
                 <IconButton
                   className={`header-icon-btn header-alarm-btn ${unackedAlarmsCount > 0 ? 'has-unacked-alarms' : 'has-acked-alarms'}`}
-                  onClick={() => setShowAlarmCenterModal(true)}
+                  onClick={() => {
+                    setAlarmCenterInitialTab('active');
+                    setShowAlarmCenterModal(true);
+                  }}
                   style={{
                     color: unackedAlarmsCount > 0 ? '#dc2626' : '#b91c1c',
                     padding: '6px',
@@ -1794,7 +1798,20 @@ function App() {
                 </div>
               ) : null}
 
-              {/* 3. System Diagnostic Logs */}
+              {/* 3. Alarm History */}
+              <MenuItem
+                onClick={() => {
+                  setInfoMenuAnchorEl(null);
+                  setAlarmCenterInitialTab('history');
+                  setShowAlarmCenterModal(true);
+                }}
+                style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', gap: '10px', padding: '9px 16px' }}
+              >
+                <span style={{ fontSize: '15px' }}>🔔</span>
+                <span>{intl.get('ALARM_HISTORY') || 'Alarm History'}</span>
+              </MenuItem>
+
+              {/* 4. System Diagnostic Logs */}
               <MenuItem
                 onClick={() => {
                   setInfoMenuAnchorEl(null);
@@ -1806,7 +1823,7 @@ function App() {
                 <span>{intl.get('SYSTEM_DIAGNOSTIC_LOGS') || 'System Diagnostic Logs'}</span>
               </MenuItem>
 
-              {/* 3. About S4A (Version & Multi-Platform) */}
+              {/* 5. About S4A (Version & Multi-Platform) */}
               <MenuItem
                 onClick={() => {
                   setInfoMenuAnchorEl(null);
@@ -2751,6 +2768,7 @@ function App() {
         isOpen={showAlarmCenterModal}
         onClose={() => setShowAlarmCenterModal(false)}
         onGoToLocation={handleGoToAlarmLocation}
+        initialTab={alarmCenterInitialTab}
       />
     </div>
   );

@@ -773,7 +773,7 @@ export default function SensorManagerModal({
   };
 
   const handleLocationScapeChange = (locId, scapeId) => {
-    if (loadingDevices || readOnly) return;
+    if (loadingDevices || readOnly || !scapeId) return;
     handleUpdateLocations(locations.map(l => l.id === locId ? { ...l, scapeId } : l));
   };
 
@@ -2072,12 +2072,11 @@ export default function SensorManagerModal({
                             <label className="ps-sm-scape-label">{intl.get('PS_SENSOR_SCAPE_LABEL') || 'Scape:'}</label>
                             <select
                               className="ps-sm-scape-select"
-                              value={loc.scapeId || ''}
+                              value={loc.scapeId || scapes[0]?.id || ''}
                               onChange={(e) => handleLocationScapeChange(loc.id, e.target.value)}
                               disabled={loadingDevices || readOnly}
                               title={readOnly ? (intl.get('PS_SENSOR_SCAPE_READONLY') || "ProcessScape mapping is read-only during recording") : (intl.get('PS_SENSOR_SCAPE_CHANGE_TOOLTIP') || "Change ProcessScape mapping")}
                             >
-                              <option value="">{intl.get('PS_SENSOR_NO_SCAPE_OPT') || '-- No ProcessScape (Empty) --'}</option>
                               {scapes.map(s => (
                                 <option key={s.id} value={s.id}>
                                   {s.title}

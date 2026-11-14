@@ -2505,6 +2505,38 @@ export function renderAssetNode(node, selectedIds = new Set(), pipes = [], showA
   return g;
 }
 
+// Compute point on the outer bounding box edge of target along the ray from card center (0,0) to target center (relX, relY)
+function getTargetAttachmentEdgeOffset(card, target) {
+  const relX = target.x - card.x;
+  const relY = target.y - card.y;
+  const def = ASSET_DEFS[target.type] || { w: target.w || 100, h: target.h || 100 };
+  const baseW = def.w || target.w || 100;
+  const baseH = def.h || target.h || 100;
+  const isWall = target.type === 'wall_perimeter_h' || target.type === 'wall_perimeter_v';
+  const rawScale = (typeof target.scale === 'number' && target.scale > 0)
+    ? target.scale
+    : (target.w && baseW ? target.w / baseW : 1);
+  const w = isWall ? Math.max(10, Math.round(target.w || baseW * rawScale)) : Math.round(baseW * rawScale);
+  const h = isWall ? Math.max(10, Math.round(target.h || baseH * rawScale)) : Math.round(baseH * rawScale);
+  const halfW = w / 2;
+  const halfH = h / 2;
+  const absX = Math.abs(relX);
+  const absY = Math.abs(relY);
+  if (absX <= halfW && absY <= halfH) {
+    return { x: 0, y: 0 };
+  }
+  const tx = absX > 0 ? halfW / absX : Infinity;
+  const ty = absY > 0 ? halfH / absY : Infinity;
+  const tEdge = Math.min(tx, ty);
+  if (!Number.isFinite(tEdge) || tEdge >= 1) {
+    return { x: 0, y: 0 };
+  }
+  return {
+    x: Math.round(relX * (1 - tEdge) * 10) / 10,
+    y: Math.round(relY * (1 - tEdge) * 10) / 10
+  };
+}
+
 // --- Sensor Card Renderer ---
 export function renderSensorCard(card, selectedIds = new Set(), elements = [], isLiveDnd = false) {
   const isSel = selectedIds.has(card.id) || isLiveDnd;
@@ -2515,24 +2547,17 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
     style: isLiveDnd ? 'cursor: grab;' : ''
   });
 
-  // Attached to an equipment item, tank, machine, or sensor (any item except pipe)
+  // Attached to an equipment item, tank, machine, or sensor (any item except pipe):
+  // Clip top-layer dotted line at the machine's outer edge so it never overlaps on top of the machine graphic.
   if (card.attachedAssetId) {
     const target = elements.find(e => e.id === card.attachedAssetId);
     if (target) {
-      const relX = target.x - card.x;
-      const relY = target.y - card.y;
+      const edgePt = getTargetAttachmentEdgeOffset(card, target);
       g.appendChild(svgEl('line', {
-        x1: relX, y1: relY, x2: 0, y2: 0,
+        class: 'ps-card-attach-line',
+        'data-card-id': card.id,
+        x1: edgePt.x, y1: edgePt.y, x2: 0, y2: 0,
         stroke: isSel ? '#00a876' : '#94a3b8', 'stroke-width': 2, 'stroke-dasharray': '4 3',
-        'pointer-events': 'none'
-      }));
-      g.appendChild(svgEl('circle', {
-        cx: relX, cy: relY, r: 5.5,
-        fill: '#00a876', stroke: '#ffffff', 'stroke-width': 1.8,
-        'pointer-events': 'none'
-      }));
-      g.appendChild(svgEl('circle', {
-        cx: relX, cy: relY, r: 2.2, fill: '#ffffff',
         'pointer-events': 'none'
       }));
     }

@@ -14,15 +14,19 @@ import {
 export default function AlarmCenterModal({
   isOpen,
   onClose,
-  onGoToLocation
+  onGoToLocation,
+  initialTab = 'active'
 }) {
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [activeAlarms, setActiveAlarms] = useState(() => getActiveAlarms());
   const [alarmHistory, setAlarmHistory] = useState(() => getAlarmHistory());
   const [historyFilter, setHistoryFilter] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
     setActiveAlarms([...getActiveAlarms()]);
     setAlarmHistory([...getAlarmHistory()]);
 
@@ -31,7 +35,7 @@ export default function AlarmCenterModal({
       setAlarmHistory([...newHist]);
     });
     return unsub;
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 

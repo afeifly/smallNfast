@@ -1094,6 +1094,7 @@ export default function ProcessScapeView({
 
     const flowDirections = resolvePipelineFlowDirections(pipes);
     const activeSelectedIds = (scapeMode === 'editor') ? selectedIds : new Set();
+    const isRuntimeLiveDnd = scapeMode === 'runtime' && isLiveDndActive;
 
     drawables.forEach(d => {
       if (d.kind === 'pipe') {
@@ -1104,8 +1105,30 @@ export default function ProcessScapeView({
           if (activeLocationId && activeLocationId !== 'example_demo' && d.item.locationId && d.item.locationId !== activeLocationId) {
             return;
           }
-          dLayer.appendChild(renderSensorCard(d.item, activeSelectedIds, elements, (scapeMode === 'runtime' && isLiveDndActive)));
+          dLayer.appendChild(renderSensorCard(d.item, activeSelectedIds, elements, isRuntimeLiveDnd));
         } else {
+          // Render any attached sensor card's lead line underneath the machine so it connects to center without overlapping the machine graphic
+          if (scapeMode !== 'editor') {
+            elements.forEach(card => {
+              if (card.type !== 'sensor_card' || card.attachedAssetId !== d.item.id) return;
+              if (activeLocationId && activeLocationId !== 'example_demo' && card.locationId && card.locationId !== activeLocationId) {
+                return;
+              }
+              const isCardSel = activeSelectedIds.has(card.id) || isRuntimeLiveDnd;
+              dLayer.appendChild(svgEl('line', {
+                class: 'ps-card-attach-line ps-card-under-asset-line',
+                'data-card-id': card.id,
+                x1: d.item.x,
+                y1: d.item.y,
+                x2: card.x,
+                y2: card.y,
+                stroke: isCardSel ? '#00a876' : '#94a3b8',
+                'stroke-width': 2,
+                'stroke-dasharray': '4 3',
+                'pointer-events': 'none'
+              }));
+            });
+          }
           dLayer.appendChild(renderAssetNode(d.item, activeSelectedIds, pipes, scapeMode === 'editor', elements));
         }
       }
@@ -1323,7 +1346,7 @@ export default function ProcessScapeView({
     dragRef.current.isMarquee = false;
     if (viewportRef.current) {
       viewportRef.current.classList.remove('is-panning');
-      viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line').forEach(node => {
+      viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line, .ps-card-attach-line').forEach(node => {
         node.style.display = '';
       });
     }
@@ -1367,7 +1390,10 @@ export default function ProcessScapeView({
           const elId = anchorEl.getAttribute('data-element-id');
           dragRef.current.draggingAnchor = { elId, startW: { x: w.x, y: w.y } };
           anchorEl.style.display = 'none';
-          anchorEl.closest('.sensor-badge-group, .plant-node')?.querySelectorAll('.element-anchor-line').forEach(l => {
+          anchorEl.closest('.sensor-badge-group, .plant-node')?.querySelectorAll('.element-anchor-line, .ps-card-attach-line').forEach(l => {
+            l.style.display = 'none';
+          });
+          viewportRef.current?.querySelectorAll(`.ps-card-attach-line[data-card-id="${elId}"]`).forEach(l => {
             l.style.display = 'none';
           });
           return;
@@ -2257,7 +2283,7 @@ export default function ProcessScapeView({
         });
 
         if (viewportRef.current) {
-          viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line').forEach(node => {
+          viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line, .ps-card-attach-line').forEach(node => {
             node.style.display = '';
           });
         }
@@ -2390,7 +2416,7 @@ export default function ProcessScapeView({
       }
 
       if (viewportRef.current) {
-        viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line').forEach(node => {
+        viewportRef.current.querySelectorAll('.element-anchor-handle, .element-anchor-line, .ps-card-attach-line').forEach(node => {
           node.style.display = '';
         });
       }

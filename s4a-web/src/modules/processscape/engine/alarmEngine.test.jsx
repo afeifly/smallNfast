@@ -372,6 +372,17 @@ describe('alarmEngine', () => {
         locationName: 'Booster Station B'
       })
     );
+
+    // Opening AlarmCenterModal with initialTab="history" shows the Alarm History tab directly
+    const { container: historyContainer } = render(
+      <AlarmCenterModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onGoToLocation={onGoToLocation}
+        initialTab="history"
+      />
+    );
+    expect(historyContainer.querySelector('.alarm-history-view')).not.toBeNull();
   });
 
   it('renderSensorCard applies blinking red class ps-channel-alarm-blink to unacknowledged alarms and solid red to acknowledged alarms', () => {

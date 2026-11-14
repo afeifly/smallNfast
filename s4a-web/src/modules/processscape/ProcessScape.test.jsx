@@ -6118,6 +6118,14 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(scape2.title).toBe('Default Plant 2');
     expect(scape1.elements).toEqual([]);
     expect(scape2.elements).toEqual([]);
+
+    // Location scape select dropdowns must NOT include a null/empty option
+    const scapeSelects = Array.from(container.querySelectorAll('.ps-sm-scape-select'));
+    expect(scapeSelects.length).toBe(2);
+    scapeSelects.forEach(sel => {
+      const options = Array.from(sel.querySelectorAll('option'));
+      expect(options.some(opt => opt.value === '')).toBe(false);
+    });
   });
 
   it('keeps an unassigned second location empty when toggling between a location with a scape and one without a scape', () => {
@@ -7265,8 +7273,12 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     const cardGroup = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
     expect(cardGroup).not.toBeNull();
-    // Attachment dotted line exists before DND
-    expect(cardGroup.querySelector('line[stroke-dasharray="4 3"]')).not.toBeNull();
+    // Attachment dotted line exists before DND and stops at the machine edge (not overlapping to -120)
+    const topAttachLine = cardGroup.querySelector('line[stroke-dasharray="4 3"]');
+    expect(topAttachLine).not.toBeNull();
+    expect(Number(topAttachLine.getAttribute('x1'))).toBeGreaterThan(-120);
+    // And the under-asset line is rendered in the diagram layer underneath the machine
+    expect(container.querySelector('.ps-card-under-asset-line[data-card-id="card_live_1"]')).not.toBeNull();
 
     // Perform a small DND drag (+14px, +8px) while 120px away from dev_a (> 90px)
     fireEvent.mouseDown(cardGroup, { button: 0, clientX: 320, clientY: 200 });

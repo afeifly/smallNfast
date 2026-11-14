@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import intl from 'react-intl-universal';
 import './AlarmCenterModal.css';
 import { formatChannelValue, getDefaultUnitResolution } from '../util/resolution';
+import TauriSutoAPI from '../api/TauriSutoAPI';
 import {
   getActiveAlarms,
   getAlarmHistory,
@@ -21,9 +22,13 @@ export default function AlarmCenterModal({
   const [activeAlarms, setActiveAlarms] = useState(() => getActiveAlarms());
   const [alarmHistory, setAlarmHistory] = useState(() => getAlarmHistory());
   const [historyFilter, setHistoryFilter] = useState('');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setShowClearConfirm(false);
+      return;
+    }
     if (initialTab) {
       setActiveTab(initialTab);
     }
@@ -38,32 +43,6 @@ export default function AlarmCenterModal({
   }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
-
-  const handleExportHistoryCsv = () => {
-    if (alarmHistory.length === 0) return;
-    const headers = ['Timestamp', 'Time Str', 'Event Type', 'Severity', 'Location', 'Measurement Point', 'Channel', 'Current Value', 'Threshold', 'Duration (s)'];
-    const rows = alarmHistory.map(h => [
-      h.timestamp,
-      new Date(h.timestamp).toISOString(),
-      h.eventType,
-      h.severity || 'critical',
-      `"${(h.locationName || '').replace(/"/g, '""')}"`,
-      `"${(h.measurementPointName || '').replace(/"/g, '""')}"`,
-      `"${(h.channelName || '').replace(/"/g, '""')}"`,
-      h.currentValue !== undefined ? h.currentValue : '',
-      `"${(String(h.threshold || '')).replace(/"/g, '""')}"`,
-      h.durationMs ? (h.durationMs / 1000).toFixed(1) : ''
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `S4A_Alarm_History_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const filteredHistory = alarmHistory.filter(item => {
     if (!historyFilter) return true;
@@ -102,6 +81,106 @@ export default function AlarmCenterModal({
       ? resolution
       : getDefaultUnitResolution(unit || '');
     return formatChannelValue(num, res);
+  };
+
+  const escapeCsvCell = (val) => {
+    const str = val === null || val === undefined ? '' : String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const handleExportHistoryCsv = async () => {
+    const exportList = filteredHistory.length > 0 ? filteredHistory : alarmHistory;
+    if (exportList.length === 0) return;
+
+    const headers = [
+      intl.get('TIME') || 'Time',
+      intl.get('EVENT') || 'Event',
+      'Severity',
+      intl.get('CHANNEL') || 'Channel',
+      intl.get('LOCATION') || 'Location',
+      intl.get('MEASUREMENT_POINT') || 'Measurement Point',
+      'Channel Name',
+      'Trigger Value',
+      'Unit',
+      'Rule',
+      intl.get('DURATION') || 'Duration'
+    ];
+
+    const rows = exportList.map(h => {
+      const fullPath = [h.locationName, h.measurementPointName, h.channelName].filter(Boolean).join('/');
+      const displayVal = formatDisplayVal(h.currentValue, h.unit, h.resolution);
+      const ruleText = `${h.ruleType || ''} ${h.threshold !== undefined ? h.threshold : ''}`.trim();
+      const durationText = h.durationMs ? formatDuration(h.durationMs) : '--';
+      return [
+        formatTs(h.timestamp),
+        h.eventType || '',
+        h.severity || 'critical',
+        fullPath,
+        h.locationName || '',
+        h.measurementPointName || '',
+        h.channelName || '',
+        displayVal,
+        h.unit || '',
+        ruleText,
+        durationText
+      ].map(escapeCsvCell).join(',');
+    });
+
+    const csvText = '\uFEFF' + [headers.map(escapeCsvCell).join(','), ...rows].join('\r\n');
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const fileStamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const filename = `S4A_Alarm_History_${fileStamp}.csv`;
+
+    const hasNativeDialog = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__?.invoke) && !window.__TAURI_INTERNALS__?.invoke?.mock;
+    if (hasNativeDialog && typeof TauriSutoAPI?.saveBinaryFile === 'function') {
+      try {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(csvText);
+        const savedPath = await TauriSutoAPI.saveBinaryFile(filename, bytes);
+        if (savedPath && typeof window.showAppNotification === 'function') {
+          window.showAppNotification(
+            intl.get('APP_EXPORT_COMPLETE') || 'Export Complete',
+            `Alarm history exported to ${savedPath}`,
+            'success'
+          );
+        }
+        return;
+      } catch (err) {
+        console.warn('[AlarmCenterModal] Native CSV save fallback to browser download:', err);
+      }
+    }
+
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } else {
+      const encodedUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvText);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    if (typeof window !== 'undefined' && typeof window.showAppNotification === 'function') {
+      window.showAppNotification(
+        intl.get('APP_EXPORT_COMPLETE') || 'Export Complete',
+        `Alarm history exported (${filename})`,
+        'success'
+      );
+    }
   };
 
   return (
@@ -294,24 +373,55 @@ export default function AlarmCenterModal({
                     type="button"
                     className="alarm-action-btn secondary"
                     onClick={handleExportHistoryCsv}
-                    disabled={alarmHistory.length === 0}
+                    disabled={filteredHistory.length === 0}
                   >
                     {intl.get('EXPORT_CSV') || 'Export CSV'}
                   </button>
                   <button
                     type="button"
                     className="alarm-action-btn danger-outline"
-                    onClick={() => {
-                      if (window.confirm(intl.get('CLEAR_HISTORY_CONFIRM') || 'Are you sure you want to clear all alarm history?')) {
-                        clearAlarmHistory();
-                      }
-                    }}
+                    onClick={() => setShowClearConfirm(true)}
                     disabled={alarmHistory.length === 0}
                   >
                     {intl.get('CLEAR_HISTORY') || 'Clear History'}
                   </button>
                 </div>
               </div>
+
+              {showClearConfirm && (
+                <div className="alarm-clear-confirm-banner" role="alertdialog" aria-labelledby="alarm-clear-confirm-title">
+                  <div className="alarm-clear-confirm-info">
+                    <span className="alarm-clear-confirm-icon">⚠️</span>
+                    <div>
+                      <div id="alarm-clear-confirm-title" className="alarm-clear-confirm-title">
+                        {intl.get('CLEAR_HISTORY_CONFIRM') || 'Are you sure you want to clear all alarm history?'}
+                      </div>
+                      <div className="alarm-clear-confirm-desc">
+                        This will permanently remove all {alarmHistory.length} recorded alarm history event(s) and cannot be undone.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="alarm-clear-confirm-actions">
+                    <button
+                      type="button"
+                      className="alarm-action-btn secondary"
+                      onClick={() => setShowClearConfirm(false)}
+                    >
+                      {intl.get('CANCEL') || 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      className="alarm-action-btn danger-solid"
+                      onClick={() => {
+                        clearAlarmHistory();
+                        setShowClearConfirm(false);
+                      }}
+                    >
+                      {intl.get('CLEAR_HISTORY') || 'Clear History'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {filteredHistory.length === 0 ? (
                 <div className="alarm-empty-state">

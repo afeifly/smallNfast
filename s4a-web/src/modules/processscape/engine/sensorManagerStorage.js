@@ -1566,6 +1566,7 @@ export function autoReconnectSavedDevices(onConnectedCallback = null) {
 
   const runReconnect = async () => {
     try {
+      TauriSutoAPI?.hydrateFromSharedSession?.();
       await TauriSutoAPI?.logClientEvent?.('INFO', 'AUTO_RECONNECT', `Starting auto-reconnect check for ${devices.length} saved device(s)...`);
 
       let connectedCount = 0;

@@ -246,7 +246,8 @@ export const TauriSutoAPI = {
       const connRes = {
         address: res,
         transport: 'BLE',
-        deviceId: sInfo?.device_id,
+        bleDeviceId: targetDeviceId,
+        deviceId: sInfo?.device_id || targetDeviceId,
         device_id: sInfo?.device_id,
         name: targetName || sInfo?.device_name || 'SUTO BLE Device',
         device: targetName || sInfo?.device_name || 'SUTO BLE Device',
@@ -267,6 +268,9 @@ export const TauriSutoAPI = {
    * Dispatches to native Tauri BLE in desktop mode, or BleSutoAPI.resumeBleConnection in Web mode.
    */
   async resumeBleConnection(options = {}) {
+    if (hasLanBridge()) {
+      this.hydrateFromSharedSession();
+    }
     const isBleAlreadyConnected = hasTauri()
       ? (activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE')
       : Boolean(BleSutoAPI && BleSutoAPI.isConnected && BleSutoAPI.isConnected());
@@ -276,11 +280,17 @@ export const TauriSutoAPI = {
     }
 
     if (hasTauri()) {
-      let targetDeviceId = options.deviceId;
+      let targetDeviceId = (options.deviceId && !String(options.deviceId).startsWith('dev-'))
+        ? options.deviceId
+        : null;
       if (!targetDeviceId && options.name) {
         const devs = await this.listBleDevices({ timeoutMs: 2000 }).catch(() => []);
         const found = devs.find(d => d.name === options.name || d.id === options.deviceId);
-        if (found) targetDeviceId = found.id;
+        if (found) {
+          targetDeviceId = found.id;
+        } else {
+          targetDeviceId = options.name;
+        }
       }
       if (targetDeviceId) {
         const res = await invoke('suto_connect_ble', { deviceId: targetDeviceId });
@@ -292,9 +302,10 @@ export const TauriSutoAPI = {
         try {
           await this.getChannels();
         } catch (_) {}
-        return {
+        const connRes = {
           address: res,
           transport: 'BLE',
+          bleDeviceId: targetDeviceId,
           deviceId: sInfo?.device_id || targetDeviceId,
           device_id: sInfo?.device_id,
           name: options.name || sInfo?.device_name || 'SUTO BLE Device',
@@ -302,6 +313,8 @@ export const TauriSutoAPI = {
           serial: sInfo?.serial_number,
           reconnected: true,
         };
+        this._saveSharedTransportSession();
+        return connRes;
       }
       throw new Error('No matching BLE device found to resume');
     }

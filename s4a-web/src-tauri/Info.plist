@@ -2,9 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.s4a.app</string>
+    <key>CFBundleName</key>
+    <string>s4a-app</string>
+    <key>CFBundleDisplayName</key>
+    <string>S4A Data Studio</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>S4A requires Bluetooth access to connect to and communicate with SUTO measurement sensors.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
     <string>S4A requires Bluetooth access to connect to and communicate with SUTO measurement sensors.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>S4A connects to SUTO measurement devices and hosts the optional LAN Web Service over the local network.</string>
 </dict>
 </plist>

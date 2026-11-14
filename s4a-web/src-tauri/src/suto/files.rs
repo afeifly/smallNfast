@@ -249,6 +249,8 @@ pub fn suto_save_binary_file(filename: String, data: Vec<u8>) -> Result<Option<S
 
         let (filter_name, dialog_title) = if ext.eq_ignore_ascii_case("pdf") {
             ("PDF Document (.pdf)", "Save PDF Report")
+        } else if ext.eq_ignore_ascii_case("csv") {
+            ("CSV File (.csv)", "Save CSV File")
         } else if ["png", "jpg", "jpeg", "bmp", "gif"].contains(&ext.to_lowercase().as_str()) {
             ("Image File", "Save Screenshot Image")
         } else {

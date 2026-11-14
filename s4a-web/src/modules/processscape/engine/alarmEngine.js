@@ -58,14 +58,18 @@ function notifySubscribers() {
 /**
  * Load alarm history from storage
  */
-export function loadAlarmHistory() {
+export function loadAlarmHistory({ notify = false } = {}) {
   const storage = getStorage();
   if (!storage) return [];
   try {
     const raw = storage.getItem(STORAGE_KEY_ALARM_HISTORY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    alarmHistory = list;
+    if (notify) {
+      notifySubscribers();
+    }
+    return list;
   } catch (e) {
     console.warn('[AlarmEngine] Error reading history:', e);
     return [];
@@ -120,7 +124,16 @@ export function getAlarmHistory() {
  * Clear all alarm history
  */
 export function clearAlarmHistory() {
-  saveAlarmHistory([]);
+  alarmHistory = [];
+  const storage = getStorage();
+  if (storage) {
+    try {
+      storage.setItem(STORAGE_KEY_ALARM_HISTORY, JSON.stringify([]));
+      TauriSutoAPI.pushLocalStateToLanBridge?.({ force: true })?.catch?.(() => {});
+    } catch (e) {
+      console.warn('[AlarmEngine] Error clearing history:', e);
+    }
+  }
   notifySubscribers();
 }
 

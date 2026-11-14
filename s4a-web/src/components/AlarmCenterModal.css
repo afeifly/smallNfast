@@ -559,6 +559,74 @@
   background: #fee2e2;
 }
 
+.alarm-action-btn.danger-solid {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.alarm-action-btn.danger-solid:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
+}
+
+/* Clear History Warning Confirmation Banner */
+.alarm-clear-confirm-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  animation: alarmFadeIn 0.14s ease-out;
+}
+
+.theme-dark .alarm-clear-confirm-banner {
+  background: #2a1215;
+  border-color: #7f1d1d;
+}
+
+.alarm-clear-confirm-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.alarm-clear-confirm-icon {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.alarm-clear-confirm-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.theme-dark .alarm-clear-confirm-title {
+  color: #fecaca;
+}
+
+.alarm-clear-confirm-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.theme-dark .alarm-clear-confirm-desc {
+  color: #fca5a5;
+}
+
+.alarm-clear-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* Empty State */
 .alarm-empty-state {
   display: flex;

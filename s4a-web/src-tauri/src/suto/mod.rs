@@ -291,7 +291,11 @@ pub async fn suto_list_ble_devices(
     log_event("INFO", "SUTO_IPC", "suto_list_ble_devices called", None);
     let scan_duration = timeout_ms.unwrap_or(3000).max(1000).min(10000);
     let filter = suto_only.unwrap_or(false);
-    driver_ble::BleTransport::list_devices(scan_duration, filter).await
+    tauri::async_runtime::spawn(async move {
+        driver_ble::BleTransport::list_devices(scan_duration, filter).await
+    })
+    .await
+    .map_err(|e| format!("BLE scan task error: {}", e))?
 }
 
 #[tauri::command]
@@ -301,7 +305,12 @@ pub async fn suto_connect_ble(
 ) -> Result<u8, String> {
     log_event("INFO", "SUTO_IPC", &format!("suto_connect_ble called with device_id: {}", device_id), None);
 
-    let mut ble = driver_ble::BleTransport::connect(&device_id).await?;
+    let dev_id_clone = device_id.clone();
+    let mut ble = tauri::async_runtime::spawn(async move {
+        driver_ble::BleTransport::connect(&dev_id_clone).await
+    })
+    .await
+    .map_err(|e| format!("BLE connect task error: {}", e))??;
     let dev_name = ble.device_name().to_string();
 
     // SUTO BLE sensors operate on Address 1 by default; query discovery with 'A'

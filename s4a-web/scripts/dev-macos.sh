@@ -21,8 +21,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/src-tauri"
-APP="$SRC/target/debug/s4a-web Dev.app"
-BIN="$SRC/target/debug/app"
+APP="$SRC/target/debug/s4a-app Dev.app"
 DEV_URL="http://localhost:5173"
 
 if [[ "$(uname)" != "Darwin" ]]; then
@@ -31,8 +30,12 @@ if [[ "$(uname)" != "Darwin" ]]; then
 fi
 
 VITE_PID=""
+TAIL_PID=""
 
 cleanup() {
+  if [[ -n "$TAIL_PID" ]]; then
+    kill "$TAIL_PID" 2>/dev/null || true
+  fi
   if [[ -n "$VITE_PID" ]]; then
     kill "$VITE_PID" 2>/dev/null || true
   fi
@@ -62,29 +65,41 @@ echo ">> building frontend dist for LAN Web Server (:9080)..."
 echo ">> building Rust app (dev profile)..."
 ( cd "$SRC" && cargo build )
 
-# 3. Wrap the binary in a minimal .app bundle.
+BIN=""
+if [[ -f "$SRC/target/debug/s4a-app" ]]; then
+  BIN="$SRC/target/debug/s4a-app"
+elif [[ -f "$SRC/target/debug/app" ]]; then
+  BIN="$SRC/target/debug/app"
+elif [[ -f "$SRC/target/debug/s4a-web" ]]; then
+  BIN="$SRC/target/debug/s4a-web"
+else
+  echo "!! Built binary not found in $SRC/target/debug/" >&2
+  exit 1
+fi
+
+# 3. Wrap the binary in a minimal .app bundle so macOS TCC grants Bluetooth permission.
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
-cp "$BIN" "$APP/Contents/MacOS/s4a-web"
+cp "$BIN" "$APP/Contents/MacOS/s4a-app"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>s4a-web</string>
+	<string>s4a-app</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.s4a.app</string>
 	<key>CFBundleName</key>
-	<string>s4a-web</string>
+	<string>s4a-app</string>
 	<key>CFBundleDisplayName</key>
 	<string>S4A Data Studio</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.1.6</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.0</string>
+	<string>0.1.6</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>S4A Data Studio uses Bluetooth to connect to SUTO BLE sensors and loggers.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
@@ -98,8 +113,18 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 
 # 4. Ad-hoc sign so the bundle has a stable TCC identity.
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+codesign --force --deep --identifier "com.s4a.app" --sign - "$APP" >/dev/null 2>&1 || true
 
-# 5. Launch through LaunchServices (makes the .app its own responsible process).
+# 5. Stream app_log.log in the background and launch through LaunchServices
+#    (makes the .app its own responsible process for CoreBluetooth TCC).
+LOG_FILE="$APP/Contents/MacOS/app_log.log"
+touch "$LOG_FILE"
+tail -n 0 -f "$LOG_FILE" 2>/dev/null &
+TAIL_PID=$!
+
 echo ">> launching $APP"
-open -W -n "$APP"
+if tty -s && CURRENT_TTY="$(tty 2>/dev/null)" && [[ -n "$CURRENT_TTY" ]]; then
+  open -W -n --stdout "$CURRENT_TTY" --stderr "$CURRENT_TTY" "$APP" || open -W -n "$APP"
+else
+  open -W -n "$APP"
+fi

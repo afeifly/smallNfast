@@ -22,7 +22,7 @@ import ProcessScapeRecordModal from './modules/processscape/ProcessScapeRecordMo
 import AlarmCenterModal from './components/AlarmCenterModal';
 import { getLocations, autoReconnectSavedDevices, getSavedDevices, saveDevices, upsertDeviceList, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
 import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/processscape/engine/scapeStorage';
-import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels } from './modules/processscape/engine/alarmEngine';
+import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels, loadAlarmHistory } from './modules/processscape/engine/alarmEngine';
 import { subscribeLive } from './util/liveDataSource';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, checkIsDesktopHost, checkIsLanBridge, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
@@ -365,6 +365,9 @@ function App() {
           const locs = getLocations();
           setLocationsList(locs);
           try { refreshAssignedChannels(); } catch (_) {}
+        }
+        if (changedKeys.has('s4a_alarm_history_v1')) {
+          try { loadAlarmHistory({ notify: true }); } catch (_) {}
         }
         if (changedKeys.has('recentCsdFiles') && TestAPI.getRecentFiles) {
           setRecentFiles(TestAPI.getRecentFiles());

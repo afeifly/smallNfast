@@ -389,6 +389,32 @@ describe('alarmEngine', () => {
     const timeTd = historyContainer.querySelector('.alarm-td-time');
     expect(timeTd).not.toBeNull();
     expect(timeTd.textContent).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+
+    // Verify Clear History shows warning confirmation first before clearing
+    const clearBtn = Array.from(historyContainer.querySelectorAll('.alarm-history-toolbar button'))
+      .find(b => b.textContent.includes('Clear History'));
+    expect(clearBtn).not.toBeNull();
+    fireEvent.click(clearBtn);
+
+    // History should NOT be cleared yet; warning confirmation banner should appear
+    expect(getAlarmHistory().length).toBe(1);
+    const confirmBanner = historyContainer.querySelector('.alarm-clear-confirm-banner');
+    expect(confirmBanner).not.toBeNull();
+
+    // Clicking Cancel dismisses the warning without clearing
+    const cancelBtn = Array.from(confirmBanner.querySelectorAll('button'))
+      .find(b => b.textContent.includes('Cancel'));
+    fireEvent.click(cancelBtn);
+    expect(historyContainer.querySelector('.alarm-clear-confirm-banner')).toBeNull();
+    expect(getAlarmHistory().length).toBe(1);
+
+    // Clicking Clear History again and confirming clears the history
+    fireEvent.click(clearBtn);
+    const confirmBanner2 = historyContainer.querySelector('.alarm-clear-confirm-banner');
+    const confirmClearBtn = confirmBanner2.querySelector('.alarm-action-btn.danger-solid');
+    expect(confirmClearBtn).not.toBeNull();
+    fireEvent.click(confirmClearBtn);
+    expect(getAlarmHistory().length).toBe(0);
   });
 
   it('renderSensorCard applies blinking red class ps-channel-alarm-blink to unacknowledged alarms and solid red to acknowledged alarms', () => {

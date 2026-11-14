@@ -16,6 +16,8 @@ use super::logger::log_event;
 use super::transport::SutoTransport;
 
 static SHARED_ADAPTER: OnceLock<Adapter> = OnceLock::new();
+static ADAPTER_INIT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static BLE_OP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[cfg(target_os = "android")]
 #[derive(Debug)]
@@ -88,8 +90,13 @@ fn ensure_android_init() -> Result<(), String> {
     Ok(())
 }
 
-/// Obtain the shared system BLE adapter singleton
+/// Obtain the shared system BLE adapter singleton (serialized & timeout-protected)
 pub async fn get_shared_adapter() -> Result<Adapter, String> {
+    if let Some(adapter) = SHARED_ADAPTER.get() {
+        return Ok(adapter.clone());
+    }
+
+    let _guard = ADAPTER_INIT_LOCK.lock().await;
     if let Some(adapter) = SHARED_ADAPTER.get() {
         return Ok(adapter.clone());
     }
@@ -97,20 +104,36 @@ pub async fn get_shared_adapter() -> Result<Adapter, String> {
     #[cfg(target_os = "android")]
     ensure_android_init()?;
 
-    let manager = Manager::new()
-        .await
-        .map_err(|e| format!("Failed to initialize BLE manager: {:?}", e))?;
+    let init_fut = async {
+        let manager = Manager::new()
+            .await
+            .map_err(|e| format!("Failed to initialize BLE manager: {:?}", e))?;
 
-    let adapters = manager
-        .adapters()
-        .await
-        .map_err(|e| format!("Failed to get BLE adapters: {:?}", e))?;
+        let adapters = manager
+            .adapters()
+            .await
+            .map_err(|e| format!("Failed to get BLE adapters: {:?}", e))?;
 
-    if adapters.is_empty() {
-        return Err("No Bluetooth Low Energy adapters found on this system".into());
-    }
+        if adapters.is_empty() {
+            return Err("No Bluetooth Low Energy adapters found on this system".into());
+        }
 
-    let adapter = adapters[0].clone();
+        Ok::<Adapter, String>(adapters[0].clone())
+    };
+
+    let adapter = match tokio::time::timeout(Duration::from_secs(12), init_fut).await {
+        Ok(Ok(a)) => a,
+        Ok(Err(e)) => {
+            log_event("ERROR", "BLE_INIT", &e, None);
+            return Err(e);
+        }
+        Err(_) => {
+            let msg = "Bluetooth adapter did not respond in time (powered off or permission denied). Please ensure Bluetooth is turned ON and enabled for S4A in system settings.".to_string();
+            log_event("ERROR", "BLE_INIT", &msg, None);
+            return Err(msg);
+        }
+    };
+
     let _ = SHARED_ADAPTER.set(adapter.clone());
     Ok(adapter)
 }
@@ -142,6 +165,7 @@ impl BleTransport {
         duration_ms: u64,
         suto_only: bool,
     ) -> Result<Vec<BleDeviceInfo>, String> {
+        let _op_guard = BLE_OP_LOCK.lock().await;
         let adapter = get_shared_adapter().await?;
 
         adapter
@@ -212,8 +236,9 @@ impl BleTransport {
         Ok(results)
     }
 
-    /// Connect to a peripheral by device ID and establish communication transport
+    /// Connect to a peripheral by device ID (or name fallback) and establish communication transport
     pub async fn connect(device_id: &str) -> Result<Self, String> {
+        let _op_guard = BLE_OP_LOCK.lock().await;
         let adapter = get_shared_adapter().await?;
 
         log_event(
@@ -223,13 +248,19 @@ impl BleTransport {
             None,
         );
 
-        // 1. Look in existing adapter peripheral list
+        // 1. Look in existing adapter peripheral list by ID or local_name
         let mut target_peripheral = None;
         let peripherals = adapter.peripherals().await.unwrap_or_default();
         for p in peripherals {
             if p.id().to_string() == device_id {
                 target_peripheral = Some(p);
                 break;
+            }
+            if let Ok(Some(props)) = p.properties().await {
+                if props.local_name.as_deref() == Some(device_id) {
+                    target_peripheral = Some(p);
+                    break;
+                }
             }
         }
 
@@ -250,6 +281,12 @@ impl BleTransport {
                 if p.id().to_string() == device_id {
                     target_peripheral = Some(p);
                     break;
+                }
+                if let Ok(Some(props)) = p.properties().await {
+                    if props.local_name.as_deref() == Some(device_id) {
+                        target_peripheral = Some(p);
+                        break;
+                    }
                 }
             }
         }

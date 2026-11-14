@@ -739,7 +739,7 @@ fn dispatch_rpc_command(app: &tauri::AppHandle, cmd: &str, args: &Value) -> Resu
             serde_json::to_value(res).map_err(|e| e.to_string())
         }
         "suto_disconnect" => {
-            super::suto_disconnect(state)?;
+            tauri::async_runtime::block_on(super::suto_disconnect(state))?;
             Ok(json!(null))
         }
         "suto_get_channels" => {

@@ -100,30 +100,24 @@ export default function AlarmCenterModal({
       intl.get('EVENT') || 'Event',
       'Severity',
       intl.get('CHANNEL') || 'Channel',
-      intl.get('LOCATION') || 'Location',
-      intl.get('MEASUREMENT_POINT') || 'Measurement Point',
-      'Channel Name',
       'Trigger Value',
-      'Unit',
       'Rule',
       intl.get('DURATION') || 'Duration'
     ];
 
     const rows = exportList.map(h => {
-      const fullPath = [h.locationName, h.measurementPointName, h.channelName].filter(Boolean).join('/');
+      const basePath = [h.locationName, h.measurementPointName, h.channelName].filter(Boolean).join('/');
+      const fullChannel = `${basePath || '--'}${h.unit ? `(${h.unit})` : ''}`;
       const displayVal = formatDisplayVal(h.currentValue, h.unit, h.resolution);
+      const triggerValText = `${displayVal}${h.unit && !['Offline', 'Restored', 'Alarm Disabled'].includes(h.currentValue) ? ` ${h.unit}` : ''}`;
       const ruleText = `${h.ruleType || ''} ${h.threshold !== undefined ? h.threshold : ''}`.trim();
       const durationText = h.durationMs ? formatDuration(h.durationMs) : '--';
       return [
         formatTs(h.timestamp),
         h.eventType || '',
         h.severity || 'critical',
-        fullPath,
-        h.locationName || '',
-        h.measurementPointName || '',
-        h.channelName || '',
-        displayVal,
-        h.unit || '',
+        fullChannel,
+        triggerValText,
         ruleText,
         durationText
       ].map(escapeCsvCell).join(',');

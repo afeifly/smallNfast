@@ -534,15 +534,21 @@ export const TauriSutoAPI = {
     if (activeTransport === 'API') {
       await ApiDevice.disconnect();
       activeTransport = null;
-    } else if (activeTransport === 'BLE_WEB') {
-      await BleSutoAPI.disconnect();
+    } else if (activeTransport === 'BLE_WEB' || (BleSutoAPI && typeof BleSutoAPI.isConnected === 'function' && BleSutoAPI.isConnected())) {
+      try {
+        await BleSutoAPI.disconnect();
+      } catch (_) {}
       activeTransport = null;
     } else if (hasTauri()) {
       try {
-        await invoke('suto_disconnect');
+        await Promise.race([
+          invoke('suto_disconnect'),
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ]);
       } catch (_) {}
       activeTransport = null;
     }
+    this._saveSharedTransportSession();
     return true;
   },
 
@@ -995,10 +1001,17 @@ export const TauriSutoAPI = {
     historyBuffer.clear();
     if (activeTransport === 'API') {
       await ApiDevice.disconnect();
-    } else if (activeTransport === 'BLE_WEB') {
-      await BleSutoAPI.disconnect();
+    } else if (activeTransport === 'BLE_WEB' || (BleSutoAPI && typeof BleSutoAPI.isConnected === 'function' && BleSutoAPI.isConnected())) {
+      try {
+        await BleSutoAPI.disconnect();
+      } catch (_) {}
     } else if (hasTauri()) {
-      await invoke('suto_disconnect');
+      try {
+        await Promise.race([
+          invoke('suto_disconnect'),
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ]);
+      } catch (_) {}
     }
     activeTransport = null;
     this._saveSharedTransportSession();

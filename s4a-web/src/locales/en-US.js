@@ -852,6 +852,7 @@ export default {
   "DEV_MODBUS_TCP_RTU": "Modbus (TCP/RTU)",
   "DEV_USB_OTG_DESC": "Connect via USB-C OTG cable to industrial sensor. When prompted, tap \"OK\" to grant USB permission.",
   "DEV_USB_DIRECT_DESC": "Direct driver connection. Automatically scans for connected sensor.",
+  "DEV_WEBAPI_DESC": "Connect to S332 serial Web API",
   "DEV_BLE_NATIVE_DESC": "Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via native Bluetooth.",
   "DEV_BLE_WEB_DESC_PREFIX": "Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via browser",
   "DEV_WEB_BLUETOOTH": "Web Bluetooth",

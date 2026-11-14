@@ -358,7 +358,7 @@ pub async fn suto_connect_ble(
 }
 
 #[tauri::command]
-pub fn suto_disconnect(state: State<'_, SutoState>) -> Result<(), String> {
+pub async fn suto_disconnect(state: State<'_, SutoState>) -> Result<(), String> {
     log_event("INFO", "SUTO_IPC", "suto_disconnect called", None);
     let mut t_lock = state.transport.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(mut t) = t_lock.take() {

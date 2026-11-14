@@ -1527,7 +1527,14 @@ export default function DeviceConnectModal({
             </>
           )}
 
-          {tab === 'api' && renderEthernetSection(false)}
+          {tab === 'api' && (
+            <>
+              <p className="tab-desc">
+                {intl.get('DEV_WEBAPI_DESC') || 'Connect to S332 serial Web API'}
+              </p>
+              {renderEthernetSection(false)}
+            </>
+          )}
           {tab === 'modbus' && renderModbusSection()}
 
           {error && (

@@ -42,6 +42,7 @@ export default function SensorManagerModal({
   const [collapsedDevices, setCollapsedDevices] = useState(new Set());
   const [syncFeedback, setSyncFeedback] = useState(null);
   const [pendingDeleteDevice, setPendingDeleteDevice] = useState(null);
+  const [deletingDeviceProgress, setDeletingDeviceProgress] = useState(null);
   const [editingAlarm, setEditingAlarm] = useState(null);
 
   // Set of channel keys assigned anywhere across all locations (guarantees channel exclusivity per device & channel)
@@ -641,9 +642,10 @@ export default function SensorManagerModal({
   };
 
   const handleRequestRemoveDevice = (dev, e) => {
-    if (loadingDevices || readOnly) return;
+    if (loadingDevices || readOnly || deletingDeviceProgress) return;
     if (e) e.stopPropagation();
     const assigned = getDeviceChannelAssignments(dev, locations);
+    setDeletingDeviceProgress(null);
     setPendingDeleteDevice({
       device: dev,
       assignedChannels: assigned
@@ -651,43 +653,70 @@ export default function SensorManagerModal({
   };
 
   const handleConfirmDeleteDevice = async () => {
-    if (!pendingDeleteDevice || readOnly) return;
-    const { device, assignedChannels } = pendingDeleteDevice;
+    if (!pendingDeleteDevice || readOnly || deletingDeviceProgress) return;
+    const { device } = pendingDeleteDevice;
 
-    // 1. Close hardware connection for this specific device
+    setDeletingDeviceProgress({
+      percent: 20,
+      label: `Disconnecting "${device.name}"...`
+    });
+
+    const progTimer = setInterval(() => {
+      setDeletingDeviceProgress((prev) => {
+        if (!prev || prev.percent >= 80) return prev;
+        return {
+          ...prev,
+          percent: Math.min(80, prev.percent + 12)
+        };
+      });
+    }, 180);
+
     try {
-      if (typeof TauriSutoAPI.disconnectDevice === 'function') {
-        await TauriSutoAPI.disconnectDevice(device);
-      } else if (typeof TauriSutoAPI.disconnect === 'function') {
-        await TauriSutoAPI.disconnect();
+      // 1. Close hardware connection for this specific device
+      try {
+        if (typeof TauriSutoAPI.disconnectDevice === 'function') {
+          await TauriSutoAPI.disconnectDevice(device);
+        } else if (typeof TauriSutoAPI.disconnect === 'function') {
+          await TauriSutoAPI.disconnect();
+        }
+      } catch (err) {
+        console.warn('[SensorManager] Disconnect on device removal note:', err);
       }
-    } catch (err) {
-      console.warn('[SensorManager] Disconnect on device removal note:', err);
-    }
 
-    // 2. Remove device and unassign its channels across all locations and scapes
-    const { updatedDevices, updatedLocations, unassignedCount } = removeDeviceAndUnassignChannels(device.id);
+      clearInterval(progTimer);
+      setDeletingDeviceProgress({
+        percent: 95,
+        label: 'Removing device & unassigning channels...'
+      });
 
-    // 3. Update state in modal
-    setDevices(updatedDevices);
-    setLocations(updatedLocations);
-    setPendingDeleteDevice(null);
+      // 2. Remove device and unassign its channels across all locations and scapes
+      const { updatedDevices, updatedLocations, unassignedCount } = removeDeviceAndUnassignChannels(device.id);
 
-    // 4. Trigger Scape sync so active scape refreshes sensor cards
-    if (onSyncToScape) {
-      const allScapes = getAllScapes();
-      if (allScapes[0]?.id) {
-        onSyncToScape(allScapes[0].id);
+      // 3. Update state in modal
+      setDevices(updatedDevices);
+      setLocations(updatedLocations);
+      setDeletingDeviceProgress(null);
+      setPendingDeleteDevice(null);
+
+      // 4. Trigger Scape sync so active scape refreshes sensor cards
+      if (onSyncToScape) {
+        const allScapes = getAllScapes();
+        if (allScapes[0]?.id) {
+          onSyncToScape(allScapes[0].id);
+        }
       }
+
+      // 5. Feedback
+      const msg = unassignedCount > 0
+        ? `Disconnected "${device.name}" and removed ${unassignedCount} assigned channel(s).`
+        : `Disconnected and removed "${device.name}".`;
+
+      setSyncFeedback(`✓ ${msg}`);
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } finally {
+      clearInterval(progTimer);
+      setDeletingDeviceProgress(null);
     }
-
-    // 5. Feedback
-    const msg = unassignedCount > 0
-      ? `Disconnected "${device.name}" and removed ${unassignedCount} assigned channel(s).`
-      : `Disconnected and removed "${device.name}".`;
-
-    setSyncFeedback(`✓ ${msg}`);
-    setTimeout(() => setSyncFeedback(null), 4000);
   };
 
   const handleUpdateLocations = useCallback((updated) => {
@@ -2447,6 +2476,26 @@ export default function SensorManagerModal({
                   </p>
                 </div>
               )}
+
+              {deletingDeviceProgress && (
+                <div style={{ marginTop: 14, padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                    <span>{deletingDeviceProgress.label}</span>
+                    <span>{deletingDeviceProgress.percent}%</span>
+                  </div>
+                  <div style={{ width: '100%', height: 6, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${deletingDeviceProgress.percent}%`,
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #ef4444, #f97316)',
+                        borderRadius: 999,
+                        transition: 'width 0.18s ease-out'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="ps-sm-confirm-actions">
@@ -2454,6 +2503,7 @@ export default function SensorManagerModal({
                 type="button"
                 className="ps-sm-btn secondary"
                 onClick={() => setPendingDeleteDevice(null)}
+                disabled={Boolean(deletingDeviceProgress)}
               >
                 {intl.get('CANCEL') || 'Cancel'}
               </button>
@@ -2461,14 +2511,17 @@ export default function SensorManagerModal({
                 type="button"
                 className="ps-sm-btn danger"
                 onClick={handleConfirmDeleteDevice}
+                disabled={Boolean(deletingDeviceProgress)}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
-                {pendingDeleteDevice.assignedChannels?.length > 0
-                  ? (intl.get('PS_SENSOR_UNASSIGN_DELETE_BTN') || 'Unassign & Delete Device')
-                  : (intl.get('PS_SENSOR_DELETE_DEVICE_BTN') || 'Delete Device')}
+                {deletingDeviceProgress
+                  ? 'Disconnecting & Removing...'
+                  : (pendingDeleteDevice.assignedChannels?.length > 0
+                    ? (intl.get('PS_SENSOR_UNASSIGN_DELETE_BTN') || 'Unassign & Delete Device')
+                    : (intl.get('PS_SENSOR_DELETE_DEVICE_BTN') || 'Delete Device'))}
               </button>
             </div>
           </div>

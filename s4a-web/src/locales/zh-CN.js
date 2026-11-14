@@ -852,6 +852,7 @@ export default {
   "DEV_MODBUS_TCP_RTU": "Modbus (TCP/RTU)",
   "DEV_USB_OTG_DESC": "通过 USB-C OTG 线缆连接工业传感器。出现提示时，点击“确定”授予 USB 权限。",
   "DEV_USB_DIRECT_DESC": "直接驱动连接。自动扫描已连接的传感器。",
+  "DEV_WEBAPI_DESC": "连接至 S332 系列 Web API",
   "DEV_BLE_NATIVE_DESC": "通过原生蓝牙无线连接工业低功耗蓝牙 (BLE) 传感器。",
   "DEV_BLE_WEB_DESC_PREFIX": "通过浏览器无线连接工业低功耗蓝牙 (BLE) 传感器：",
   "DEV_WEB_BLUETOOTH": "Web Bluetooth",

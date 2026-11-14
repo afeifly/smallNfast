@@ -3466,7 +3466,30 @@ export default function ProcessScapeView({
       })));
     }
 
-    setElements(parsedElements);
+    setElements(prev => {
+      const prevCardsById = new Map();
+      if (Array.isArray(prev)) {
+        prev.forEach(p => {
+          if (p && p.type === 'sensor_card') {
+            prevCardsById.set(p.id, p);
+            if (p.mpId) prevCardsById.set(`mp_${p.mpId}`, p);
+          }
+        });
+      }
+      return parsedElements.map(el => {
+        if (el.type !== 'sensor_card' || !Array.isArray(el.channels)) return el;
+        const prevCard = prevCardsById.get(el.id) || (el.mpId ? prevCardsById.get(`mp_${el.mpId}`) : null);
+        if (!prevCard || !Array.isArray(prevCard.channels)) return el;
+        const mergedChannels = el.channels.map((ch, idx) => {
+          const prevCh = prevCard.channels.find(pc => (pc.id && pc.id === ch.id) || (pc.channel_id && pc.channel_id === ch.channel_id)) || prevCard.channels[idx];
+          if (prevCh && prevCh.val !== undefined && prevCh.val !== '--.-' && (ch.val === undefined || ch.val === '--.-')) {
+            return { ...ch, val: prevCh.val, status: prevCh.status || ch.status };
+          }
+          return ch;
+        });
+        return { ...el, channels: mergedChannels, status: prevCard.status || el.status };
+      });
+    });
     setSelectedIds(new Set());
 
     if (showNotification && typeof window !== 'undefined' && window.showAppNotification) {
@@ -3568,6 +3591,10 @@ export default function ProcessScapeView({
         openScapeManager: () => setIsScapeManagerOpen(true),
         setScapeMode: changeScapeMode,
         reloadActiveScape,
+        reloadActiveScapeIfIdle: () => {
+          if (scapeMode === 'editor' || isBoundsResizerActive || isLiveDndActive) return;
+          reloadActiveScape();
+        },
         setActiveLocationId: (locId) => {
           setActiveLocationId(locId);
           syncScapeForLocation(locId);
@@ -3593,7 +3620,7 @@ export default function ProcessScapeView({
         }
       });
     }
-  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape, handleSelectActiveScape, syncScapeForLocation]);
+  }, [onRegisterActions, undo, redo, handleZoomFit, handleExportJson, handleExportPng, handleImportJson, handleSaveAndExitEditor, changeScapeMode, reloadActiveScape, handleSelectActiveScape, syncScapeForLocation, scapeMode, isBoundsResizerActive, isLiveDndActive]);
 
   useEffect(() => {
     if (onStateChange) {

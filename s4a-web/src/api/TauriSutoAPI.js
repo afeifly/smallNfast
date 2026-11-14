@@ -73,6 +73,8 @@ const activeModbusDevices = new Map();
 let activeMeasurementPromise = null;
 let lastMeasurementResult = null;
 let lastMeasurementTime = 0;
+let lastLocalPushTs = 0;
+let pushInFlightCount = 0;
 
 export const TauriSutoAPI = {
   isAvailable() {
@@ -2327,31 +2329,43 @@ export const TauriSutoAPI = {
       }
     }
     if (Object.keys(entries).length === 0) return;
-    await invoke('suto_sync_shared_state', { entries });
+    pushInFlightCount += 1;
+    lastLocalPushTs = Date.now();
+    try {
+      await invoke('suto_sync_shared_state', { entries });
+    } finally {
+      pushInFlightCount = Math.max(0, pushInFlightCount - 1);
+      lastLocalPushTs = Date.now();
+    }
   },
 
-  /** Pull shared state from LAN server so Host and remote browsers stay in sync */
-  async pullLanBridgeState() {
-    if (!hasTauri() || typeof localStorage === 'undefined') return false;
+  /** Pull shared state from LAN server so Host and remote browsers stay in sync. Returns Set of changed keys or null. */
+  async pullLanBridgeState({ ignoreCooldown = false } = {}) {
+    if (!hasTauri() || typeof localStorage === 'undefined') return null;
     if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__?.invoke?.mock && !hasLanBridge()) {
-      return false;
+      return null;
+    }
+    if (!ignoreCooldown && (pushInFlightCount > 0 || Date.now() - lastLocalPushTs < 2500)) {
+      return null;
     }
     try {
       const entries = await invoke('suto_get_shared_state');
       if (entries && typeof entries === 'object') {
-        let changed = false;
+        const changedKeys = new Set();
         for (const [k, v] of Object.entries(entries)) {
           if (k === '__sync_ts__' || k === 's4a_web_server_enabled') continue;
           if (typeof v === 'string' && localStorage.getItem(k) !== v) {
             localStorage.setItem(k, v);
-            changed = true;
+            changedKeys.add(k);
           }
         }
-        this.hydrateFromSharedSession();
-        return changed || Object.keys(entries).length > 0;
+        if (changedKeys.has('s4a_shared_session_v1')) {
+          this.hydrateFromSharedSession();
+        }
+        return changedKeys.size > 0 ? changedKeys : null;
       }
     } catch (_) {}
-    return false;
+    return null;
   },
 };
 

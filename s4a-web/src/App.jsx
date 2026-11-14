@@ -40,6 +40,18 @@ const LOCALES = {
   'de-DE': localesDe
 };
 
+// Synchronously initialize intl at module load so no component ever reads uninitialized locale data
+try {
+  const savedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('app_language') : null;
+  const initialLocale = savedLang === 'cn' || savedLang === 'zh-CN'
+    ? 'zh-CN'
+    : (savedLang === 'de' || savedLang === 'de-DE' ? 'de-DE' : 'en-US');
+  intl.init({
+    currentLocale: initialLocale,
+    locales: LOCALES
+  });
+} catch (_) {}
+
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -269,8 +281,8 @@ function App() {
   React.useEffect(() => {
     let mounted = true;
     if (checkIsLanBridge()) {
-      TauriSutoAPI.pullLanBridgeState()
-        .then((pulled) => {
+      TauriSutoAPI.pullLanBridgeState({ ignoreCooldown: true })
+        .then((changedKeys) => {
           if (!mounted) return;
           try {
             const locs = getLocations();
@@ -299,7 +311,7 @@ function App() {
                 TestAPI.loadFileFromPath(session.loadedFilePath).catch(() => {});
               }
             }
-            if (pulled) {
+            if (changedKeys && (changedKeys.has('s4a_processscapes_v1') || changedKeys.has('s4a_active_scape_id_v1'))) {
               psActionsRef.current?.reloadActiveScape?.();
             }
           } catch (_) {}
@@ -346,15 +358,28 @@ function App() {
     if (!checkIsLanBridge() && !webServerStatus.enabled) return undefined;
     const timer = setInterval(async () => {
       try {
-        const updated = await TauriSutoAPI.pullLanBridgeState();
-        if (updated) {
+        const changedKeys = await TauriSutoAPI.pullLanBridgeState();
+        if (!changedKeys || changedKeys.size === 0) return;
+
+        if (changedKeys.has('s4a_sensor_locations_v1')) {
           const locs = getLocations();
           setLocationsList(locs);
           try { refreshAssignedChannels(); } catch (_) {}
-          if (TestAPI.getRecentFiles) {
-            setRecentFiles(TestAPI.getRecentFiles());
+        }
+        if (changedKeys.has('recentCsdFiles') && TestAPI.getRecentFiles) {
+          setRecentFiles(TestAPI.getRecentFiles());
+        }
+        if (
+          psMode !== 'editor' &&
+          (changedKeys.has('s4a_processscapes_v1') || changedKeys.has('s4a_active_scape_id_v1'))
+        ) {
+          if (psActionsRef.current?.reloadActiveScapeIfIdle) {
+            psActionsRef.current.reloadActiveScapeIfIdle();
+          } else {
+            psActionsRef.current?.reloadActiveScape?.();
           }
-          psActionsRef.current?.reloadActiveScape?.();
+        }
+        if (changedKeys.has('s4a_shared_session_v1')) {
           const session = TauriSutoAPI.getSharedSession();
           if (session?.deviceInfo && !deviceInfo) {
             setDeviceInfo(session.deviceInfo);
@@ -363,7 +388,7 @@ function App() {
       } catch (_) {}
     }, 3000);
     return () => clearInterval(timer);
-  }, [webServerStatus.enabled, deviceInfo]);
+  }, [webServerStatus.enabled, deviceInfo, psMode]);
 
   const handleToggleWebServer = async (e) => {
     if (e) e.stopPropagation();
@@ -1653,127 +1678,121 @@ function App() {
 
               {/* 2. Enable Web Server (Port 9080) for Desktop App (macOS & Windows) */}
               {checkIsLanBridge() ? (
-                <>
-                  <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
-                    <span>🖧</span>
-                    <span>{intl.get('LAN_CLIENT_CONNECTED') || 'Connected via LAN Web Server (:9080)'}</span>
-                  </div>
-                  <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
-                </>
-              ) : !isMobile && (
-                <>
+                <div style={{ padding: '8px 16px 12px', borderBottom: '1px solid #e2e8f0', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
+                  <span>🖧</span>
+                  <span>{intl.get('LAN_CLIENT_CONNECTED') || 'Connected via LAN Web Server (:9080)'}</span>
+                </div>
+              ) : !isMobile ? (
+                <div
+                  style={{ padding: '8px 16px 12px', borderBottom: '1px solid #e2e8f0', marginBottom: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div
-                    style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}
-                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
+                    onClick={handleToggleWebServer}
                   >
-                      <div
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
-                        onClick={handleToggleWebServer}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '15px' }}>🖧</span>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
-                              {intl.get('ENABLE_WEB_SERVER') || 'Enable Web Server'}
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>
-                              {intl.get('WEB_SERVER_PORT_HINT') || 'LAN Access · Port 9080'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={webServerStatus.enabled}
-                          disabled={webServerLoading}
-                          onClick={handleToggleWebServer}
-                          style={{
-                            width: '38px',
-                            height: '22px',
-                            borderRadius: '999px',
-                            border: 'none',
-                            padding: '2px',
-                            cursor: webServerLoading ? 'wait' : 'pointer',
-                            backgroundColor: webServerStatus.enabled ? '#00ac86' : '#cbd5e1',
-                            transition: 'background-color 0.2s ease',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: webServerStatus.enabled ? 'flex-end' : 'flex-start',
-                            flexShrink: 0,
-                          }}
-                          title={intl.get('ENABLE_WEB_SERVER') || 'Enable Web Server'}
-                        >
-                          <span
-                            style={{
-                              width: '18px',
-                              height: '18px',
-                              borderRadius: '50%',
-                              backgroundColor: '#ffffff',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                              transition: 'transform 0.2s ease',
-                            }}
-                          />
-                        </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '15px' }}>🖧</span>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                          {intl.get('ENABLE_WEB_SERVER') || 'Enable Web Server'}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                          {intl.get('WEB_SERVER_PORT_HINT') || 'LAN Access · Port 9080'}
+                        </span>
                       </div>
+                    </div>
 
-                      {webServerStatus.enabled && (
-                        <div
-                          style={{
-                            marginTop: '2px',
-                            padding: '6px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: '#f0fdf4',
-                            border: '1px solid #bbf7d0',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '8px',
-                          }}
-                        >
-                          <a
-                            href={webServerStatus.primary_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              fontSize: '11.5px',
-                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
-                              color: '#047857',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title={webServerStatus.primary_url}
-                          >
-                            ● {webServerStatus.primary_url}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={handleCopyWebServerUrl}
-                            style={{
-                              border: '1px solid #86efac',
-                              backgroundColor: '#ffffff',
-                              color: '#065f46',
-                              borderRadius: '4px',
-                              padding: '2px 6px',
-                              fontSize: '10.5px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {webServerCopied
-                              ? (intl.get('WEB_SERVER_COPIED') || '✓ Copied')
-                              : (intl.get('WEB_SERVER_COPY_URL') || 'Copy')}
-                          </button>
-                        </div>
-                      )}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={webServerStatus.enabled}
+                      disabled={webServerLoading}
+                      onClick={handleToggleWebServer}
+                      style={{
+                        width: '38px',
+                        height: '22px',
+                        borderRadius: '999px',
+                        border: 'none',
+                        padding: '2px',
+                        cursor: webServerLoading ? 'wait' : 'pointer',
+                        backgroundColor: webServerStatus.enabled ? '#00ac86' : '#cbd5e1',
+                        transition: 'background-color 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: webServerStatus.enabled ? 'flex-end' : 'flex-start',
+                        flexShrink: 0,
+                      }}
+                      title={intl.get('ENABLE_WEB_SERVER') || 'Enable Web Server'}
+                    >
+                      <span
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          backgroundColor: '#ffffff',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                    </button>
                   </div>
-                  <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #e2e8f0' }} />
-                </>
-              )}
+
+                  {webServerStatus.enabled && (
+                    <div
+                      style={{
+                        marginTop: '2px',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                      }}
+                    >
+                      <a
+                        href={webServerStatus.primary_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontSize: '11.5px',
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
+                          color: '#047857',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={webServerStatus.primary_url}
+                      >
+                        ● {webServerStatus.primary_url}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleCopyWebServerUrl}
+                        style={{
+                          border: '1px solid #86efac',
+                          backgroundColor: '#ffffff',
+                          color: '#065f46',
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {webServerCopied
+                          ? (intl.get('WEB_SERVER_COPIED') || '✓ Copied')
+                          : (intl.get('WEB_SERVER_COPY_URL') || 'Copy')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               {/* 3. System Diagnostic Logs */}
               <MenuItem

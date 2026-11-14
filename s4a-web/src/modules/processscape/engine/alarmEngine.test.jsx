@@ -383,6 +383,12 @@ describe('alarmEngine', () => {
       />
     );
     expect(historyContainer.querySelector('.alarm-history-view')).not.toBeNull();
+    const channelTd = historyContainer.querySelector('.alarm-td-channel');
+    expect(channelTd).not.toBeNull();
+    expect(channelTd.textContent).toContain('Booster Station B/Outlet Discharge/Dew Point');
+    const timeTd = historyContainer.querySelector('.alarm-td-time');
+    expect(timeTd).not.toBeNull();
+    expect(timeTd.textContent).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 
   it('renderSensorCard applies blinking red class ps-channel-alarm-blink to unacknowledged alarms and solid red to acknowledged alarms', () => {

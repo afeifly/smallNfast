@@ -16,6 +16,14 @@ const formatResolution = (val, resolution) => {
   });
 };
 
+const formatDateTime = (ms) => {
+  if (!ms) return '-';
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '-';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 function FileInfoView() {
   const [fileInfo, setFileInfo] = React.useState(null);
 
@@ -89,13 +97,13 @@ function FileInfoView() {
             {fileInfo.start && (
               <div className="property-item">
                 <span className="property-label">{intl.get('FILEINFO_START_DATETIME') || 'Start Date/Time'}</span>
-                <span className="property-value">{new Date(fileInfo.start).toLocaleString()}</span>
+                <span className="property-value">{formatDateTime(fileInfo.start)}</span>
               </div>
             )}
             {fileInfo.stop && (
               <div className="property-item">
                 <span className="property-label">{intl.get('FILEINFO_END_DATETIME') || 'End Date/Time'}</span>
-                <span className="property-value">{new Date(fileInfo.stop).toLocaleString()}</span>
+                <span className="property-value">{formatDateTime(fileInfo.stop)}</span>
               </div>
             )}
             {fileInfo.start && fileInfo.stop && (

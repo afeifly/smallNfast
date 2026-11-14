@@ -2557,7 +2557,10 @@ export function renderSensorCard(card, selectedIds = new Set(), elements = [], i
         class: 'ps-card-attach-line',
         'data-card-id': card.id,
         x1: edgePt.x, y1: edgePt.y, x2: 0, y2: 0,
-        stroke: isSel ? '#00a876' : '#94a3b8', 'stroke-width': 2, 'stroke-dasharray': '4 3',
+        stroke: isSel ? '#00a876' : '#94a3b8',
+        'stroke-width': 2,
+        'stroke-dasharray': '2 7',
+        'stroke-linecap': 'round',
         'pointer-events': 'none'
       }));
     }

@@ -16,6 +16,12 @@ function formatValue(val, resolution = 2) {
   return formatChannelValue(val, resolution);
 }
 
+function formatDateTime(d) {
+  if (!d || isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 // Session cache for preserving sensor-channel structure across view navigation
 let _onlineSessionCache = {
   deviceKey: null,
@@ -307,7 +313,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
               )}
               {lastUpdate && (
                 <span className="device-meta-item">
-                  {intl.get('ONLINE_LAST_UPDATED') || 'Last Updated:'} <strong>{lastUpdate.toLocaleTimeString()}</strong>
+                  {intl.get('ONLINE_LAST_UPDATED') || 'Last Updated:'} <strong>{formatDateTime(lastUpdate)}</strong>
                 </span>
               )}
             </div>

@@ -12,6 +12,14 @@ import {
 } from './engine/scapeStorage';
 import { getLocations } from './engine/sensorManagerStorage';
 
+const formatDateTime = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 export default function ScapeManagerModal({
   isOpen,
   onClose,
@@ -245,7 +253,7 @@ export default function ScapeManagerModal({
               const elemCount = scape.elements?.length || 0;
               const pipeCount = scape.pipes?.length || 0;
               const dateStr = scape.updatedAt
-                ? new Date(scape.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                ? formatDateTime(scape.updatedAt)
                 : (intl.get('PS_SCAPE_BUILTIN') || 'Built-in');
 
               return (

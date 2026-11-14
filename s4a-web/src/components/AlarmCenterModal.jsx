@@ -79,13 +79,9 @@ export default function AlarmCenterModal({
   const formatTs = (ts) => {
     if (!ts) return '--';
     const d = new Date(ts);
-    return d.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    if (isNaN(d.getTime())) return '--';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
   const formatDuration = (ms) => {
@@ -334,8 +330,6 @@ export default function AlarmCenterModal({
                       <tr>
                         <th>{intl.get('TIME') || 'Time'}</th>
                         <th>{intl.get('EVENT') || 'Event'}</th>
-                        <th>{intl.get('LOCATION') || 'Location'}</th>
-                        <th>{intl.get('MEASUREMENT_POINT') || 'Measurement Point'}</th>
                         <th>{intl.get('CHANNEL') || 'Channel'}</th>
                         <th>{intl.get('TRIGGER_VALUE_RULE') || 'Trigger Value / Rule'}</th>
                         <th>{intl.get('DURATION') || 'Duration'}</th>
@@ -345,10 +339,11 @@ export default function AlarmCenterModal({
                       {filteredHistory.map((item) => {
                         const evt = item.eventType;
                         const evtClass = evt === 'triggered' ? 'triggered' : (evt === 'cleared' ? 'cleared' : 'acknowledged');
+                        const pathPrefix = [item.locationName, item.measurementPointName].filter(Boolean).join('/');
                         return (
                           <tr key={item.id}>
                             <td className="alarm-td-time">{formatTs(item.timestamp)}</td>
-                            <td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
                               <span className={`alarm-event-badge ${evtClass}`}>
                                 {evt === 'triggered'
                                   ? `⚡ ${intl.get('EVENT_TRIGGERED') || 'Triggered'}`
@@ -357,20 +352,23 @@ export default function AlarmCenterModal({
                                       : `👁️ ${intl.get('EVENT_ACKED') || 'Acked'}`)}
                               </span>
                             </td>
-                            <td>{item.locationName || '--'}</td>
-                            <td>{item.measurementPointName || '--'}</td>
-                            <td>
-                              <strong>{item.channelName}</strong>
+                            <td className="alarm-td-channel">
+                              {pathPrefix && (
+                                <span style={{ color: '#64748b' }}>{pathPrefix}/</span>
+                              )}
+                              <strong>{item.channelName || '--'}</strong>
                               {item.unit && <span style={{ color: '#64748b', fontSize: 11 }}> ({item.unit})</span>}
                             </td>
-                            <td>
-                              <span style={{ fontWeight: 700 }}>
+                            <td className="alarm-td-trigger-rule">
+                              <div style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                                 {formatDisplayVal(item.currentValue, item.unit, item.resolution)}
-                                {item.unit && !['Offline', 'Restored'].includes(item.currentValue) ? ` ${item.unit}` : ''}
-                              </span>
-                              <span style={{ color: '#64748b', fontSize: 11 }}> ({intl.get('ALARM_RULE_LABEL') || 'Rule:'} {item.ruleType} {item.threshold})</span>
+                                {item.unit && !['Offline', 'Restored', 'Alarm Disabled'].includes(item.currentValue) ? ` ${item.unit}` : ''}
+                              </div>
+                              <div style={{ color: '#64748b', fontSize: 11, whiteSpace: 'nowrap', marginTop: 2 }}>
+                                {intl.get('ALARM_RULE_LABEL') || 'Rule:'} {item.ruleType} {item.threshold}
+                              </div>
                             </td>
-                            <td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
                               {item.durationMs ? formatDuration(item.durationMs) : '--'}
                             </td>
                           </tr>

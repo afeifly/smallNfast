@@ -2658,7 +2658,11 @@ function App() {
             </span>
           )}
           <span className="status-timestamp">
-            {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {(() => {
+              const d = new Date();
+              const pad = (n) => String(n).padStart(2, '0');
+              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+            })()}
           </span>
         </div>
       </footer>

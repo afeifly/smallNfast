@@ -79,7 +79,7 @@ class SplineGroup extends Component {
         <g className="current-date-tip" transform={`translate(0, -27)`}>
           <path className="date-tip-back" />
           <text className="date-tip-label" x="10" y="4" alignmentBaseline="before-edge">
-            {'00/00/0000'}
+            {'0000-00-00 00:00:00'}
           </text>
         </g>
         {dataTipPanel}

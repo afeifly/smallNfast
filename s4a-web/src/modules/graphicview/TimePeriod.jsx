@@ -52,7 +52,7 @@ class TimePeriod extends Component {
             selected={this.state.startDate}
             timeInputLabel={intl.get('GV_START_TIME_COLON') || "Start Time:"}
             onChange={this.changeStart}
-            dateFormat="MM/dd/yyyy h:mm aa"
+            dateFormat="yyyy-MM-dd HH:mm:ss"
             maxDate={this.state.endDate}
             showMonthDropdown
             useShortMonthInDropdown
@@ -63,7 +63,7 @@ class TimePeriod extends Component {
             selected={this.state.endDate}
             timeInputLabel={intl.get('GV_END_TIME_COLON') || "End Time:"}
             onChange={this.changeEnd}
-            dateFormat="MM/dd/yyyy h:mm aa"
+            dateFormat="yyyy-MM-dd HH:mm:ss"
             maxDate={now}
             minDate={this.state.startDate}
             showMonthDropdown

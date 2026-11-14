@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import intl from 'react-intl-universal';
 import TauriSutoAPI from '../../api/TauriSutoAPI';
 import { resolveDeviceTypeName } from '../../util/platform';
@@ -17,6 +19,32 @@ function formatUnixTimestamp(unixSec) {
   const mm = String(d.getMinutes()).padStart(2, '0');
   const ss = String(d.getSeconds()).padStart(2, '0');
   return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}`;
+}
+
+function parseLocalDateTimeStr(str) {
+  if (!str) return null;
+  const trimmed = str.trim();
+  const dtMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (dtMatch) {
+    return new Date(
+      parseInt(dtMatch[1], 10),
+      parseInt(dtMatch[2], 10) - 1,
+      parseInt(dtMatch[3], 10),
+      parseInt(dtMatch[4], 10),
+      parseInt(dtMatch[5], 10),
+      dtMatch[6] ? parseInt(dtMatch[6], 10) : 0
+    );
+  }
+  const dMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dMatch) {
+    return new Date(
+      parseInt(dMatch[1], 10),
+      parseInt(dMatch[2], 10) - 1,
+      parseInt(dMatch[3], 10)
+    );
+  }
+  const d = new Date(trimmed);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function formatDateToCsvString(d) {
@@ -731,7 +759,7 @@ export default function ReadoutView({
     setReadResult(null);
 
     try {
-      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `${label} logger read started (${new Date(startSec * 1000).toLocaleString()} → ${new Date(stopSec * 1000).toLocaleString()})`);
+      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `${label} logger read started (${formatUnixTimestamp(startSec)} → ${formatUnixTimestamp(stopSec)})`);
       const res = await readerFn(startSec, stopSec, (pct, info) => {
         if (typeof pct === 'number') {
           setReadingProgress(pct);
@@ -787,8 +815,10 @@ export default function ReadoutView({
         alert('Please select both start and end dates.');
         return;
       }
-      const sMs = new Date(s418CustomStart).getTime();
-      const eMs = new Date(s418CustomEnd).getTime();
+      const sDateObj = parseLocalDateTimeStr(s418CustomStart);
+      const eDateObj = parseLocalDateTimeStr(s418CustomEnd);
+      const sMs = sDateObj ? sDateObj.getTime() : NaN;
+      const eMs = eDateObj ? eDateObj.getTime() : NaN;
       if (isNaN(sMs) || isNaN(eMs) || sMs >= eMs) {
         alert('Please select a reasonable time period! Start time must be earlier than End time.');
         return;
@@ -1392,18 +1422,28 @@ export default function ReadoutView({
                 <div className="readout-custom-inputs">
                   <div className="readout-input-group">
                     <label>{intl.get('START_DATETIME') || 'Start Date & Time:'}</label>
-                    <input
-                      type="datetime-local"
-                      value={s418CustomStart}
-                      onChange={(e) => setS418CustomStart(e.target.value)}
+                    <DatePicker
+                      selected={parseLocalDateTimeStr(s418CustomStart)}
+                      onChange={(d) => setS418CustomStart(d ? formatUnixTimestamp(d.getTime() / 1000) : '')}
+                      dateFormat="yyyy-MM-dd HH:mm:ss"
+                      timeInputLabel={intl.get('GV_START_TIME_COLON') || 'Start Time:'}
+                      showMonthDropdown
+                      useShortMonthInDropdown
+                      showTimeInput
+                      placeholderText="YYYY-MM-DD HH:mm:ss"
                     />
                   </div>
                   <div className="readout-input-group">
                     <label>{intl.get('END_DATETIME') || 'End Date & Time:'}</label>
-                    <input
-                      type="datetime-local"
-                      value={s418CustomEnd}
-                      onChange={(e) => setS418CustomEnd(e.target.value)}
+                    <DatePicker
+                      selected={parseLocalDateTimeStr(s418CustomEnd)}
+                      onChange={(d) => setS418CustomEnd(d ? formatUnixTimestamp(d.getTime() / 1000) : '')}
+                      dateFormat="yyyy-MM-dd HH:mm:ss"
+                      timeInputLabel={intl.get('GV_END_TIME_COLON') || 'End Time:'}
+                      showMonthDropdown
+                      useShortMonthInDropdown
+                      showTimeInput
+                      placeholderText="YYYY-MM-DD HH:mm:ss"
                     />
                   </div>
                 </div>
@@ -1466,10 +1506,17 @@ export default function ReadoutView({
                 <div className="readout-custom-inputs" style={{ marginTop: '16px' }}>
                   <div className="readout-input-group">
                     <label>{intl.get('FROM_DATE') || 'From Date:'}</label>
-                    <input
-                      type="date"
-                      value={s461StartDate}
-                      onChange={(e) => setS461StartDate(e.target.value)}
+                    <DatePicker
+                      selected={parseLocalDateTimeStr(s461StartDate)}
+                      onChange={(d) => {
+                        if (!d) return setS461StartDate('');
+                        const pad = (n) => String(n).padStart(2, '0');
+                        setS461StartDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+                      }}
+                      dateFormat="yyyy-MM-dd"
+                      showMonthDropdown
+                      useShortMonthInDropdown
+                      placeholderText="YYYY-MM-DD"
                     />
                   </div>
                   <div className="readout-input-group">
@@ -1487,10 +1534,17 @@ export default function ReadoutView({
                   </div>
                   <div className="readout-input-group">
                     <label>{intl.get('TO_DATE') || 'To Date:'}</label>
-                    <input
-                      type="date"
-                      value={s461EndDate}
-                      onChange={(e) => setS461EndDate(e.target.value)}
+                    <DatePicker
+                      selected={parseLocalDateTimeStr(s461EndDate)}
+                      onChange={(d) => {
+                        if (!d) return setS461EndDate('');
+                        const pad = (n) => String(n).padStart(2, '0');
+                        setS461EndDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+                      }}
+                      dateFormat="yyyy-MM-dd"
+                      showMonthDropdown
+                      useShortMonthInDropdown
+                      placeholderText="YYYY-MM-DD"
                     />
                   </div>
                   <div className="readout-input-group">
@@ -1511,7 +1565,7 @@ export default function ReadoutView({
 
               {loggerStatus?.start_time && loggerStatus?.end_time && (
                 <div style={{ marginTop: '12px', fontSize: '0.8rem', color: '#64748b' }}>
-                  {intl.get('READOUT_LOGGER_MEMORY_RANGE') || 'Logger memory range:'} {new Date(loggerStatus.start_time * 1000).toLocaleString()} — {new Date(loggerStatus.end_time * 1000).toLocaleString()}
+                  {intl.get('READOUT_LOGGER_MEMORY_RANGE') || 'Logger memory range:'} {formatUnixTimestamp(loggerStatus.start_time)} — {formatUnixTimestamp(loggerStatus.end_time)}
                 </div>
               )}
             </div>

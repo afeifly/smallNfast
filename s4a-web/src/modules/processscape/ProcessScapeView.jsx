@@ -1124,7 +1124,8 @@ export default function ProcessScapeView({
                 y2: card.y,
                 stroke: isCardSel ? '#00a876' : '#94a3b8',
                 'stroke-width': 2,
-                'stroke-dasharray': '4 3',
+                'stroke-dasharray': '2 7',
+                'stroke-linecap': 'round',
                 'pointer-events': 'none'
               }));
             });

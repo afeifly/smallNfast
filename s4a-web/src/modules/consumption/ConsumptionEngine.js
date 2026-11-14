@@ -69,8 +69,7 @@ function formatBucketLabel(date, period) {
     const weekNo = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
     return `${tmp.getFullYear()}-W${pad(weekNo)}`;
   } else if (period === 'monthly') {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
   }
   return date.toISOString().slice(0, 10);
 }

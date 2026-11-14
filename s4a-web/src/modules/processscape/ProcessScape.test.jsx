@@ -7274,8 +7274,9 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const cardGroup = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
     expect(cardGroup).not.toBeNull();
     // Attachment dotted line exists before DND and stops at the machine edge (not overlapping to -120)
-    const topAttachLine = cardGroup.querySelector('line[stroke-dasharray="4 3"]');
+    const topAttachLine = cardGroup.querySelector('line.ps-card-attach-line');
     expect(topAttachLine).not.toBeNull();
+    expect(topAttachLine.getAttribute('stroke-dasharray')).toBe('2 7');
     expect(Number(topAttachLine.getAttribute('x1'))).toBeGreaterThan(-120);
     // And the under-asset line is rendered in the diagram layer underneath the machine
     expect(container.querySelector('.ps-card-under-asset-line[data-card-id="card_live_1"]')).not.toBeNull();
@@ -7288,7 +7289,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     const updatedCardGroup = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
     expect(updatedCardGroup).not.toBeNull();
     // Attachment dashed line MUST still exist after the small DND operation
-    expect(updatedCardGroup.querySelector('line[stroke-dasharray="4 3"]')).not.toBeNull();
+    expect(updatedCardGroup.querySelector('line.ps-card-attach-line')).not.toBeNull();
   });
 
   it('hides static bind line on pipe-attached text_note labels while preserving pipe attachment', () => {
@@ -7365,7 +7366,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     const card1Group = container.querySelector('.sensor-badge-group[data-card-id="card_live_1"]');
     expect(card1Group).not.toBeNull();
-    expect(card1Group.querySelector('line[stroke-dasharray="4 3"]')?.getAttribute('pointer-events')).toBe('none');
+    expect(card1Group.querySelector('line.ps-card-attach-line')?.getAttribute('pointer-events')).toBe('none');
     card1Group.querySelectorAll('circle').forEach(circle => {
       if (!circle.closest('.element-anchor-handle')) {
         expect(circle.getAttribute('pointer-events')).toBe('none');

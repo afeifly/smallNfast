@@ -7,6 +7,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import intl from 'react-intl-universal';
 import TestAPI from '../../api/TestAPI';
 import { Compressor, createDefaultCompressor, COMPRESSOR_TYPE_LOAD_UNLOAD, COMPRESSOR_TYPE_VARIABLE_FREQUENCY } from '../../analysis/CompressorEngine.js';
@@ -72,6 +74,45 @@ const fmtKwh = (k) => fmt(k, 1) + ' kWh';
 const fmtPct = (p) => (p * 100).toFixed(1) + '%';
 const fmtFlow = (v) => fmt(v, 2);
 
+const formatDateTime = (ms) => {
+  if (!ms || !isFinite(ms)) return '';
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+const parseDateTimeStr = (str, isEnd = false) => {
+  if (!str) return null;
+  const trimmed = str.trim();
+  const dtMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (dtMatch) {
+    return new Date(
+      parseInt(dtMatch[1], 10),
+      parseInt(dtMatch[2], 10) - 1,
+      parseInt(dtMatch[3], 10),
+      parseInt(dtMatch[4], 10),
+      parseInt(dtMatch[5], 10),
+      dtMatch[6] ? parseInt(dtMatch[6], 10) : (isEnd ? 59 : 0),
+      isEnd ? 999 : 0
+    );
+  }
+  const dMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dMatch) {
+    return new Date(
+      parseInt(dMatch[1], 10),
+      parseInt(dMatch[2], 10) - 1,
+      parseInt(dMatch[3], 10),
+      isEnd ? 23 : 0,
+      isEnd ? 59 : 0,
+      isEnd ? 59 : 0,
+      isEnd ? 999 : 0
+    );
+  }
+  const d = new Date(trimmed);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 const CHART_COLORS = ['#00ac86', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899'];
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -130,6 +171,13 @@ export default function CompressorAnalyze() {
   useEffect(() => {
     let cancelled = false;
     if (!TestAPI.isFileLoaded || !TestAPI.isFileLoaded()) return undefined;
+    if (TestAPI.getFileTimeRange) {
+      const range = TestAPI.getFileTimeRange();
+      if (range && range.start && range.stop) {
+        setStartTimeStr((prev) => prev || formatDateTime(range.start));
+        setStopTimeStr((prev) => prev || formatDateTime(range.stop));
+      }
+    }
     TestAPI.getChannels((res) => {
       if (cancelled) return;
       const chs = res ? res.logging_chs || [] : [];
@@ -265,12 +313,12 @@ export default function CompressorAnalyze() {
 
       // Restrict to the selected analysis time period (whole file when empty)
       if (startTimeStr) {
-        const t = new Date(startTimeStr).getTime();
-        if (!Number.isNaN(t)) allRows = allRows.filter(r => r.timestampMs >= t);
+        const d = parseDateTimeStr(startTimeStr, false);
+        if (d) allRows = allRows.filter(r => r.timestampMs >= d.getTime());
       }
       if (stopTimeStr) {
-        const t = new Date(stopTimeStr).getTime();
-        if (!Number.isNaN(t)) allRows = allRows.filter(r => r.timestampMs <= t);
+        const d = parseDateTimeStr(stopTimeStr, true);
+        if (d) allRows = allRows.filter(r => r.timestampMs <= d.getTime());
       }
 
       // Use either the provided customComps or the existing state, fallback to auto-generation
@@ -611,21 +659,30 @@ export default function CompressorAnalyze() {
 
         <div className="sidebar-input-group">
           <label className="sidebar-label">{intl.get('COMP_ANALYSIS_TIME_PERIOD') || 'Analysis Time Period (optional)'}</label>
-          <input
+          <DatePicker
             className="sidebar-input"
-            type="datetime-local"
-            value={startTimeStr}
-            onChange={(e) => setStartTimeStr(e.target.value)}
-            placeholder={intl.get('COMP_START') || 'Start'}
+            selected={parseDateTimeStr(startTimeStr, false)}
+            onChange={(date) => setStartTimeStr(date ? formatDateTime(date.getTime()) : '')}
+            dateFormat="yyyy-MM-dd HH:mm:ss"
+            timeInputLabel={intl.get('GV_START_TIME_COLON') || 'Start Time:'}
+            showMonthDropdown
+            useShortMonthInDropdown
+            showTimeInput
+            placeholderText={intl.get('COMP_START') || 'YYYY-MM-DD HH:mm:ss'}
           />
-          <input
-            className="sidebar-input"
-            type="datetime-local"
-            value={stopTimeStr}
-            onChange={(e) => setStopTimeStr(e.target.value)}
-            placeholder={intl.get('COMP_END') || 'End'}
-            style={{ marginTop: '6px' }}
-          />
+          <div style={{ marginTop: '6px' }}>
+            <DatePicker
+              className="sidebar-input"
+              selected={parseDateTimeStr(stopTimeStr, true)}
+              onChange={(date) => setStopTimeStr(date ? formatDateTime(date.getTime()) : '')}
+              dateFormat="yyyy-MM-dd HH:mm:ss"
+              timeInputLabel={intl.get('GV_END_TIME_COLON') || 'End Time:'}
+              showMonthDropdown
+              useShortMonthInDropdown
+              showTimeInput
+              placeholderText={intl.get('COMP_END') || 'YYYY-MM-DD HH:mm:ss'}
+            />
+          </div>
         </div>
 
         <div className="sidebar-input-group">
@@ -806,7 +863,7 @@ export default function CompressorAnalyze() {
             <div className="print-only" style={{ marginBottom: '24px' }}>
               <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>{intl.get('COMP_REPORT_TITLE') || 'Compressor Analysis Report'}</h2>
               <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
-                {intl.get('COMP_REPORT_SUBTITLE') || 'System analysis details and efficiency statistics'} — {intl.get('COMP_GENERATED_ON') || 'Generated on'} {new Date().toLocaleDateString()}
+                {intl.get('COMP_REPORT_SUBTITLE') || 'System analysis details and efficiency statistics'} — {intl.get('COMP_GENERATED_ON') || 'Generated on'} {formatDateTime(Date.now())}
               </p>
             </div>
 

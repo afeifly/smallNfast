@@ -17,8 +17,8 @@
 }
 
 .alarm-modal-window {
-  width: 820px;
-  max-width: 95vw;
+  width: 980px;
+  max-width: 96vw;
   max-height: 85vh;
   background: #ffffff;
   border-radius: 12px;
@@ -502,6 +502,7 @@
 .alarm-td-time {
   font-family: ui-monospace, monospace;
   color: #64748b;
+  white-space: nowrap;
 }
 
 .alarm-event-badge {

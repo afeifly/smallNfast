@@ -1,5 +1,7 @@
 import React from 'react';
 import * as d3 from 'd3';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import intl from 'react-intl-universal';
 import TestAPI from '../../api/TestAPI';
 import { runReport } from './ConsumptionEngine';
@@ -71,11 +73,49 @@ const Icons = {
   )
 };
 
-// Helper to format date range beautifully
+const formatDateTime = (ms) => {
+  if (!ms || isNaN(ms)) return '—';
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '—';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+const parseDateTimeStr = (str, isEnd = false) => {
+  if (!str) return null;
+  const trimmed = str.trim();
+  const dtMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (dtMatch) {
+    return new Date(
+      parseInt(dtMatch[1], 10),
+      parseInt(dtMatch[2], 10) - 1,
+      parseInt(dtMatch[3], 10),
+      parseInt(dtMatch[4], 10),
+      parseInt(dtMatch[5], 10),
+      dtMatch[6] ? parseInt(dtMatch[6], 10) : (isEnd ? 59 : 0),
+      isEnd ? 999 : 0
+    );
+  }
+  const dMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dMatch) {
+    return new Date(
+      parseInt(dMatch[1], 10),
+      parseInt(dMatch[2], 10) - 1,
+      parseInt(dMatch[3], 10),
+      isEnd ? 23 : 0,
+      isEnd ? 59 : 0,
+      isEnd ? 59 : 0,
+      isEnd ? 999 : 0
+    );
+  }
+  const d = new Date(trimmed);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// Helper to format date range in YYYY-MM-DD HH:mm:ss
 const formatDateRange = (startMs, endMs) => {
-  const options = { year: 'numeric', month: 'short', day: 'numeric' };
-  const startStr = new Date(startMs).toLocaleDateString('en-US', options);
-  const endStr = new Date(endMs - 1).toLocaleDateString('en-US', options);
+  const startStr = formatDateTime(startMs);
+  const endStr = formatDateTime(Math.max(startMs, endMs - 1));
   return `${startStr} – ${endStr}`;
 };
 
@@ -384,13 +424,8 @@ export default function ConsumptionReport() {
             const startMs = rows[0].timestampMs;
             const stopMs = rows[rows.length - 1].timestampMs;
 
-            const formatDate = (ms) => {
-              const d = new Date(ms);
-              const pad = n => String(n).padStart(2, '0');
-              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-            };
-            setStartDateStr(formatDate(startMs));
-            setEndDateStr(formatDate(stopMs));
+            setStartDateStr(formatDateTime(startMs));
+            setEndDateStr(formatDateTime(stopMs));
           }
 
           // Auto-detect groups ("Try Defined First")
@@ -457,8 +492,10 @@ export default function ConsumptionReport() {
 
   // Compute active variables
   const activeGroup = groups.find(g => g.id === activeGroupId);
-  const startMs = startDateStr ? new Date(startDateStr).getTime() : 0;
-  const endMs = endDateStr ? new Date(endDateStr).getTime() + 86400000 - 1 : 0;
+  const startDateObj = parseDateTimeStr(startDateStr, false);
+  const endDateObj = parseDateTimeStr(endDateStr, true);
+  const startMs = startDateObj ? startDateObj.getTime() : 0;
+  const endMs = endDateObj ? endDateObj.getTime() + 1 : 0;
 
   // 1. Generate segmented pages (each page handles its own date range + bucket period)
   const pages = React.useMemo(() => {
@@ -471,7 +508,7 @@ export default function ConsumptionReport() {
     if (period === 'daily') {
       // Daily Report: Each day is a page with 24 Hourly buckets.
       while (cursor.getTime() < endMs) {
-        const pageStart = cursor.getTime();
+        const pageStart = Math.max(cursor.getTime(), startMs);
         const next = new Date(cursor);
         next.setDate(next.getDate() + 1);
         const pageEnd = Math.min(next.getTime(), endMs);
@@ -494,7 +531,7 @@ export default function ConsumptionReport() {
       cursor.setDate(diff);
 
       while (cursor.getTime() < endMs) {
-        const pageStart = cursor.getTime();
+        const pageStart = Math.max(cursor.getTime(), startMs);
         const next = new Date(cursor);
         next.setDate(next.getDate() + 7);
         const pageEnd = Math.min(next.getTime(), endMs);
@@ -519,14 +556,14 @@ export default function ConsumptionReport() {
       cursor.setDate(1);
 
       while (cursor.getTime() < endMs) {
-        const pageStart = cursor.getTime();
+        const pageStart = Math.max(cursor.getTime(), startMs);
         const next = new Date(cursor);
         next.setMonth(next.getMonth() + 1);
         next.setDate(1);
         const pageEnd = Math.min(next.getTime(), endMs);
 
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const label = `${months[cursor.getMonth()]} ${cursor.getFullYear()}`;
+        const pad = n => String(n).padStart(2, '0');
+        const label = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
 
         pageList.push({
           label,
@@ -629,20 +666,17 @@ export default function ConsumptionReport() {
     const stopMs = allRows[allRows.length - 1].timestampMs;
     const stopDate = new Date(stopMs);
 
-    const pad = n => String(n).padStart(2, '0');
-    const formatDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
     if (preset === 'month') {
-      const firstOfMonth = new Date(stopDate.getFullYear(), stopDate.getMonth(), 1);
-      setStartDateStr(formatDate(firstOfMonth));
-      setEndDateStr(formatDate(stopDate));
+      const firstOfMonth = new Date(stopDate.getFullYear(), stopDate.getMonth(), 1, 0, 0, 0);
+      setStartDateStr(formatDateTime(firstOfMonth.getTime()));
+      setEndDateStr(formatDateTime(stopMs));
     } else if (preset === 'year') {
-      const firstOfYear = new Date(stopDate.getFullYear(), 0, 1);
-      setStartDateStr(formatDate(firstOfYear));
-      setEndDateStr(formatDate(stopDate));
+      const firstOfYear = new Date(stopDate.getFullYear(), 0, 1, 0, 0, 0);
+      setStartDateStr(formatDateTime(firstOfYear.getTime()));
+      setEndDateStr(formatDateTime(stopMs));
     } else if (preset === 'all') {
-      setStartDateStr(formatDate(new Date(startMs)));
-      setEndDateStr(formatDate(new Date(stopMs)));
+      setStartDateStr(formatDateTime(startMs));
+      setEndDateStr(formatDateTime(stopMs));
     }
   };
 
@@ -694,21 +728,31 @@ export default function ConsumptionReport() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div className="sidebar-input-group">
               <span className="sidebar-label">{intl.get('CONS_START_DATE') || 'Start Date'}</span>
-              <input
-                type="date"
+              <DatePicker
                 className="sidebar-input"
-                value={startDateStr}
-                onChange={e => setStartDateStr(e.target.value)}
+                selected={startDateObj}
+                onChange={date => setStartDateStr(date ? formatDateTime(date.getTime()) : '')}
+                dateFormat="yyyy-MM-dd HH:mm:ss"
+                timeInputLabel={intl.get('GV_START_TIME_COLON') || 'Start Time:'}
+                showMonthDropdown
+                useShortMonthInDropdown
+                showTimeInput
+                placeholderText="YYYY-MM-DD HH:mm:ss"
               />
             </div>
 
             <div className="sidebar-input-group">
               <span className="sidebar-label">{intl.get('CONS_END_DATE') || 'End Date'}</span>
-              <input
-                type="date"
+              <DatePicker
                 className="sidebar-input"
-                value={endDateStr}
-                onChange={e => setEndDateStr(e.target.value)}
+                selected={endDateObj}
+                onChange={date => setEndDateStr(date ? formatDateTime(date.getTime()) : '')}
+                dateFormat="yyyy-MM-dd HH:mm:ss"
+                timeInputLabel={intl.get('GV_END_TIME_COLON') || 'End Time:'}
+                showMonthDropdown
+                useShortMonthInDropdown
+                showTimeInput
+                placeholderText="YYYY-MM-DD HH:mm:ss"
               />
             </div>
 
@@ -1146,7 +1190,7 @@ export default function ConsumptionReport() {
             <div style={{ borderBottom: '1px solid #cbd5e1', paddingBottom: '6px', marginBottom: '8px', textAlign: 'center' }}>
               <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>{intl.get('CONS_REPORT_TITLE') || 'Energy & Consumption Report'}</h1>
               <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569', fontWeight: 600 }}>
-                {intl.get('CONS_PRINT_GROUP') || 'Group'}: {activeGroup.name} | {intl.get('CONS_PRINT_PERIOD') || 'Period'}: {period.toUpperCase()} | {intl.get('CONS_PRINT_RANGE') || 'Range'}: {new Date(startMs).toLocaleDateString()} {intl.get('CONS_PRINT_TO') || 'to'} {new Date(endMs - 1).toLocaleDateString()}
+                {intl.get('CONS_PRINT_GROUP') || 'Group'}: {activeGroup.name} | {intl.get('CONS_PRINT_PERIOD') || 'Period'}: {period.toUpperCase()} | {intl.get('CONS_PRINT_RANGE') || 'Range'}: {formatDateTime(startMs)} {intl.get('CONS_PRINT_TO') || 'to'} {formatDateTime(Math.max(startMs, endMs - 1))}
               </p>
             </div>
 

@@ -1764,8 +1764,7 @@ function App() {
                   className="try-desktop-link"
                   onClick={() => setShowDownloadModal(true)}
                 >
-                  <span>📲</span>
-                  <span>{intl.get('TRY_APP') || 'Try App'}</span>
+                  Try App
                 </button>
               </Tooltip>
             )}

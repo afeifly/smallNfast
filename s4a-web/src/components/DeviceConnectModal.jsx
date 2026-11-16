@@ -1436,7 +1436,6 @@ export default function DeviceConnectModal({
               className="web-readonly-app-banner"
               onClick={handleOpenDownloadDialog}
             >
-              <span className="web-readonly-app-icon">📲</span>
               <div className="web-readonly-app-text">
                 <div className="web-readonly-app-title">
                   {intl.get('DEV_WEB_READONLY_TITLE') || 'Read-Only Preview in Web Browser'}
@@ -1592,15 +1591,7 @@ export default function DeviceConnectModal({
             {intl.get('CLOSE') || 'Close'}
           </button>
 
-          {isReadOnlyWebTab ? (
-            <button
-              type="button"
-              className="footer-download-link"
-              onClick={handleOpenDownloadDialog}
-            >
-              {intl.get('DEV_WEB_TRY_DOWNLOAD_BTN') || 'Download S4A App'} →
-            </button>
-          ) : (
+          {!isReadOnlyWebTab && (
             <>
           {tab === 'usb' && (
             <button

@@ -2886,10 +2886,10 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
 
     const banner = container.querySelector('.web-readonly-app-banner');
     expect(banner).not.toBeNull();
+    expect(container.querySelector('.web-readonly-app-icon')).toBeNull();
     expect(container.querySelector('.web-readonly-preview')).not.toBeNull();
-    const footerLink = container.querySelector('.footer-download-link');
-    expect(footerLink).not.toBeNull();
-    expect(footerLink.textContent).toContain('Download S4A App');
+    expect(container.querySelector('.footer-download-link')).toBeNull();
+    expect(container.querySelector('.device-connect-footer .footer-close-btn')).not.toBeNull();
     fireEvent.click(banner);
     expect(openDownloadSpy).toHaveBeenCalledTimes(1);
   });

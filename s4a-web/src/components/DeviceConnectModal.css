@@ -236,12 +236,6 @@
   transform: translateY(-1px);
 }
 
-.web-readonly-app-icon {
-  font-size: 20px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
 .web-readonly-app-text {
   flex: 1;
   min-width: 0;
@@ -1781,28 +1775,6 @@ select.modbus-input-sm {
   opacity: 0.6;
   cursor: not-allowed;
   box-shadow: none;
-}
-
-.device-connect-footer .footer-download-link {
-  margin-right: auto;
-  padding: 6px 2px;
-  background: transparent;
-  border: none;
-  color: #00ac86;
-  font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.device-connect-footer .footer-download-link:hover {
-  color: #008568;
-  text-decoration: underline;
 }
 
 .modbus-tcp-row {

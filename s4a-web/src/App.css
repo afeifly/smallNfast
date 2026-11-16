@@ -156,31 +156,29 @@
   gap: 8px;
 }
 
-/* Try App Link / Button */
+/* Try App Text Link */
 .try-desktop-link {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;
   color: #035446; /* Rich brand teal on yellow */
   text-decoration: none !important;
   cursor: pointer;
-  padding: 5px 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(0, 172, 134, 0.35);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-bottom: none;
+  transition: color 0.15s ease, opacity 0.15s ease;
   outline: none;
+  white-space: nowrap;
 }
 
 .try-desktop-link:hover {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: #00ac86;
   color: #007d61;
-  box-shadow: 0 2px 8px rgba(0, 172, 134, 0.15);
-  transform: translateY(-1px);
+  text-decoration: none !important;
+  opacity: 0.85;
 }
 
 /* Language Toggle Pill */
@@ -1170,9 +1168,8 @@ button.header-mode-indicator.processscape.active::after {
   }
 
   .try-desktop-link {
-    padding: 3px 8px;
-    font-size: 11.5px;
-    gap: 5px;
+    padding: 3px 4px;
+    font-size: 12px;
   }
 
   /* Home / Landing Page Card Adapters for Small Screens */

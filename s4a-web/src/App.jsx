@@ -330,7 +330,7 @@ function App() {
           } catch (_) {}
         })
         .catch(() => {});
-    } else if (!isMobile) {
+    } else if (checkIsDesktopHost()) {
       TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
       TauriSutoAPI.getWebServerStatus?.()
         .then(async (status) => {
@@ -1830,7 +1830,7 @@ function App() {
                   <span>🖧</span>
                   <span>{intl.get('LAN_CLIENT_CONNECTED') || 'Connected via LAN Web Server (:9080)'}</span>
                 </div>
-              ) : !isMobile ? (
+              ) : checkIsDesktopHost() ? (
                 <div
                   style={{ padding: '8px 16px 12px', borderBottom: '1px solid #e2e8f0', marginBottom: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}
                   onClick={(e) => e.stopPropagation()}

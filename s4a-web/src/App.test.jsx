@@ -482,5 +482,28 @@ describe('App', () => {
     });
     spy.mockRestore();
   });
+
+  it('hides Enable Web Server and Background Tray Service in pure web browser mode', async () => {
+    const prevTauri = window.__TAURI_INTERNALS__;
+    delete window.__TAURI_INTERNALS__;
+
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => {
+        expect(container.querySelector('.header-info-btn')).not.toBeNull();
+      });
+
+      fireEvent.click(container.querySelector('.header-info-btn'));
+
+      await waitFor(() => {
+        expect(screen.getByText('System Diagnostic Logs')).toBeDefined();
+      });
+
+      expect(screen.queryByText('Enable Web Server')).toBeNull();
+      expect(screen.queryByText('Background Tray Service')).toBeNull();
+    } finally {
+      window.__TAURI_INTERNALS__ = prevTauri;
+    }
+  });
 });
 

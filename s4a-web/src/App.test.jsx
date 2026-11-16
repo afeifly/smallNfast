@@ -501,6 +501,14 @@ describe('App', () => {
 
       expect(screen.queryByText('Enable Web Server')).toBeNull();
       expect(screen.queryByText('Background Tray Service')).toBeNull();
+
+      // Web mode shows Try App quick entrance in header, opening About/Download modal
+      const tryAppBtn = screen.getByText('Try App').closest('button');
+      expect(tryAppBtn).not.toBeNull();
+      fireEvent.click(tryAppBtn);
+      await waitFor(() => {
+        expect(screen.getByText('Communication & Hardware Compatibility')).toBeDefined();
+      });
     } finally {
       window.__TAURI_INTERNALS__ = prevTauri;
     }

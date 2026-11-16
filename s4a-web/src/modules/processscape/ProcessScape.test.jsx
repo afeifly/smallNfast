@@ -2857,22 +2857,41 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     expect(container.textContent).toContain('SUTO S332 Main Station');
   });
 
-  it('DeviceConnectModal in web mode shows only Bluetooth BLE tab without S332 API (Dev)', () => {
+  it('DeviceConnectModal in web mode shows all 5 tabs with BLE active and others read-only with download prompt', () => {
     delete window.__TAURI_INTERNALS__;
     delete window.__TAURI__;
+    const openDownloadSpy = vi.fn();
 
     const { container } = render(
       <DeviceConnectModal
         isOpen={true}
         onClose={() => {}}
         onConnected={() => {}}
+        onOpenDownloadModal={openDownloadSpy}
       />
     );
 
     const tabs = Array.from(container.querySelectorAll('.modal-tab-btn'));
-    expect(tabs.length).toBe(1);
-    expect(tabs[0].textContent).toContain('Bluetooth (BLE)');
-    expect(container.textContent).not.toContain('S332 API (Dev)');
+    expect(tabs.length).toBe(5);
+    expect(tabs.map(t => t.textContent).join(' | ')).toContain('Direct USB');
+    expect(tabs.map(t => t.textContent).join(' | ')).toContain('Bluetooth (BLE)');
+    expect(tabs.map(t => t.textContent).join(' | ')).toContain('Ethernet TCP');
+    expect(tabs.map(t => t.textContent).join(' | ')).toContain('WebAPI');
+    expect(tabs.map(t => t.textContent).join(' | ')).toContain('Modbus (TCP/RTU)');
+    expect(container.querySelector('.web-readonly-app-banner')).toBeNull();
+
+    // Switch to Ethernet TCP -> read-only preview + clickable download prompt
+    const tcpTab = tabs.find(t => t.textContent.includes('Ethernet TCP'));
+    fireEvent.click(tcpTab);
+
+    const banner = container.querySelector('.web-readonly-app-banner');
+    expect(banner).not.toBeNull();
+    expect(container.querySelector('.web-readonly-preview')).not.toBeNull();
+    const footerLink = container.querySelector('.footer-download-link');
+    expect(footerLink).not.toBeNull();
+    expect(footerLink.textContent).toContain('Download S4A App');
+    fireEvent.click(banner);
+    expect(openDownloadSpy).toHaveBeenCalledTimes(1);
   });
 
   it('DeviceConnectModal in desktop multi-device mode shows BLE tab with SCADA stability warning', () => {

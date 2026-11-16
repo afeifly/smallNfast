@@ -64,6 +64,7 @@ export default function DeviceConnectModal({
   onClose,
   onConnected,
   onAddMultipleDevices,
+  onOpenDownloadModal,
   initialTab,
   initialMode = 'manual',
   singleDeviceMode = true
@@ -72,7 +73,8 @@ export default function DeviceConnectModal({
   const isMobileNative = isMobile && !checkIsLanBridge();
   const isDesktopNative = isNative && !isMobileNative;
   const showMultiDeviceBleWarning = !singleDeviceMode && isDesktopNative;
-  const [tab, setTab] = useState(initialTab || (isMobileNative ? 'ble' : (isNative ? 'usb' : 'ble'))); // 'usb' | 'tcp' | 'ble' | 'api'
+  const [tab, setTab] = useState(initialTab || (isMobileNative ? 'ble' : (isNative ? 'usb' : 'ble'))); // 'usb' | 'tcp' | 'ble' | 'api' | 'modbus'
+  const isReadOnlyWebTab = !isNative && tab !== 'ble';
   const [tcpHost, setTcpHost] = useState('192.168.1.100');
   const [tcpPort, setTcpPort] = useState('502');
   const [apiHost, setApiHost] = useState('192.168.1.100');
@@ -567,12 +569,6 @@ export default function DeviceConnectModal({
     }
   }, [isOpen, initialTab, initialMode, isNative]);
 
-  useEffect(() => {
-    if (!isNative && tab !== 'ble' && tab !== 'api' && tab !== 'modbus') {
-      setTab('ble');
-    }
-  }, [isNative, tab]);
-
   // Cleanup active scan on close or unmount
   useEffect(() => {
     return () => {
@@ -584,6 +580,14 @@ export default function DeviceConnectModal({
   }, []);
 
   if (!isOpen) return null;
+
+  const handleOpenDownloadDialog = () => {
+    if (typeof onOpenDownloadModal === 'function') {
+      onOpenDownloadModal();
+    } else if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('open-download-modal'));
+    }
+  };
 
   const handleConnectUsb = async () => {
     TauriSutoAPI.logClientEvent('INFO', 'DEVICE', 'Connect requested: Direct USB');
@@ -1387,68 +1391,81 @@ export default function DeviceConnectModal({
 
         {/* Medium Selection Tabs */}
         <div className="device-connect-tabs">
-          {isNative ? (
-            <>
-              <button
-                className={`modal-tab-btn ${tab === 'usb' ? 'active' : ''}`}
-                onClick={() => handleSwitchTab('usb')}
-              >
-                <span>🔌</span>
-                <span>{isMobileNative ? (intl.get('DEV_USB_OTG') || 'USB OTG') : (intl.get('DIRECT_USB') || 'Direct USB')}</span>
-              </button>
-              <button
-                className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
-                onClick={() => handleSwitchTab('ble')}
-              >
-                <span>📶</span>
-                <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
-              </button>
-              <button
-                className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
-                onClick={() => handleSwitchTab('tcp')}
-              >
-                <span>🌐</span>
-                <span>{intl.get('ETHERNET_TCP') || 'Ethernet TCP'}</span>
-              </button>
-              <button
-                className={`modal-tab-btn ${tab === 'api' ? 'active' : ''}`}
-                onClick={() => handleSwitchTab('api')}
-              >
-                <span>⚡</span>
-                <span>{intl.get('DEV_WEBAPI') || 'WebAPI'}</span>
-              </button>
-              <button
-                className={`modal-tab-btn ${tab === 'modbus' ? 'active' : ''}`}
-                onClick={() => handleSwitchTab('modbus')}
-              >
-                <span>📟</span>
-                <span>{intl.get('DEV_MODBUS_TCP_RTU') || 'Modbus (TCP/RTU)'}</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
-                onClick={() => handleSwitchTab('ble')}
-              >
-                <span>📶</span>
-                <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
-              </button>
-            </>
-          )}
+          <button
+            className={`modal-tab-btn ${tab === 'usb' ? 'active' : ''}`}
+            onClick={() => handleSwitchTab('usb')}
+          >
+            <span>🔌</span>
+            <span>{isMobileNative ? (intl.get('DEV_USB_OTG') || 'USB OTG') : (intl.get('DIRECT_USB') || 'Direct USB')}</span>
+          </button>
+          <button
+            className={`modal-tab-btn ${tab === 'ble' ? 'active' : ''}`}
+            onClick={() => handleSwitchTab('ble')}
+          >
+            <span>📶</span>
+            <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
+          </button>
+          <button
+            className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
+            onClick={() => handleSwitchTab('tcp')}
+          >
+            <span>🌐</span>
+            <span>{intl.get('ETHERNET_TCP') || 'Ethernet TCP'}</span>
+          </button>
+          <button
+            className={`modal-tab-btn ${tab === 'api' ? 'active' : ''}`}
+            onClick={() => handleSwitchTab('api')}
+          >
+            <span>⚡</span>
+            <span>{intl.get('DEV_WEBAPI') || 'WebAPI'}</span>
+          </button>
+          <button
+            className={`modal-tab-btn ${tab === 'modbus' ? 'active' : ''}`}
+            onClick={() => handleSwitchTab('modbus')}
+          >
+            <span>📟</span>
+            <span>{intl.get('DEV_MODBUS_TCP_RTU') || 'Modbus (TCP/RTU)'}</span>
+          </button>
         </div>
 
         {/* Tab Body */}
         <div className="device-connect-body">
-          {tab === 'usb' && (
-            <p className="tab-desc">
-              {isMobileNative
-                ? (intl.get('DEV_USB_OTG_DESC') || 'Connect via USB-C OTG cable to industrial sensor. When prompted, tap "OK" to grant USB permission.')
-                : (intl.get('DEV_USB_DIRECT_DESC') || 'Direct driver connection. Automatically scans for connected sensor.')}
-            </p>
+          {isReadOnlyWebTab && (
+            <button
+              type="button"
+              className="web-readonly-app-banner"
+              onClick={handleOpenDownloadDialog}
+            >
+              <span className="web-readonly-app-icon">📲</span>
+              <div className="web-readonly-app-text">
+                <div className="web-readonly-app-title">
+                  {intl.get('DEV_WEB_READONLY_TITLE') || 'Read-Only Preview in Web Browser'}
+                </div>
+                <div className="web-readonly-app-desc">
+                  {intl.get('DEV_WEB_TRY_DOWNLOAD_APP') || 'Try downloading the S4A App for full communication support (Direct USB, Ethernet TCP, WebAPI, and Modbus TCP/RTU).'}
+                </div>
+              </div>
+              <span className="web-readonly-app-cta">
+                {intl.get('TRY_APP') || 'Try App'} →
+              </span>
+            </button>
           )}
 
-          {tab === 'tcp' && renderEthernetSection(true)}
+          {tab === 'usb' && (
+            <div className={isReadOnlyWebTab ? 'web-readonly-preview' : undefined} aria-disabled={isReadOnlyWebTab}>
+              <p className="tab-desc">
+                {isMobileNative
+                  ? (intl.get('DEV_USB_OTG_DESC') || 'Connect via USB-C OTG cable to industrial sensor. When prompted, tap "OK" to grant USB permission.')
+                  : (intl.get('DEV_USB_DIRECT_DESC') || 'Direct driver connection. Automatically scans for connected sensor.')}
+              </p>
+            </div>
+          )}
+
+          {tab === 'tcp' && (
+            <div className={isReadOnlyWebTab ? 'web-readonly-preview' : undefined} aria-disabled={isReadOnlyWebTab}>
+              {renderEthernetSection(true)}
+            </div>
+          )}
 
           {tab === 'ble' && (
             <>
@@ -1544,14 +1561,18 @@ export default function DeviceConnectModal({
           )}
 
           {tab === 'api' && (
-            <>
+            <div className={isReadOnlyWebTab ? 'web-readonly-preview' : undefined} aria-disabled={isReadOnlyWebTab}>
               <p className="tab-desc">
                 {intl.get('DEV_WEBAPI_DESC') || 'Connect to S332 serial Web API'}
               </p>
               {renderEthernetSection(false)}
-            </>
+            </div>
           )}
-          {tab === 'modbus' && renderModbusSection()}
+          {tab === 'modbus' && (
+            <div className={isReadOnlyWebTab ? 'web-readonly-preview' : undefined} aria-disabled={isReadOnlyWebTab}>
+              {renderModbusSection()}
+            </div>
+          )}
 
           {error && (
             <div className="connect-error-box" style={{ marginTop: '14px' }}>
@@ -1571,6 +1592,16 @@ export default function DeviceConnectModal({
             {intl.get('CLOSE') || 'Close'}
           </button>
 
+          {isReadOnlyWebTab ? (
+            <button
+              type="button"
+              className="footer-download-link"
+              onClick={handleOpenDownloadDialog}
+            >
+              {intl.get('DEV_WEB_TRY_DOWNLOAD_BTN') || 'Download S4A App'} →
+            </button>
+          ) : (
+            <>
           {tab === 'usb' && (
             <button
               className="connect-action-btn"
@@ -1678,6 +1709,8 @@ export default function DeviceConnectModal({
                 ? (intl.get('DEV_CONNECTING') || 'Connecting...')
                 : (intl.get('DEV_CONNECT_TO_DEVICE') || 'Connect to device')}
             </button>
+          )}
+            </>
           )}
         </div>
 

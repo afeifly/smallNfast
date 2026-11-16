@@ -1348,4 +1348,7 @@ export default {
   "BACKGROUND_TRAY_DISABLED_MSG": "关闭窗口将完全退出应用程序。",
   "DEV_BLE_SCADA_WARNING_TITLE": "不推荐在多设备 SCADA 模式中使用 BLE",
   "DEV_BLE_SCADA_WARNING_MSG": "蓝牙 (BLE) 仅适用于单台设备的便携检测与快速诊断，不推荐用于多设备 SCADA 连续监控。多传感器长期稳定采集请优先使用以太网 TCP、Modbus (TCP/RTU) 或 USB 直连方式。",
+  "DEV_WEB_READONLY_TITLE": "Web 浏览器只读预览",
+  "DEV_WEB_TRY_DOWNLOAD_APP": "请下载安装 S4A 桌面端或移动端 App，以使用全部通信方式（USB 直连、以太网 TCP、WebAPI 与 Modbus TCP/RTU）。",
+  "DEV_WEB_TRY_DOWNLOAD_BTN": "下载 S4A 应用",
 };

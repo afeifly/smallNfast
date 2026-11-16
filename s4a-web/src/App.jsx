@@ -910,11 +910,16 @@ function App() {
       setCsdGapDialogOpen(true);
     };
 
+    const handleOpenDownloadModal = () => {
+      setShowDownloadModal(true);
+    };
+
     window.addEventListener('fileLoadStart', handleStart);
     window.addEventListener('fileLoadProgress', handleProgress);
     window.addEventListener('appNotification', handleNotification);
     window.addEventListener('largeCsvDetected', handleLargeCsvDetected);
     window.addEventListener('csvLoadedPendingConvert', handleCsvLoadedPendingConvert);
+    window.addEventListener('open-download-modal', handleOpenDownloadModal);
 
     return () => {
       window.removeEventListener('fileLoadStart', handleStart);
@@ -922,6 +927,7 @@ function App() {
       window.removeEventListener('appNotification', handleNotification);
       window.removeEventListener('largeCsvDetected', handleLargeCsvDetected);
       window.removeEventListener('csvLoadedPendingConvert', handleCsvLoadedPendingConvert);
+      window.removeEventListener('open-download-modal', handleOpenDownloadModal);
     };
   }, []);
 
@@ -1748,6 +1754,19 @@ function App() {
                     <span className="header-alarm-badge">{unackedAlarmsCount}</span>
                   )}
                 </IconButton>
+              </Tooltip>
+            )}
+
+            {checkIsWeb() && (
+              <Tooltip title={intl.get('ABOUT_S4A') || 'About S4A & Download App'}>
+                <button
+                  type="button"
+                  className="try-desktop-link"
+                  onClick={() => setShowDownloadModal(true)}
+                >
+                  <span>📲</span>
+                  <span>{intl.get('TRY_APP') || 'Try App'}</span>
+                </button>
               </Tooltip>
             )}
 
@@ -2951,6 +2970,7 @@ function App() {
         isOpen={showConnectModal}
         onClose={() => setShowConnectModal(false)}
         onConnected={handleDeviceConnected}
+        onOpenDownloadModal={() => setShowDownloadModal(true)}
       />
 
       {/* Platform App Download & About S4A Dialog (Windows, macOS, Android) */}

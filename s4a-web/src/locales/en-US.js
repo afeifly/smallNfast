@@ -1348,4 +1348,7 @@ export default {
   "BACKGROUND_TRAY_DISABLED_MSG": "Closing the window will exit the application completely.",
   "DEV_BLE_SCADA_WARNING_TITLE": "Not Recommended for Multi-Device SCADA",
   "DEV_BLE_SCADA_WARNING_MSG": "Bluetooth (BLE) is intended for quick single-sensor diagnostics and is not recommended for multi-device SCADA monitoring. Continuous multi-sensor acquisition requires a stable, low-latency link—please use Ethernet TCP, Modbus (TCP/RTU), or Direct USB instead.",
+  "DEV_WEB_READONLY_TITLE": "Read-Only Preview in Web Browser",
+  "DEV_WEB_TRY_DOWNLOAD_APP": "Try downloading the S4A App for full communication support (Direct USB, Ethernet TCP, WebAPI, and Modbus TCP/RTU).",
+  "DEV_WEB_TRY_DOWNLOAD_BTN": "Download S4A App",
 };

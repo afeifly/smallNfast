@@ -1346,7 +1346,6 @@ export default {
   "BACKGROUND_TRAY_ENABLED_MSG": "Beim Schließen des Fensters wird die UI freigegeben, während Dienst, Alarme und Tray-Menü weiterlaufen.",
   "BACKGROUND_TRAY_DISABLED_TITLE": "Hintergrund-Tray-Dienst deaktiviert",
   "BACKGROUND_TRAY_DISABLED_MSG": "Beim Schließen des Fensters wird die Anwendung vollständig beendet.",
-  "DEV_BLE_SCADA_NOT_RECOMMENDED_TAG": "Nicht empfohlen",
   "DEV_BLE_SCADA_WARNING_TITLE": "Für Multi-Geräte-SCADA nicht empfohlen",
   "DEV_BLE_SCADA_WARNING_MSG": "Bluetooth (BLE) ist für schnelle Einzel-Sensor-Diagnosen gedacht und wird für die Multi-Geräte-SCADA-Überwachung nicht empfohlen. Für eine stabile Dauererfassung verwenden Sie bitte Ethernet TCP, Modbus (TCP/RTU) oder Direct USB.",
 };

@@ -1346,7 +1346,6 @@ export default {
   "BACKGROUND_TRAY_ENABLED_MSG": "关闭窗口将销毁界面以释放内存，同时在系统托盘/菜单栏保持服务、采集、告警与 Web 服务运行。",
   "BACKGROUND_TRAY_DISABLED_TITLE": "后台托盘服务已关闭",
   "BACKGROUND_TRAY_DISABLED_MSG": "关闭窗口将完全退出应用程序。",
-  "DEV_BLE_SCADA_NOT_RECOMMENDED_TAG": "不推荐",
   "DEV_BLE_SCADA_WARNING_TITLE": "不推荐在多设备 SCADA 模式中使用 BLE",
   "DEV_BLE_SCADA_WARNING_MSG": "蓝牙 (BLE) 仅适用于单台设备的便携检测与快速诊断，不推荐用于多设备 SCADA 连续监控。多传感器长期稳定采集请优先使用以太网 TCP、Modbus (TCP/RTU) 或 USB 直连方式。",
 };

@@ -2889,6 +2889,7 @@ describe('ProcessScapeView UI, HUD & Navigation', () => {
     );
 
     expect(container.textContent).toContain('Bluetooth (BLE)');
+    expect(container.querySelector('.modal-tab-warn-pill')).toBeNull();
     expect(container.textContent).toContain('Not Recommended for Multi-Device SCADA');
     expect(container.querySelector('.ble-scada-warning-box')).not.toBeNull();
     delete window.__TAURI_INTERNALS__;

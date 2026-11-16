@@ -1402,11 +1402,6 @@ export default function DeviceConnectModal({
               >
                 <span>📶</span>
                 <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
-                {showMultiDeviceBleWarning && (
-                  <span className="modal-tab-warn-pill" title={intl.get('DEV_BLE_SCADA_WARNING_TITLE') || 'Not Recommended for Multi-Device SCADA'}>
-                    ⚠ {intl.get('DEV_BLE_SCADA_NOT_RECOMMENDED_TAG') || 'Not Recommended'}
-                  </span>
-                )}
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
@@ -1438,11 +1433,6 @@ export default function DeviceConnectModal({
               >
                 <span>📶</span>
                 <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
-                {showMultiDeviceBleWarning && (
-                  <span className="modal-tab-warn-pill" title={intl.get('DEV_BLE_SCADA_WARNING_TITLE') || 'Not Recommended for Multi-Device SCADA'}>
-                    ⚠ {intl.get('DEV_BLE_SCADA_NOT_RECOMMENDED_TAG') || 'Not Recommended'}
-                  </span>
-                )}
               </button>
             </>
           )}

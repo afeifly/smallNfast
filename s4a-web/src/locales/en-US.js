@@ -1346,7 +1346,6 @@ export default {
   "BACKGROUND_TRAY_ENABLED_MSG": "Closing the window will destroy the UI to save memory while keeping the service, alarms, and tray status running.",
   "BACKGROUND_TRAY_DISABLED_TITLE": "Background Tray Service Disabled",
   "BACKGROUND_TRAY_DISABLED_MSG": "Closing the window will exit the application completely.",
-  "DEV_BLE_SCADA_NOT_RECOMMENDED_TAG": "Not Recommended",
   "DEV_BLE_SCADA_WARNING_TITLE": "Not Recommended for Multi-Device SCADA",
   "DEV_BLE_SCADA_WARNING_MSG": "Bluetooth (BLE) is intended for quick single-sensor diagnostics and is not recommended for multi-device SCADA monitoring. Continuous multi-sensor acquisition requires a stable, low-latency link—please use Ethernet TCP, Modbus (TCP/RTU), or Direct USB instead.",
 };

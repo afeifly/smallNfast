@@ -142,8 +142,20 @@ pub const DEVICE_TYPE_S505_DP500: u16 = 0x1080;
 pub const DEVICE_TYPE_S505_DP520: u16 = 0x1082;
 pub const DEVICE_TYPE_S418_MIN: u16 = 0x120E;
 pub const DEVICE_TYPE_S418_MAX: u16 = 0x122E;
+pub const DEVICE_TYPE_S403: u16 = 0x1230;
+pub const DEVICE_TYPE_S423: u16 = 0x1231;
+pub const DEVICE_TYPE_S403_V: u16 = 0x1232;
+pub const DEVICE_TYPE_S423_V: u16 = 0x1233;
 pub const DEVICE_TYPE_S461: u16 = 0x1300;
 pub const DEVICE_TYPE_S463: u16 = 0x1302;
+
+/// Check whether a device identification represents an S403 / S423 thermal mass flow meter
+pub fn is_s403_family(id: u16) -> bool {
+    matches!(
+        id,
+        DEVICE_TYPE_S403 | DEVICE_TYPE_S423 | DEVICE_TYPE_S403_V | DEVICE_TYPE_S423_V
+    )
+}
 
 /// Check whether a device identification represents an S461 or S463 clamp-on ultrasonic meter
 pub fn is_s461_family(id: u16) -> bool {

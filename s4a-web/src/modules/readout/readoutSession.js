@@ -66,6 +66,17 @@ export function resolveLoggerType(deviceInfo, sysInfo) {
     return 's418';
   }
 
+  // S403 / S423 (0x1230 - 0x1233, time-range UI like S461 with VA logger protocol)
+  if (
+    name.includes('403') ||
+    name.includes('423') ||
+    devId === 403 ||
+    devId === 423 ||
+    (devId >= 0x1230 && devId <= 0x1233)
+  ) {
+    return 's403';
+  }
+
   // S461 / S463
   if (
     name.includes('461') ||

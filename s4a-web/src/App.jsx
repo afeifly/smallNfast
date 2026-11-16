@@ -22,7 +22,7 @@ import ProcessScapeRecordModal from './modules/processscape/ProcessScapeRecordMo
 import AlarmCenterModal from './components/AlarmCenterModal';
 import { getLocations, autoReconnectSavedDevices, getSavedDevices, saveDevices, upsertDeviceList, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
 import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/processscape/engine/scapeStorage';
-import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels, loadAlarmHistory } from './modules/processscape/engine/alarmEngine';
+import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels, loadAlarmHistory, hydrateActiveAlarms } from './modules/processscape/engine/alarmEngine';
 import { subscribeLive } from './util/liveDataSource';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, checkIsDesktopHost, checkIsLanBridge, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
@@ -278,6 +278,19 @@ function App() {
   const [webServerLoading, setWebServerLoading] = React.useState(false);
   const [webServerCopied, setWebServerCopied] = React.useState(false);
 
+  // Headless Background Tray / Menu-Bar Service (Windows & macOS)
+  const [serviceStatus, setServiceStatus] = React.useState({
+    background_mode: false,
+    tray_available: false,
+    ui_window_open: true,
+    connected_devices_count: 0,
+    headless_polling_active: false,
+  });
+  const [serviceLoading, setServiceLoading] = React.useState(false);
+  const sessionRestoreDoneRef = React.useRef(false);
+  const lastTrayPushRef = React.useRef(0);
+  const lastRecentValuesRef = React.useRef([]);
+
   React.useEffect(() => {
     let mounted = true;
     if (checkIsLanBridge()) {
@@ -319,7 +332,7 @@ function App() {
         .catch(() => {});
     } else if (!isMobile) {
       TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
-      TauriSutoAPI.getWebServerStatus()
+      TauriSutoAPI.getWebServerStatus?.()
         .then(async (status) => {
           if (!mounted || !status) return;
           const savedPref = typeof localStorage !== 'undefined' && localStorage.getItem('s4a_web_server_enabled') === 'true';
@@ -336,6 +349,49 @@ function App() {
           setWebServerStatus(status);
         })
         .catch(() => {});
+
+      Promise.all([
+        TauriSutoAPI.getServiceStatus?.().catch(() => null),
+        TauriSutoAPI.getServiceSnapshot?.().catch(() => null),
+      ]).then(async ([svcStatus, snap]) => {
+        if (!mounted) return;
+        try {
+          if (svcStatus) {
+            const savedBg = typeof localStorage !== 'undefined' && localStorage.getItem('s4a_background_service_enabled') === 'true';
+            if (savedBg && !svcStatus.background_mode && checkIsDesktopHost()) {
+              const updatedSvc = await TauriSutoAPI.setBackgroundMode?.(true).catch(() => null);
+              if (mounted && updatedSvc) setServiceStatus(updatedSvc);
+            } else {
+              setServiceStatus(svcStatus);
+            }
+          }
+          if (snap && (snap.headless_active || (Array.isArray(snap.active_alarms) && snap.active_alarms.length > 0) || snap.connected_devices_count > 0)) {
+            await TauriSutoAPI.pullLanBridgeState?.({ ignoreCooldown: true }).catch(() => null);
+            try { loadAlarmHistory({ notify: true }); } catch (_) {}
+            if (Array.isArray(snap.active_alarms) && snap.active_alarms.length > 0) {
+              hydrateActiveAlarms(snap.active_alarms);
+            }
+            const session = TauriSutoAPI.getSharedSession?.();
+            if (session) {
+              TauriSutoAPI.hydrateFromSharedSession?.();
+              if (session.deviceInfo) setDeviceInfo((prev) => prev || session.deviceInfo);
+              if (session.selectedLocationId) setSelectedLocationId((prev) => prev || session.selectedLocationId);
+              if (session.appMode === 'processscape') {
+                TestAPI.setMode('processscape');
+                setAppMode((prev) => prev || 'processscape');
+                setActiveTab('processscape');
+              } else if (session.appMode === 'monitor' && session.deviceInfo) {
+                TestAPI.setMode('monitor');
+                setAppMode((prev) => prev || 'monitor');
+                setActiveTab('online');
+              }
+            }
+          }
+        } catch (_) {}
+        sessionRestoreDoneRef.current = true;
+      });
+    } else {
+      sessionRestoreDoneRef.current = true;
     }
     return () => { mounted = false; };
   }, []);
@@ -343,7 +399,7 @@ function App() {
   // Keep shared session state synchronized across Desktop Host and LAN Web Clients
   React.useEffect(() => {
     if (!initDone) return;
-    if (checkIsLanBridge() && !appMode && !deviceInfo) return;
+    if (!appMode && !deviceInfo && (!sessionRestoreDoneRef.current || checkIsLanBridge())) return;
     const loadedFilePath = fileLoaded && TestAPI.getLoadedFilePath ? TestAPI.getLoadedFilePath() : null;
     TauriSutoAPI.updateSharedSession?.({
       appMode,
@@ -442,6 +498,50 @@ function App() {
     setTimeout(() => setWebServerCopied(false), 1800);
   };
 
+  const handleToggleBackgroundService = async (e) => {
+    if (e) e.stopPropagation();
+    if (serviceLoading) return;
+    const nextEnabled = !serviceStatus.background_mode;
+    setServiceLoading(true);
+    try {
+      const updated = await TauriSutoAPI.setBackgroundMode?.(nextEnabled);
+      if (updated) setServiceStatus(updated);
+      if (window.showAppNotification) {
+        window.showAppNotification(
+          nextEnabled
+            ? (intl.get('BACKGROUND_TRAY_ENABLED_TITLE') || 'Background Tray Service Enabled')
+            : (intl.get('BACKGROUND_TRAY_DISABLED_TITLE') || 'Background Tray Service Disabled'),
+          nextEnabled
+            ? (intl.get('BACKGROUND_TRAY_ENABLED_MSG') || 'Closing the window will destroy the UI to save memory while keeping the service, alarms, and tray status running.')
+            : (intl.get('BACKGROUND_TRAY_DISABLED_MSG') || 'Closing the window will exit the application completely.'),
+          nextEnabled ? 'success' : 'info'
+        );
+      }
+    } catch (err) {
+      if (window.showAppNotification) {
+        window.showAppNotification('Background Service Error', err?.message || String(err), 'error');
+      }
+    } finally {
+      setServiceLoading(false);
+    }
+  };
+
+  const handleEnterHeadlessMode = async (e) => {
+    if (e) e.stopPropagation();
+    setInfoMenuAnchorEl(null);
+    if (liveRecorder.getRecorderState().recording) {
+      setExitConfirm({ action: 'close' });
+      return;
+    }
+    try {
+      await TauriSutoAPI.enterHeadlessMode?.();
+    } catch (err) {
+      if (window.showAppNotification) {
+        window.showAppNotification('Tray Service Error', err?.message || String(err), 'error');
+      }
+    }
+  };
+
   // System-wide alarm monitoring and active alarms badge
   const [showAlarmCenterModal, setShowAlarmCenterModal] = React.useState(false);
   const [alarmCenterInitialTab, setAlarmCenterInitialTab] = React.useState('active');
@@ -450,20 +550,61 @@ function App() {
     () => getActiveAlarms().filter(a => !a.acknowledged).length
   );
 
+  const deviceInfoRef = React.useRef(deviceInfo);
+  deviceInfoRef.current = deviceInfo;
+
+  const pushSnapshotToTray = React.useCallback((alarmsOverride = null, force = false) => {
+    if (!checkIsDesktopHost()) return;
+    const now = Date.now();
+    if (!force && now - lastTrayPushRef.current < 1500) return;
+    lastTrayPushRef.current = now;
+    const devCount = TauriSutoAPI.getConnectedDeviceCount?.() || (deviceInfoRef.current ? 1 : 0);
+    const alarms = alarmsOverride || getActiveAlarms() || [];
+    TauriSutoAPI.updateServiceSnapshot?.({
+      connectedDevicesCount: devCount,
+      recentValues: lastRecentValuesRef.current,
+      activeAlarms: alarms,
+    }).catch?.(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    pushSnapshotToTray(null, true);
+  }, [deviceInfo, pushSnapshotToTray]);
+
   React.useEffect(() => {
     const unsubLive = subscribeLive((data) => {
       evaluateLiveTelemetry(data);
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.channels) ? data.channels : []);
+      if (list.length > 0) {
+        lastRecentValuesRef.current = list.slice(0, 12).map((ch) => {
+          const val = ch.current_value ?? ch.value;
+          const res = typeof ch.resolution === 'number' ? ch.resolution : 2;
+          const valText = (val === null || val === undefined || Number.isNaN(Number(val)))
+            ? '--.-'
+            : Number(val).toFixed(Math.min(Math.max(0, res), 4));
+          return {
+            channel_id: String(ch.channel_id ?? ch.id ?? ''),
+            name: String(ch.channel_name || ch.name || ch.description || `Ch ${ch.channel_id ?? ch.id ?? ''}`),
+            value_text: valText,
+            unit: String(ch.unit || ''),
+            device_name: String(ch.device || ''),
+            status: String(ch.status ?? 'normal'),
+          };
+        });
+        pushSnapshotToTray(null, false);
+      }
     });
     const unsubAlarms = subscribeAlarms(({ activeAlarms }) => {
       setActiveAlarmsCount(activeAlarms.length);
       setUnackedAlarmsCount(activeAlarms.filter(a => !a.acknowledged).length);
+      pushSnapshotToTray(activeAlarms, true);
     });
     try { refreshAssignedChannels(); } catch (_) {}
     return () => {
       unsubLive();
       unsubAlarms();
     };
-  }, []);
+  }, [pushSnapshotToTray]);
 
   const hasAssignedChannels = React.useMemo(() => {
     return hasAssignedChannelsStorage(locationsList);
@@ -1798,6 +1939,90 @@ function App() {
                       </button>
                     </div>
                   )}
+
+                  {/* 2b. Headless Background Tray / Menu Bar Service (Windows & macOS) */}
+                  <div
+                    style={{
+                      marginTop: '6px',
+                      paddingTop: '8px',
+                      borderTop: '1px dashed #e2e8f0',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                    }}
+                  >
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
+                      onClick={handleToggleBackgroundService}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '15px' }}>🧩</span>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                            {intl.get('BACKGROUND_TRAY_SERVICE') || 'Background Tray Service'}
+                          </span>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            {intl.get('BACKGROUND_TRAY_HINT') || 'Headless on close · Tray / Menu Bar'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={serviceStatus.background_mode}
+                        disabled={serviceLoading}
+                        onClick={handleToggleBackgroundService}
+                        style={{
+                          width: '38px',
+                          height: '22px',
+                          borderRadius: '999px',
+                          border: 'none',
+                          padding: '2px',
+                          cursor: serviceLoading ? 'wait' : 'pointer',
+                          backgroundColor: serviceStatus.background_mode ? '#00ac86' : '#cbd5e1',
+                          transition: 'background-color 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: serviceStatus.background_mode ? 'flex-end' : 'flex-start',
+                          flexShrink: 0,
+                        }}
+                        title={intl.get('BACKGROUND_TRAY_SERVICE') || 'Background Tray Service'}
+                      >
+                        <span
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            backgroundColor: '#ffffff',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                            transition: 'transform 0.2s ease',
+                          }}
+                        />
+                      </button>
+                    </div>
+
+                    {serviceStatus.background_mode && checkIsDesktopHost() && (
+                      <button
+                        type="button"
+                        onClick={handleEnterHeadlessMode}
+                        style={{
+                          marginTop: '2px',
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: '#f8fafc',
+                          color: '#0f172a',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                        }}
+                      >
+                        {intl.get('SWITCH_TO_TRAY_UI') || 'Close UI to Tray (Free Memory)'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : null}
 

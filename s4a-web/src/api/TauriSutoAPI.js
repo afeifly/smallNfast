@@ -1917,6 +1917,20 @@ export const TauriSutoAPI = {
   },
 
   /**
+   * Read logged data from S403/S423 device memory for a given time period
+   * @param {number} startTime Unix timestamp in seconds
+   * @param {number} stopTime Unix timestamp in seconds
+   * @param {Function} [onProgress] Optional callback `(percent, { current, total }) => void`
+   * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
+   */
+  async readS403Log(startTime, stopTime, onProgress) {
+    return await this._invokeWithReadoutProgress('suto_read_s403_log', {
+      startTime: Math.floor(startTime),
+      stopTime: Math.floor(stopTime),
+    }, onProgress);
+  },
+
+  /**
    * Read logged data from S418/S419 device memory for a given time period
    * @param {number} startTime Unix timestamp in seconds
    * @param {number} stopTime Unix timestamp in seconds
@@ -2253,6 +2267,81 @@ export const TauriSutoAPI = {
     return status;
   },
 
+  /** Query Headless Background Tray Service status (Windows Tray / macOS Menu Bar) */
+  async getServiceStatus() {
+    if (!hasTauri()) {
+      const mockBg = typeof localStorage !== 'undefined' && localStorage.getItem('s4a_background_service_enabled') === 'true';
+      return {
+        background_mode: mockBg,
+        tray_available: false,
+        ui_window_open: true,
+        connected_devices_count: this.getConnectedDeviceCount(),
+        headless_polling_active: false,
+      };
+    }
+    return await invoke('suto_get_service_status');
+  },
+
+  /** Enable or disable Headless Background Tray Service mode */
+  async setBackgroundMode(enabled) {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('s4a_background_service_enabled', enabled ? 'true' : 'false');
+    }
+    if (!hasNativeTauri()) {
+      return {
+        background_mode: Boolean(enabled),
+        tray_available: false,
+        ui_window_open: true,
+        connected_devices_count: this.getConnectedDeviceCount(),
+        headless_polling_active: false,
+      };
+    }
+    if (enabled) {
+      await this.pushLocalStateToLanBridge({ force: true }).catch(() => {});
+    }
+    return await invoke('suto_set_background_mode', { enabled: Boolean(enabled) });
+  },
+
+  /** Destroy the main UI WebView window and continue running in headless Rust tray mode */
+  async enterHeadlessMode() {
+    if (!hasNativeTauri()) return false;
+    await this.pushLocalStateToLanBridge({ force: true }).catch(() => {});
+    await invoke('suto_enter_headless_mode');
+    return true;
+  },
+
+  /** Recreate or focus the main UI WebView window from tray mode */
+  async showMainWindow() {
+    if (!hasNativeTauri()) return false;
+    await invoke('suto_show_main_window');
+    return true;
+  },
+
+  /** Push live device count, recent values, and active alarms snapshot to the native tray menu */
+  async updateServiceSnapshot({ connectedDevicesCount = 0, recentValues = [], activeAlarms = [] } = {}) {
+    if (!hasNativeTauri()) return;
+    await invoke('suto_update_service_snapshot', {
+      connectedDevicesCount,
+      recentValues,
+      activeAlarms,
+    });
+  },
+
+  /** Read current Rust service snapshot (used to hydrate alarms/values after reopening UI) */
+  async getServiceSnapshot() {
+    if (!hasTauri()) return null;
+    return await invoke('suto_get_service_snapshot');
+  },
+
+  /** Count currently connected devices across native, Modbus, BLE, and WebAPI transports */
+  getConnectedDeviceCount() {
+    let count = activeModbusDevices.size;
+    if (activeTransport && activeTransport !== 'MODBUS_TCP' && activeTransport !== 'MODBUS_RTU' && activeTransport !== 'MODBUS') {
+      count += 1;
+    }
+    return count;
+  },
+
   /** Save active hardware transport & Modbus devices into shared session */
   _saveSharedTransportSession() {
     if (typeof localStorage === 'undefined') return;
@@ -2349,7 +2438,7 @@ export const TauriSutoAPI = {
     }
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('s4a_') && k !== 's4a_web_server_enabled') {
+      if (k && k.startsWith('s4a_') && k !== 's4a_web_server_enabled' && k !== 's4a_background_service_enabled') {
         const val = localStorage.getItem(k);
         if (val != null) entries[k] = val;
       }
@@ -2379,7 +2468,7 @@ export const TauriSutoAPI = {
       if (entries && typeof entries === 'object') {
         const changedKeys = new Set();
         for (const [k, v] of Object.entries(entries)) {
-          if (k === '__sync_ts__' || k === 's4a_web_server_enabled') continue;
+          if (k === '__sync_ts__' || k === 's4a_web_server_enabled' || k === 's4a_background_service_enabled') continue;
           if (typeof v === 'string' && localStorage.getItem(k) !== v) {
             localStorage.setItem(k, v);
             changedKeys.add(k);

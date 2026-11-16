@@ -30,6 +30,7 @@ pub fn run() {
             suto::suto_get_logger_status,
             suto::suto_get_logger_files,
             suto::suto_read_s461_log,
+            suto::suto_read_s403_log,
             suto::suto_read_s418_log,
             suto::suto_get_600_csd_files,
             suto::suto_generate_600_report,
@@ -57,6 +58,12 @@ pub fn run() {
             suto::webserver::suto_set_webserver_enabled,
             suto::webserver::suto_sync_shared_state,
             suto::webserver::suto_get_shared_state,
+            suto::tray_service::suto_get_service_status,
+            suto::tray_service::suto_set_background_mode,
+            suto::tray_service::suto_enter_headless_mode,
+            suto::tray_service::suto_show_main_window,
+            suto::tray_service::suto_update_service_snapshot,
+            suto::tray_service::suto_get_service_snapshot,
         ])
         .setup(|app| {
             #[cfg(desktop)]
@@ -66,10 +73,24 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_icon(icon);
                 }
+                if let Err(e) = suto::tray_service::init_tray_and_service(app.handle()) {
+                    suto::logger::log_event(
+                        "ERROR",
+                        "SERVICE",
+                        &format!("Tray service init error: {}", e),
+                        None,
+                    );
+                }
             }
             let _ = app;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            #[cfg(desktop)]
+            suto::tray_service::handle_run_event(app_handle, &event);
+            #[cfg(not(desktop))]
+            let _ = (app_handle, event);
+        });
 }

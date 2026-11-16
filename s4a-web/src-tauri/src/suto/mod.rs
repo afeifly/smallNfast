@@ -12,6 +12,7 @@ pub mod driver_tcp;
 pub mod driver_ble;
 pub mod files;
 pub mod modbus;
+pub mod tray_service;
 pub mod webserver;
 
 pub use modbus::suto_read_modbus_registers;
@@ -20,6 +21,7 @@ pub use files::{
     suto_read_file, suto_read_file_slice, suto_remove_recent_file, suto_save_binary_file,
     suto_pick_folder, suto_save_file_to_path, RecentFileEntry,
 };
+pub use tray_service::*;
 pub use webserver::*;
 
 #[cfg(target_os = "windows")]
@@ -625,10 +627,7 @@ fn poll_device_channels_values(
     vals
 }
 
-#[tauri::command]
-pub async fn suto_get_values(
-    state: State<'_, SutoState>,
-) -> Result<Vec<MeasurementValue>, String> {
+pub fn poll_native_values_blocking(state: &SutoState) -> Result<Vec<MeasurementValue>, String> {
     // 0. Check 400ms shared cache so concurrent desktop + LAN web clients don't overload USB/RS485 bus
     {
         let cache = state.last_values_cache.lock().unwrap_or_else(|p| p.into_inner());
@@ -715,6 +714,13 @@ pub async fn suto_get_values(
 }
 
 #[tauri::command]
+pub async fn suto_get_values(
+    state: State<'_, SutoState>,
+) -> Result<Vec<MeasurementValue>, String> {
+    poll_native_values_blocking(&state)
+}
+
+#[tauri::command]
 pub async fn suto_get_system_info(
     state: State<'_, SutoState>,
 ) -> Result<SystemInfo, String> {
@@ -792,6 +798,10 @@ pub async fn suto_get_system_info(
                 0x1065 => info.device_name = Some("SUTO S331".to_string()),
                 0x1066 => info.device_name = Some("SUTO S551-P4".to_string()),
                 0x1067 => info.device_name = Some("SUTO S551-P6".to_string()),
+                DEVICE_TYPE_S403 => info.device_name = Some("SUTO S403".to_string()),
+                DEVICE_TYPE_S423 => info.device_name = Some("SUTO S423".to_string()),
+                DEVICE_TYPE_S403_V => info.device_name = Some("SUTO S403-V".to_string()),
+                DEVICE_TYPE_S423_V => info.device_name = Some("SUTO S423-V".to_string()),
                 DEVICE_TYPE_S461 => info.device_name = Some("SUTO S461".to_string()),
                 DEVICE_TYPE_S463 => info.device_name = Some("SUTO S463".to_string()),
                 _ => {}
@@ -812,19 +822,34 @@ pub async fn suto_get_logger_status(
     state: State<'_, SutoState>,
 ) -> Result<LoggerStatus, String> {
     let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+    let dev_ident = {
+        let info = state.device_info.lock().map_err(|e| e.to_string())?;
+        info.map(|i| i.identification).unwrap_or(0)
+    };
+    let is_s403 = is_s403_family(dev_ident) || dev_ident == 403 || dev_ident == 423;
     let mut status = LoggerStatus::default();
 
-    let send_log_cmd = |act: u8| -> Result<Vec<u8>, String> {
+    let send_raw_cmd = |cmd: &[u8]| -> Result<Vec<u8>, String> {
         let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
         let transport = t_lock.as_mut().ok_or("Device not connected")?;
-        let cmd = [CTY_LOGGER, SCTY_LOG, act];
-        let pkt = pack_packet(addr, &cmd);
+        let pkt = pack_packet(addr, cmd);
         let raw = transport.write_and_read(&pkt, 2000)?;
         deframe_multi_frame(&raw)
     };
 
-    // Log enable
-    if let Ok(res) = send_log_cmd(ACT_GSET_LOG_EN) {
+    let send_log_cmd = |act: u8| -> Result<Vec<u8>, String> {
+        send_raw_cmd(&[CTY_LOGGER, SCTY_LOG, act])
+    };
+
+    // Log enable: S403/S423 uses 5-byte [0x03, 0x01, 0x01, 0x00, 0x00] (suto_lib Commands.getLogStatus)
+    let log_en_res = if is_s403 {
+        send_raw_cmd(&[CTY_LOGGER, SCTY_LOG, ACT_GSET_LOG_EN, 0x00, 0x00])
+            .or_else(|_| send_log_cmd(ACT_GSET_LOG_EN))
+    } else {
+        send_log_cmd(ACT_GSET_LOG_EN)
+            .or_else(|_| send_raw_cmd(&[CTY_LOGGER, SCTY_LOG, ACT_GSET_LOG_EN, 0x00, 0x00]))
+    };
+    if let Ok(res) = log_en_res {
         if !res.is_empty() {
             status.enabled = res[0] == 1;
         }
@@ -845,8 +870,14 @@ pub async fn suto_get_logger_status(
         }
     }
 
-    // Log package interval
-    if let Ok(res) = send_log_cmd(ACT_GET_LOG_PACKAGES_INTERVAL) {
+    // Log sample rate / package interval
+    // S403/S423 uses [0x03, 0x02, 0x04] (Commands.getLogSampleRate)
+    let interval_res = if is_s403 {
+        send_raw_cmd(&[CTY_LOGGER, SCTY_LOG_RTC, 0x04])
+    } else {
+        send_log_cmd(ACT_GET_LOG_PACKAGES_INTERVAL)
+    };
+    if let Ok(res) = interval_res {
         if res.len() >= 4 {
             status.package_interval = Some(u32::from_le_bytes([res[0], res[1], res[2], res[3]]));
         }
@@ -1163,6 +1194,21 @@ pub async fn suto_read_s461_log(
         let info = state.device_info.lock().map_err(|e| e.to_string())?;
         info.map(|i| i.identification).unwrap_or(DEVICE_TYPE_S461)
     };
+    let sys_name_lower = {
+        let sys = state.system_info.lock().map_err(|e| e.to_string())?;
+        sys.as_ref()
+            .and_then(|s| s.device_name.as_ref())
+            .map(|n| n.to_lowercase())
+            .unwrap_or_default()
+    };
+    if is_s403_family(dev_ident)
+        || dev_ident == 403
+        || dev_ident == 423
+        || sys_name_lower.contains("403")
+        || sys_name_lower.contains("423")
+    {
+        return suto_read_s403_log(app, state, start_time, stop_time).await;
+    }
     let model_label = if dev_ident == DEVICE_TYPE_S463 { "S463" } else { "S461" };
     let dev_name = format!("SUTO_{:04X}", dev_ident);
 
@@ -1634,6 +1680,376 @@ pub async fn suto_read_s461_log(
             let s5 = fmt_val(convert_flow(r.flow), flow_prec);
             let s6 = fmt_val(convert_velocity(r.velocity), vel_prec);
             csv_lines.push(format!("{},{},{},{},{},{},{}", dt, s1, s2, s3, s4, s5, s6));
+        }
+    }
+
+    let csv_text = csv_lines.join("\r\n") + "\r\n";
+    let safe_dev = dev_name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_");
+    let filename = format!("{}_Logger_Data.csv", safe_dev);
+
+    log_event(
+        "INFO",
+        "SUTO_LOGGER",
+        &format!("Successfully extracted {} real records from {} logger", records.len(), model_label),
+        None,
+    );
+
+    emit_prog(100, records.len(), size_to_read);
+
+    Ok(S461ReadoutResult {
+        csv_text,
+        row_count: records.len(),
+        filename,
+    })
+}
+
+/// Read logger records from S403 / S423 thermal mass flow meters (including Vacuum variants).
+///
+/// Protocol verified against `reference/suto_flutter_series/suto_lib` & `s4c_app`:
+/// 1. `[0x03, 0x01, 0x08, start(4B LE), stop(4B LE)]` -> `[start_pos(4B), end_pos(4B)]`
+/// 2. `[0x03, 0x01, 0x04, start_pos(4B LE)]` -> set continual read start line
+/// 3. Units & bidirectional queries via `CTY_DEVICE_RELATED (0x09), SCTY_VA_PRIVATE (0x03)`:
+///    - `0x09` Flow unit, `0x65` Velocity unit, `0x67` Consumption unit,
+///      `0x0B` Pressure unit, `0x69` Temperature unit, `0x11` Bidirectional flag
+/// 4. `[0x03, 0x01, 0x05, count(4B LE)]` -> `LoggerDataModel`:
+///    - `uiLoggerData` (28 bytes): ts(u32) + flow(f32) + vel(f32) + cons(f64) + press(f32) + temp(f32)
+///    - `biLoggerData` (44 bytes): ts(u32) + flow(f32) + vel(f32) + cons(f64) + flow_rev(f32) + vel_rev(f32) + cons_rev(f64) + press(f32) + temp(f32)
+#[tauri::command]
+pub async fn suto_read_s403_log(
+    app: tauri::AppHandle,
+    state: State<'_, SutoState>,
+    start_time: u32,
+    stop_time: u32,
+) -> Result<S461ReadoutResult, String> {
+    let emit_prog = |percent: u32, current: usize, total: usize| {
+        let _ = app.emit(
+            "suto-readout-progress",
+            serde_json::json!({
+                "percent": percent.min(100),
+                "current": current,
+                "total": total,
+            }),
+        );
+    };
+    emit_prog(5, 0, 0);
+
+    let addr = { *state.dev_addr.lock().map_err(|e| e.to_string())? };
+    let dev_ident = {
+        let info = state.device_info.lock().map_err(|e| e.to_string())?;
+        info.map(|i| i.identification).unwrap_or(DEVICE_TYPE_S403)
+    };
+    let model_label = match dev_ident {
+        DEVICE_TYPE_S423 => "S423",
+        DEVICE_TYPE_S403_V => "S403-V",
+        DEVICE_TYPE_S423_V => "S423-V",
+        423 => "S423",
+        _ => "S403",
+    };
+    let dev_name = format!("SUTO_{}", model_label.replace('-', "_"));
+
+    log_event(
+        "INFO",
+        "SUTO_LOGGER",
+        &format!(
+            "Querying {} log position for range: {} .. {}",
+            model_label, start_time, stop_time
+        ),
+        None,
+    );
+
+    // 1. Get Log Time Position ([0x03, 0x01, 0x08, start, stop])
+    let (start_pos, end_pos) = {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_S418_TIME_POSITION];
+        cmd.extend_from_slice(&start_time.to_le_bytes());
+        cmd.extend_from_slice(&stop_time.to_le_bytes());
+
+        let pkt = pack_packet(addr, &cmd);
+        let raw = transport.write_and_read(&pkt, 3000)?;
+        let payload = deframe_multi_frame(&raw)?;
+        if payload.len() < 8 {
+            return Err(format!(
+                "Invalid time position response from {} device",
+                model_label
+            ));
+        }
+        let p_start = i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+        let p_end = i32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
+        (p_start, p_end)
+    };
+
+    log_event(
+        "INFO",
+        "SUTO_LOGGER",
+        &format!(
+            "{} log positions: start = {}, end = {}",
+            model_label, start_pos, end_pos
+        ),
+        None,
+    );
+
+    if end_pos <= start_pos || start_pos < 0 {
+        return Err("No recorded log data found in the selected time range on the device.".into());
+    }
+
+    let size_to_read = (end_pos - start_pos) as usize;
+    emit_prog(12, 0, size_to_read);
+
+    // 2. Set Continually Start Line ([0x03, 0x01, 0x04, start_pos])
+    {
+        let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+        let transport = t_lock.as_mut().ok_or("Device not connected")?;
+        let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_S418_SET_LOG_CONTINUALLY_START_LINE];
+        cmd.extend_from_slice(&(start_pos as u32).to_le_bytes());
+        let pkt = pack_packet(addr, &cmd);
+        let _ = transport.write_and_read(&pkt, 2000)?;
+    }
+
+    // 3. Query S403/S423 units & bidirectional flag (CTY_DEVICE_RELATED 0x09, SCTY_VA_PRIVATE 0x03)
+    let query_va_cmd = |act: u8| -> Option<Vec<u8>> {
+        let mut t_lock = state.transport.lock().ok()?;
+        let transport = t_lock.as_mut()?;
+        let pkt = pack_packet(addr, &[CTY_DEVICE_RELATED, SCTY_VA_PRIVATE, act]);
+        let raw = transport.write_and_read(&pkt, 1200).ok()?;
+        deframe_multi_frame(&raw).ok()
+    };
+
+    let flow_unit_idx = query_va_cmd(0x09)
+        .and_then(|p| p.first().copied())
+        .filter(|&u| u != 0 && u != 255)
+        .unwrap_or(14);
+    let velocity_unit_idx = query_va_cmd(0x65)
+        .and_then(|p| p.first().copied())
+        .filter(|&u| u != 0 && u != 255)
+        .unwrap_or(10);
+    let cons_unit_idx = query_va_cmd(0x67)
+        .and_then(|p| p.first().copied())
+        .filter(|&u| u != 0 && u != 255)
+        .unwrap_or(24);
+    let press_unit_idx = query_va_cmd(0x0B)
+        .and_then(|p| p.first().copied())
+        .filter(|&u| u != 0 && u != 255)
+        .unwrap_or(35);
+    let temp_unit_idx = query_va_cmd(0x69)
+        .and_then(|p| p.first().copied())
+        .filter(|&u| u != 0 && u != 255)
+        .unwrap_or(1);
+    let supports_bi = query_va_cmd(0x11)
+        .and_then(|p| p.first().copied())
+        .map(|b| (b & 0x01) != 0)
+        .unwrap_or(false);
+
+    let flow_unit_str = lookup_unit(flow_unit_idx, "");
+    let velocity_unit_str = lookup_unit(velocity_unit_idx, "");
+    let cons_unit_str = lookup_unit(cons_unit_idx, "");
+    let press_unit_str = lookup_unit(press_unit_idx, "");
+    let temp_unit_str = lookup_unit(temp_unit_idx, "");
+
+    // 4. Continually read records (28-byte uiLoggerData or 44-byte biLoggerData)
+    const UI_LEN: usize = 28;
+    const BI_LEN: usize = 44;
+    let batch_size: usize = if supports_bi { 25 } else { 35 };
+
+    struct S403Record {
+        timestamp: u32,
+        flow: f32,
+        velocity: f32,
+        consumption: f64,
+        flow_rev: f32,
+        velocity_rev: f32,
+        cons_rev: f64,
+        pressure: f32,
+        temperature: f32,
+    }
+
+    let mut records: Vec<S403Record> = Vec::with_capacity(size_to_read);
+    let mut offset = 0usize;
+    let mut detected_bi: Option<bool> = None;
+
+    while offset < size_to_read {
+        let chunk_size = (size_to_read - offset).min(batch_size);
+        let mut cmd = vec![CTY_LOGGER, SCTY_LOG, ACT_GET_LOG_CONTINUALLY];
+        cmd.extend_from_slice(&(chunk_size as u32).to_le_bytes());
+
+        let raw = {
+            let mut t_lock = state.transport.lock().map_err(|e| e.to_string())?;
+            let transport = t_lock.as_mut().ok_or("Device not connected")?;
+            let pkt = pack_packet(addr, &cmd);
+            transport.write_and_read(&pkt, 4000)?
+        };
+
+        let payload = deframe_multi_frame(&raw)?;
+        let use_bi = match detected_bi {
+            Some(b) => b,
+            None => {
+                let b = supports_bi
+                    && payload.len() >= BI_LEN
+                    && payload.len() % BI_LEN == 0
+                    && (payload.len() == chunk_size * BI_LEN || payload.len() % UI_LEN != 0);
+                detected_bi = Some(b);
+                b
+            }
+        };
+        let record_len = if use_bi { BI_LEN } else { UI_LEN };
+
+        if payload.len() < record_len {
+            log_event(
+                "WARN",
+                "SUTO_LOGGER",
+                &format!(
+                    "Received short payload during {} readout: {} bytes (expected {})",
+                    model_label,
+                    payload.len(),
+                    record_len
+                ),
+                None,
+            );
+            break;
+        }
+
+        let chunk_count = payload.len() / record_len;
+        for item in payload.chunks_exact(record_len) {
+            let ts = u32::from_le_bytes([item[0], item[1], item[2], item[3]]);
+            let flow = f32::from_le_bytes([item[4], item[5], item[6], item[7]]);
+            let velocity = f32::from_le_bytes([item[8], item[9], item[10], item[11]]);
+            let cons = f64::from_le_bytes([
+                item[12], item[13], item[14], item[15],
+                item[16], item[17], item[18], item[19],
+            ]);
+            if use_bi {
+                let flow_rev = f32::from_le_bytes([item[20], item[21], item[22], item[23]]);
+                let velocity_rev = f32::from_le_bytes([item[24], item[25], item[26], item[27]]);
+                let cons_rev = f64::from_le_bytes([
+                    item[28], item[29], item[30], item[31],
+                    item[32], item[33], item[34], item[35],
+                ]);
+                let press = f32::from_le_bytes([item[36], item[37], item[38], item[39]]);
+                let temp = f32::from_le_bytes([item[40], item[41], item[42], item[43]]);
+                records.push(S403Record {
+                    timestamp: ts,
+                    flow,
+                    velocity,
+                    consumption: cons,
+                    flow_rev,
+                    velocity_rev,
+                    cons_rev,
+                    pressure: press,
+                    temperature: temp,
+                });
+            } else {
+                let press = f32::from_le_bytes([item[20], item[21], item[22], item[23]]);
+                let temp = f32::from_le_bytes([item[24], item[25], item[26], item[27]]);
+                records.push(S403Record {
+                    timestamp: ts,
+                    flow,
+                    velocity,
+                    consumption: cons,
+                    flow_rev: -9999.0,
+                    velocity_rev: -9999.0,
+                    cons_rev: -9999.0,
+                    pressure: press,
+                    temperature: temp,
+                });
+            }
+        }
+
+        offset += chunk_count;
+        let pct = 15 + ((offset as f64 / size_to_read.max(1) as f64) * 80.0).round() as u32;
+        emit_prog(pct.min(95), offset.min(size_to_read), size_to_read);
+        tokio::task::yield_now().await;
+        if chunk_count < chunk_size {
+            break;
+        }
+    }
+
+    if records.is_empty() {
+        return Err("No logger records retrieved from device".into());
+    }
+
+    let is_bi_output = detected_bi.unwrap_or(false);
+    let first_ts = records.first().map(|r| r.timestamp as i64).unwrap_or(start_time as i64);
+    let last_ts = records.last().map(|r| r.timestamp as i64).unwrap_or(stop_time as i64);
+    let interval = if records.len() > 1 {
+        let diff = records[1].timestamp.saturating_sub(records[0].timestamp);
+        if diff > 0 { diff } else { 1 }
+    } else {
+        1
+    };
+
+    let mut csv_lines = Vec::new();
+    csv_lines.push(format!("{} Raw Data", dev_name));
+    csv_lines.push("".to_string());
+    csv_lines.push(format!("Start Date Time,{}", format_s4a_time_str(first_ts)));
+    csv_lines.push(format!("End Date Time,{}", format_s4a_time_str(last_ts)));
+    csv_lines.push(format!("Sample Rate(sec),{}", interval));
+    csv_lines.push(format!("NO.Of Channels,{}", if is_bi_output { 8 } else { 5 }));
+    csv_lines.push(format!("NO.Of Records,{}", records.len()));
+    csv_lines.push("".to_string());
+    csv_lines.push("No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point".to_string());
+    csv_lines.push(format!("1,Flow,{},{},0.1,Location 1/Flow", model_label, flow_unit_str));
+    csv_lines.push(format!("2,Velocity,{},{},0.01,Location 1/Velocity", model_label, velocity_unit_str));
+    csv_lines.push(format!("3,Consumption,{},{},1,Location 1/Consumption", model_label, cons_unit_str));
+    csv_lines.push(format!("4,Pressure,{},{},0.01,Location 1/Pressure", model_label, press_unit_str));
+    csv_lines.push(format!("5,Temperature,{},{},0.1,Location 1/Temperature", model_label, temp_unit_str));
+    if is_bi_output {
+        csv_lines.push(format!("6,Flow Reverse,{},{},0.1,Location 1/Flow Reverse", model_label, flow_unit_str));
+        csv_lines.push(format!("7,Velocity Reverse,{},{},0.01,Location 1/Velocity Reverse", model_label, velocity_unit_str));
+        csv_lines.push(format!("8,Consumption Reverse,{},{},1,Location 1/Consumption Reverse", model_label, cons_unit_str));
+    }
+    csv_lines.push("".to_string());
+    if is_bi_output {
+        csv_lines.push(format!(
+            "Date Time,Flow - {},Velocity - {},Consumption - {},Pressure - {},Temperature - {},Flow Reverse - {},Velocity Reverse - {},Consumption Reverse - {}",
+            flow_unit_str, velocity_unit_str, cons_unit_str, press_unit_str, temp_unit_str, flow_unit_str, velocity_unit_str, cons_unit_str
+        ));
+    } else {
+        csv_lines.push(format!(
+            "Date Time,Flow - {},Velocity - {},Consumption - {},Pressure - {},Temperature - {}",
+            flow_unit_str, velocity_unit_str, cons_unit_str, press_unit_str, temp_unit_str
+        ));
+    }
+
+    let fmt_f32 = |v: f32, dec: usize| -> String {
+        if v.is_nan() || !v.is_finite() || v <= -8000.0 {
+            "-9999.0".to_string()
+        } else {
+            format!("{:.1$}", v, dec)
+        }
+    };
+    let fmt_f64 = |v: f64| -> String {
+        if v.is_nan() || !v.is_finite() || v <= -8000.0 {
+            "-9999.0".to_string()
+        } else {
+            format!("{:.0}", v)
+        }
+    };
+
+    for r in &records {
+        let dt = format_s4a_time_str(r.timestamp as i64);
+        if is_bi_output {
+            csv_lines.push(format!(
+                "{},{},{},{},{},{},{},{},{}",
+                dt,
+                fmt_f32(r.flow, 1),
+                fmt_f32(r.velocity, 2),
+                fmt_f64(r.consumption),
+                fmt_f32(r.pressure, 2),
+                fmt_f32(r.temperature, 1),
+                fmt_f32(r.flow_rev, 1),
+                fmt_f32(r.velocity_rev, 2),
+                fmt_f64(r.cons_rev),
+            ));
+        } else {
+            csv_lines.push(format!(
+                "{},{},{},{},{},{}",
+                dt,
+                fmt_f32(r.flow, 1),
+                fmt_f32(r.velocity, 2),
+                fmt_f64(r.consumption),
+                fmt_f32(r.pressure, 2),
+                fmt_f32(r.temperature, 1),
+            ));
         }
     }
 

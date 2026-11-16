@@ -129,12 +129,31 @@ pub fn suto_get_webserver_status() -> Result<WebServerStatus, String> {
     })
 }
 
+pub fn get_shared_state_entry(key: &str) -> Option<String> {
+    let store = SHARED_STORAGE.lock().unwrap_or_else(|p| p.into_inner());
+    store.get(key).cloned()
+}
+
+pub fn set_shared_state_entry(key: &str, value: &str) {
+    let mut store = SHARED_STORAGE.lock().unwrap_or_else(|p| p.into_inner());
+    if store.get(key).map(|s| s.as_str()) == Some(value) {
+        return;
+    }
+    store.insert(key.to_string(), value.to_string());
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
+        .unwrap_or_else(|_| "1".to_string());
+    store.insert("__sync_ts__".to_string(), now_ms);
+    save_shared_state_to_disk(&store);
+}
+
 #[tauri::command]
 pub fn suto_sync_shared_state(entries: HashMap<String, String>) -> Result<(), String> {
     let mut store = SHARED_STORAGE.lock().unwrap_or_else(|p| p.into_inner());
     let mut changed = false;
     for (k, v) in entries {
-        if k == "__sync_ts__" {
+        if k == "__sync_ts__" || k.starts_with("__host_") {
             continue;
         }
         if store.get(&k) != Some(&v) {
@@ -149,6 +168,10 @@ pub fn suto_sync_shared_state(entries: HashMap<String, String>) -> Result<(), St
             .unwrap_or_else(|_| "1".to_string());
         store.insert("__sync_ts__".to_string(), now_ms);
         save_shared_state_to_disk(&store);
+    }
+    drop(store);
+    if changed {
+        super::tray_service::notify_tray_dirty();
     }
     Ok(())
 }
@@ -181,6 +204,8 @@ pub fn suto_set_webserver_enabled(
     ctrl.port = target_port;
 
     if !enabled {
+        set_shared_state_entry("__host_web_server_enabled", "false");
+        super::tray_service::notify_tray_dirty();
         log_event(
             "INFO",
             "WEB_SERVER",
@@ -239,6 +264,8 @@ pub fn suto_set_webserver_enabled(
 
     ctrl.enabled = true;
     ctrl.stop_flag = Some(stop_flag);
+    set_shared_state_entry("__host_web_server_enabled", "true");
+    super::tray_service::notify_tray_dirty();
 
     let (primary_url, urls) = detect_lan_ips(target_port);
     log_event(
@@ -685,6 +712,14 @@ fn dispatch_rpc_command(app: &tauri::AppHandle, cmd: &str, args: &Value) -> Resu
             let res = suto_get_webserver_status()?;
             serde_json::to_value(res).map_err(|e| e.to_string())
         }
+        "suto_get_service_status" => {
+            let res = super::tray_service::suto_get_service_status(app.clone())?;
+            serde_json::to_value(res).map_err(|e| e.to_string())
+        }
+        "suto_get_service_snapshot" => {
+            let res = super::tray_service::suto_get_service_snapshot(app.clone())?;
+            serde_json::to_value(res).map_err(|e| e.to_string())
+        }
         "suto_get_shared_state" => {
             let res = suto_get_shared_state()?;
             serde_json::to_value(res).map_err(|e| e.to_string())
@@ -766,6 +801,17 @@ fn dispatch_rpc_command(app: &tauri::AppHandle, cmd: &str, args: &Value) -> Resu
             let start_time = get_u64("startTime", "start_time").unwrap_or(0) as u32;
             let stop_time = get_u64("stopTime", "stop_time").unwrap_or(0) as u32;
             let res = tauri::async_runtime::block_on(super::suto_read_s461_log(
+                app.clone(),
+                state,
+                start_time,
+                stop_time,
+            ))?;
+            serde_json::to_value(res).map_err(|e| e.to_string())
+        }
+        "suto_read_s403_log" => {
+            let start_time = get_u64("startTime", "start_time").unwrap_or(0) as u32;
+            let stop_time = get_u64("stopTime", "stop_time").unwrap_or(0) as u32;
+            let res = tauri::async_runtime::block_on(super::suto_read_s403_log(
                 app.clone(),
                 state,
                 start_time,

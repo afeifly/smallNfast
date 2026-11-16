@@ -35,6 +35,10 @@ describe('ReadoutView Dedicated Page Component', () => {
     expect(resolveLoggerType({ device: 'S419 Compact' }, null)).toBe('s418');
     expect(resolveLoggerType({ device: 'S461 Flow Meter' }, null)).toBe('s461');
     expect(resolveLoggerType({ device: 'S463 Ultrasonic' }, null)).toBe('s461');
+    expect(resolveLoggerType({ device: 'SUTO BLE S403', transport: 'BLE' }, null)).toBe('s403');
+    expect(resolveLoggerType(null, { device_id: 0x1230, device_name: 'SUTO S403' })).toBe('s403');
+    expect(resolveLoggerType(null, { device_id: 0x1232, device_name: 'SUTO S403-V' })).toBe('s403');
+    expect(resolveLoggerType(null, { device_id: 403, device_name: 'SUTO S403 Flow Sensor' })).toBe('s403');
     expect(resolveLoggerType({ device: 'SUTO S600' }, null)).toBe('s600');
     expect(resolveLoggerType(null, { device_id: 0x1068 })).toBe('s600');
     expect(resolveLoggerType({ deviceId: 0x1069 }, null)).toBe('s600');

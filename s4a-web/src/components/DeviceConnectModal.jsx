@@ -70,6 +70,8 @@ export default function DeviceConnectModal({
 }) {
   const isNative = checkIsNative();
   const isMobileNative = isMobile && !checkIsLanBridge();
+  const isDesktopNative = isNative && !isMobileNative;
+  const showMultiDeviceBleWarning = !singleDeviceMode && isDesktopNative;
   const [tab, setTab] = useState(initialTab || (isMobileNative ? 'ble' : (isNative ? 'usb' : 'ble'))); // 'usb' | 'tcp' | 'ble' | 'api'
   const [tcpHost, setTcpHost] = useState('192.168.1.100');
   const [tcpPort, setTcpPort] = useState('502');
@@ -1400,6 +1402,11 @@ export default function DeviceConnectModal({
               >
                 <span>📶</span>
                 <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
+                {showMultiDeviceBleWarning && (
+                  <span className="modal-tab-warn-pill" title={intl.get('DEV_BLE_SCADA_WARNING_TITLE') || 'Not Recommended for Multi-Device SCADA'}>
+                    ⚠ {intl.get('DEV_BLE_SCADA_NOT_RECOMMENDED_TAG') || 'Not Recommended'}
+                  </span>
+                )}
               </button>
               <button
                 className={`modal-tab-btn ${tab === 'tcp' ? 'active' : ''}`}
@@ -1431,6 +1438,11 @@ export default function DeviceConnectModal({
               >
                 <span>📶</span>
                 <span>{intl.get('BLUETOOTH_BLE') || 'Bluetooth (BLE)'}</span>
+                {showMultiDeviceBleWarning && (
+                  <span className="modal-tab-warn-pill" title={intl.get('DEV_BLE_SCADA_WARNING_TITLE') || 'Not Recommended for Multi-Device SCADA'}>
+                    ⚠ {intl.get('DEV_BLE_SCADA_NOT_RECOMMENDED_TAG') || 'Not Recommended'}
+                  </span>
+                )}
               </button>
             </>
           )}
@@ -1450,6 +1462,20 @@ export default function DeviceConnectModal({
 
           {tab === 'ble' && (
             <>
+              {showMultiDeviceBleWarning && (
+                <div className="ble-scada-warning-box" role="alert">
+                  <span style={{ fontSize: '16px', lineHeight: 1.2, flexShrink: 0 }}>⚠️</span>
+                  <div>
+                    <div className="ble-scada-warning-title">
+                      {intl.get('DEV_BLE_SCADA_WARNING_TITLE') || 'Not Recommended for Multi-Device SCADA'}
+                    </div>
+                    <div>
+                      {intl.get('DEV_BLE_SCADA_WARNING_MSG') || 'Bluetooth (BLE) is intended for quick single-sensor diagnostics and is not recommended for multi-device SCADA monitoring. Continuous multi-sensor acquisition requires a stable, low-latency link—please use Ethernet TCP, Modbus (TCP/RTU), or Direct USB instead.'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <p className="tab-desc">
                 {isNative
                   ? (intl.get('DEV_BLE_NATIVE_DESC') || 'Connect wirelessly to industrial Bluetooth Low Energy (BLE) sensors via native Bluetooth.')

@@ -452,5 +452,35 @@ describe('App', () => {
       expect(screen.getByText('S4A System & Diagnostic Logs')).toBeDefined();
     });
   });
+
+  it('toggles Background Tray Service inside the info dropdown', async () => {
+    localStorage.removeItem('s4a_background_service_enabled');
+    const spy = vi.spyOn(TauriSutoAPI, 'setBackgroundMode').mockResolvedValue({
+      background_mode: true,
+      tray_available: true,
+      ui_window_open: true,
+      connected_devices_count: 0,
+      headless_polling_active: false,
+    });
+
+    const { container } = render(<App />);
+    await waitFor(() => {
+      expect(container.querySelector('.header-info-btn')).not.toBeNull();
+    });
+
+    fireEvent.click(container.querySelector('.header-info-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Background Tray Service')).toBeDefined();
+    });
+
+    const bgSwitch = screen.getByTitle('Background Tray Service');
+    fireEvent.click(bgSwitch);
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(true);
+    });
+    spy.mockRestore();
+  });
 });
 

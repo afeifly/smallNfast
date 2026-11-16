@@ -436,7 +436,7 @@ export default function ReadoutView({
 
       const dType = resolveLoggerType(deviceInfo, sInfo);
       let lStatus = null;
-      if (dType === 's418' || dType === 's461') {
+      if (dType === 's418' || dType === 's461' || dType === 's403') {
         lStatus = await TauriSutoAPI.getLoggerStatus();
         if (lStatus?.start_time && lStatus?.end_time) {
           const sDate = new Date(lStatus.start_time * 1000);
@@ -459,7 +459,7 @@ export default function ReadoutView({
       const activeTrans = TauriSutoAPI.getActiveTransport() || deviceInfo?.transport;
       const isApiDevice = activeTrans === 'API' || dType === 's332';
       let sShots = [];
-      if (!isApiDevice && dType !== 's418' && dType !== 's461') {
+      if (!isApiDevice && dType !== 's418' && dType !== 's461' && dType !== 's403') {
         try {
           sShots = await TauriSutoAPI.getScreenshots();
         } catch (e) {
@@ -545,7 +545,7 @@ export default function ReadoutView({
     if (isS332) {
       return [{ id: 'files', label: intl.get('RECORDED_LOG_FILES') || 'Recorded Log Files', icon: '📁', badge: filesList.length }];
     }
-    if (loggerType === 's418' || loggerType === 's461') {
+    if (loggerType === 's418' || loggerType === 's461' || loggerType === 's403') {
       return [{ id: 'files', label: intl.get('READ_LOGGED_DATA_CSV') || 'Read Logged Data (CSV)', icon: '📊' }];
     }
     const options = [
@@ -890,7 +890,11 @@ export default function ReadoutView({
 
     const startSec = Math.floor(tryStartTimeMs / 1000);
     const stopSec = Math.floor(stopTimeL / 1000);
-    await executeHardwareTimeRangeReadout(TauriSutoAPI.readS461Log.bind(TauriSutoAPI), startSec, stopSec, 'S461/S463');
+    if (loggerType === 's403') {
+      await executeHardwareTimeRangeReadout(TauriSutoAPI.readS403Log.bind(TauriSutoAPI), startSec, stopSec, 'S403/S423');
+    } else {
+      await executeHardwareTimeRangeReadout(TauriSutoAPI.readS461Log.bind(TauriSutoAPI), startSec, stopSec, 'S461/S463');
+    }
   };
 
   const handleOpenInS4A = () => {
@@ -1462,8 +1466,8 @@ export default function ReadoutView({
           </div>
         )}
 
-        {/* ── Sub-view 3: Type 3 (S461 Clamp-on Ultrasonic Meter) ── */}
-        {readoutOption === 'files' && loggerType === 's461' && (
+        {/* ── Sub-view 3: Type 3 (S461 / S403 Time-range Logger) ── */}
+        {readoutOption === 'files' && (loggerType === 's461' || loggerType === 's403') && (
           <div className="readout-tab-pane readout-tab-scrollable">
             <div className="readout-section-header">
               <div className="readout-section-title-group">

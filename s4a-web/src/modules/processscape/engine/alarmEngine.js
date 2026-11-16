@@ -111,6 +111,25 @@ export function getActiveAlarms() {
 }
 
 /**
+ * Hydrate active alarms from the Rust headless service when reopening the UI window.
+ */
+export function hydrateActiveAlarms(incoming = []) {
+  if (!Array.isArray(incoming)) return;
+  const byId = new Map();
+  for (const a of activeAlarms) {
+    if (a && a.id) byId.set(a.id, a);
+  }
+  for (const a of incoming) {
+    if (a && a.id) {
+      const prev = byId.get(a.id);
+      byId.set(a.id, prev ? { ...a, acknowledged: prev.acknowledged || a.acknowledged } : a);
+    }
+  }
+  activeAlarms = Array.from(byId.values());
+  notifySubscribers();
+}
+
+/**
  * Get historical alarms
  */
 export function getAlarmHistory() {

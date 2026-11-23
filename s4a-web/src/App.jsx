@@ -757,6 +757,17 @@ function App() {
   const [notiMsg, setNotiMsg] = React.useState('');
   const [notiType, setNotiType] = React.useState('info'); // 'info', 'warning', 'error', 'success'
 
+  // Global premium confirmation dialog states
+  const [confirmDialogState, setConfirmDialogState] = React.useState({
+    open: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning',
+    onResolve: null
+  });
+
   // CSD Export gap-confirmation dialog
   const [csdGapDialogOpen, setCsdGapDialogOpen] = React.useState(false);
   const [csdGapSummary, setCsdGapSummary] = React.useState(null);
@@ -822,15 +833,6 @@ function App() {
         }
       }).catch(() => { });
     }
-
-    try {
-      const savedDevs = getSavedDevices();
-      if (savedDevs && savedDevs.length > 0) {
-        autoReconnectSavedDevices((conn) => {
-          if (conn) setDeviceInfo(conn);
-        }).catch(() => { });
-      }
-    } catch (_) { }
   }, [initDone]);
 
   const handleCsdExportConfirmed = async () => {
@@ -892,6 +894,22 @@ function App() {
       setNotiOpen(true);
     };
 
+    const handleConfirmDialog = (e) => {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+      const { title, message, confirmText, cancelText, type, onResolve } = e.detail || {};
+      setConfirmDialogState({
+        open: true,
+        title: title || (intl.get('APP_CONFIRM') || 'Confirm'),
+        message: message || '',
+        confirmText: confirmText || (intl.get('CONFIRM') || 'Confirm'),
+        cancelText: cancelText || (intl.get('CANCEL') || 'Cancel'),
+        type: type || 'warning',
+        onResolve
+      });
+    };
+
     // Large CSV detected — pause loading and show size-warning dialog
     const handleLargeCsvDetected = (e) => {
       setLargeCsvInfo(e.detail);
@@ -917,6 +935,7 @@ function App() {
     window.addEventListener('fileLoadStart', handleStart);
     window.addEventListener('fileLoadProgress', handleProgress);
     window.addEventListener('appNotification', handleNotification);
+    window.addEventListener('appConfirmDialog', handleConfirmDialog);
     window.addEventListener('largeCsvDetected', handleLargeCsvDetected);
     window.addEventListener('csvLoadedPendingConvert', handleCsvLoadedPendingConvert);
     window.addEventListener('open-download-modal', handleOpenDownloadModal);
@@ -925,6 +944,7 @@ function App() {
       window.removeEventListener('fileLoadStart', handleStart);
       window.removeEventListener('fileLoadProgress', handleProgress);
       window.removeEventListener('appNotification', handleNotification);
+      window.removeEventListener('appConfirmDialog', handleConfirmDialog);
       window.removeEventListener('largeCsvDetected', handleLargeCsvDetected);
       window.removeEventListener('csvLoadedPendingConvert', handleCsvLoadedPendingConvert);
       window.removeEventListener('open-download-modal', handleOpenDownloadModal);
@@ -936,7 +956,8 @@ function App() {
     clearOnlineCache();
     setAnalyzingFromReadout(false);
     setDeviceInfo(conn);
-    if (conn?.deviceItem) {
+    // SensorManager multi-device storage is strictly scoped to multi mode (processscape)
+    if (conn?.deviceItem && appMode === 'processscape') {
       try {
         const currentDevs = getSavedDevices() || [];
         const updated = upsertDeviceList(currentDevs, [conn.deviceItem]);
@@ -1757,7 +1778,7 @@ function App() {
               </Tooltip>
             )}
 
-            {checkIsWeb() && (
+            {checkIsWeb() && !appMode && (
               <Tooltip title={intl.get('ABOUT_S4A') || 'About S4A & Download App'}>
                 <button
                   type="button"
@@ -2044,18 +2065,20 @@ function App() {
                 </div>
               ) : null}
 
-              {/* 3. Alarm History */}
-              <MenuItem
-                onClick={() => {
-                  setInfoMenuAnchorEl(null);
-                  setAlarmCenterInitialTab('history');
-                  setShowAlarmCenterModal(true);
-                }}
-                style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', gap: '10px', padding: '9px 16px' }}
-              >
-                <span style={{ fontSize: '15px' }}>🔔</span>
-                <span>{intl.get('ALARM_HISTORY') || 'Alarm History'}</span>
-              </MenuItem>
+              {/* 3. Alarm History (Multi Mode only) */}
+              {appMode === 'processscape' && (
+                <MenuItem
+                  onClick={() => {
+                    setInfoMenuAnchorEl(null);
+                    setAlarmCenterInitialTab('history');
+                    setShowAlarmCenterModal(true);
+                  }}
+                  style={{ fontSize: '13px', fontWeight: 500, color: '#1e293b', gap: '10px', padding: '9px 16px' }}
+                >
+                  <span style={{ fontSize: '15px' }}>🔔</span>
+                  <span>{intl.get('ALARM_HISTORY') || 'Alarm History'}</span>
+                </MenuItem>
+              )}
 
               {/* 4. System Diagnostic Logs */}
               <MenuItem
@@ -2457,6 +2480,68 @@ function App() {
         <DialogActions style={{ padding: '8px 24px 16px 24px' }}>
           <Button onClick={() => setNotiOpen(false)} color={notiOpen ? getNotiColors(notiType).btnColor : 'primary'} variant="contained" style={{ borderRadius: '8px', fontWeight: '700' }}>
             {intl.get('APP_DISMISS') || 'Dismiss'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Global Confirmation Dialog */}
+      <Dialog
+        maxWidth='sm'
+        onClose={() => {
+          confirmDialogState.onResolve?.(false);
+          setConfirmDialogState((prev) => ({ ...prev, open: false }));
+        }}
+        open={confirmDialogState.open}
+        disableRestoreFocus
+        PaperProps={{
+          style: {
+            borderRadius: '16px',
+            padding: '12px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }
+        }}
+      >
+        <DialogTitle className="dialog-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: confirmDialogState.open ? getNotiColors(confirmDialogState.type).titleColor : '#0f172a', fontWeight: '800' }}>
+          {confirmDialogState.open && renderNotiIcon(confirmDialogState.type)}
+          {confirmDialogState.title}
+        </DialogTitle>
+        <DialogContent style={{ paddingTop: '8px' }}>
+          <div style={{
+            padding: '16px 20px',
+            backgroundColor: confirmDialogState.open ? getNotiColors(confirmDialogState.type).bgColor : '#f8fafc',
+            borderLeft: `4px solid ${confirmDialogState.open ? getNotiColors(confirmDialogState.type).titleColor : '#cbd5e1'}`,
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: '600',
+            color: confirmDialogState.open ? getNotiColors(confirmDialogState.type).textColor : '#0f172a',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-line',
+            lineHeight: '1.6'
+          }}>
+            {confirmDialogState.message}
+          </div>
+        </DialogContent>
+        <DialogActions style={{ padding: '8px 24px 16px 24px', gap: '12px' }}>
+          <Button
+            onClick={() => {
+              confirmDialogState.onResolve?.(false);
+              setConfirmDialogState((prev) => ({ ...prev, open: false }));
+            }}
+            variant="outlined"
+            style={{ borderRadius: '8px', fontWeight: '700', color: '#64748b', borderColor: '#cbd5e1' }}
+          >
+            {confirmDialogState.cancelText}
+          </Button>
+          <Button
+            onClick={() => {
+              confirmDialogState.onResolve?.(true);
+              setConfirmDialogState((prev) => ({ ...prev, open: false }));
+            }}
+            color={confirmDialogState.open ? getNotiColors(confirmDialogState.type).btnColor : 'primary'}
+            variant="contained"
+            style={{ borderRadius: '8px', fontWeight: '700' }}
+          >
+            {confirmDialogState.confirmText}
           </Button>
         </DialogActions>
       </Dialog>

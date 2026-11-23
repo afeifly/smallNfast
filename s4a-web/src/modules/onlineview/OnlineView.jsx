@@ -52,6 +52,7 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
 
   const hasCachedData = _onlineSessionCache.deviceKey === deviceKey && _onlineSessionCache.hasFetched;
 
+  const [loadingInitial, setLoadingInitial] = useState(!hasCachedData);
   const [channels, setChannels] = useState(() => (hasCachedData ? _onlineSessionCache.channels : []));
   const [layoutPoints, setLayoutPoints] = useState(() => (hasCachedData ? (_onlineSessionCache.layoutPoints || []) : []));
   const [sysInfo, setSysInfo] = useState(() => (hasCachedData ? _onlineSessionCache.sysInfo : null));
@@ -140,13 +141,20 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
       if (_onlineSessionCache.sysInfo) {
         setSysInfo(_onlineSessionCache.sysInfo);
       }
+      setLoadingInitial(false);
       return;
     }
 
+    setLoadingInitial(true);
     try {
-      const [chs, layout] = await Promise.all([
+      // Query channels, layout, and system info concurrently, awaiting all before rendering the device view
+      const [chs, layout, fetchedSysInfo] = await Promise.all([
         TauriSutoAPI.getChannels(),
         TauriSutoAPI.getLayoutInfo ? TauriSutoAPI.getLayoutInfo() : Promise.resolve([]),
+        TauriSutoAPI.getSystemInfo ? TauriSutoAPI.getSystemInfo().catch((e) => {
+          console.warn('[OnlineView] System info not available:', e);
+          return null;
+        }) : Promise.resolve(null),
       ]);
       if (!isMountedRef.current) return;
       const safeChs = (Array.isArray(chs) ? chs : []).map((ch) => ({
@@ -158,18 +166,8 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
       const safeLayout = Array.isArray(layout) ? layout : [];
       setChannels(safeChs);
       setLayoutPoints(safeLayout);
+      setSysInfo(fetchedSysInfo || null);
       setLastUpdate(new Date());
-
-      // Query system info as non-blocking enhancement
-      let fetchedSysInfo = null;
-      try {
-        fetchedSysInfo = await TauriSutoAPI.getSystemInfo();
-        if (isMountedRef.current) {
-          setSysInfo(fetchedSysInfo || null);
-        }
-      } catch (e) {
-        console.warn('[OnlineView] System info not available:', e);
-      }
 
       // Store in session cache
       _onlineSessionCache = {
@@ -182,6 +180,10 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     } catch (err) {
       if (isMountedRef.current) {
         setError(err?.message || (intl.get('ONLINE_LOAD_DEVICE_ERROR') || 'Failed to load device information'));
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoadingInitial(false);
       }
     }
   }, [deviceKey]);
@@ -276,6 +278,32 @@ export default function OnlineView({ onDisconnect, deviceInfo, isPaused = false 
     }
     return cards;
   }, [channels, layoutPoints, sysInfo]);
+
+  if (loadingInitial && !hasCachedData) {
+    return (
+      <div className="online-view-container online-loading-state">
+        <div className="online-loading-card">
+          <div className="online-loading-spinner" />
+          <div className="online-loading-text">
+            {intl.get('ONLINE_CONNECTING_DEVICE') || 'Connecting and reading device information...'}
+          </div>
+          <div className="online-loading-subtext">
+            {intl.get('ONLINE_CONNECTING_DEVICE_SUB') || 'Fetching channel configuration and system details'}
+          </div>
+          {onDisconnect && (
+            <button
+              type="button"
+              className="online-btn"
+              onClick={onDisconnect}
+              style={{ marginTop: '16px', color: '#ef4444' }}
+            >
+              {intl.get('ONLINE_DISCONNECT') || 'Disconnect'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="online-view-container">

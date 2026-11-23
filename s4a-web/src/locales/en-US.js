@@ -378,6 +378,8 @@ export default {
   "GV_YAXIS_INVALID_NUMBERS": "Please enter valid numbers for the Y-axis range.",
   "GV_YAXIS_EQUAL_VALUES": "From and To values cannot be equal.",
   "ONLINE_LOAD_DEVICE_ERROR": "Failed to load device information",
+  "ONLINE_CONNECTING_DEVICE": "Connecting and reading device information...",
+  "ONLINE_CONNECTING_DEVICE_SUB": "Fetching channel configuration and system details",
   "ONLINE_POINT_NUM": "Point {num}",
   "ONLINE_SENSOR_NUM": "Sensor {num}",
   "ONLINE_LIVE": "LIVE",

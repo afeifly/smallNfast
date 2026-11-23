@@ -447,12 +447,12 @@ class LineChart extends Component {
           } catch (err) {
             console.error('[LineChart] Chart export failed:', err);
             TauriSutoAPI.logClientEvent('ERROR', 'EXPORT', `Chart export failed: ${err && err.message ? err.message : err}`);
-            alert(`Chart export failed: ${err && err.message ? err.message : err}`);
+            window.showAppNotification?.('Chart Export Failed', err && err.message ? err.message : String(err), 'error');
           }
         });
       } catch (err) {
         console.error('[LineChart] Chart export failed:', err);
-        alert(`Chart export failed: ${err && err.message ? err.message : err}`);
+        window.showAppNotification?.('Chart Export Failed', err && err.message ? err.message : String(err), 'error');
       }
       return;
     }

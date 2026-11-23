@@ -143,14 +143,18 @@ export function isS332DeviceId(deviceId) {
 }
 
 export function resolveDeviceTypeName(sysInfo, deviceInfo) {
-  const rawId = sysInfo?.device_id ?? deviceInfo?.deviceId ?? deviceInfo?.device_id;
-  if (rawId !== undefined && rawId !== null) {
-    if (SUTO_MODEL_TYPES[rawId]) return SUTO_MODEL_TYPES[rawId];
-    const num = typeof rawId === 'string'
-      ? (parseInt(String(rawId).trim().replace(/^ox/i, '0x'), 16) || Number(rawId))
-      : Number(rawId);
+  // 1. Authoritative hardware device_id from sysInfo
+  if (sysInfo?.device_id !== undefined && sysInfo?.device_id !== null) {
+    const sysId = sysInfo.device_id;
+    if (SUTO_MODEL_TYPES[sysId]) return SUTO_MODEL_TYPES[sysId];
+    const num = typeof sysId === 'string'
+      ? (parseInt(String(sysId).trim().replace(/^ox/i, '0x'), 16) || Number(sysId))
+      : Number(sysId);
     if (SUTO_MODEL_TYPES[num]) return SUTO_MODEL_TYPES[num];
   }
+
+  // 2. Prioritize candidate device names containing recognized SUTO model prefixes
+  // (e.g. "S403-12345678", "S403", "DS 500") over ambiguous generic IDs (like deviceId = 2)
   const candidateNames = [
     sysInfo?.device_name,
     sysInfo?.model,
@@ -163,6 +167,16 @@ export function resolveDeviceTypeName(sysInfo, deviceInfo) {
     if (match) {
       return match[1].replace(/\s+/g, '');
     }
+  }
+
+  // 3. Fallback to deviceInfo raw ID if candidate names did not contain a model prefix
+  const rawId = deviceInfo?.deviceId ?? deviceInfo?.device_id;
+  if (rawId !== undefined && rawId !== null) {
+    if (SUTO_MODEL_TYPES[rawId]) return SUTO_MODEL_TYPES[rawId];
+    const num = typeof rawId === 'string'
+      ? (parseInt(String(rawId).trim().replace(/^ox/i, '0x'), 16) || Number(rawId))
+      : Number(rawId);
+    if (SUTO_MODEL_TYPES[num]) return SUTO_MODEL_TYPES[num];
   }
 
   if (sysInfo?.device_name && sysInfo.device_name.trim()) {

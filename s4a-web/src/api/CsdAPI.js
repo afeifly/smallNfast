@@ -1168,8 +1168,6 @@ function _ensureFileInput() {
     if (!lowerName.endsWith('.csd') && !lowerName.endsWith('.csv')) {
       if (window.showAppNotification) {
         window.showAppNotification("Unsupported File Format", "Only .csd and .csv files are supported!", "error");
-      } else {
-        alert('Only .csd and .csv files are supported!');
       }
       _fileInput.value = '';
       return;
@@ -1181,8 +1179,6 @@ function _ensureFileInput() {
       if (!res.ok) {
         if (window.showAppNotification) {
           window.showAppNotification('Append Failed', res.reason, 'error');
-        } else {
-          alert(res.reason);
         }
       }
     } else {
@@ -1408,8 +1404,6 @@ const CsdAPI = {
             `The requested file "${fileName}" could not be found.\n\nIt may have been moved, renamed, or deleted from your computer.`,
             "error"
           );
-        } else {
-          alert(`File Not Found: The file "${fileName}" could not be found. It may have been moved, renamed, or deleted.`);
         }
       }
       return false;
@@ -2438,11 +2432,16 @@ const CsdAPI = {
     }
 
     if (_file.size >= LIMIT_800MB && !supportsStreaming) {
-      const proceed = window.confirm(
-        `Warning: The loaded CSD file is extremely large (approx. ${(_file.size / 1024 / 1024).toFixed(1)} MB).\n` +
-        `Your browser does not support streaming direct-to-disk exports, which may cause your browser tab to run out of memory or crash.\n\n` +
-        `Do you want to attempt exporting anyway?`
-      );
+      let proceed = true;
+      if (typeof window !== 'undefined' && typeof window.showConfirmDialog === 'function') {
+        proceed = await window.showConfirmDialog(
+          'Warning',
+          `Warning: The loaded CSD file is extremely large (approx. ${(_file.size / 1024 / 1024).toFixed(1)} MB).\n` +
+          `Your browser does not support streaming direct-to-disk exports, which may cause your browser tab to run out of memory or crash.\n\n` +
+          `Do you want to attempt exporting anyway?`,
+          { confirmText: 'Export Anyway', cancelText: 'Cancel', type: 'warning' }
+        );
+      }
       if (!proceed) {
         return;
       }
@@ -2710,8 +2709,6 @@ const CsdAPI = {
         `Please export this dataset to CSV format instead.`;
       if (window.showAppNotification) {
         window.showAppNotification("Export Aborted", msg, "warning");
-      } else {
-        alert("Export Aborted:\n\n" + msg);
       }
       return;
     }

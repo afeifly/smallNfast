@@ -470,10 +470,12 @@ export default function ReadoutView({
       setSelectedScreenshots(new Set());
 
       let files = [];
-      try {
-        files = await TauriSutoAPI.getLoggerFiles();
-      } catch (e) {
-        console.warn('[ReadoutView] Querying logger files failed:', e);
+      if (dType !== 's418' && dType !== 's461' && dType !== 's403') {
+        try {
+          files = await TauriSutoAPI.getLoggerFiles();
+        } catch (e) {
+          console.warn('[ReadoutView] Querying logger files failed:', e);
+        }
       }
       const sortedFiles = [...(files || [])].sort((a, b) =>
         (b.startTime || '').localeCompare(a.startTime || '')
@@ -749,7 +751,7 @@ export default function ReadoutView({
       });
     } catch (e) {
       setReadingProgress(null);
-      alert(`Readout error: ${e.message || e}`);
+      window.showAppNotification?.('Readout Error', e.message || String(e), 'error');
     }
   };
 
@@ -786,18 +788,11 @@ export default function ReadoutView({
     } catch (err) {
       setReadingProgress(null);
       setReadoutProgressInfo(null);
-      alert(`Readout error: ${err.message || err}`);
+      window.showAppNotification?.('Readout Error', err.message || String(err), 'error');
     }
   };
 
   const handleReadS418Log = async () => {
-    if (!TauriSutoAPI.isAvailable()) {
-      const count = s418Period === 'last_hour' ? 60 : s418Period === 'last_day' ? 1440 : 2500;
-      TauriSutoAPI.logClientEvent('INFO', 'READOUT', `Quick read started: ${count} samples`);
-      performRead(`${deviceDisplayName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Readout.csv`, count);
-      return;
-    }
-
     const stopTimeMs = loggerStatus?.end_time ? loggerStatus.end_time * 1000 : Date.now();
     let tryStartTimeMs = stopTimeMs - 24 * 3600 * 1000;
     let stopTimeL = stopTimeMs;
@@ -812,7 +807,7 @@ export default function ReadoutView({
       tryStartTimeMs = loggerStatus?.start_time ? loggerStatus.start_time * 1000 : stopTimeMs - 30 * 24 * 3600 * 1000;
     } else if (s418Period === 'custom') {
       if (!s418CustomStart || !s418CustomEnd) {
-        alert('Please select both start and end dates.');
+        window.showAppNotification?.('Validation', 'Please select both start and end dates.', 'warning');
         return;
       }
       const sDateObj = parseLocalDateTimeStr(s418CustomStart);
@@ -820,7 +815,7 @@ export default function ReadoutView({
       const sMs = sDateObj ? sDateObj.getTime() : NaN;
       const eMs = eDateObj ? eDateObj.getTime() : NaN;
       if (isNaN(sMs) || isNaN(eMs) || sMs >= eMs) {
-        alert('Please select a reasonable time period! Start time must be earlier than End time.');
+        window.showAppNotification?.('Validation', 'Please select a reasonable time period! Start time must be earlier than End time.', 'warning');
         return;
       }
       tryStartTimeMs = sMs;
@@ -837,11 +832,6 @@ export default function ReadoutView({
   };
 
   const handleReadS461Log = async () => {
-    if (!TauriSutoAPI.isAvailable()) {
-      alert('Real S461/S463 logger readout is available in desktop application mode with an active device connection.');
-      return;
-    }
-
     const stopTimeMs = loggerStatus?.end_time ? loggerStatus.end_time * 1000 : Date.now();
     let tryStartTimeMs = stopTimeMs - 3600 * 1000;
     let stopTimeL = stopTimeMs;
@@ -868,7 +858,7 @@ export default function ReadoutView({
       stopTimeL = stopTimeMs;
     } else if (s461Period === 'period') {
       if (!s461StartDate || !s461EndDate) {
-        alert('Please select both start and end dates.');
+        window.showAppNotification?.('Validation', 'Please select both start and end dates.', 'warning');
         return;
       }
       const [sy, sm, sd] = s461StartDate.split('-').map(Number);
@@ -877,7 +867,7 @@ export default function ReadoutView({
       const endCal = new Date(ey, em - 1, ed, parseInt(s461EndHour || '0', 10), 0, 0, 0);
 
       if (startCal.getTime() >= endCal.getTime()) {
-        alert('Please select a reasonable time period! Start date/hour must be earlier than End date/hour.');
+        window.showAppNotification?.('Validation', 'Please select a reasonable time period! Start date/hour must be earlier than End date/hour.', 'warning');
         return;
       }
       tryStartTimeMs = startCal.getTime();
@@ -916,7 +906,7 @@ export default function ReadoutView({
         }
       } catch (err) {
         console.error('[ReadoutView] Save CSV failed:', err);
-        alert(`Failed to save CSV: ${err.message || err}`);
+        window.showAppNotification?.('Save Failed', `Failed to save CSV: ${err.message || err}`, 'error');
       }
       return;
     }
@@ -975,7 +965,7 @@ export default function ReadoutView({
       }
     } catch (err) {
       console.error('[ReadoutView] Download screenshot error:', err);
-      alert(`Download screenshot error: ${err.message || err}`);
+      window.showAppNotification?.('Screenshot Error', `Download screenshot error: ${err.message || err}`, 'error');
     } finally {
       setDownloadingScreenshot(null);
     }
@@ -993,7 +983,7 @@ export default function ReadoutView({
       setPreviewImage({ name: filename, originalName: item.name, size: item.size, bytes, url });
     } catch (err) {
       console.error('[ReadoutView] Preview screenshot error:', err);
-      alert(`Preview screenshot error: ${err.message || err}`);
+      window.showAppNotification?.('Screenshot Error', `Preview screenshot error: ${err.message || err}`, 'error');
     } finally {
       setDownloadingScreenshot(null);
     }
@@ -1022,7 +1012,7 @@ export default function ReadoutView({
   const handleDownloadSelectedScreenshots = async () => {
     const toDownload = screenshotsList.filter((s) => selectedScreenshots.has(s.name));
     if (toDownload.length === 0) {
-      alert('Please select at least one screenshot image file.');
+      window.showAppNotification?.('Selection Required', 'Please select at least one screenshot image file.', 'warning');
       return;
     }
 
@@ -1043,7 +1033,7 @@ export default function ReadoutView({
         }
       }
       setDownloadingScreenshot(null);
-      alert(`Successfully saved ${savedCount} screenshot(s) to:\n${folder}`);
+      window.showAppNotification?.('Screenshots Saved', `Successfully saved ${savedCount} screenshot(s) to:\n${folder}`, 'success');
     } else {
       for (const item of toDownload) {
         await handleDownloadScreenshot(item);

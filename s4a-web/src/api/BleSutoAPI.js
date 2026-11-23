@@ -1200,6 +1200,302 @@ export class BleSutoManager {
     const bytes = Uint8Array.from(buf.slice(start, stop));
     return new TextDecoder('utf-8').decode(bytes).trim();
   }
+
+  /**
+   * Query logger status (enabled, recorded count, start/end time, interval) over Web Bluetooth BLE
+   */
+  async getLoggerStatus() {
+    if (!this.isConnected()) return null;
+    try {
+      const status = {
+        enabled: false,
+        recorded_count: 0,
+        start_time: null,
+        end_time: null,
+        package_interval: 1,
+      };
+
+      const sendRawCmd = async (cmd) => {
+        const pkt = this._packPacket(this.devAddr || 1, cmd);
+        const raw = await this.writeAndRead(pkt, 2000);
+        return this._deframeMultiFrame(raw);
+      };
+
+      const ident = this.systemInfo?.device_id || 0;
+      const isS403 = ident === 0x1230 || ident === 0x1231 || ident === 0x1232 || ident === 0x1233 || ident === 403 || ident === 423 ||
+        (this.systemInfo?.device_name && (String(this.systemInfo.device_name).toLowerCase().includes('403') || String(this.systemInfo.device_name).toLowerCase().includes('423'))) ||
+        (this.systemInfo?.model && (String(this.systemInfo.model).toLowerCase().includes('403') || String(this.systemInfo.model).toLowerCase().includes('423')));
+
+      // 1. Log enable (CTY_LOGGER 0x03, SCTY_LOG 0x01, ACT_GSET_LOG_EN 0x01)
+      try {
+        const enCmd = isS403 ? [0x03, 0x01, 0x01, 0x00, 0x00] : [0x03, 0x01, 0x01];
+        const res = await sendRawCmd(enCmd);
+        if (res && res.length > 0) {
+          status.enabled = res[0] === 1;
+        }
+      } catch (_) {}
+
+      // 2. Log recorded count (ACT_GET_LOG_RECORDED_NUM 0x02)
+      try {
+        const res = await sendRawCmd([0x03, 0x01, 0x02]);
+        if (res && res.length >= 4) {
+          const dv = new DataView(new Uint8Array(res).buffer);
+          status.recorded_count = dv.getUint32(0, true);
+        }
+      } catch (_) {}
+
+      // 3. Log start and end time (ACT_GET_LOG_START_END_TIME 0x03)
+      try {
+        const res = await sendRawCmd([0x03, 0x01, 0x03]);
+        if (res && res.length >= 8) {
+          const dv = new DataView(new Uint8Array(res).buffer);
+          status.start_time = dv.getUint32(0, true);
+          status.end_time = dv.getUint32(4, true);
+        }
+      } catch (_) {}
+
+      // 4. Log sample rate / package interval
+      try {
+        const intCmd = isS403 ? [0x03, 0x02, 0x04] : [0x03, 0x01, 0x02];
+        const res = await sendRawCmd(intCmd);
+        if (res && res.length >= 4) {
+          const dv = new DataView(new Uint8Array(res).buffer);
+          status.package_interval = dv.getUint32(0, true);
+        }
+      } catch (_) {}
+
+      return status;
+    } catch (err) {
+      console.warn('[BleSutoAPI] getLoggerStatus failed:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Read logged data from S403/S423 device memory over Web Bluetooth BLE
+   * @param {number} startTime Unix timestamp in seconds
+   * @param {number} stopTime Unix timestamp in seconds
+   * @param {Function} [onProgress] Optional callback `(percent, { current, total }) => void`
+   * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
+   */
+  async readS403Log(startTime, stopTime, onProgress) {
+    if (!this.isConnected()) throw new Error('BLE device not connected');
+    onProgress?.(5, { current: 0, total: 0 });
+
+    const addr = this.devAddr || 1;
+    const modelLabel = this.systemInfo?.model || 'S403';
+    const devName = `SUTO_${modelLabel.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+
+    // 1. Get Log Time Position ([0x03, 0x01, 0x08, start(4), stop(4)])
+    const startSec = Math.floor(startTime);
+    const stopSec = Math.floor(stopTime);
+    const posCmd = [0x03, 0x01, 0x08];
+    const sBuf = new Uint8Array(4);
+    new DataView(sBuf.buffer).setUint32(0, startSec, true);
+    const eBuf = new Uint8Array(4);
+    new DataView(eBuf.buffer).setUint32(0, stopSec, true);
+    posCmd.push(...sBuf, ...eBuf);
+
+    const posPkt = this._packPacket(addr, posCmd);
+    const posRaw = await this.writeAndRead(posPkt, 3500);
+    const posPayload = this._deframeMultiFrame(posRaw);
+    if (!posPayload || posPayload.length < 8) {
+      throw new Error(`Invalid time position response from ${modelLabel} device`);
+    }
+    const posDv = new DataView(new Uint8Array(posPayload).buffer);
+    const startPos = posDv.getInt32(0, true);
+    const endPos = posDv.getInt32(4, true);
+
+    if (endPos <= startPos || startPos < 0) {
+      throw new Error('No recorded log data found in the selected time range on the device.');
+    }
+
+    const sizeToRead = endPos - startPos;
+    onProgress?.(12, { current: 0, total: sizeToRead });
+
+    // 2. Set Continually Start Line ([0x03, 0x01, 0x04, start_pos(4)])
+    const startLineCmd = [0x03, 0x01, 0x04];
+    const slBuf = new Uint8Array(4);
+    new DataView(slBuf.buffer).setUint32(0, startPos, true);
+    startLineCmd.push(...slBuf);
+    const slPkt = this._packPacket(addr, startLineCmd);
+    await this.writeAndRead(slPkt, 2500);
+
+    // 3. Query S403/S423 units & bidirectional flag
+    const queryVaCmd = async (act) => {
+      try {
+        const pkt = this._packPacket(addr, [0x09, 0x03, act]);
+        const raw = await this.writeAndRead(pkt, 1500);
+        return this._deframeMultiFrame(raw);
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const flowUnitRes = await queryVaCmd(0x09);
+    const flowUnitIdx = (flowUnitRes && flowUnitRes[0] > 0 && flowUnitRes[0] !== 255) ? flowUnitRes[0] : 14;
+
+    const velUnitRes = await queryVaCmd(0x65);
+    const velUnitIdx = (velUnitRes && velUnitRes[0] > 0 && velUnitRes[0] !== 255) ? velUnitRes[0] : 10;
+
+    const consUnitRes = await queryVaCmd(0x67);
+    const consUnitIdx = (consUnitRes && consUnitRes[0] > 0 && consUnitRes[0] !== 255) ? consUnitRes[0] : 24;
+
+    const pressUnitRes = await queryVaCmd(0x0B);
+    const pressUnitIdx = (pressUnitRes && pressUnitRes[0] > 0 && pressUnitRes[0] !== 255) ? pressUnitRes[0] : 35;
+
+    const tempUnitRes = await queryVaCmd(0x69);
+    const tempUnitIdx = (tempUnitRes && tempUnitRes[0] > 0 && tempUnitRes[0] !== 255) ? tempUnitRes[0] : 1;
+
+    const biRes = await queryVaCmd(0x11);
+    const supportsBi = Boolean(biRes && (biRes[0] & 0x01) !== 0);
+
+    const flowUnitStr = SUTO_UNITS[flowUnitIdx] || 'm³/h';
+    const velUnitStr = SUTO_UNITS[velUnitIdx] || 'm/s';
+    const consUnitStr = SUTO_UNITS[consUnitIdx] || 'm³';
+    const pressUnitStr = SUTO_UNITS[pressUnitIdx] || 'bar';
+    const tempUnitStr = SUTO_UNITS[tempUnitIdx] || '°C';
+
+    // 4. Continually read records (UI_LEN = 28 bytes, BI_LEN = 44 bytes)
+    const UI_LEN = 28;
+    const BI_LEN = 44;
+    // Over BLE GATT, keep chunk size modest (5-8 records) to ensure packet stability
+    const batchSize = supportsBi ? 5 : 8;
+
+    const records = [];
+    let offset = 0;
+    let detectedBi = null;
+
+    while (offset < sizeToRead) {
+      const chunkSize = Math.min(sizeToRead - offset, batchSize);
+      // ACT_GET_LOG_CONTINUALLY (0x05)
+      const readCmd = [0x03, 0x01, 0x05];
+      const cBuf = new Uint8Array(4);
+      new DataView(cBuf.buffer).setUint32(0, chunkSize, true);
+      readCmd.push(...cBuf);
+
+      const rPkt = this._packPacket(addr, readCmd);
+      const raw = await this.writeAndRead(rPkt, 4000);
+      const payload = this._deframeMultiFrame(raw);
+
+      if (detectedBi === null) {
+        detectedBi = supportsBi
+          && payload.length >= BI_LEN
+          && payload.length % BI_LEN === 0
+          && (payload.length === chunkSize * BI_LEN || payload.length % UI_LEN !== 0);
+      }
+      const useBi = detectedBi;
+      const recordLen = useBi ? BI_LEN : UI_LEN;
+
+      if (payload.length < recordLen) {
+        break;
+      }
+
+      const chunkCount = Math.floor(payload.length / recordLen);
+      const dv = new DataView(new Uint8Array(payload).buffer);
+
+      for (let i = 0; i < chunkCount; i++) {
+        const off = i * recordLen;
+        const ts = dv.getUint32(off, true);
+        const flow = dv.getFloat32(off + 4, true);
+        const velocity = dv.getFloat32(off + 8, true);
+        const cons = dv.getFloat64(off + 12, true);
+
+        if (useBi) {
+          const flowRev = dv.getFloat32(off + 20, true);
+          const velocityRev = dv.getFloat32(off + 24, true);
+          const consRev = dv.getFloat64(off + 28, true);
+          const press = dv.getFloat32(off + 36, true);
+          const temp = dv.getFloat32(off + 40, true);
+          records.push({ ts, flow, velocity, cons, flowRev, velocityRev, consRev, press, temp });
+        } else {
+          const press = dv.getFloat32(off + 20, true);
+          const temp = dv.getFloat32(off + 24, true);
+          records.push({ ts, flow, velocity, cons, flowRev: -9999.0, velocityRev: -9999.0, consRev: -9999.0, press, temp });
+        }
+      }
+
+      offset += chunkCount;
+      const pct = Math.min(95, 15 + Math.round((offset / Math.max(1, sizeToRead)) * 80));
+      onProgress?.(pct, { current: Math.min(offset, sizeToRead), total: sizeToRead });
+
+      // Yield event loop so UI progress updates
+      await new Promise((r) => setTimeout(r, 8));
+
+      if (chunkCount < chunkSize) {
+        break;
+      }
+    }
+
+    if (records.length === 0) {
+      throw new Error('No logger records retrieved from device');
+    }
+
+    const isBiOutput = Boolean(detectedBi);
+    const firstTs = records[0].ts;
+    const lastTs = records[records.length - 1].ts;
+    const interval = records.length > 1 ? Math.max(1, records[1].ts - records[0].ts) : 1;
+
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const formatS4aTimeStr = (sec) => {
+      if (!sec || sec <= 0) return '01-01-1970 00:00:00';
+      const d = new Date(sec * 1000);
+      return `${pad2(d.getUTCDate())}-${pad2(d.getUTCMonth() + 1)}-${d.getUTCFullYear()} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+    };
+
+    const fmtF32 = (v, dec) => (isNaN(v) || !isFinite(v) || v <= -8000.0 ? '-9999.0' : v.toFixed(dec));
+    const fmtF64 = (v) => (isNaN(v) || !isFinite(v) || v <= -8000.0 ? '-9999.0' : Math.round(v).toString());
+
+    const csvLines = [];
+    csvLines.push(`${devName} Raw Data`);
+    csvLines.push('');
+    csvLines.push(`Start Date Time,${formatS4aTimeStr(firstTs)}`);
+    csvLines.push(`End Date Time,${formatS4aTimeStr(lastTs)}`);
+    csvLines.push(`Sample Rate(sec),${interval}`);
+    csvLines.push(`NO.Of Channels,${isBiOutput ? 8 : 5}`);
+    csvLines.push(`NO.Of Records,${records.length}`);
+    csvLines.push('');
+    csvLines.push('No.,Channel,Sensor,Unit,Resolution,Location/Measurement Point');
+    csvLines.push(`1,Flow,${modelLabel},${flowUnitStr},0.1,Location 1/Flow`);
+    csvLines.push(`2,Velocity,${modelLabel},${velUnitStr},0.01,Location 1/Velocity`);
+    csvLines.push(`3,Consumption,${modelLabel},${consUnitStr},1,Location 1/Consumption`);
+    csvLines.push(`4,Pressure,${modelLabel},${pressUnitStr},0.01,Location 1/Pressure`);
+    csvLines.push(`5,Temperature,${modelLabel},${tempUnitStr},0.1,Location 1/Temperature`);
+    if (isBiOutput) {
+      csvLines.push(`6,Flow Reverse,${modelLabel},${flowUnitStr},0.1,Location 1/Flow Reverse`);
+      csvLines.push(`7,Velocity Reverse,${modelLabel},${velUnitStr},0.01,Location 1/Velocity Reverse`);
+      csvLines.push(`8,Consumption Reverse,${modelLabel},${consUnitStr},1,Location 1/Consumption Reverse`);
+    }
+    csvLines.push('');
+
+    if (isBiOutput) {
+      csvLines.push(`Date Time,Flow - ${flowUnitStr},Velocity - ${velUnitStr},Consumption - ${consUnitStr},Pressure - ${pressUnitStr},Temperature - ${tempUnitStr},Flow Reverse - ${flowUnitStr},Velocity Reverse - ${velUnitStr},Consumption Reverse - ${consUnitStr}`);
+    } else {
+      csvLines.push(`Date Time,Flow - ${flowUnitStr},Velocity - ${velUnitStr},Consumption - ${consUnitStr},Pressure - ${pressUnitStr},Temperature - ${tempUnitStr}`);
+    }
+
+    for (const r of records) {
+      const dt = formatS4aTimeStr(r.ts);
+      if (isBiOutput) {
+        csvLines.push(`${dt},${fmtF32(r.flow, 1)},${fmtF32(r.velocity, 2)},${fmtF64(r.cons)},${fmtF32(r.press, 2)},${fmtF32(r.temp, 1)},${fmtF32(r.flowRev, 1)},${fmtF32(r.velocityRev, 2)},${fmtF64(r.consRev)}`);
+      } else {
+        csvLines.push(`${dt},${fmtF32(r.flow, 1)},${fmtF32(r.velocity, 2)},${fmtF64(r.cons)},${fmtF32(r.press, 2)},${fmtF32(r.temp, 1)}`);
+      }
+    }
+
+    return {
+      csv_text: csvLines.join('\r\n'),
+      row_count: records.length,
+      filename: `${devName}_Logger_Data.csv`,
+    };
+  }
+
+  /**
+   * Read logged data from S461/S463 or S403/S423 device memory over BLE
+   */
+  async readS461Log(startTime, stopTime, onProgress) {
+    return await this.readS403Log(startTime, stopTime, onProgress);
+  }
 }
 
 export const BleSutoAPI = new BleSutoManager();

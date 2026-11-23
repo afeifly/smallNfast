@@ -502,12 +502,57 @@ describe('App', () => {
       expect(screen.queryByText('Enable Web Server')).toBeNull();
       expect(screen.queryByText('Background Tray Service')).toBeNull();
 
-      // Web mode shows Try App quick entrance in header, opening About/Download modal
+      // Web mode shows Try App quick entrance in header on home page, opening About/Download modal
       const tryAppBtn = screen.getByText('Try App').closest('button');
       expect(tryAppBtn).not.toBeNull();
       fireEvent.click(tryAppBtn);
       await waitFor(() => {
         expect(screen.getByText('Communication & Hardware Compatibility')).toBeDefined();
+      });
+
+      // Alarm History is hidden on the home page
+      expect(screen.queryByText('Alarm History')).toBeNull();
+    } finally {
+      window.__TAURI_INTERNALS__ = prevTauri;
+    }
+  });
+
+  it('shows Try App only on home page and shows Alarm History only under multi mode (processscape)', async () => {
+    const prevTauri = window.__TAURI_INTERNALS__;
+    delete window.__TAURI_INTERNALS__;
+
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText('Open ProcessScape')).toBeDefined();
+      });
+
+      // 1. On Home page (!appMode): Try App is visible
+      expect(screen.getByText('Try App')).toBeDefined();
+
+      // Open Info menu on Home page: Alarm History should NOT be present
+      fireEvent.click(container.querySelector('.header-info-btn'));
+      await waitFor(() => {
+        expect(screen.getByText('System Diagnostic Logs')).toBeDefined();
+      });
+      expect(screen.queryByText('Alarm History')).toBeNull();
+
+      // Close menu
+      fireEvent.click(document.body);
+
+      // 2. Navigate to ProcessScape (multi mode)
+      fireEvent.click(screen.getByText('Open ProcessScape'));
+      await waitFor(() => {
+        expect(container.querySelector('.ps-header-actions')).not.toBeNull();
+      });
+
+      // In ProcessScape: Try App is HIDDEN
+      expect(screen.queryByText('Try App')).toBeNull();
+
+      // Open Info menu in ProcessScape: Alarm History IS present
+      fireEvent.click(container.querySelector('.header-info-btn'));
+      await waitFor(() => {
+        expect(screen.getByText('Alarm History')).toBeDefined();
       });
     } finally {
       window.__TAURI_INTERNALS__ = prevTauri;

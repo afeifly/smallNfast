@@ -62,7 +62,7 @@ async function invoke(cmd, args = {}) {
     }
     return json.data;
   }
-  throw new Error('Desktop runtime or LAN Server bridge not available');
+  throw new Error(`Desktop runtime or LAN Server bridge not available for ${cmd}`);
 }
 
 // Rolling measurement buffer for chart display (keeps last 3600 points)
@@ -78,10 +78,7 @@ let pushInFlightCount = 0;
 
 export const TauriSutoAPI = {
   isAvailable() {
-    if (activeTransport === 'API' || activeTransport === 'BLE_WEB') {
-      return true;
-    }
-    return hasTauri();
+    return true;
   },
 
   getActiveTransport() {
@@ -110,7 +107,7 @@ export const TauriSutoAPI = {
     if (activeTransport === 'BLE_WEB') {
       return Boolean(BleSutoAPI && BleSutoAPI.isConnected && BleSutoAPI.isConnected());
     }
-    return Boolean(activeTransport && hasTauri());
+    return Boolean(activeTransport);
   },
 
   getCapabilities() {
@@ -130,19 +127,17 @@ export const TauriSutoAPI = {
 
   /** List available USB devices */
   async listUsbDevices() {
-    if (!hasTauri()) {
+    try {
+      return await invoke('suto_list_usb_devices');
+    } catch (_) {
       return [];
     }
-    return await invoke('suto_list_usb_devices');
   },
 
   /** Connect to SUTO USB device and auto-discover address */
   async connectUsb(devicePath = null) {
     activeTransport = 'USB';
     await this.logClientEvent('INFO', 'SUTO_IPC', `Connecting via Direct USB (path: ${devicePath || 'auto'})...`);
-    if (!hasTauri()) {
-      throw new Error('Direct USB connection requires running in the S4A Desktop App with SUTO hardware connected via USB.');
-    }
     const res = await invoke('suto_connect_usb', { path: devicePath });
     let sInfo = null;
     try {
@@ -168,9 +163,6 @@ export const TauriSutoAPI = {
   async connectTcp(host = '192.168.1.100', port = 502) {
     activeTransport = 'TCP';
     await this.logClientEvent('INFO', 'TCP_OPEN', `Initiating Ethernet TCP connection to ${host}:${port}...`);
-    if (!hasTauri()) {
-      throw new Error('Ethernet TCP connection requires running in the S4A Desktop App.');
-    }
     const res = await invoke('suto_connect_tcp', { host, port: parseInt(port, 10) });
     let sInfo = null;
     try {
@@ -200,23 +192,25 @@ export const TauriSutoAPI = {
    */
   async discoverEthernetBroadcast({ timeoutMs = 1500, subnetBroadcast } = {}) {
     await this.logClientEvent('INFO', 'UDP_DISC', `Initiating CSLib UDP broadcast discovery (port 8800)...`);
-    if (!hasTauri()) {
+    try {
+      return await invoke('suto_discover_ethernet_broadcast', {
+        timeoutMs,
+        subnetBroadcast: subnetBroadcast || null
+      });
+    } catch (_) {
       return [];
     }
-    return await invoke('suto_discover_ethernet_broadcast', {
-      timeoutMs,
-      subnetBroadcast: subnetBroadcast || null
-    });
   },
 
   /** List available BLE devices in Desktop mode */
   async listBleDevices(options = {}) {
-    if (!hasTauri()) {
-      return [];
-    }
     const timeoutMs = options.timeoutMs || 3000;
     const sutoOnly = !options.acceptAll;
-    return await invoke('suto_list_ble_devices', { timeoutMs, sutoOnly });
+    try {
+      return await invoke('suto_list_ble_devices', { timeoutMs, sutoOnly });
+    } catch (_) {
+      return [];
+    }
   },
 
   /** Connect to SUTO device via BLE (Native in desktop, Web Bluetooth in browser) */
@@ -539,7 +533,7 @@ export const TauriSutoAPI = {
         await BleSutoAPI.disconnect();
       } catch (_) {}
       activeTransport = null;
-    } else if (hasTauri()) {
+    } else {
       try {
         await Promise.race([
           invoke('suto_disconnect'),
@@ -1097,7 +1091,7 @@ export const TauriSutoAPI = {
 
     // 1. Fetch native Tauri hardware channels if native socket is active (or specifically requested)
     const isNativeDemanded = reqTransport === 'TCP' || reqTransport === 'USB' || reqTransport === 'BLE' || reqTransport === 'BLE_NATIVE' || (!reqTransport && activeModbusDevices.size === 0) || isAll;
-    if (hasTauri() && isNativeDemanded) {
+    if (isNativeDemanded) {
       try {
         const rawChannels = await invoke('suto_get_channels');
         // Format channels to match S4A view schema. `channel_id` stays the
@@ -1170,7 +1164,7 @@ export const TauriSutoAPI = {
       return allChannels;
     }
 
-    if (!hasTauri() || !isNativeDemanded) {
+    if (!isNativeDemanded) {
       if (callback) callback([]);
       return [];
     }
@@ -1473,7 +1467,7 @@ export const TauriSutoAPI = {
         this.hydrateFromSharedSession();
       }
       let values = [];
-      const isNativeActive = hasTauri() && (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || hasLanBridge());
+      const isNativeActive = (activeTransport === 'TCP' || activeTransport === 'USB' || activeTransport === 'BLE' || activeTransport === 'BLE_NATIVE' || hasLanBridge());
       const isNativeNeeded = isNativeActive && (!demanded || this._isNativeDemanded(demanded));
       if (isNativeNeeded) {
         try {
@@ -1821,17 +1815,15 @@ export const TauriSutoAPI = {
       return await ApiDevice.getSystemInfo();
     }
     if (reqTransport === 'BLE_WEB' || reqTransport === 'BLE' || reqTransport === 'BLE_NATIVE') {
-      if (hasTauri()) {
-        try {
-          const sInfo = await invoke('suto_get_system_info');
-          if (sInfo && (sInfo.device_id || sInfo.serial_number || sInfo.device_name)) {
-            return sInfo;
-          }
-        } catch (_) {}
-      }
+      try {
+        const sInfo = await invoke('suto_get_system_info');
+        if (sInfo && (sInfo.device_id || sInfo.serial_number || sInfo.device_name)) {
+          return sInfo;
+        }
+      } catch (_) {}
       return await BleSutoAPI.getSystemInfo();
     }
-    if (hasTauri() && (reqTransport === 'TCP' || reqTransport === 'USB')) {
+    if (reqTransport === 'TCP' || reqTransport === 'USB') {
       try {
         const sInfo = await invoke('suto_get_system_info');
         if (sInfo && (sInfo.device_id || sInfo.serial_number || sInfo.device_name)) {
@@ -1853,10 +1845,11 @@ export const TauriSutoAPI = {
         };
       }
     }
-    if (!hasTauri()) {
+    try {
+      return await invoke('suto_get_system_info');
+    } catch (_) {
       return null;
     }
-    return await invoke('suto_get_system_info');
   },
 
   /**
@@ -1866,10 +1859,19 @@ export const TauriSutoAPI = {
     if (activeTransport === 'API') {
       return await ApiDevice.getLoggerStatus();
     }
+    if (activeTransport === 'BLE_WEB' || (BleSutoAPI && typeof BleSutoAPI.isConnected === 'function' && BleSutoAPI.isConnected())) {
+      if (typeof BleSutoAPI.getLoggerStatus === 'function') {
+        return await BleSutoAPI.getLoggerStatus();
+      }
+    }
     if (!hasTauri()) {
       return null;
     }
-    return await invoke('suto_get_logger_status');
+    try {
+      return await invoke('suto_get_logger_status');
+    } catch (_) {
+      return null;
+    }
   },
 
   /**
@@ -1877,9 +1879,6 @@ export const TauriSutoAPI = {
    * @private
    */
   async _invokeWithReadoutProgress(command, args, onProgress) {
-    if (!hasTauri()) {
-      throw new Error('Device communication is only available in desktop application mode.');
-    }
     let unlisten = null;
     try {
       if (typeof onProgress === 'function' && typeof listen === 'function') {
@@ -1910,6 +1909,11 @@ export const TauriSutoAPI = {
    * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
    */
   async readS461Log(startTime, stopTime, onProgress) {
+    if (activeTransport === 'BLE_WEB' || (BleSutoAPI && typeof BleSutoAPI.isConnected === 'function' && BleSutoAPI.isConnected())) {
+      if (typeof BleSutoAPI.readS461Log === 'function') {
+        return await BleSutoAPI.readS461Log(startTime, stopTime, onProgress);
+      }
+    }
     return await this._invokeWithReadoutProgress('suto_read_s461_log', {
       startTime: Math.floor(startTime),
       stopTime: Math.floor(stopTime),
@@ -1924,6 +1928,11 @@ export const TauriSutoAPI = {
    * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
    */
   async readS403Log(startTime, stopTime, onProgress) {
+    if (activeTransport === 'BLE_WEB' || (BleSutoAPI && typeof BleSutoAPI.isConnected === 'function' && BleSutoAPI.isConnected())) {
+      if (typeof BleSutoAPI.readS403Log === 'function') {
+        return await BleSutoAPI.readS403Log(startTime, stopTime, onProgress);
+      }
+    }
     return await this._invokeWithReadoutProgress('suto_read_s403_log', {
       startTime: Math.floor(startTime),
       stopTime: Math.floor(stopTime),
@@ -1938,6 +1947,11 @@ export const TauriSutoAPI = {
    * @returns {Promise<{csv_text: string, row_count: number, filename: string}>}
    */
   async readS418Log(startTime, stopTime, onProgress) {
+    if (activeTransport === 'BLE_WEB' || (BleSutoAPI && typeof BleSutoAPI.isConnected === 'function' && BleSutoAPI.isConnected())) {
+      if (typeof BleSutoAPI.readS418Log === 'function') {
+        return await BleSutoAPI.readS418Log(startTime, stopTime, onProgress);
+      }
+    }
     return await this._invokeWithReadoutProgress('suto_read_s418_log', {
       startTime: Math.floor(startTime),
       stopTime: Math.floor(stopTime),
@@ -1974,7 +1988,7 @@ export const TauriSutoAPI = {
     if (activeTransport === 'API') {
       return await ApiDevice.getLoggerFiles();
     }
-    if (!hasTauri()) {
+    if (activeTransport === 'BLE_WEB' || !hasTauri()) {
       return [];
     }
     try {
@@ -2010,13 +2024,14 @@ export const TauriSutoAPI = {
    * @returns {Promise<Array<{name: string, size: number, index: number}>>}
    */
   async getScreenshots() {
-    if (activeTransport === 'API') {
+    if (activeTransport === 'API' || activeTransport === 'BLE_WEB' || !hasTauri()) {
       return [];
     }
-    if (!hasTauri()) {
+    try {
+      return await invoke('suto_get_screenshots');
+    } catch (_) {
       return [];
     }
-    return await invoke('suto_get_screenshots');
   },
 
   /**
@@ -2029,9 +2044,6 @@ export const TauriSutoAPI = {
     if (activeTransport === 'API') {
       throw new Error('Screenshots are not supported on WebAPI devices.');
     }
-    if (!hasTauri()) {
-      throw new Error('readScreenshot requires Tauri desktop runtime with connected hardware.');
-    }
     const bytes = await invoke('suto_read_screenshot', { name, size });
     return new Uint8Array(bytes);
   },
@@ -2041,13 +2053,14 @@ export const TauriSutoAPI = {
    * @returns {Promise<Array<{id: number, name: string, size: number, date: number, date_str: string}>>}
    */
   async get600CsdFiles() {
-    if (activeTransport === 'API') {
+    if (activeTransport === 'API' || activeTransport === 'BLE_WEB' || !hasTauri()) {
       return [];
     }
-    if (!hasTauri()) {
+    try {
+      return await invoke('suto_get_600_csd_files');
+    } catch (_) {
       return [];
     }
-    return await invoke('suto_get_600_csd_files');
   },
 
   /**
@@ -2062,9 +2075,6 @@ export const TauriSutoAPI = {
     if (activeTransport === 'API') {
       throw new Error('ISO 8573 report export is not supported on WebAPI devices.');
     }
-    if (!hasTauri()) {
-      throw new Error('generate600Report requires Tauri desktop runtime with connected hardware.');
-    }
     return await invoke('suto_generate_600_report', { id, name, size, date });
   },
 
@@ -2077,7 +2087,6 @@ export const TauriSutoAPI = {
    * @param {number} [addr]
    */
   async sendCommand(cty, scty, act, data = null, addr = null) {
-    if (!hasTauri()) throw new Error('Tauri runtime not detected');
     return await invoke('suto_send_command', {
       addr,
       cty,
@@ -2093,7 +2102,6 @@ export const TauriSutoAPI = {
    * @param {Array<number>} data
    */
   async sendRaw(addr, data) {
-    if (!hasTauri()) throw new Error('Tauri runtime not detected');
     return await invoke('suto_send_raw', { addr, data });
   },
 
@@ -2153,18 +2161,12 @@ export const TauriSutoAPI = {
 
   /** Read an entire file as Uint8Array via Tauri */
   async readFile(path) {
-    if (!hasTauri()) {
-      throw new Error('readFile is only available in Tauri desktop environment');
-    }
     const bytes = await invoke('suto_read_file', { path });
     return new Uint8Array(bytes);
   },
 
   /** Read a slice of a file via Tauri */
   async readFileSlice(path, offset, length) {
-    if (!hasTauri()) {
-      throw new Error('readFileSlice is only available in Tauri desktop environment');
-    }
     const bytes = await invoke('suto_read_file_slice', { path, offset, length });
     return new Uint8Array(bytes);
   },

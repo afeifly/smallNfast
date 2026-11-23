@@ -378,6 +378,8 @@ export default {
   "GV_YAXIS_INVALID_NUMBERS": "请输入有效的 Y 轴范围数值。",
   "GV_YAXIS_EQUAL_VALUES": "起始值和结束值不能相等。",
   "ONLINE_LOAD_DEVICE_ERROR": "加载设备信息失败",
+  "ONLINE_CONNECTING_DEVICE": "正在连接并读取设备信息...",
+  "ONLINE_CONNECTING_DEVICE_SUB": "正在获取传感器通道配置与系统信息",
   "ONLINE_POINT_NUM": "测点 {num}",
   "ONLINE_SENSOR_NUM": "传感器 {num}",
   "ONLINE_LIVE": "实时",

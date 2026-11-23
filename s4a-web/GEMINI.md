@@ -16,7 +16,8 @@ This document serves as the single source of truth for developer and agent align
 * **Environments & Build Modes:**
   - `dev:mock` - Runs local server with `VITE_USE_MOCK=true` using `MockAPI.js`.
   - `dev:csd` - Runs local server with `VITE_USE_CSD=true` using `CsdAPI.js` (legacy WASM-free JS CSD parsing).
-  - `build` - Production bundle. Single-file build (`vite-plugin-singlefile`) is active in mock/real modes, but disabled in CSD mode to serve `.wasm` assets properly (if any).
+  - `dev:basic` / `build:basic` - Runs or builds streamlined application with File Analyze and Single Device Monitor only (`VITE_BUILD_MODE=basic`).
+  - `build` / `build:full` - Standard production bundle with all features (File Analyze, Single Device, and Multi-Device ProcessScape). Single-file build (`vite-plugin-singlefile`) is active in mock/real modes, but disabled in CSD mode to serve `.wasm` assets properly (if any).
 
 ---
 

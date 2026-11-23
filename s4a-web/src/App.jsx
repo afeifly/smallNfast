@@ -26,6 +26,7 @@ import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssigne
 import { subscribeLive } from './util/liveDataSource';
 import './App.css';
 import { isDesktop, isMobile, isWeb, checkIsWeb, checkIsDesktopHost, checkIsLanBridge, getRuntimePlatform, resolveDeviceTypeName } from './util/platform';
+import { isMultiModeEnabled, isBasicMode, getBuildMode } from './util/buildMode';
 import * as liveRecorder from './util/liveRecorder';
 import { clearLiveSelection, setLiveSelection } from './util/liveSelection';
 
@@ -312,7 +313,7 @@ function App() {
               if (session.selectedLocationId) {
                 setSelectedLocationId(session.selectedLocationId);
               }
-              if (session.appMode === 'processscape') {
+              if (isMultiModeEnabled() && session.appMode === 'processscape') {
                 TestAPI.setMode('processscape');
                 setAppMode('processscape');
                 setActiveTab('processscape');
@@ -376,7 +377,7 @@ function App() {
               TauriSutoAPI.hydrateFromSharedSession?.();
               if (session.deviceInfo) setDeviceInfo((prev) => prev || session.deviceInfo);
               if (session.selectedLocationId) setSelectedLocationId((prev) => prev || session.selectedLocationId);
-              if (session.appMode === 'processscape') {
+              if (isMultiModeEnabled() && session.appMode === 'processscape') {
                 TestAPI.setMode('processscape');
                 setAppMode((prev) => prev || 'processscape');
                 setActiveTab('processscape');
@@ -594,12 +595,14 @@ function App() {
         pushSnapshotToTray(null, false);
       }
     });
-    const unsubAlarms = subscribeAlarms(({ activeAlarms }) => {
+    const unsubAlarms = isMultiModeEnabled() ? subscribeAlarms(({ activeAlarms }) => {
       setActiveAlarmsCount(activeAlarms.length);
       setUnackedAlarmsCount(activeAlarms.filter(a => !a.acknowledged).length);
       pushSnapshotToTray(activeAlarms, true);
-    });
-    try { refreshAssignedChannels(); } catch (_) {}
+    }) : () => {};
+    if (isMultiModeEnabled()) {
+      try { refreshAssignedChannels(); } catch (_) {}
+    }
     return () => {
       unsubLive();
       unsubAlarms();
@@ -1465,7 +1468,7 @@ function App() {
           {appMode === 'monitor' && (
             <span className="header-mode-indicator monitor">{intl.get('APP_DEVICE_STUDIO') || 'Device Studio'}</span>
           )}
-          {appMode === 'processscape' && (
+          {isMultiModeEnabled() && appMode === 'processscape' && (
             <button
               type="button"
               className={`header-mode-indicator processscape ${activeTab === 'processscape' ? 'is-active active' : ''}`}
@@ -1487,7 +1490,7 @@ function App() {
           onMouseLeave={handleHeaderMouseUp}
         >
           {/* View Switcher Tabs */}
-          {appMode === 'processscape' && psMode !== 'editor' ? (
+          {isMultiModeEnabled() && appMode === 'processscape' && psMode !== 'editor' ? (
             <div className="header-tabs" style={{ display: 'flex', alignItems: 'center' }}>
               <button
                 className="tab-btn"
@@ -1603,7 +1606,7 @@ function App() {
 
           <div className="header-right">
 
-            {appMode === 'processscape' && (
+            {isMultiModeEnabled() && appMode === 'processscape' && (
               <div className="ps-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {/* Record button shown directly to the left of Location only when assigned channels exist or currently recording */}
                 {psMode !== 'editor' && (recState.recording || hasAssignedChannels) && (
@@ -1745,8 +1748,8 @@ function App() {
               </>
             )}
 
-            {/* Alarm Center Bell Button (only shown when Active Alarms count > 0) */}
-            {activeAlarmsCount > 0 && (
+            {/* Alarm Center Bell Button (only shown when Active Alarms count > 0 in Multi Mode) */}
+            {isMultiModeEnabled() && activeAlarmsCount > 0 && (
               <Tooltip
                 title={
                   unackedAlarmsCount > 0
@@ -2066,7 +2069,7 @@ function App() {
               ) : null}
 
               {/* 3. Alarm History (Multi Mode only) */}
-              {appMode === 'processscape' && (
+              {isMultiModeEnabled() && appMode === 'processscape' && (
                 <MenuItem
                   onClick={() => {
                     setInfoMenuAnchorEl(null);
@@ -2110,7 +2113,7 @@ function App() {
 
       {/* Main Content Area */}
       <main className="app-main-content">
-        {appMode === 'processscape' ? (
+        {isMultiModeEnabled() && appMode === 'processscape' ? (
           <div className="view-content-wrapper" style={{ height: '100%', overflow: 'hidden' }}>
             {recState.recording && activeTab === 'livegraphic' && <LiveGraphicView />}
             {recState.recording && activeTab === 'livetable' && <LiveTableView />}
@@ -2156,10 +2159,10 @@ function App() {
             </div>
           </div>
         ) : !appMode ? (
-          /* Welcome Landing Page with 3 modes */
+          /* Welcome Landing Page with 3 modes (or 2 modes in basic build mode) */
           <div className="landing-container">
             <div className="landing-wrapper">
-              <div className="landing-modes-grid">
+              <div className={`landing-modes-grid ${!isMultiModeEnabled() ? 'basic-mode' : ''}`}>
                 {/* Mode Card 1: File Analyze Mode */}
                 <div className="landing-mode-card">
                   <span className="mode-card-badge badge-analyze">{intl.get('FILE_ANALYSIS_BADGE') || 'File Analysis'}</span>
@@ -2255,44 +2258,46 @@ function App() {
                 </div>
 
                 {/* Mode Card 3: ProcessScape (Multi-Device Plant SCADA) */}
-                <div className="landing-mode-card">
-                  <span className="mode-card-badge badge-processscape">{intl.get('MULTI_DEVICE_BADGE') || 'Multi Device · Plant SCADA'}</span>
-                  <div className="mode-icon-box mode-icon-processscape">
-                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                  </div>
-                  <h2 className="mode-card-title">{intl.get('PROCESS_SCAPE') || 'ProcessScape'}</h2>
-                  <p className="mode-card-desc">
-                    {intl.get('PROCESS_SCAPE_DESC') || 'Multi-device plant pipeline visualizer, equipment topology, compressors, buffer tanks, chillers, and distributed live telemetry cards.'}
-                  </p>
+                {isMultiModeEnabled() && (
+                  <div className="landing-mode-card">
+                    <span className="mode-card-badge badge-processscape">{intl.get('MULTI_DEVICE_BADGE') || 'Multi Device · Plant SCADA'}</span>
+                    <div className="mode-icon-box mode-icon-processscape">
+                      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                    </div>
+                    <h2 className="mode-card-title">{intl.get('PROCESS_SCAPE') || 'ProcessScape'}</h2>
+                    <p className="mode-card-desc">
+                      {intl.get('PROCESS_SCAPE_DESC') || 'Multi-device plant pipeline visualizer, equipment topology, compressors, buffer tanks, chillers, and distributed live telemetry cards.'}
+                    </p>
 
-                  <button
-                    className="landing-cta-btn landing-cta-processscape"
-                    onClick={() => {
-                      TauriSutoAPI.logClientEvent('INFO', 'APP', 'ProcessScape mode activated');
-                      autoReconnectSavedDevices((conn) => {
-                        if (conn) setDeviceInfo(conn);
-                      }).catch(() => { });
-                      TestAPI.setMode('processscape');
-                      setActiveTab('processscape');
-                      setAppMode('processscape');
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                    {intl.get('OPEN_PROCESS_SCAPE') || 'Open ProcessScape'}
-                  </button>
+                    <button
+                      className="landing-cta-btn landing-cta-processscape"
+                      onClick={() => {
+                        TauriSutoAPI.logClientEvent('INFO', 'APP', 'ProcessScape mode activated');
+                        autoReconnectSavedDevices((conn) => {
+                          if (conn) setDeviceInfo(conn);
+                        }).catch(() => { });
+                        TestAPI.setMode('processscape');
+                        setActiveTab('processscape');
+                        setAppMode('processscape');
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                      {intl.get('OPEN_PROCESS_SCAPE') || 'Open ProcessScape'}
+                    </button>
 
-                  <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>{intl.get('SCADA_ARCHITECTURE') || 'SCADA Architecture:'}</div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>{intl.get('PIPING_FLOW') || 'Piping Flow'}</span>
-                      <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#b45309', fontWeight: 600 }}>{intl.get('LIVE_TELEMETRY') || 'Live Telemetry'}</span>
+                    <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>{intl.get('SCADA_ARCHITECTURE') || 'SCADA Architecture:'}</div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#15803d', fontWeight: 600 }}>{intl.get('PIPING_FLOW') || 'Piping Flow'}</span>
+                        <span style={{ fontSize: '11px', background: '#f0fdf4', padding: '2px 8px', borderRadius: '4px', color: '#b45309', fontWeight: 600 }}>{intl.get('LIVE_TELEMETRY') || 'Live Telemetry'}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -2944,12 +2949,14 @@ function App() {
       </Dialog>
 
       {/* ProcessScape Multi-Device Recording Setup Modal */}
-      <ProcessScapeRecordModal
-        isOpen={showPsRecordModal}
-        onClose={() => setShowPsRecordModal(false)}
-        onStart={handleStartPsRecording}
-        onOpenSensorManager={() => setShowSensorManagerModal(true)}
-      />
+      {isMultiModeEnabled() && (
+        <ProcessScapeRecordModal
+          isOpen={showPsRecordModal}
+          onClose={() => setShowPsRecordModal(false)}
+          onStart={handleStartPsRecording}
+          onOpenSensorManager={() => setShowSensorManagerModal(true)}
+        />
+      )}
 
 
       {/* Status Bar */}
@@ -3065,47 +3072,51 @@ function App() {
       />
 
       {/* SUTO Sensor Manager Modal (Devices, Locations, Measurement Points, Channels) */}
-      <SensorManagerModal
-        isOpen={showSensorManagerModal}
-        onClose={() => setShowSensorManagerModal(false)}
-        readOnly={Boolean(recState.recording)}
-        activeLocationId={selectedLocationId}
-        onSyncToScape={(targetScapeId, targetLocId) => {
-          if (targetLocId) {
-            setSelectedLocationId(targetLocId);
-            psActionsRef.current?.setActiveLocationId?.(targetLocId);
-          } else if (targetScapeId === '') {
-            setSelectedLocationId(null);
-          }
-          if (targetScapeId === '') {
-            try { setActiveScapeId(''); } catch (_) { }
-            psActionsRef.current?.switchScape?.('');
-            psActionsRef.current?.reloadActiveScape?.('');
-            return;
-          }
-          if (targetScapeId) {
-            try { setActiveScapeId(targetScapeId); } catch (_) { }
-            psActionsRef.current?.switchScape?.(targetScapeId);
-            psActionsRef.current?.reloadActiveScape?.(targetScapeId);
-          } else {
-            psActionsRef.current?.reloadActiveScape?.();
-          }
-        }}
-        activeDeviceInfo={deviceInfo}
-        onDeviceConnected={(conn) => {
-          // Keep user in ProcessScape / Sensor Manager; do not navigate to online view
-          setDeviceInfo(conn);
-          TauriSutoAPI.logClientEvent('INFO', 'APP', `Hardware sensor collected in Sensor Manager via ${conn?.transport || 'SUTO'}`);
-        }}
-      />
+      {isMultiModeEnabled() && (
+        <SensorManagerModal
+          isOpen={showSensorManagerModal}
+          onClose={() => setShowSensorManagerModal(false)}
+          readOnly={Boolean(recState.recording)}
+          activeLocationId={selectedLocationId}
+          onSyncToScape={(targetScapeId, targetLocId) => {
+            if (targetLocId) {
+              setSelectedLocationId(targetLocId);
+              psActionsRef.current?.setActiveLocationId?.(targetLocId);
+            } else if (targetScapeId === '') {
+              setSelectedLocationId(null);
+            }
+            if (targetScapeId === '') {
+              try { setActiveScapeId(''); } catch (_) { }
+              psActionsRef.current?.switchScape?.('');
+              psActionsRef.current?.reloadActiveScape?.('');
+              return;
+            }
+            if (targetScapeId) {
+              try { setActiveScapeId(targetScapeId); } catch (_) { }
+              psActionsRef.current?.switchScape?.(targetScapeId);
+              psActionsRef.current?.reloadActiveScape?.(targetScapeId);
+            } else {
+              psActionsRef.current?.reloadActiveScape?.();
+            }
+          }}
+          activeDeviceInfo={deviceInfo}
+          onDeviceConnected={(conn) => {
+            // Keep user in ProcessScape / Sensor Manager; do not navigate to online view
+            setDeviceInfo(conn);
+            TauriSutoAPI.logClientEvent('INFO', 'APP', `Hardware sensor collected in Sensor Manager via ${conn?.transport || 'SUTO'}`);
+          }}
+        />
+      )}
 
       {/* System-wide Telemetry Alarm Center Modal */}
-      <AlarmCenterModal
-        isOpen={showAlarmCenterModal}
-        onClose={() => setShowAlarmCenterModal(false)}
-        onGoToLocation={handleGoToAlarmLocation}
-        initialTab={alarmCenterInitialTab}
-      />
+      {isMultiModeEnabled() && (
+        <AlarmCenterModal
+          isOpen={showAlarmCenterModal}
+          onClose={() => setShowAlarmCenterModal(false)}
+          onGoToLocation={handleGoToAlarmLocation}
+          initialTab={alarmCenterInitialTab}
+        />
+      )}
     </div>
   );
 }

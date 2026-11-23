@@ -6,9 +6,11 @@ import TestAPI from './api/TestAPI';
 import TauriSutoAPI from './api/TauriSutoAPI';
 import { clearReadoutCache } from './modules/readout/readoutSession';
 import { clearOnlineCache, getOnlineCache } from './modules/onlineview/OnlineView';
+import { setBuildModeForTesting } from './util/buildMode';
 
 describe('App', () => {
   beforeEach(() => {
+    setBuildModeForTesting(null);
     clearReadoutCache();
     clearOnlineCache();
     // Reset the proxy mode — a previous test may leave it as 'monitor', which
@@ -556,6 +558,34 @@ describe('App', () => {
       });
     } finally {
       window.__TAURI_INTERNALS__ = prevTauri;
+    }
+  });
+
+  it('in basic build mode, shows only File Analyze Mode and Single Device Monitor, completely hiding ProcessScape and Multi-Device features', async () => {
+    setBuildModeForTesting('basic');
+    try {
+      const { container } = render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText('File Analyze Mode')).toBeDefined();
+      });
+
+      // 1. File Analyze Mode and Single Device Mode cards are present
+      expect(screen.getByText('File Analyze Mode')).toBeDefined();
+      expect(screen.getByText('Device connection')).toBeDefined();
+
+      // 2. ProcessScape (Multi Device) card is completely excluded from the landing page
+      expect(screen.queryByText('Open ProcessScape')).toBeNull();
+      expect(screen.queryByText('Multi Device · Plant SCADA')).toBeNull();
+
+      // 3. Grid container has basic-mode styling class applied
+      const grid = container.querySelector('.landing-modes-grid');
+      expect(grid).not.toBeNull();
+      expect(grid.classList.contains('basic-mode')).toBe(true);
+
+      // 4. Multi-device Alarm Center modal and ProcessScape modals are not mounted
+      expect(container.querySelector('.header-alarm-btn')).toBeNull();
+    } finally {
+      setBuildModeForTesting(null);
     }
   });
 });

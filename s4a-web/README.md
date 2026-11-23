@@ -21,7 +21,7 @@ VITE_API_HOST=http://192.168.1.1 npm run dev
 
 ---
 
-## Modes
+## Data Modes
 
 | Mode | Env flag | Data source |
 |---|---|---|
@@ -30,6 +30,62 @@ VITE_API_HOST=http://192.168.1.1 npm run dev
 | **Real** | _(neither)_ | `RealAPI` — HTTP calls to a live device |
 
 In **CSD mode** an **Open CSD File** prompt is shown (or folder icon in the top header). Click it to open a `.csd` file. The application auto-refreshes once the file is parsed.
+
+---
+
+## Build Modes (Full vs Basic)
+
+The application supports two build targets controlled via the keyword tag / environment flag `VITE_BUILD_MODE`:
+
+| Build Mode | Keyword Tag / Flag | Included Modules | Target Audience |
+|---|---|---|---|
+| **Full** *(default)* | `full` / `VITE_BUILD_MODE=full` | **File Analyze Mode** (CSD / CSV)<br>**Single Device Monitor** (Live USB / TCP / BLE)<br>**Multi-Device ProcessScape** (SCADA plant canvas, pipeline layouts, multi-sensor alarm engine) | Complete plant automation and telemetry platform with multi-device SCADA. |
+| **Basic** | `basic` / `VITE_BUILD_MODE=basic` | **File Analyze Mode** (CSD / CSV)<br>**Single Device Monitor** (Live USB / TCP / BLE sensor readout, online view, live graphic & table) | Streamlined deployment focusing exclusively on file analysis and single hardware sensor readout. Multi-device SCADA is excluded. |
+
+### Web Build Commands
+
+```bash
+# Production Full Build (default - includes File Analyze, Single Device, and Multi-Device ProcessScape):
+npm run build
+# Or explicitly:
+npm run build:full
+# Or with env variable:
+VITE_BUILD_MODE=full npm run build
+
+# Production Basic Build (streamlined - File Analyze & Single Device only):
+npm run build:basic
+# Or with env variable:
+VITE_BUILD_MODE=basic npm run build
+```
+
+### Development Server with Build Modes
+
+```bash
+# Dev server in Full mode (default):
+npm run dev
+# Or explicitly:
+npm run dev:full
+
+# Dev server in Basic mode (File Analyze & Single Device only):
+npm run dev:basic
+# Or with env variable:
+VITE_BUILD_MODE=basic npm run dev
+```
+
+### Desktop App (Tauri) with Build Modes
+
+```bash
+# Build desktop app in Full mode (default):
+npm run tauri:build
+# Or explicitly:
+npm run tauri:build:full
+
+# Build desktop app in Basic mode:
+npm run tauri:build:basic
+
+# Run desktop dev in Basic mode:
+npm run tauri:dev:basic
+```
 
 ---
 

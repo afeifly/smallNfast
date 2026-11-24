@@ -1,7 +1,7 @@
 {
   "name": "s4a-web",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -33,6 +33,11 @@
     "tauri:android:dev": "npm run sync:version && tauri android dev",
     "sync:version": "node scripts/sync-version.mjs",
     "sync:builds": "node scripts/sync-builds.mjs",
+    "sync:builds:full": "node scripts/sync-builds.mjs full",
+    "sync:builds:basic": "node scripts/sync-builds.mjs basic",
+    "sync:builds:apk": "node scripts/sync-builds.mjs all android",
+    "sync:builds:apk:full": "node scripts/sync-builds.mjs full android",
+    "sync:builds:apk:basic": "node scripts/sync-builds.mjs basic android",
     "package:artifacts": "node scripts/package-artifacts.mjs"
   },
   "dependencies": {

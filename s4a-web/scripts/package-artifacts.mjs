@@ -8,43 +8,34 @@ const rootDir = path.resolve(__dirname, '..');
 
 const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const version = pkg.version;
-const distDir = path.join(rootDir, 'dist-packages');
+const rawMode = process.argv[2] || process.env.VITE_BUILD_MODE || '';
+const mode = rawMode ? String(rawMode).toLowerCase() : '';
+const modeSuffix = mode ? `_${mode}` : '';
 
+const distDir = path.join(rootDir, 'dist-packages');
 if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
-console.log(`[package-artifacts] Packaging versioned artifacts for v${version}...`);
+console.log(`[package-artifacts] Packaging versioned artifacts for v${version}${mode ? ` [${mode}]` : ''}...`);
 
 let packagedCount = 0;
 
-// 1. macOS DMG & App Bundle
+// 1. macOS DMG (Single clean installer)
 const dmgDir = path.join(rootDir, 'src-tauri', 'target', 'release', 'bundle', 'dmg');
 if (fs.existsSync(dmgDir)) {
   const dmgs = fs.readdirSync(dmgDir).filter(f => f.endsWith('.dmg'));
   for (const dmg of dmgs) {
     const src = path.join(dmgDir, dmg);
-    const destName = dmg.includes(version) ? dmg : `s4a-app_${version}_${dmg}`;
+    const destName = `s4a-app_${version}${modeSuffix}.dmg`;
     const dest = path.join(distDir, destName);
     fs.copyFileSync(src, dest);
     console.log(`[package-artifacts] macOS DMG -> ${destName}`);
     packagedCount++;
   }
 }
-const macAppDir = path.join(rootDir, 'src-tauri', 'target', 'release', 'bundle', 'macos', 's4a-app.app');
-if (fs.existsSync(macAppDir)) {
-  try {
-    const { execSync } = await import('child_process');
-    const zipDest = path.join(distDir, `s4a-app_${version}_macos.zip`);
-    execSync(`ditto -c -k --sequesterRsrc --keepParent "${macAppDir}" "${zipDest}"`);
-    console.log(`[package-artifacts] macOS App ZIP -> s4a-app_${version}_macos.zip`);
-    packagedCount++;
-  } catch (err) {
-    console.warn(`[package-artifacts] Could not package macOS zip: ${err.message}`);
-  }
-}
 
-// 2. Android APK
+// 2. Android APK (Single clean APK)
 const apkBaseDir = path.join(rootDir, 'src-tauri', 'gen', 'android', 'app', 'build', 'outputs', 'apk');
 function findApks(dir) {
   let apks = [];
@@ -62,21 +53,20 @@ function findApks(dir) {
 
 const apks = findApks(apkBaseDir);
 for (const apk of apks) {
-  const isDebug = apk.includes('debug');
-  const destName = `s4a-app_${version}_android${isDebug ? '-debug' : ''}.apk`;
+  const destName = `s4a-app_${version}${modeSuffix}.apk`;
   const dest = path.join(distDir, destName);
   fs.copyFileSync(apk, dest);
   console.log(`[package-artifacts] Android APK -> ${destName}`);
   packagedCount++;
 }
 
-// 3. Windows EXE
+// 3. Windows EXE (Single standalone portable EXE)
 const releaseDir = path.join(rootDir, 'src-tauri', 'target', 'release');
 if (fs.existsSync(releaseDir)) {
-  const exes = fs.readdirSync(releaseDir).filter(f => f.endsWith('.exe') && !f.includes('build'));
+  const exes = fs.readdirSync(releaseDir).filter(f => f.endsWith('.exe') && !f.includes('build') && !f.includes('installer') && !f.includes('setup'));
   for (const exe of exes) {
     const src = path.join(releaseDir, exe);
-    const destName = `s4a-app_${version}_x64.exe`;
+    const destName = `s4a-app_${version}${modeSuffix}_x64.exe`;
     const dest = path.join(distDir, destName);
     fs.copyFileSync(src, dest);
     console.log(`[package-artifacts] Windows EXE -> ${destName}`);
@@ -84,4 +74,4 @@ if (fs.existsSync(releaseDir)) {
   }
 }
 
-console.log(`[package-artifacts] Finished packaging ${packagedCount} artifacts into dist-packages/`);
+console.log(`[package-artifacts] Finished packaging ${packagedCount} artifact(s) into dist-packages/`);

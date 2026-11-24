@@ -13,6 +13,11 @@ const OWNER = 'afeifly';
 const REPO = 'smallNfast';
 const WORKFLOW_FILE = 's4a-windows-build.yml';
 
+// CLI args: node scripts/sync-builds.mjs [full|basic|all] [android|windows|macos|all]
+const args = process.argv.slice(2).map(a => a.toLowerCase().replace(/^--/, ''));
+const targetFlavor = args.find(a => ['full', 'basic', 'all'].includes(a)) || 'all';
+const targetPlatform = args.find(a => ['android', 'apk', 'windows', 'macos', 'mac', 'win'].includes(a)) || 'all';
+
 const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 const headers = {
   'Accept': 'application/vnd.github+json',
@@ -123,18 +128,41 @@ async function main() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 's4a-sync-'));
 
   try {
+    console.log(`[sync:builds] Filter settings: Flavor = [${targetFlavor}], Platform = [${targetPlatform}]`);
+
     for (const artifact of artifacts) {
       const artName = artifact.name;
+      const artLower = artName.toLowerCase();
+      const isBasic = artLower.includes('basic');
+      const isFull = !isBasic;
+
+      if (targetFlavor === 'full' && isBasic) continue;
+      if (targetFlavor === 'basic' && isFull) continue;
+
+      const isAndroid = artLower.includes('android') || artLower.includes('apk');
+      const isWindows = artLower.includes('windows') || artLower.includes('exe');
+      const isMac = artLower.includes('macos') || artLower.includes('dmg');
+
+      if (['android', 'apk'].includes(targetPlatform) && !isAndroid) continue;
+      if (['windows', 'win'].includes(targetPlatform) && !isWindows) continue;
+      if (['macos', 'mac'].includes(targetPlatform) && !isMac) continue;
+
       const sizeMb = (artifact.size_in_bytes / 1024 / 1024).toFixed(2);
 
       let targetPublicFile = null;
 
-      if (artName === 'S4A-Windows-Portable-ZIP') {
-        targetPublicFile = 's4a_window.zip';
-      } else if (artName === 'S4A-macOS-Portable-ZIP' || artName === 'S4A-macOS-DMG') {
-        targetPublicFile = 's4a_mac.zip';
-      } else if (artName === 'S4A-Android-APK') {
-        targetPublicFile = 's4a_android.zip';
+      // When a specific flavor is requested ('full' or 'basic'), save to standard clean names
+      // (s4a_android.zip, s4a_window.zip, s4a_mac.zip) so web download links work immediately
+      // without renaming!
+      if (targetFlavor !== 'all') {
+        if (isWindows) targetPublicFile = 's4a_window.zip';
+        else if (isMac) targetPublicFile = 's4a_mac.zip';
+        else if (isAndroid) targetPublicFile = 's4a_android.zip';
+      } else {
+        // When syncing all, keep distinct names for both flavors:
+        if (isWindows) targetPublicFile = isBasic ? 's4a_window_basic.zip' : 's4a_window.zip';
+        else if (isMac) targetPublicFile = isBasic ? 's4a_mac_basic.zip' : 's4a_mac.zip';
+        else if (isAndroid) targetPublicFile = isBasic ? 's4a_android_basic.zip' : 's4a_android.zip';
       }
 
       if (!targetPublicFile) {
@@ -160,13 +188,23 @@ async function main() {
       const innerFile = path.join(extractSubDir, extractedFiles[0]);
       const destPath = path.join(publicDir, targetPublicFile);
 
-      // If the inner file is already a zip (e.g. s4a-app_xxx_windows_x64.zip),
-      // we copy that real zip directly as s4a_window.zip
+      // If it's a raw file (.apk or .dmg or .exe), package it into target zip
       if (extractedFiles[0].endsWith('.zip')) {
         fs.copyFileSync(innerFile, destPath);
       } else {
-        // If it's a raw file (.apk or .dmg or .exe), package it into target zip
         createZip(innerFile, destPath);
+      }
+
+      // If it's an APK, also save the raw .apk directly for instant Android install without unzipping
+      if (extractedFiles[0].endsWith('.apk')) {
+        if (targetFlavor !== 'all') {
+          fs.copyFileSync(innerFile, path.join(publicDir, 's4a_app.apk'));
+          console.log(`[sync:builds] -> Updated direct APK public/s4a_app.apk`);
+        } else {
+          const rawApkTarget = isBasic ? 's4a_app_basic.apk' : 's4a_app.apk';
+          fs.copyFileSync(innerFile, path.join(publicDir, rawApkTarget));
+          console.log(`[sync:builds] -> Updated direct APK public/${rawApkTarget}`);
+        }
       }
 
       const finalSizeMb = (fs.statSync(destPath).size / 1024 / 1024).toFixed(2);

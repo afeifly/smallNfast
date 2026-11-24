@@ -126,6 +126,7 @@ jobs:
       - name: Build Tauri Windows Release (.exe) [${{ matrix.mode }}]
         env:
           VITE_BUILD_MODE: ${{ matrix.mode }}
+        shell: bash
         run: npm run tauri:build:${{ matrix.mode }}
 
       - name: Package Windows EXE [${{ matrix.mode }}]

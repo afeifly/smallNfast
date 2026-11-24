@@ -1,7 +1,7 @@
 {
   "name": "s4a-web",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,9 +22,9 @@
     "tauri:csd": "VITE_USE_CSD=true node scripts/tauri-dev.mjs",
     "tauri:dev:csd": "VITE_USE_CSD=true node scripts/tauri-dev.mjs",
     "tauri:dev:mock": "VITE_USE_MOCK=true node scripts/tauri-dev.mjs",
-    "tauri:build": "npm run sync:version && tauri build",
-    "tauri:build:basic": "npm run sync:version && VITE_BUILD_MODE=basic tauri build",
-    "tauri:build:full": "npm run sync:version && VITE_BUILD_MODE=full tauri build",
+    "tauri:build": "npm run sync:version && node scripts/tauri-build.mjs full",
+    "tauri:build:basic": "npm run sync:version && node scripts/tauri-build.mjs basic",
+    "tauri:build:full": "npm run sync:version && node scripts/tauri-build.mjs full",
     "tauri:build:csd": "npm run sync:version && VITE_USE_CSD=true tauri build",
     "sim:s331": "node scripts/s331-simulator.mjs",
     "sim:s331:test": "node scripts/s331-simulator.mjs --selftest",

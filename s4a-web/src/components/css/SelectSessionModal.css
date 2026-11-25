@@ -1,0 +1,78 @@
+.select-session-modal {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stdb-session-layout-expanded {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  height: min(65vh, 700px);
+}
+
+.stdb-session-list {
+  max-height: 65vh;
+}
+
+.stdb-session-details {
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+}
+
+.stdb-session-layout-expanded .stdb-session-list {
+  max-height: 100%;
+}
+
+.stdb-session-details .file-info-view-container {
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.stdb-session-details .dashboard-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.stdb-session-details .channels-table-scroll-wrapper {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.stdb-session-detail-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  color: #475569;
+}
+
+@media (max-width: 800px) {
+  .stdb-session-layout-expanded {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .stdb-session-layout-expanded .stdb-session-list {
+    max-height: 30vh;
+  }
+
+  .stdb-session-details {
+    height: auto;
+    overflow: visible;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

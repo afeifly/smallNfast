@@ -5,7 +5,6 @@ import { SystemEvent } from '../../util/SystemConstant';
 import ChannelAreaChart from './ChannelAreaChart';
 
 let self;
-let dataset = [];
 let lines;
 
 const dateFormat = d3.timeFormat('%Y-%m-%d %H:%M:%S');
@@ -18,6 +17,7 @@ class SplineGroup extends Component {
     this.rootRef = React.createRef();
     this.mouseLineRef = React.createRef();
     this.splineRefs = new Map();
+    this.dataset = [];
 
     this.dragStartX = 0;
     this.dragStartY = 0;
@@ -27,7 +27,7 @@ class SplineGroup extends Component {
   }
 
   setData(data) {
-    dataset = data;
+    this.dataset = data;
     this.forceUpdate();
   }
 
@@ -38,7 +38,7 @@ class SplineGroup extends Component {
       width = chartController.chartWidth,
       height = chartController.chartHeight;
 
-    const items = dataset.map(d =>
+    const items = this.dataset.map(d =>
       <ChannelAreaChart ref={el => this.splineRefs.set(d.id, el)}
         channel={d} key={d.id}
         chartController={chartController}
@@ -159,7 +159,7 @@ class SplineGroup extends Component {
     d3.select('.line-background').attr('width', Math.max(0, width)).attr('height', Math.max(0, height));
 
     // Re-draw each channel's spline with now-valid refs
-    dataset.forEach(d => {
+    this.dataset.forEach(d => {
       const lineItem = this.splineRefs.get(d.id);
       if (lineItem) {
         lineItem.draw();
@@ -186,7 +186,7 @@ class SplineGroup extends Component {
 
     //Redraw the lines
     let lineItem;
-    dataset.forEach(d => {
+    this.dataset.forEach(d => {
       lineItem = this.splineRefs.get(d.id);
       if (lineItem) {
         lineItem.draw();
@@ -214,7 +214,7 @@ class SplineGroup extends Component {
 
   refreshData = () => {
     let lineItem;
-    dataset.forEach(d => {
+    this.dataset.forEach(d => {
       lineItem = this.splineRefs.get(d.id);
       if (lineItem) {
         lineItem.getData();
@@ -229,7 +229,7 @@ class SplineGroup extends Component {
 
     let mousePerLine = d3.select('#line-container')
       .selectAll('.mouse-per-line')
-      .data(dataset)
+      .data(this.dataset)
       .enter()
       .append('g')
       .attr('class', 'mouse-per-line')
@@ -248,8 +248,8 @@ class SplineGroup extends Component {
 
 
   getDataTip = () => {
-    let panelHeight = dataset.length * 28 + 16;
-    const tipItems = dataset.map((d, i) => {
+    let panelHeight = this.dataset.length * 28 + 16;
+    const tipItems = this.dataset.map((d, i) => {
       return (
         <g className="data-tip-item" key={d.id} data-id={d.id}
           opacity={0.1}
@@ -707,7 +707,7 @@ class SplineGroup extends Component {
 
   drawAll = () => {
     let lineItem;
-    dataset.forEach(d => {
+    this.dataset.forEach(d => {
       lineItem = this.splineRefs.get(d.id);
       if (lineItem) {
         lineItem.draw();

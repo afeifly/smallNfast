@@ -35,6 +35,7 @@ function FileInfoView() {
     const fileName = TestAPI.getLoadedFileName ? TestAPI.getLoadedFileName() : '';
     const timeRange = TestAPI.getFileTimeRange ? TestAPI.getFileTimeRange() : null;
     const isCsv = TestAPI.isCsvMode ? TestAPI.isCsvMode() : false;
+    const isStdb = TestAPI.isStdbMode ? TestAPI.isStdbMode() : false;
 
     TestAPI.getChannels((res) => {
       const channels = res ? res.logging_chs || [] : [];
@@ -43,6 +44,7 @@ function FileInfoView() {
         start: timeRange ? timeRange.start : null,
         stop: timeRange ? timeRange.stop : null,
         isCsv: isCsv,
+        isStdb: isStdb,
         channels: channels
       });
     });
@@ -56,6 +58,10 @@ function FileInfoView() {
     );
   }
 
+  return <FileInfoDetails fileInfo={fileInfo} />;
+}
+
+export function FileInfoDetails({ fileInfo, showHeader = true }) {
   const durationStr = (() => {
     if (!fileInfo.start || !fileInfo.stop) return '-';
     const diff = fileInfo.stop - fileInfo.start;
@@ -67,10 +73,12 @@ function FileInfoView() {
 
   return (
     <div className="file-info-view-container">
-      <div className="file-info-dashboard-header">
-        <h1 className="dashboard-title">{intl.get('FILEINFO_TITLE') || 'File Details & Metadata'}</h1>
-        <p className="dashboard-subtitle">{intl.get('FILEINFO_SUBTITLE') || 'Overview of the loaded measurement database file'}</p>
-      </div>
+      {showHeader && (
+        <div className="file-info-dashboard-header">
+          <h1 className="dashboard-title">{intl.get('FILEINFO_TITLE') || 'File Details & Metadata'}</h1>
+          <p className="dashboard-subtitle">{intl.get('FILEINFO_SUBTITLE') || 'Overview of the loaded measurement database file'}</p>
+        </div>
+      )}
 
       <div className="dashboard-grid">
         {/* Left Column: Properties */}
@@ -90,7 +98,7 @@ function FileInfoView() {
               <span className="property-label">{intl.get('FILEINFO_FORMAT_TYPE') || 'Format Type'}</span>
               <span className="property-value">
                 <span className={`format-tag ${fileInfo.isCsv ? 'tag-csv' : 'tag-csd'}`}>
-                  {fileInfo.isCsv ? (intl.get('FILEINFO_FORMAT_CSV') || 'CSV Text') : (intl.get('FILEINFO_FORMAT_CSD') || 'CSD Binary')}
+                  {fileInfo.isStdb ? 'STDB SQLite' : fileInfo.isCsv ? (intl.get('FILEINFO_FORMAT_CSV') || 'CSV Text') : (intl.get('FILEINFO_FORMAT_CSD') || 'CSD Binary')}
                 </span>
               </span>
             </div>

@@ -4,12 +4,15 @@ import React from 'react';
 import LineChart from './LineChart';
 import GraphicView from './index';
 import ChartController from './ChartController';
+import ChannelList from '../channel/ChannelList';
+import SplineGroup from './SplineGroup';
 import TestAPI from '../../api/TestAPI';
 
 vi.mock('../../api/TestAPI', () => {
   return {
     default: {
       getFileTimeRange: vi.fn(),
+      getLocations: vi.fn(),
       getUserSettings: vi.fn((username, cb) => cb([
         {
           alias_name: 'Admin',
@@ -31,6 +34,47 @@ vi.mock('../../api/TestAPI', () => {
       onFileLoaded: vi.fn(),
     },
   };
+});
+
+describe('Graphic View channel selection', () => {
+  it('does not reuse chart channels when another recording is opened', async () => {
+    let ref;
+    const first = render(<svg><SplineGroup ref={value => { ref = value; }} chartController={new ChartController()} /></svg>);
+    await act(async () => ref.setData([{
+      id: 8, name: 'Previous channel', color: '#000', summaryData: [], scale: () => 0
+    }]));
+    expect(first.container.querySelectorAll('.spline')).toHaveLength(1);
+    first.unmount();
+    const next = render(<svg><SplineGroup chartController={new ChartController()} /></svg>);
+    expect(next.container.querySelectorAll('.spline')).toHaveLength(0);
+  });
+
+  it('does not show channels rejected by the axis limit as selected', async () => {
+    localStorage.removeItem('selectedChannels');
+    const controller = new ChartController();
+    TestAPI.getLocations.mockImplementationOnce(cb => cb({
+      locations: [{ location_id: 0, description: 'STDB session' }]
+    }));
+    TestAPI.getChannels.mockImplementationOnce(cb => cb({
+      logging_chs: Array.from({ length: 5 }, (_, id) => ({
+        channel_id: id, location_id: 0, sensor_id: 1,
+        sensor_description: 'Sensor', logic_channel_description: `Channel ${id}`,
+        unit_in_ascii: `unit${id}`
+      }))
+    }));
+    localStorage.setItem('selectedChannels', JSON.stringify(
+      Array.from({ length: 5 }, (_, id) => ({ id }))
+    ));
+    let ref;
+    const { container } = render(<ChannelList ref={value => { ref = value; }} chartController={controller} />);
+    await act(async () => ref.getData());
+    const checkboxes = container.querySelectorAll('.CL-channel-item input[type="checkbox"]');
+    expect(checkboxes).toHaveLength(5);
+    expect(checkboxes[3]).toBeChecked();
+    expect(checkboxes[4]).not.toBeChecked();
+    expect(controller.selectedChannels).toHaveLength(4);
+    localStorage.removeItem('selectedChannels');
+  });
 });
 
 describe('LineChart - Scale Actions Removal & Landscape Prompt', () => {

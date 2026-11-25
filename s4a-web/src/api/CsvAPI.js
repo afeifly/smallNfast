@@ -55,7 +55,12 @@ function parseCsvLine(line) {
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (char === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
       result.push(current.trim());
       current = '';
@@ -147,10 +152,12 @@ function parseDateTimeString(str) {
   const hour = parseInt(tParts[0], 10);
   const min = parseInt(tParts[1], 10);
   const sec = parseInt(tParts[2], 10) || 0;
+  const fraction = tParts[2]?.split('.')[1];
+  const ms = fraction && /^\d+$/.test(fraction) ? Number(fraction.padEnd(3, '0').slice(0, 3)) : 0;
   
   if (isNaN(hour) || isNaN(min) || isNaN(sec)) return 0;
   
-  return new Date(year, month, day, hour, min, sec).getTime();
+  return new Date(year, month, day, hour, min, sec, ms).getTime();
 }
 
 /**

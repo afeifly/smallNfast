@@ -1,6 +1,6 @@
 import RequestUtil from '../util/RequestUtil';
 import MockAPI from './MockAPI';
-import CsdAPI from './CsdAPI';
+import FileAnalyzeAPI from './FileAnalyzeAPI';
 import TauriSutoAPI from './TauriSutoAPI';
 import * as liveRecorder from '../util/liveRecorder';
 
@@ -331,7 +331,7 @@ export const setApiMode = (mode) => {
 
 export const getApiMode = () => currentApiMode;
 
-const BaseAPI = USE_MOCK ? MockAPI : CsdAPI;
+const BaseAPI = USE_MOCK ? MockAPI : FileAnalyzeAPI;
 
 const FinalAPI = new Proxy(BaseAPI, {
   get(target, prop) {

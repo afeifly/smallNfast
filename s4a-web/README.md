@@ -1,6 +1,6 @@
 # s4a-web
 
-A React + Vite web application for visualising time-series data from CSD binary files or a live device API.
+A React + Vite web application for visualising time-series data from CSD, CSV or STDB files, or a live device API.
 
 ---
 
@@ -31,6 +31,14 @@ VITE_API_HOST=http://192.168.1.1 npm run dev
 
 In **CSD mode** an **Open CSD File** prompt is shown (or folder icon in the top header). Click it to open a `.csd` file. The application auto-refreshes once the file is parsed.
 
+### STDB files
+
+File Analyze accepts S332 `.stdb` snapshots with the `S332DBOF` header and SQLite data starting at byte 64. Choose a recording session to analyze; the newest session is listed first and preselected. If there are no recordings, the list is empty and no session can be opened. Use **Show Detail** to inspect metadata, sensors and channels for the selected recording before opening it. The database is read-only: the application reads file slices in a worker and never writes to the original STDB file. Use a complete, checkpointed database snapshot; separate SQLite WAL files are not read.
+
+STDB supports file details, charts, tables, compressor analysis and CSV/Excel export of the selected session (all channels and records). Use **Append File** to add another recording from the same STDB or choose another STDB file. Sessions must have the same sample interval; matching channels are combined only when their device, sensor and channel identities, names and units match and their sample times do not overlap. Overlapping recordings retain separate channels and rows. Compressor analysis is unavailable for combined sessions. Reselecting a source through the other-file picker may allow the same recording to be appended again.
+
+Exports include all channels and records in the combined view, create separate files and do not change the STDB sources. Large exports require a browser with streaming file-save support; Excel exports are also subject to its worksheet row limit. Data Studio, consumption reports and CSD export are currently unavailable for STDB.
+
 ---
 
 ## Build Modes (Full vs Basic)
@@ -39,8 +47,8 @@ The application supports two build targets controlled via the keyword tag / envi
 
 | Build Mode | Keyword Tag / Flag | Included Modules | Target Audience |
 |---|---|---|---|
-| **Full** *(default)* | `full` / `VITE_BUILD_MODE=full` | **File Analyze Mode** (CSD / CSV)<br>**Single Device Monitor** (Live USB / TCP / BLE)<br>**Multi-Device ProcessScape** (SCADA plant canvas, pipeline layouts, multi-sensor alarm engine) | Complete plant automation and telemetry platform with multi-device SCADA. |
-| **Basic** | `basic` / `VITE_BUILD_MODE=basic` | **File Analyze Mode** (CSD / CSV)<br>**Single Device Monitor** (Live USB / TCP / BLE sensor readout, online view, live graphic & table) | Streamlined deployment focusing exclusively on file analysis and single hardware sensor readout. Multi-device SCADA is excluded. |
+| **Full** *(default)* | `full` / `VITE_BUILD_MODE=full` | **File Analyze Mode** (CSD / CSV / STDB)<br>**Single Device Monitor** (Live USB / TCP / BLE)<br>**Multi-Device ProcessScape** (SCADA plant canvas, pipeline layouts, multi-sensor alarm engine) | Complete plant automation and telemetry platform with multi-device SCADA. |
+| **Basic** | `basic` / `VITE_BUILD_MODE=basic` | **File Analyze Mode** (CSD / CSV / STDB)<br>**Single Device Monitor** (Live USB / TCP / BLE sensor readout, online view, live graphic & table) | Streamlined deployment focusing exclusively on file analysis and single hardware sensor readout. Multi-device SCADA is excluded. |
 
 ### Web Build Commands
 

@@ -322,9 +322,13 @@ class ChannelList extends Component {
         if (!channel.color) {
           channel.color = colors[chartController.selectedChannels.length % colors.length];
         }
-        chartController.addSelectedChannel(channel);
+        const added = chartController.addSelectedChannel(channel);
+        if (!added) {
+          channel.selected = false;
+          channel.visible = false;
+        }
 
-        if (!hasLocalSelection) {
+        if (added && !hasLocalSelection) {
           autoSelectedToSave.push({
             id: channel.id,
             color: channel.color,
@@ -445,7 +449,7 @@ class ChannelList extends Component {
     }
 
     //Has selected
-    const isSelected = chartController.isSelectedChannel(channel.selected);
+    const isSelected = chartController.isSelectedChannel(channel.id);
     if (isSelected) {
       return;
     }
@@ -478,10 +482,8 @@ class ChannelList extends Component {
       return;
     }
 
-    d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
     channel.color = colors[chartController.selectedChannels.length];
     channel.index = chartController.selectedChannels.length;
-    this.newSelectedChannel = channel;
 
     const interval = chartController.computeTableInterval();
     let startTime = chartController.timePeriod.start.getTime();
@@ -494,7 +496,18 @@ class ChannelList extends Component {
     startTime += 3600000 * 8;
     endTime += 3600000 * 8;
 
-    chartController.addSelectedChannel(channel);
+    if (!chartController.addSelectedChannel(channel)) {
+      channel.selected = false;
+      channel.visible = false;
+      this.setState({
+        openAlert: true,
+        alertTitle: intl.get('CH_MAX_DIFF_UNITS_TITLE') || "Max Different Units",
+        alertText: intl.get('CH_MAX_4_UNITS_NOTE') || "Maximum 4 different units (Y-axes) reached."
+      });
+      return;
+    }
+    this.newSelectedChannel = channel;
+    d3.select('.graphic-view').dispatch(SystemEvent.LOADING_DATA);
     //Save to local
     this.saveSelectedChannelToLocal(channel);
 

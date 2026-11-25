@@ -20,6 +20,7 @@ import ProcessScapeView from './modules/processscape/ProcessScapeView';
 import SensorManagerModal from './modules/processscape/SensorManagerModal';
 import ProcessScapeRecordModal from './modules/processscape/ProcessScapeRecordModal';
 import AlarmCenterModal from './components/AlarmCenterModal';
+import SelectSessionModal from './components/SelectSessionModal';
 import { getLocations, autoReconnectSavedDevices, getSavedDevices, saveDevices, upsertDeviceList, hasAssignedChannels as hasAssignedChannelsStorage } from './modules/processscape/engine/sensorManagerStorage';
 import { getAllScapes, setActiveScapeId, getActiveScapeId } from './modules/processscape/engine/scapeStorage';
 import { getActiveAlarms, subscribeAlarms, evaluateLiveTelemetry, refreshAssignedChannels, loadAlarmHistory, hydrateActiveAlarms } from './modules/processscape/engine/alarmEngine';
@@ -155,6 +156,7 @@ function App() {
   // appMode: null (welcome screen), 'analyze' (file analyze mode), or 'monitor' (device monitor mode)
   const [appMode, setAppMode] = React.useState(null);
   const [fileLoaded, setFileLoaded] = React.useState(false);
+  const [stdbAppendVersion, setStdbAppendVersion] = React.useState(0);
   const [activeTab, setActiveTab] = React.useState('graphic');
   const [recentFiles, setRecentFiles] = React.useState([]);
   const [recentDialogOpen, setRecentDialogOpen] = React.useState(false);
@@ -856,7 +858,18 @@ function App() {
   };
 
   React.useEffect(() => {
+    const handleStdbAppend = () => {
+      clearReadoutCache();
+      setActiveTab(tab => tab === 'analyze' ? 'graphic' : tab);
+      setStdbAppendVersion(version => version + 1);
+    };
+    window.addEventListener('stdbSessionAppended', handleStdbAppend);
+    return () => window.removeEventListener('stdbSessionAppended', handleStdbAppend);
+  }, []);
+
+  React.useEffect(() => {
     const handleStart = (e) => {
+      setFileLoaded(false);
       localStorage.removeItem('selectedChannels');
       setLoadingFilename(e.detail.filename);
       setFileLoading(true);
@@ -1579,7 +1592,7 @@ function App() {
               >
                 {intl.get('TABLE_VIEW') || 'Table View'}
               </button>
-              {featureReport && (
+              {featureReport && !(TestAPI.isStdbMode && TestAPI.isStdbMode()) && (
                 <button
                   className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
                   onClick={() => switchTab('report')}
@@ -1587,7 +1600,7 @@ function App() {
                   {intl.get('CONSUMPTION_REPORT') || 'Consumption Report'}
                 </button>
               )}
-              {featureCompressor && (
+              {featureCompressor && !(TestAPI.isStdbMode?.() && TestAPI.getNumLoadedFiles?.() > 1) && (
                 <button
                   className={`tab-btn ${activeTab === 'analyze' ? 'active' : ''}`}
                   onClick={() => switchTab('analyze')}
@@ -1597,6 +1610,7 @@ function App() {
               )}
               <button
                 className="tab-btn"
+                disabled={Boolean(TestAPI.isStdbMode && TestAPI.isStdbMode())}
                 onClick={() => { TauriSutoAPI.logClientEvent('INFO', 'FILE', 'Data modifier opened'); setModifierOpen(true); }}
               >
                 {intl.get('DATA_STUDIO') || 'Data Studio'}
@@ -1715,9 +1729,11 @@ function App() {
                 </Tooltip>
 
                 <Tooltip title={intl.get('APPEND_FILE') || 'Append File'}>
-                  <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
-                    <AddIcon />
-                  </IconButton>
+                  <span>
+                    <IconButton className="header-icon-btn" onClick={handleAppendCsd} style={{ color: '#0f172a' }}>
+                      <AddIcon />
+                    </IconButton>
+                  </span>
                 </Tooltip>
 
                 <Tooltip title={intl.get('EXPORT_DATA') || 'Export Data'}>
@@ -2328,7 +2344,7 @@ function App() {
               <div className="landing-card" style={{ maxWidth: 520, margin: '0 auto' }}>
                 <h2 className="landing-title">{intl.get('FILE_ANALYZE_MODE') || 'File Analyze Mode'}</h2>
                 <p className="landing-subtitle">
-                  {intl.get('FILE_ANALYZE_EMPTY_SUBTITLE') || 'Select a CSD or CSV file to begin analysis, or pick from recent files below.'}
+                  {intl.get('FILE_ANALYZE_EMPTY_SUBTITLE') || 'Select a CSD, CSV or STDB file to begin analysis, or pick from recent files below.'}
                 </p>
                 <button className="landing-cta-btn" onClick={handleOpenFile}>
                   <FolderOpenIcon style={{ fontSize: 20 }} />
@@ -2368,7 +2384,7 @@ function App() {
           </div>
         ) : (
           /* File Analyze Mode with loaded file */
-          <div className="view-content-wrapper">
+          <div className="view-content-wrapper" key={stdbAppendVersion}>
             {activeTab === 'fileinfo' ? (
               <FileInfoView />
             ) : activeTab === 'graphic' ? (
@@ -2992,7 +3008,7 @@ function App() {
           )}
           {appMode === 'analyze' && fileLoaded && TestAPI.isCsvMode && (
             <span className="status-badge">
-              {TestAPI.isCsvMode() ? (intl.get('APP_CSV_FILE_BADGE') || 'CSV File') : (intl.get('APP_CSD_FILE_BADGE') || 'CSD File')}
+              {TestAPI.isStdbMode?.() ? (intl.get('APP_STDB_FILE_BADGE') || 'STDB File · Read-only') : TestAPI.isCsvMode() ? (intl.get('APP_CSV_FILE_BADGE') || 'CSV File') : (intl.get('APP_CSD_FILE_BADGE') || 'CSD File')}
             </span>
           )}
           <span className="status-timestamp">
@@ -3042,6 +3058,7 @@ function App() {
       )}
 
       {/* Data Modification & Synthesis Studio Modal */}
+      <SelectSessionModal />
       <DataModifierModal
         open={modifierOpen}
         onClose={() => setModifierOpen(false)}

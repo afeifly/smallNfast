@@ -24,6 +24,14 @@
 
 import CsvAPI from './CsvAPI';
 import TauriSutoAPI from './TauriSutoAPI';
+import {
+  putHandle as _idbPut,
+  getHandle as _idbGet,
+  deleteHandle as _idbDelete,
+  saveRecentMeta as _saveRecentMeta,
+  createFileWrapperFromPath as _createFileWrapperFromPath,
+} from './FileAccess';
+import { promptLargeCsvChoice as _promptLargeCsvChoice, resolveLargeCsvChoice } from './LargeCsvPrompt';
 import { checkIsDesktop, checkIsDesktopHost } from '../util/platform';
 import { DOWNSAMPLING_MODE, getDownsamplingMode, scanBuckets } from '../util/downsample';
 
@@ -71,10 +79,6 @@ const CH_SUB_DEVICE_ID = 872;
 const CH_SENSOR_ID = 876;
 const CH_SLAVE_ADDRESS = 885;
 
-// IndexedDB database name / store for file handles
-const IDB_NAME = 'CsdFilesDB';
-const IDB_STORE = 'fileHandles';
-
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let _file = null;   // File | FileSystemFileHandle — kept open for lazy reads
@@ -109,89 +113,10 @@ let _appendMode = false;  // classic <input> fallback: next selection appends in
 let _onFileLoadedCallbacks = [];
 
 // Large-CSV pre-load prompt
-let _largeCsvResolve = null;     // Promise resolver, set while dialog is open
 let _pendingCsdConvert = false;  // true after user chose "Convert to CSD"
 
 // Classic <input> fallback
 let _fileInput = null;
-
-// ── IndexedDB helpers ─────────────────────────────────────────────────────────
-
-function _openIDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = e => {
-      e.target.result.createObjectStore(IDB_STORE);
-    };
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = e => reject(e.target.error);
-  });
-}
-
-async function _idbPut(key, value) {
-  try {
-    const db = await _openIDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put(value, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = e => reject(e.target.error);
-    });
-  } catch (e) {
-    console.warn('[CsdAPI] IDB put failed:', e);
-  }
-}
-
-async function _idbGet(key) {
-  try {
-    const db = await _openIDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const req = tx.objectStore(IDB_STORE).get(key);
-      req.onsuccess = e => resolve(e.target.result);
-      req.onerror = e => reject(e.target.error);
-    });
-  } catch (e) {
-    console.warn('[CsdAPI] IDB get failed:', e);
-    return undefined;
-  }
-}
-
-async function _idbDelete(key) {
-  try {
-    const db = await _openIDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).delete(key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = e => reject(e.target.error);
-    });
-  } catch (e) {
-    console.warn('[CsdAPI] IDB delete failed:', e);
-  }
-}
-
-async function _idbGetAll() {
-  try {
-    const db = await _openIDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const req = tx.objectStore(IDB_STORE).getAllKeys();
-      req.onsuccess = async e => {
-        const keys = e.target.result;
-        const entries = [];
-        for (const key of keys) {
-          const handle = await _idbGet(key);
-          if (handle) entries.push({ key, handle });
-        }
-        resolve(entries);
-      };
-      req.onerror = e => reject(e.target.error);
-    });
-  } catch (e) {
-    return [];
-  }
-}
 
 // ── Byte-reading helpers ──────────────────────────────────────────────────────
 
@@ -817,20 +742,6 @@ async function _bufferFileIfSmall(file) {
   return { file, fileBuffer: null };
 }
 
-/** Shows the large-CSV dialog and waits for the user's choice: 'open' | 'convert' | 'cancel' */
-function _promptLargeCsvChoice(file) {
-  return new Promise((resolve) => {
-    _largeCsvResolve = resolve;
-    window.dispatchEvent(new CustomEvent('largeCsvDetected', {
-      detail: {
-        filename: file.name,
-        sizeMB: (file.size / 1024 / 1024).toFixed(1),
-        sizeGB: (file.size / 1024 / 1024 / 1024).toFixed(2),
-      }
-    }));
-  });
-}
-
 async function _loadFromFile(file) {
   if (typeof localStorage !== 'undefined' && localStorage) {
     try {
@@ -1099,24 +1010,6 @@ function _validateOverlap(record) {
   return null;
 }
 
-// ── Recent-files persistence (localStorage metadata + IDB handles) ────────────
-
-function _saveRecentMeta(name, size, path = null) {
-  try {
-    let list = JSON.parse(localStorage.getItem('recentCsdFiles') || '[]');
-    list = list.filter(f => f.name !== name && (!path || f.path !== path));
-    list.unshift({ name, size, path, lastOpened: Date.now() });
-    list = list.slice(0, 10);
-    localStorage.setItem('recentCsdFiles', JSON.stringify(list));
-    if (path && TauriSutoAPI.isAvailable()) {
-      TauriSutoAPI.addRecentFile(path).catch(err => {
-        console.warn('[CsdAPI] Failed to add recent file to desktop config:', err);
-      });
-    }
-    TauriSutoAPI.pushLocalStateToLanBridge?.().catch?.(() => {});
-  } catch { /* ignore */ }
-}
-
 // ── File System Access API helpers ────────────────────────────────────────────
 
 const _fsaSupported = typeof window !== 'undefined' && 'showOpenFilePicker' in window;
@@ -1189,84 +1082,6 @@ function _ensureFileInput() {
 }
 
 // ── Public CsdAPI object ──────────────────────────────────────────────────────
-
-function _toCleanArrayBuffer(u8) {
-  if (u8 instanceof ArrayBuffer) return u8;
-  if (!u8 || !u8.buffer) return new ArrayBuffer(0);
-  if (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength) {
-    return u8.buffer;
-  }
-  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-}
-
-async function _createFileWrapperFromPath(filePath) {
-  if (TauriSutoAPI.isAvailable()) {
-    const stats = await TauriSutoAPI.getFileStats(filePath);
-    const name = stats.name || filePath.split(/[/\\]/).pop();
-    const size = stats.size || 0;
-
-    return {
-      name,
-      path: filePath,
-      size,
-      slice(start, end) {
-        const length = Math.max(0, end - start);
-        return {
-          arrayBuffer: async () => {
-            const u8 = await TauriSutoAPI.readFileSlice(filePath, start, length);
-            return _toCleanArrayBuffer(u8);
-          },
-          text: async () => {
-            const u8 = await TauriSutoAPI.readFileSlice(filePath, start, length);
-            return new TextDecoder().decode(u8);
-          }
-        };
-      },
-      async arrayBuffer() {
-        const u8 = await TauriSutoAPI.readFile(filePath);
-        return _toCleanArrayBuffer(u8);
-      },
-      async text() {
-        const u8 = await TauriSutoAPI.readFile(filePath);
-        return new TextDecoder().decode(u8);
-      }
-    };
-  }
-
-  // Legacy Node/Electron fallback
-  if (typeof window !== 'undefined' && typeof window.require === 'function') {
-    const fs = window.require('fs');
-    const pathModule = window.require('path');
-    const stats = fs.statSync(filePath);
-    const name = pathModule.basename(filePath);
-
-    return {
-      name,
-      path: filePath,
-      size: stats.size,
-      slice(start, end) {
-        const length = Math.max(0, end - start);
-        const buf = Buffer.alloc(length);
-        const fd = fs.openSync(filePath, 'r');
-        fs.readSync(fd, buf, 0, length, start);
-        fs.closeSync(fd);
-        return {
-          arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-          text: async () => buf.toString('utf8'),
-        };
-      },
-      async arrayBuffer() {
-        const buffer = fs.readFileSync(filePath);
-        return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-      },
-      async text() {
-        return fs.readFileSync(filePath, 'utf8');
-      }
-    };
-  }
-
-  throw new Error('Neither Tauri nor Node.js environment is available to read from path');
-}
 
 const CsdAPI = {
 
@@ -2387,10 +2202,7 @@ const CsdAPI = {
 
   /** Called by App.jsx to resolve the large-CSV dialog: choice is 'open' | 'convert' | 'cancel' */
   resolveLargeCsvChoice(choice) {
-    if (_largeCsvResolve) {
-      _largeCsvResolve(choice);
-      _largeCsvResolve = null;
-    }
+    resolveLargeCsvChoice(choice);
   },
 
   getGapSummary() {

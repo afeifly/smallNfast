@@ -175,8 +175,8 @@ pub fn suto_pick_file() -> Result<Option<String>, String> {
     #[cfg(not(target_os = "android"))]
     {
         let res = rfd::FileDialog::new()
-            .add_filter("CSD / CSV Data Files", &["csd", "csv"])
-            .set_title("Open SUTO Data File (.csd, .csv)")
+            .add_filter("CSD / CSV / STDB Data Files", &["csd", "csv", "stdb"])
+            .set_title("Open SUTO Data File (.csd, .csv, .stdb)")
             .pick_file();
 
         Ok(res.map(|p| p.to_string_lossy().to_string()))

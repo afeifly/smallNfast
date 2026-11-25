@@ -21,14 +21,24 @@ module.exports = {
       }
     },
     {
-      name: 's4a-web',
+      name: 's4a',
       cwd: './s4a-web',
       script: 'npm',
-      args: 'run dev:csd -- --port 9019 --host 127.0.0.1',
+      args: 'run dev:full -- --port 9019 --host 127.0.0.1',
       env: {
         NODE_ENV: 'development'
       }
     },
+    {
+      name: 's4a-basic',
+      cwd: './s4a-web',
+      script: 'npm',
+      args: 'run dev:basic -- --port 9020 --host 127.0.0.1',
+      env: {
+        NODE_ENV: 'development'
+      }
+    },
+
     {
       name: 'acbarcode',
       cwd: './acbarcode',

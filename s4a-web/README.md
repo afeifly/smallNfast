@@ -80,6 +80,21 @@ npm run dev:basic
 VITE_BUILD_MODE=basic npm run dev
 ```
 
+### Desktop and Android downloads
+
+The full and basic web apps share `public/`, but their download buttons use
+different packages: `s4a_{window,mac,android}.zip` for full and
+`s4a_basic_{window,mac,android}.zip` for basic. The checked-in empty ZIP
+placeholders must be replaced with actual packages before downloads will work.
+
+Run `npm run sync:builds` to fetch both flavors from the latest successful
+GitHub Actions workflow run, or `npm run sync:builds:full` /
+`npm run sync:builds:basic` to fetch only one. Platform-specific commands such
+as `npm run sync:builds:apk:basic` are also available. Set `GITHUB_TOKEN` or
+`GH_TOKEN` when authentication is required. The sync reports an error if the
+selected run does not contain all requested artifacts; it does not search older
+runs for missing packages.
+
 ### Desktop App (Tauri) with Build Modes
 
 ```bash

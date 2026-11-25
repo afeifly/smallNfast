@@ -1,6 +1,7 @@
 import React from 'react';
 import './DownloadAppModal.css';
 import { checkIsWeb } from '../util/platform';
+import { isBasicMode } from '../util/buildMode';
 import intl from 'react-intl-universal';
 
 export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' }) {
@@ -11,14 +12,15 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
   const isCurrentMac = /Macintosh|Mac OS X/i.test(ua);
   const isCurrentWin = /Windows/i.test(ua);
   const isCurrentAndroid = /Android/i.test(ua);
+  const filePrefix = isBasicMode() ? 's4a_basic' : 's4a';
 
   const platforms = [
     {
       id: 'windows',
       name: 'Windows',
       tag: intl.get('DL_WIN_TAG') || 'x64 Desktop',
-      file: 's4a_window.zip',
-      href: '/s4a_window.zip',
+      file: `${filePrefix}_window.zip`,
+      href: `/${filePrefix}_window.zip`,
       desc: intl.get('DL_WIN_DESC') || 'Native Direct USB driver, Ethernet TCP monitoring, full offline CSD & CSV analysis.',
       meta: `Windows 10 / 11 • v${version}`,
       isCurrent: isCurrentWin,
@@ -33,8 +35,8 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
       id: 'macos',
       name: 'macOS',
       tag: intl.get('DL_MAC_TAG') || 'Apple Silicon & Intel',
-      file: 's4a_mac.zip',
-      href: '/s4a_mac.zip',
+      file: `${filePrefix}_mac.zip`,
+      href: `/${filePrefix}_mac.zip`,
       desc: intl.get('DL_MAC_DESC') || 'Native IOKit direct USB, Bluetooth Low Energy, standalone DMG installer.',
       meta: `macOS 12+ • v${version}`,
       isCurrent: isCurrentMac,
@@ -49,8 +51,8 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
       id: 'android',
       name: 'Android',
       tag: intl.get('DL_ANDROID_TAG') || 'ARM64 Mobile APK',
-      file: 's4a_android.zip',
-      href: '/s4a_android.zip',
+      file: `${filePrefix}_android.zip`,
+      href: `/${filePrefix}_android.zip`,
       desc: intl.get('DL_ANDROID_DESC') || 'USB-C OTG cable hardware host, Bluetooth LE sensor scanning, field monitoring.',
       meta: `Android 8.0+ • v${version}`,
       isCurrent: isCurrentAndroid,
@@ -89,7 +91,7 @@ export default function DownloadAppModal({ isOpen, onClose, version = '0.1.0' })
       api: { supported: true, label: lblSupported },
     },
     {
-      platform: 'Win (Windows)',
+      platform: 'Windows',
       badge: '🪟',
       usb: { supported: true, label: lblDirectUsb },
       ble: { supported: true, label: lblSupported },

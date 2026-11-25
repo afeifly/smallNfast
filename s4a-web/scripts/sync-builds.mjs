@@ -25,6 +25,38 @@ const headers = {
   ...(token ? { 'Authorization': `Bearer ${token}` } : {})
 };
 
+export function selectArtifacts(artifacts, flavor, platform) {
+  const platforms = platform === 'all' ? ['windows', 'macos', 'android'] : [
+    ({ win: 'windows', mac: 'macos', apk: 'android' })[platform] || platform
+  ];
+  const flavors = flavor === 'all' ? ['full', 'basic'] : [flavor];
+  const expected = new Set(flavors.flatMap(mode => platforms.map(os => {
+    const name = os === 'windows' ? 'window' : os === 'macos' ? 'mac' : os;
+    return `s4a_${mode === 'basic' ? 'basic_' : ''}${name}.zip`;
+  })));
+  const selected = new Map();
+
+  for (const artifact of artifacts) {
+    if (artifact.expired) continue;
+    const name = artifact.name.toLowerCase();
+    const isBasic = name.includes('basic');
+    const os = name.includes('windows') || name.includes('exe') ? 'window'
+      : name.includes('macos') || name.includes('dmg') ? 'mac'
+        : name.includes('android') || name.includes('apk') ? 'android' : null;
+    if (!os) continue;
+    const filename = `s4a_${isBasic ? 'basic_' : ''}${os}.zip`;
+    if (!expected.has(filename)) continue;
+    if (selected.has(filename)) throw new Error(`Multiple artifacts match ${filename}`);
+    selected.set(filename, { artifact, filename, isBasic });
+  }
+
+  const missing = [...expected].filter(filename => !selected.has(filename));
+  if (missing.length) {
+    throw new Error(`Missing or expired artifacts for: ${missing.join(', ')}`);
+  }
+  return [...selected.values()];
+}
+
 async function apiRequest(url) {
   const res = await fetch(url, { headers });
   if (!res.ok) {
@@ -120,6 +152,8 @@ async function main() {
   }
 
   console.log(`[sync:builds] Found ${artifacts.length} artifacts:`, artifacts.map(a => a.name).join(', '));
+  console.log(`[sync:builds] Filter settings: Flavor = [${targetFlavor}], Platform = [${targetPlatform}]`);
+  const selectedArtifacts = selectArtifacts(artifacts, targetFlavor, targetPlatform);
 
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
@@ -128,46 +162,9 @@ async function main() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 's4a-sync-'));
 
   try {
-    console.log(`[sync:builds] Filter settings: Flavor = [${targetFlavor}], Platform = [${targetPlatform}]`);
-
-    for (const artifact of artifacts) {
+    for (const { artifact, filename: targetPublicFile, isBasic } of selectedArtifacts) {
       const artName = artifact.name;
-      const artLower = artName.toLowerCase();
-      const isBasic = artLower.includes('basic');
-      const isFull = !isBasic;
-
-      if (targetFlavor === 'full' && isBasic) continue;
-      if (targetFlavor === 'basic' && isFull) continue;
-
-      const isAndroid = artLower.includes('android') || artLower.includes('apk');
-      const isWindows = artLower.includes('windows') || artLower.includes('exe');
-      const isMac = artLower.includes('macos') || artLower.includes('dmg');
-
-      if (['android', 'apk'].includes(targetPlatform) && !isAndroid) continue;
-      if (['windows', 'win'].includes(targetPlatform) && !isWindows) continue;
-      if (['macos', 'mac'].includes(targetPlatform) && !isMac) continue;
-
       const sizeMb = (artifact.size_in_bytes / 1024 / 1024).toFixed(2);
-
-      let targetPublicFile = null;
-
-      // When a specific flavor is requested ('full' or 'basic'), save to standard clean names
-      // (s4a_android.zip, s4a_window.zip, s4a_mac.zip) so web download links work immediately
-      // without renaming!
-      if (targetFlavor !== 'all') {
-        if (isWindows) targetPublicFile = 's4a_window.zip';
-        else if (isMac) targetPublicFile = 's4a_mac.zip';
-        else if (isAndroid) targetPublicFile = 's4a_android.zip';
-      } else {
-        // When syncing all, keep distinct names for both flavors:
-        if (isWindows) targetPublicFile = isBasic ? 's4a_window_basic.zip' : 's4a_window.zip';
-        else if (isMac) targetPublicFile = isBasic ? 's4a_mac_basic.zip' : 's4a_mac.zip';
-        else if (isAndroid) targetPublicFile = isBasic ? 's4a_android_basic.zip' : 's4a_android.zip';
-      }
-
-      if (!targetPublicFile) {
-        continue;
-      }
 
       console.log(`[sync:builds] Downloading ${artName} (${sizeMb} MB)...`);
       const zipBuffer = await downloadBuffer(artifact.archive_download_url);
@@ -181,8 +178,7 @@ async function main() {
 
       const extractedFiles = fs.readdirSync(extractSubDir).filter(f => !f.startsWith('.'));
       if (extractedFiles.length === 0) {
-        console.warn(`[sync:builds] Warning: No file extracted from ${artName}`);
-        continue;
+        throw new Error(`No file extracted from ${artName}`);
       }
 
       const innerFile = path.join(extractSubDir, extractedFiles[0]);
@@ -197,14 +193,9 @@ async function main() {
 
       // If it's an APK, also save the raw .apk directly for instant Android install without unzipping
       if (extractedFiles[0].endsWith('.apk')) {
-        if (targetFlavor !== 'all') {
-          fs.copyFileSync(innerFile, path.join(publicDir, 's4a_app.apk'));
-          console.log(`[sync:builds] -> Updated direct APK public/s4a_app.apk`);
-        } else {
-          const rawApkTarget = isBasic ? 's4a_app_basic.apk' : 's4a_app.apk';
-          fs.copyFileSync(innerFile, path.join(publicDir, rawApkTarget));
-          console.log(`[sync:builds] -> Updated direct APK public/${rawApkTarget}`);
-        }
+        const rawApkTarget = isBasic ? 's4a_app_basic.apk' : 's4a_app.apk';
+        fs.copyFileSync(innerFile, path.join(publicDir, rawApkTarget));
+        console.log(`[sync:builds] -> Updated direct APK public/${rawApkTarget}`);
       }
 
       const finalSizeMb = (fs.statSync(destPath).size / 1024 / 1024).toFixed(2);
@@ -219,7 +210,9 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error('[sync:builds] Error:', err.message);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch(err => {
+    console.error('[sync:builds] Error:', err.message);
+    process.exitCode = 1;
+  });
+}

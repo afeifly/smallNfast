@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { useConfig } from '../context/ConfigContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
-import appConfig from '../config/appConfig.json';
 
 // Import PNG Icons
 import iconHomeL from '../assets/images/icon_home_l.png';
@@ -316,7 +315,7 @@ const Sidebar = () => {
         <div className="sidebar-footer-icon" onClick={toggleCollapse}>
           <img src={btnItems} alt="Items" style={{ width: 32, height: 32 }} />
         </div>
-        <span className="sidebar-version">Version: {appConfig.version}</span>
+        <span className="sidebar-version">Version: {__APP_VERSION__}</span>
       </div>
     </aside>
   );

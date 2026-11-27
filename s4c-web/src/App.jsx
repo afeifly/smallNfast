@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Graphic from './pages/Graphic';
@@ -9,8 +9,7 @@ import ThirdPartySensor from './pages/sensorconfiguration/ThirdPartySensor';
 import AnalogDigitalInput from './pages/sensorconfiguration/AnalogDigitalInput';
 import VirtualChannel from './pages/sensorconfiguration/VirtualChannel';
 import LayoutSetting from './pages/sensorconfiguration/LayoutSetting';
-import ModbusRTUMaster from './pages/communication/ModbusRTUMaster';
-import ModbusRTUSlave from './pages/communication/ModbusRTUSlave';
+import ModbusRTU from './pages/communication/ModbusRTU';
 import ModbusTCP from './pages/communication/ModbusTCP';
 import HoldingRegister from './pages/communication/HoldingRegister';
 import Alarm from './pages/Alarm';
@@ -33,8 +32,9 @@ function App() {
         <Route path="/sensor/analog-digital" element={<AnalogDigitalInput />} />
         <Route path="/sensor/virtual-channel" element={<VirtualChannel />} />
         <Route path="/sensor/layout-setting" element={<LayoutSetting />} />
-        <Route path="/communication/modbus-rtu-master" element={<ModbusRTUMaster />} />
-        <Route path="/communication/modbus-rtu-slave" element={<ModbusRTUSlave />} />
+        <Route path="/communication/modbus-rtu" element={<ModbusRTU />} />
+        <Route path="/communication/modbus-rtu-master" element={<Navigate to="/communication/modbus-rtu" replace />} />
+        <Route path="/communication/modbus-rtu-slave" element={<Navigate to="/communication/modbus-rtu?tab=slave" replace />} />
         <Route path="/communication/modbus-tcp" element={<ModbusTCP />} />
         <Route path="/communication/holding-register" element={<HoldingRegister />} />
         <Route path="/alarm" element={<Alarm />} />

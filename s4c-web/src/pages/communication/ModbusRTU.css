@@ -7,6 +7,48 @@
   height: 100% !important;
 }
 
+.modbus-rtu-tabs {
+  display: flex;
+  gap: 24px;
+  height: 100%;
+  overflow-x: auto;
+}
+
+.modbus-rtu-tab {
+  padding: 16px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #666;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.modbus-rtu-tab:hover,
+.modbus-rtu-tab[aria-selected="true"] {
+  color: var(--accent-color);
+}
+
+.modbus-rtu-tab[aria-selected="true"] {
+  border-bottom-color: var(--accent-color);
+}
+
+.modbus-rtu-tab:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.modbus-rtu-panel:not([hidden]),
+.modbus-rtu-configuration {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 .modbus-header {
   height: 68px;
   padding: 0 24px;

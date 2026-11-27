@@ -74,9 +74,9 @@
   gap: 32px;
 }
 
-.modbus-row {
+.modbus-rtu-page .modbus-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 32px;
 }
 
@@ -154,6 +154,10 @@
   outline: none;
 }
 
+.modbus-input.invalid {
+  border-color: #FF4D4F;
+}
+
 .modbus-range-hint {
   position: absolute;
   left: 288px;
@@ -162,6 +166,10 @@
   color: rgba(0, 0, 0, 0.90);
   font-family: 'PingFang SC', sans-serif;
   white-space: nowrap;
+}
+
+.modbus-range-hint.invalid {
+  color: #FF4D4F;
 }
 
 .modbus-footer {

@@ -8,7 +8,7 @@ const ModbusRTUSlave = () => {
   const { t } = useLanguage();
   const [baudRate, setBaudRate] = useState(19200);
   const [parity, setParity] = useState(3);
-  const [address, setAddress] = useState(1);
+  const [address, setAddress] = useState('1');
 
   // Dynamically find the config path
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
@@ -19,9 +19,16 @@ const ModbusRTUSlave = () => {
     if (slaveConfig) {
       setBaudRate(slaveConfig.baudrate ?? 19200);
       setParity(slaveConfig.parityFrameIndex ?? 3);
-      setAddress(slaveConfig.address ?? 1);
+      setAddress(String(slaveConfig.address ?? 1));
     }
   }, [slaveConfig]);
+
+  const isAddressInvalid = (() => {
+    const trimmed = String(address).trim();
+    if (trimmed === '') return true;
+    const num = Number(trimmed);
+    return Number.isNaN(num) || num < 1 || num > 247;
+  })();
 
   const updateConfig = (field, value) => {
     if (!configPath || !currentConfig) return;
@@ -48,35 +55,41 @@ const ModbusRTUSlave = () => {
       <div className="modbus-body">
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">{t('Protocol')} <span className="required">*</span></label>
+            <label className="modbus-label">{t('Protocol')}</label>
             <div className="modbus-input-readonly">
               <span>RTU</span>
             </div>
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">{t('Slave address')} <span className="required">*</span></label>
+            <label className="modbus-label" htmlFor="modbus-rtu-slave-address">{t('Slave address')}</label>
             <div className="modbus-input-container">
-              <input 
+              <input
+                id="modbus-rtu-slave-address"
                 type="number"
-                className="modbus-input"
+                className={`modbus-input ${isAddressInvalid ? 'invalid' : ''}`}
+                aria-invalid={isAddressInvalid}
                 value={address}
                 onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setAddress(val);
-                  updateConfig('address', val);
+                  const raw = e.target.value;
+                  setAddress(raw);
+                  const trimmed = raw.trim();
+                  const num = Number(trimmed);
+                  if (trimmed !== '' && !Number.isNaN(num) && num >= 1 && num <= 247) {
+                    updateConfig('address', num);
+                  }
                 }}
                 min="1"
                 max="247"
               />
-              <span className="modbus-range-hint">(1~247)</span>
+              <span className={`modbus-range-hint ${isAddressInvalid ? 'invalid' : ''}`}>(1~247)</span>
             </div>
           </div>
         </div>
 
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">{t('Baud rate')} <span className="required">*</span></label>
+            <label className="modbus-label">{t('Baud rate')}</label>
             <div className="modbus-select-wrapper">
               <select 
                 className="modbus-select"
@@ -96,7 +109,7 @@ const ModbusRTUSlave = () => {
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">{t('Frame parity')} <span className="required">*</span></label>
+            <label className="modbus-label">{t('Frame parity')}</label>
             <div className="modbus-select-wrapper">
               <select 
                 className="modbus-select"

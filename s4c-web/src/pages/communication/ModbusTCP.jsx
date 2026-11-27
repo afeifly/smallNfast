@@ -1,139 +1,79 @@
-import React, { useState, useEffect } from 'react';
-import { useConfig } from '../../context/ConfigContext';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
+import ModbusTCPMaster from './ModbusTCPMaster';
+import ModbusTCPSlave from './ModbusTCPSlave';
 import './ModbusTCP.css';
 
+const tabs = [
+  { id: 'master', label: 'Modbus/TCP Master' },
+  { id: 'slave', label: 'Modbus/TCP Slave' },
+];
+
 const ModbusTCP = () => {
-  const [dhcp, setDhcp] = useState(false);
-  const [ipAddress, setIpAddress] = useState('192.168.1.100');
-  const [subnetMask, setSubnetMask] = useState('255.255.255.0');
-  const [gateway, setGateway] = useState('192.168.1.1');
-  const [port, setPort] = useState('502');
-
-  const { configData, setConfigData } = useConfig();
   const { t } = useLanguage();
-  const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
-  const currentConfig = configData?.configs?.[configPath];
-  const tcpConfig = currentConfig?.retcp;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'slave' ? 'slave' : 'master';
 
-  useEffect(() => {
-    if (tcpConfig?.port !== undefined) {
-      setPort(String(tcpConfig.port));
+  const selectTab = (tab) => {
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set('tab', tab);
+      return next;
+    });
+  };
+
+  const handleKeyDown = (event) => {
+    let nextTab;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      nextTab = activeTab === 'master' ? 'slave' : 'master';
+    } else if (event.key === 'Home') {
+      nextTab = 'master';
+    } else if (event.key === 'End') {
+      nextTab = 'slave';
+    } else {
+      return;
     }
-  }, [tcpConfig?.port]);
 
-  const updateConfig = (field, value) => {
-    if (!configPath || !currentConfig) return;
-
-    const newConfigData = {
-      ...configData,
-      configs: {
-        ...configData.configs,
-        [configPath]: {
-          ...currentConfig,
-          retcp: {
-            ...tcpConfig,
-            [field]: value
-          }
-        }
-      }
-    };
-    setConfigData(newConfigData);
+    event.preventDefault();
+    selectTab(nextTab);
+    event.currentTarget.parentElement.querySelector(`#modbus-tcp-tab-${nextTab}`).focus();
   };
 
   return (
     <div className="content-card modbus-tcp-page">
       <header className="modbus-header">
-        <h2 className="modbus-title">{t('Modbus TCP connection information')}</h2>
-      </header>
-
-      <div className="modbus-body">
-        <div className="modbus-row">
-          <div className="modbus-field">
-            <label className="modbus-label">{t('Protocol')} <span className="required">*</span></label>
-            <div className="modbus-input-readonly">
-              <span>TCP</span>
-            </div>
-          </div>
-
-          <div className="modbus-field">
-            <label className="modbus-label">{t('DHCP Enable')}</label>
-            <div 
-              className={`modbus-switch ${dhcp ? 'on' : ''}`} 
-              onClick={() => {
-                const newVal = !dhcp;
-                setDhcp(newVal);
-                // Future: update network config here
-              }}
+        <div className="modbus-tcp-tabs" role="tablist" aria-label={t('Modbus TCP')}>
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              id={`modbus-tcp-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              className="modbus-tcp-tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`modbus-tcp-panel-${tab.id}`}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={handleKeyDown}
             >
-              <div className="switch-knob"></div>
-            </div>
-          </div>
+              {t(tab.label)}
+            </button>
+          ))}
         </div>
-
-        {!dhcp && (
-          <>
-            <div className="modbus-row">
-              <div className="modbus-field">
-                <label className="modbus-label">{t('IP address')} <span className="required">*</span></label>
-                <div className="modbus-input-container">
-                  <input 
-                    type="text"
-                    className="modbus-input"
-                    value={ipAddress}
-                    onChange={(e) => setIpAddress(e.target.value)}
-                    placeholder="0.0.0.0"
-                  />
-                </div>
-              </div>
-
-              <div className="modbus-field">
-                <label className="modbus-label">{t('Sub mask')} <span className="required">*</span></label>
-                <div className="modbus-input-container">
-                  <input 
-                    type="text"
-                    className="modbus-input"
-                    value={subnetMask}
-                    onChange={(e) => setSubnetMask(e.target.value)}
-                    placeholder="255.255.255.0"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="modbus-row">
-              <div className="modbus-field">
-                <label className="modbus-label">{t('Default gateway')} <span className="required">*</span></label>
-                <div className="modbus-input-container">
-                  <input 
-                    type="text"
-                    className="modbus-input"
-                    value={gateway}
-                    onChange={(e) => setGateway(e.target.value)}
-                    placeholder="0.0.0.0"
-                  />
-                </div>
-              </div>
-
-              <div className="modbus-field">
-                <label className="modbus-label">{t('Port')} <span className="required">*</span></label>
-                <div className="modbus-input-container">
-                  <input 
-                    type="number"
-                    className="modbus-input"
-                    value={port}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setPort(e.target.value);
-                      updateConfig('port', val);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      </header>
+      {tabs.map(tab => (
+        <div
+          key={tab.id}
+          id={`modbus-tcp-panel-${tab.id}`}
+          role="tabpanel"
+          aria-labelledby={`modbus-tcp-tab-${tab.id}`}
+          className="modbus-tcp-panel"
+          hidden={activeTab !== tab.id}
+          tabIndex={0}
+        >
+          {activeTab === tab.id && (tab.id === 'master' ? <ModbusTCPMaster /> : <ModbusTCPSlave />)}
+        </div>
+      ))}
     </div>
   );
 };

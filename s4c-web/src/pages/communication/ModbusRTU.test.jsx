@@ -117,4 +117,31 @@ describe('Modbus RTU page', () => {
     expect(screen.getByRole('tab', { name: masterTitle })).toHaveFocus();
     expect(screen.getByRole('tabpanel', { name: masterTitle })).toBeVisible();
   });
+
+  it('marks out-of-range inputs and range suffixes invalid on Master and Slave tabs', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const masterPanel = screen.getByRole('tabpanel', { name: masterTitle });
+    expect(masterPanel.querySelector('.required')).toBeNull();
+    const timeoutInput = within(masterPanel).getByLabelText('Response timeout(s)');
+    const timeoutHint = within(masterPanel).getByText('(1~25)');
+    expect(timeoutInput).not.toHaveClass('invalid');
+    expect(timeoutHint).not.toHaveClass('invalid');
+
+    await user.clear(timeoutInput);
+    await user.type(timeoutInput, '30');
+    expect(timeoutInput).toHaveClass('invalid');
+    expect(timeoutHint).toHaveClass('invalid');
+
+    await user.click(screen.getByRole('tab', { name: slaveTitle }));
+    const slavePanel = screen.getByRole('tabpanel', { name: slaveTitle });
+    expect(slavePanel.querySelector('.required')).toBeNull();
+    const addressInput = within(slavePanel).getByLabelText('Slave address');
+    const addressHint = within(slavePanel).getByText('(1~247)');
+    await user.clear(addressInput);
+    await user.type(addressInput, '300');
+    expect(addressInput).toHaveClass('invalid');
+    expect(addressHint).toHaveClass('invalid');
+  });
 });

@@ -8,7 +8,7 @@ const ModbusRTUMaster = () => {
   const { t } = useLanguage();
   const [baudRate, setBaudRate] = useState(19200);
   const [parity, setParity] = useState(3);
-  const [timeout, setTimeoutVal] = useState(10);
+  const [timeout, setTimeoutVal] = useState('10');
 
   // Dynamically find the config path
   const configPath = Object.keys(configData?.configs || {}).find(p => p.endsWith('cfgcommunicatport.json'));
@@ -19,9 +19,16 @@ const ModbusRTUMaster = () => {
     if (masterConfig) {
       setBaudRate(masterConfig.baudrate ?? 19200);
       setParity(masterConfig.parityFrameIndex ?? 3);
-      setTimeoutVal(masterConfig.responseTimeout ?? 10);
+      setTimeoutVal(String(masterConfig.responseTimeout ?? 10));
     }
   }, [masterConfig]);
+
+  const isTimeoutInvalid = (() => {
+    const trimmed = String(timeout).trim();
+    if (trimmed === '') return true;
+    const num = Number(trimmed);
+    return Number.isNaN(num) || num < 1 || num > 25;
+  })();
 
   const updateConfig = (field, value) => {
     if (!configPath || !currentConfig) return;
@@ -48,14 +55,14 @@ const ModbusRTUMaster = () => {
       <div className="modbus-body">
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">{t('Protocol')} <span className="required">*</span></label>
+            <label className="modbus-label">{t('Protocol')}</label>
             <div className="modbus-input-readonly">
               <span>RTU</span>
             </div>
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">{t('Baud rate')} <span className="required">*</span></label>
+            <label className="modbus-label">{t('Baud rate')}</label>
             <div className="modbus-select-wrapper">
               <select 
                 className="modbus-select"
@@ -77,7 +84,7 @@ const ModbusRTUMaster = () => {
 
         <div className="modbus-row">
           <div className="modbus-field">
-            <label className="modbus-label">{t('Frame parity')} <span className="required">*</span></label>
+            <label className="modbus-label">{t('Frame parity')}</label>
             <div className="modbus-select-wrapper">
               <select 
                 className="modbus-select"
@@ -97,21 +104,27 @@ const ModbusRTUMaster = () => {
           </div>
 
           <div className="modbus-field">
-            <label className="modbus-label">{t('Response timeout(s)')} <span className="required">*</span></label>
+            <label className="modbus-label" htmlFor="modbus-rtu-response-timeout">{t('Response timeout(s)')}</label>
             <div className="modbus-input-container">
-              <input 
+              <input
+                id="modbus-rtu-response-timeout"
                 type="number"
-                className="modbus-input"
+                className={`modbus-input ${isTimeoutInvalid ? 'invalid' : ''}`}
+                aria-invalid={isTimeoutInvalid}
                 value={timeout}
                 onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setTimeoutVal(val);
-                  updateConfig('responseTimeout', val);
+                  const raw = e.target.value;
+                  setTimeoutVal(raw);
+                  const trimmed = raw.trim();
+                  const num = Number(trimmed);
+                  if (trimmed !== '' && !Number.isNaN(num) && num >= 1 && num <= 25) {
+                    updateConfig('responseTimeout', num);
+                  }
                 }}
                 min="1"
                 max="25"
               />
-              <span className="modbus-range-hint">(1~25)</span>
+              <span className={`modbus-range-hint ${isTimeoutInvalid ? 'invalid' : ''}`}>(1~25)</span>
             </div>
           </div>
         </div>

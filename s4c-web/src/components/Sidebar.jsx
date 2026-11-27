@@ -87,6 +87,7 @@ const RAW_NAV = [
     icons: { active: iconOrgL, inactive: iconOrgD },
     children: [
       { label: 'Modbus RTU', to: '/communication/modbus-rtu' },
+      { label: 'Modbus TCP', to: '/communication/modbus-tcp' },
       { label: 'Holding Register', to: '/communication/holding-register' },
     ],
   },

@@ -44,11 +44,7 @@ const ModbusRTUMaster = () => {
   };
 
   return (
-    <div className="content-card modbus-rtu-page">
-      <header className="modbus-header">
-        <h2 className="modbus-title">{t('Modbus RTU master information')}</h2>
-      </header>
-
+    <div className="modbus-rtu-configuration">
       <div className="modbus-body">
         <div className="modbus-row">
           <div className="modbus-field">

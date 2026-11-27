@@ -168,6 +168,7 @@
   "Measurement Points": "测量点",
   "Measurement point \"{name}\" already exists.": "测量点 \"{name}\" 已存在。",
   "Multiple channels use the same value address \"{address}\". Each channel within a sensor must have a unique address.": "多个通道使用了相同的数值地址 \"{address}\"。一个传感器内的每个通道都必须使用唯一的地址。",
+  "Modbus RTU": "Modbus RTU",
   "Modbus RTU Master": "Modbus RTU 主站",
   "Modbus RTU Slave": "Modbus RTU 从站",
   "Modbus RTU master information": "Modbus RTU 主站信息",

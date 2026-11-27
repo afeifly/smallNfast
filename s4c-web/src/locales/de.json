@@ -168,6 +168,7 @@
   "Measurement Points": "Messpunkte",
   "Measurement point \"{name}\" already exists.": "Messpunkt \"{name}\" existiert bereits.",
   "Multiple channels use the same value address \"{address}\". Each channel within a sensor must have a unique address.": "Mehrere Kanäle verwenden dieselbe Wertadresse \"{address}\". Jeder Kanal innerhalb eines Sensors muss eine eindeutige Adresse haben.",
+  "Modbus RTU": "Modbus RTU",
   "Modbus RTU Master": "Modbus RTU Master",
   "Modbus RTU Slave": "Modbus RTU Slave",
   "Modbus RTU master information": "Modbus RTU Master-Informationen",
